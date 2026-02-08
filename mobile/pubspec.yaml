@@ -1,0 +1,90 @@
+name: pos_mobile
+description: Hybrid Multi-Branch POS System Mobile App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+  
+  # Navigation
+  go_router: ^13.0.1
+  
+  # Networking
+  dio: ^5.4.0
+  retrofit: ^4.0.3
+  
+  # Local Database (Offline-first)
+  drift: ^2.14.1
+  sqlite3_flutter_libs: ^0.5.18
+  path_provider: ^2.1.1
+  path: ^1.8.3
+  
+  # Dependency Injection
+  get_it: ^7.6.4
+  injectable: ^2.3.2
+  
+  # UI Components
+  cupertino_icons: ^1.0.6
+  flutter_svg: ^2.0.9
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+  
+  # Forms & Validation
+  reactive_forms: ^16.1.1
+  
+  # Utilities
+  intl: ^0.18.1
+  uuid: ^4.2.2
+  equatable: ^2.0.5
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.8.1
+  
+  # Storage
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.2
+  
+  # Connectivity
+  connectivity_plus: ^5.0.2
+  
+  # Printing & Receipts
+  esc_pos_utils: ^1.1.0
+  # TODO: Add bluetooth printing support with updated package
+  
+  # QR Code (for payments)
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^3.5.5
+  
+  # Animations
+  flutter_animate: ^4.3.0
+  lottie: ^3.0.0
+  
+  # Search
+  easy_search_bar: ^2.5.0
+  
+  # Biometric Authentication
+  local_auth: ^2.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  
+  # Code Generation
+  build_runner: ^2.4.7
+  drift_dev: ^2.14.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/

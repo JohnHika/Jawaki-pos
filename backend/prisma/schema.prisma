@@ -1,0 +1,635 @@
+// Prisma Schema for Hybrid Multi-Branch POS System
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== TENANT & ORGANIZATION ====================
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  logo        String?
+  isActive    Boolean  @default(true)
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branches    Branch[]
+  users       User[]
+  categories  Category[]
+  products    Product[]
+
+  @@map("tenants")
+}
+
+model Branch {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  code        String
+  address     String?
+  phone       String?
+  email       String?
+  timezone    String   @default("Africa/Nairobi")
+  isActive    Boolean  @default(true)
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  devices     Device[]
+  users       UserBranch[]
+  stock       Stock[]
+  sales       Sale[]
+  stockMovements StockMovement[]
+  priceOverrides BranchPriceOverride[]
+
+  @@unique([tenantId, code])
+  @@map("branches")
+}
+
+model Device {
+  id              String   @id @default(uuid())
+  branchId        String
+  deviceUuid      String   @unique
+  name            String
+  model           String?
+  osVersion       String?
+  appVersion      String?
+  lastSyncAt      DateTime?
+  lastActiveAt    DateTime?
+  isActive        Boolean  @default(true)
+  registeredAt    DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  syncEvents      SyncEvent[]
+  sales           Sale[]
+
+  @@map("devices")
+}
+
+// ==================== USERS & AUTHENTICATION ====================
+
+enum UserRole {
+  CASHIER
+  SUPERVISOR
+  MANAGER
+  ADMIN
+}
+
+model User {
+  id            String   @id @default(uuid())
+  tenantId      String
+  email         String
+  phone         String?
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          UserRole @default(CASHIER)
+  pin           String?  // For quick POS login
+  avatar        String?
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches      UserBranch[]
+  sales         Sale[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model UserBranch {
+  id        String   @id @default(uuid())
+  userId    String
+  branchId  String
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@map("user_branches")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  userId      String
+  token       String   @unique
+  deviceId    String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ==================== CATALOG & PRICING ====================
+
+model Category {
+  id          String   @id @default(uuid())
+  tenantId    String
+  parentId    String?
+  name        String
+  slug        String
+  description String?
+  image       String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    ProductCategory[]
+
+  @@unique([tenantId, slug])
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(uuid())
+  tenantId        String
+  sku             String
+  name            String
+  description     String?
+  image           String?
+  basePrice       Decimal  @db.Decimal(10, 2)
+  costPrice       Decimal? @db.Decimal(10, 2)
+  taxRate         Decimal  @default(0) @db.Decimal(5, 2)
+  unit            String   @default("piece")
+  minStock        Int      @default(0)
+  trackInventory  Boolean  @default(true)
+  allowFractions  Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  isFavorite      Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categories      ProductCategory[]
+  stock           Stock[]
+  saleItems       SaleItem[]
+  priceOverrides  BranchPriceOverride[]
+  stockMovements  StockMovement[]
+
+  @@unique([tenantId, sku])
+  @@map("products")
+}
+
+model ProductCategory {
+  id         String   @id @default(uuid())
+  productId  String
+  categoryId String
+  createdAt  DateTime @default(now())
+
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, categoryId])
+  @@map("product_categories")
+}
+
+model BranchPriceOverride {
+  id        String   @id @default(uuid())
+  branchId  String
+  productId String
+  price     Decimal  @db.Decimal(10, 2)
+  startDate DateTime?
+  endDate   DateTime?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, productId])
+  @@map("branch_price_overrides")
+}
+
+// ==================== INVENTORY ====================
+
+model Stock {
+  id          String   @id @default(uuid())
+  branchId    String
+  productId   String
+  quantity    Decimal  @db.Decimal(10, 3)
+  reservedQty Decimal  @default(0) @db.Decimal(10, 3)
+  updatedAt   DateTime @updatedAt
+
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batches     StockBatch[]
+
+  @@unique([branchId, productId])
+  @@map("stock")
+}
+
+model StockBatch {
+  id            String   @id @default(uuid())
+  stockId       String
+  batchNumber   String
+  quantity      Decimal  @db.Decimal(10, 3)
+  reservedQty   Decimal  @default(0) @db.Decimal(10, 3)
+  expiryDate    DateTime?
+  manufactureDate DateTime?
+  costPrice     Decimal? @db.Decimal(10, 2)
+  supplierRef   String?  // Supplier reference or invoice number
+  notes         String?
+  isBlocked     Boolean  @default(false) // Manually block expired/damaged batches
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  stock         Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  saleItems     SaleItemBatch[]
+
+  @@unique([stockId, batchNumber])
+  @@index([expiryDate])
+  @@index([stockId, expiryDate])
+  @@map("stock_batches")
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  TRANSFER_IN
+  TRANSFER_OUT
+  RETURN
+  REFUND
+  DAMAGE
+  OPENING
+  EXPIRY
+  BATCH_RECEIVE
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  branchId        String
+  productId       String
+  batchId         String?           // Link to batch if applicable
+  type            StockMovementType
+  quantity        Decimal           @db.Decimal(10, 3)
+  previousQty     Decimal           @db.Decimal(10, 3)
+  newQty          Decimal           @db.Decimal(10, 3)
+  batchNumber     String?           // Denormalized batch tracking
+  expiryDate      DateTime?         // Denormalized expiry tracking
+  reference       String?           // e.g., sale ID, transfer ID
+  notes           String?
+  createdById     String?
+  createdAt       DateTime          @default(now())
+
+  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, productId])
+  @@index([createdAt])
+  @@index([batchId])
+  @@map("stock_movements")
+}
+
+model StockTransfer {
+  id              String   @id @default(uuid())
+  fromBranchId    String
+  toBranchId      String
+  status          String   @default("pending") // pending, in_transit, completed, cancelled
+  notes           String?
+  createdById     String
+  approvedById    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           StockTransferItem[]
+
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String   @id @default(uuid())
+  transferId      String
+  productId       String
+  requestedQty    Decimal  @db.Decimal(10, 3)
+  sentQty         Decimal? @db.Decimal(10, 3)
+  receivedQty     Decimal? @db.Decimal(10, 3)
+
+  transfer        StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@map("stock_transfer_items")
+}
+
+// ==================== SALES & RECEIPTS ====================
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  VOIDED
+  REFUNDED
+  PARTIAL_REFUND
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  PESAPAL
+  TOURISTTAP
+  CREDIT
+  SPLIT
+}
+
+model Sale {
+  id              String        @id @default(uuid())
+  branchId        String
+  deviceId        String?
+  userId          String
+  receiptNumber   String        @unique
+  customerId      String?
+  status          SaleStatus    @default(COMPLETED)
+  subtotal        Decimal       @db.Decimal(10, 2)
+  taxAmount       Decimal       @db.Decimal(10, 2)
+  discountAmount  Decimal       @default(0) @db.Decimal(10, 2)
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  paidAmount      Decimal       @db.Decimal(10, 2)
+  changeAmount    Decimal       @default(0) @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod
+  notes           String?
+  metadata        Json          @default("{}")
+  offlineId       String?       @unique  // Original ID from device
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  branch          Branch        @relation(fields: [branchId], references: [id])
+  device          Device?       @relation(fields: [deviceId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  items           SaleItem[]
+  payments        Payment[]
+  refunds         Refund[]
+
+  @@index([branchId, createdAt])
+  @@index([receiptNumber])
+  @@map("sales")
+}
+
+model SaleItem {
+  id            String   @id @default(uuid())
+  saleId        String
+  productId     String
+  productName   String   // Denormalized for receipt
+  quantity      Decimal  @db.Decimal(10, 3)
+  unitPrice     Decimal  @db.Decimal(10, 2)
+  discount      Decimal  @default(0) @db.Decimal(10, 2)
+  taxRate       Decimal  @db.Decimal(5, 2)
+  taxAmount     Decimal  @db.Decimal(10, 2)
+  totalAmount   Decimal  @db.Decimal(10, 2)
+
+  sale          Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product       Product  @relation(fields: [productId], references: [id])
+  batches       SaleItemBatch[]
+
+  @@map("sale_items")
+}
+
+model SaleItemBatch {
+  id            String   @id @default(uuid())
+  saleItemId    String
+  stockBatchId  String
+  quantity      Decimal  @db.Decimal(10, 3)
+  batchNumber   String   // Denormalized for tracking
+  expiryDate    DateTime? // Denormalized for tracking
+
+  saleItem      SaleItem    @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  stockBatch    StockBatch  @relation(fields: [stockBatchId], references: [id])
+
+  @@map("sale_item_batches")
+}
+
+model Customer {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  loyaltyPoints Int    @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sales       Sale[]
+
+  @@map("customers")
+}
+
+// ==================== PAYMENTS ====================
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  saleId            String
+  method            PaymentMethod
+  amount            Decimal       @db.Decimal(10, 2)
+  status            PaymentStatus @default(PENDING)
+  transactionId     String?       // External transaction ID
+  providerResponse  Json?         // Full response from payment provider
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  sale              Sale          @relation(fields: [saleId], references: [id])
+
+  @@index([transactionId])
+  @@map("payments")
+}
+
+model MpesaTransaction {
+  id                  String   @id @default(uuid())
+  merchantRequestId   String   @unique
+  checkoutRequestId   String   @unique
+  phoneNumber         String
+  amount              Decimal  @db.Decimal(10, 2)
+  accountReference    String
+  transactionDesc     String?
+  resultCode          Int?
+  resultDesc          String?
+  mpesaReceiptNumber  String?
+  transactionDate     DateTime?
+  status              String   @default("pending")
+  callbackPayload     Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("mpesa_transactions")
+}
+
+model PesapalTransaction {
+  id                    String   @id @default(uuid())
+  orderTrackingId       String   @unique
+  merchantReference     String
+  amount                Decimal  @db.Decimal(10, 2)
+  currency              String   @default("KES")
+  description           String?
+  paymentMethod         String?
+  status                String   @default("pending")
+  statusCode            Int?
+  message               String?
+  paymentAccountRef     String?
+  ipnPayload            Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("pesapal_transactions")
+}
+
+model TouristTapTransaction {
+  id                String   @id @default(uuid())
+  transactionRef    String   @unique
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("KES")
+  customerRef       String?
+  status            String   @default("pending")
+  providerResponse  Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("touristtap_transactions")
+}
+
+// ==================== REFUNDS ====================
+
+model Refund {
+  id              String   @id @default(uuid())
+  saleId          String
+  amount          Decimal  @db.Decimal(10, 2)
+  reason          String
+  status          String   @default("pending")
+  processedById   String?
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sale            Sale     @relation(fields: [saleId], references: [id])
+  items           RefundItem[]
+
+  @@map("refunds")
+}
+
+model RefundItem {
+  id            String   @id @default(uuid())
+  refundId      String
+  saleItemId    String
+  quantity      Decimal  @db.Decimal(10, 3)
+  amount        Decimal  @db.Decimal(10, 2)
+  restockItem   Boolean  @default(true)
+
+  refund        Refund   @relation(fields: [refundId], references: [id], onDelete: Cascade)
+
+  @@map("refund_items")
+}
+
+// ==================== SYNC & EVENTS ====================
+
+enum SyncEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  COMPLETED
+  FAILED
+  CONFLICT
+  RESOLVED
+}
+
+enum SyncEventType {
+  SALE_CREATE
+  SALE_CREATED
+  SALE_VOID
+  SALE_VOIDED
+  REFUND_CREATE
+  REFUND_CREATED
+  STOCK_ADJUSTMENT
+  STOCK_ADJUSTED
+  STOCK_TRANSFER_CREATED
+  PRODUCT_UPDATED
+  CATEGORY_UPDATED
+  PRICE_OVERRIDE_UPDATED
+  USER_UPDATED
+  CUSTOMER_CREATE
+  CUSTOMER_UPDATE
+}
+
+model SyncEvent {
+  id            String          @id @default(uuid())
+  deviceId      String
+  branchId      String
+  userId        String
+  eventType     SyncEventType
+  eventId       String          // Original event ID from device
+  entityId      String?         // Server-side entity ID after processing
+  entityType    String?         // Type of entity processed
+  payload       Json
+  status        SyncEventStatus @default(PENDING)
+  attempts      Int             @default(0)
+  retryCount    Int             @default(0)
+  resolution    String?         // Conflict resolution strategy used
+  error         String?         // Error details if failed
+  errorMessage  String?
+  processedAt   DateTime?
+  deviceTimestamp DateTime      // When event occurred on device
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  device        Device          @relation(fields: [deviceId], references: [id])
+
+  @@unique([deviceId, eventId])
+  @@index([status, createdAt])
+  @@map("sync_events")
+}
+
+// ==================== AUDIT & LOGGING ====================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
