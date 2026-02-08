@@ -6,12 +6,20 @@ import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
 import 'connectivity_service.dart';
+import 'background_sync_service.dart';
 
 enum SyncEventType {
   saleCreated,
   saleVoided,
   refundCreated,
   stockAdjusted,
+}
+
+/// Sync action types for SyncQueue
+enum SyncAction {
+  create,
+  update,
+  delete,
 }
 
 class SyncService {
@@ -63,7 +71,8 @@ class SyncService {
     });
   }
   
-  /// Queue an event for sync
+  /// Queue an event for sync (Legacy - backwards compatibility)
+  @Deprecated('Use queueSyncItem instead')
   Future<void> queueEvent({
     required SyncEventType eventType,
     required Map<String, dynamic> payload,
@@ -72,11 +81,14 @@ class SyncService {
     final eventId = _uuid.v4();
     final sequenceNumber = await _database.getNextSequenceNumber();
     
-    await _database.addSyncEvent(SyncEventsCompanion(
+    await _database.addSyncEvent(SyncQueueCompanion(
       id: Value(eventId),
       eventType: Value(eventType.name),
       payload: Value(jsonEncode(payload)),
       deviceId: Value(deviceId),
+      entityTable: const Value(''),
+      recordId: const Value(''),
+      action: const Value('create'),
       sequenceNumber: Value(sequenceNumber),
       createdAt: Value(DateTime.now()),
     ));
@@ -85,6 +97,49 @@ class SyncService {
     if (_connectivity.isOnline) {
       syncPendingEvents();
     }
+  }
+
+  /// Queue a sync item to SyncQueue (New method)
+  Future<void> queueSyncItem({
+    required String tableName,
+    required String recordId,
+    required SyncAction action,
+    required Map<String, dynamic> data,
+    required String deviceId,
+    required String userId,
+  }) async {
+    final itemId = _uuid.v4();
+    final sequenceNumber = await _database.getNextSyncSequenceNumber();
+    
+    await _database.addToSyncQueue(SyncQueueCompanion(
+      id: Value(itemId),
+      entityTable: Value(tableName),
+      recordId: Value(recordId),
+      action: Value(action.name),
+      eventType: Value('${tableName.toUpperCase()}_${action.name.toUpperCase()}'),
+      payload: Value(jsonEncode(data)),
+      deviceId: Value(deviceId),
+      userId: Value(userId),
+      sequenceNumber: Value(sequenceNumber),
+      createdAt: Value(DateTime.now()),
+      retryCount: const Value(0),
+      maxRetries: const Value(3),
+    ));
+    
+    // Try to sync immediately if online
+    if (_connectivity.isOnline) {
+      await BackgroundSyncService.triggerImmediateSync();
+    }
+  }
+
+  /// Get sync queue statistics
+  Future<Map<String, int>> getSyncStats() async {
+    return await _database.getSyncQueueStats();
+  }
+
+  /// Retry all failed sync items
+  Future<void> retryFailedItems() async {
+    await BackgroundSyncService.retryFailedItems();
   }
   
   /// Sync pending events to server
@@ -230,7 +285,7 @@ class SyncService {
     // Mark synced sales in the pending sales table
     final events = await _database.customSelect(
       '''
-      SELECT DISTINCT payload FROM sync_events 
+      SELECT DISTINCT payload FROM sync_queue 
       WHERE event_type = 'saleCreated' AND status = 'PROCESSED'
       ''',
     ).get();

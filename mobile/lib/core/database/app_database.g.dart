@@ -3573,16 +3573,33 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
   }
 }
 
-class $SyncEventsTable extends SyncEvents
-    with TableInfo<$SyncEventsTable, SyncEvent> {
+class $SyncQueueTable extends SyncQueue
+    with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $SyncEventsTable(this.attachedDatabase, [this._alias]);
+  $SyncQueueTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
       'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _entityTableMeta =
+      const VerificationMeta('entityTable');
+  @override
+  late final GeneratedColumn<String> entityTable = GeneratedColumn<String>(
+      'entity_table', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _recordIdMeta =
+      const VerificationMeta('recordId');
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+      'record_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _actionMeta = const VerificationMeta('action');
+  @override
+  late final GeneratedColumn<String> action = GeneratedColumn<String>(
+      'action', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _eventTypeMeta =
       const VerificationMeta('eventType');
@@ -3602,6 +3619,13 @@ class $SyncEventsTable extends SyncEvents
   late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
       'device_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
   static const VerificationMeta _sequenceNumberMeta =
       const VerificationMeta('sequenceNumber');
   @override
@@ -3614,11 +3638,12 @@ class $SyncEventsTable extends SyncEvents
       'status', aliasedName, false,
       type: DriftSqlType.string,
       requiredDuringInsert: false,
-      defaultValue: const Constant('PENDING'));
-  static const VerificationMeta _errorMeta = const VerificationMeta('error');
+      defaultValue: const Constant('pending'));
+  static const VerificationMeta _errorMessageMeta =
+      const VerificationMeta('errorMessage');
   @override
-  late final GeneratedColumn<String> error = GeneratedColumn<String>(
-      'error', aliasedName, true,
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+      'error_message', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _retryCountMeta =
       const VerificationMeta('retryCount');
@@ -3628,38 +3653,72 @@ class $SyncEventsTable extends SyncEvents
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _maxRetriesMeta =
+      const VerificationMeta('maxRetries');
+  @override
+  late final GeneratedColumn<int> maxRetries = GeneratedColumn<int>(
+      'max_retries', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(3));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
       'created_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _processedAtMeta =
-      const VerificationMeta('processedAt');
+  static const VerificationMeta _lastAttemptAtMeta =
+      const VerificationMeta('lastAttemptAt');
   @override
-  late final GeneratedColumn<DateTime> processedAt = GeneratedColumn<DateTime>(
-      'processed_at', aliasedName, true,
+  late final GeneratedColumn<DateTime> lastAttemptAt =
+      GeneratedColumn<DateTime>('last_attempt_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _syncedAtMeta =
+      const VerificationMeta('syncedAt');
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+      'synced_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _serverIdMeta =
+      const VerificationMeta('serverId');
+  @override
+  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
+      'server_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _serverTimestampMeta =
+      const VerificationMeta('serverTimestamp');
+  @override
+  late final GeneratedColumn<DateTime> serverTimestamp =
+      GeneratedColumn<DateTime>('server_timestamp', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
+        entityTable,
+        recordId,
+        action,
         eventType,
         payload,
         deviceId,
+        userId,
         sequenceNumber,
         status,
-        error,
+        errorMessage,
         retryCount,
+        maxRetries,
         createdAt,
-        processedAt
+        lastAttemptAt,
+        syncedAt,
+        serverId,
+        serverTimestamp
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'sync_events';
+  static const String $name = 'sync_queue';
   @override
-  VerificationContext validateIntegrity(Insertable<SyncEvent> instance,
+  VerificationContext validateIntegrity(Insertable<SyncQueueData> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
@@ -3667,6 +3726,26 @@ class $SyncEventsTable extends SyncEvents
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
+    }
+    if (data.containsKey('entity_table')) {
+      context.handle(
+          _entityTableMeta,
+          entityTable.isAcceptableOrUnknown(
+              data['entity_table']!, _entityTableMeta));
+    } else if (isInserting) {
+      context.missing(_entityTableMeta);
+    }
+    if (data.containsKey('record_id')) {
+      context.handle(_recordIdMeta,
+          recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta));
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('action')) {
+      context.handle(_actionMeta,
+          action.isAcceptableOrUnknown(data['action']!, _actionMeta));
+    } else if (isInserting) {
+      context.missing(_actionMeta);
     }
     if (data.containsKey('event_type')) {
       context.handle(_eventTypeMeta,
@@ -3686,6 +3765,10 @@ class $SyncEventsTable extends SyncEvents
     } else if (isInserting) {
       context.missing(_deviceIdMeta);
     }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    }
     if (data.containsKey('sequence_number')) {
       context.handle(
           _sequenceNumberMeta,
@@ -3698,9 +3781,11 @@ class $SyncEventsTable extends SyncEvents
       context.handle(_statusMeta,
           status.isAcceptableOrUnknown(data['status']!, _statusMeta));
     }
-    if (data.containsKey('error')) {
+    if (data.containsKey('error_message')) {
       context.handle(
-          _errorMeta, error.isAcceptableOrUnknown(data['error']!, _errorMeta));
+          _errorMessageMeta,
+          errorMessage.isAcceptableOrUnknown(
+              data['error_message']!, _errorMessageMeta));
     }
     if (data.containsKey('retry_count')) {
       context.handle(
@@ -3708,17 +3793,37 @@ class $SyncEventsTable extends SyncEvents
           retryCount.isAcceptableOrUnknown(
               data['retry_count']!, _retryCountMeta));
     }
+    if (data.containsKey('max_retries')) {
+      context.handle(
+          _maxRetriesMeta,
+          maxRetries.isAcceptableOrUnknown(
+              data['max_retries']!, _maxRetriesMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
-    if (data.containsKey('processed_at')) {
+    if (data.containsKey('last_attempt_at')) {
       context.handle(
-          _processedAtMeta,
-          processedAt.isAcceptableOrUnknown(
-              data['processed_at']!, _processedAtMeta));
+          _lastAttemptAtMeta,
+          lastAttemptAt.isAcceptableOrUnknown(
+              data['last_attempt_at']!, _lastAttemptAtMeta));
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(_syncedAtMeta,
+          syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(_serverIdMeta,
+          serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta));
+    }
+    if (data.containsKey('server_timestamp')) {
+      context.handle(
+          _serverTimestampMeta,
+          serverTimestamp.isAcceptableOrUnknown(
+              data['server_timestamp']!, _serverTimestampMeta));
     }
     return context;
   }
@@ -3726,112 +3831,181 @@ class $SyncEventsTable extends SyncEvents
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  SyncEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+  SyncQueueData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return SyncEvent(
+    return SyncQueueData(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      entityTable: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}entity_table'])!,
+      recordId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}record_id'])!,
+      action: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}action'])!,
       eventType: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}event_type'])!,
       payload: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}payload'])!,
       deviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
       sequenceNumber: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sequence_number'])!,
       status: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
-      error: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}error']),
+      errorMessage: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}error_message']),
       retryCount: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      maxRetries: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}max_retries'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
-      processedAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}processed_at']),
+      lastAttemptAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_attempt_at']),
+      syncedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at']),
+      serverId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}server_id']),
+      serverTimestamp: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}server_timestamp']),
     );
   }
 
   @override
-  $SyncEventsTable createAlias(String alias) {
-    return $SyncEventsTable(attachedDatabase, alias);
+  $SyncQueueTable createAlias(String alias) {
+    return $SyncQueueTable(attachedDatabase, alias);
   }
 }
 
-class SyncEvent extends DataClass implements Insertable<SyncEvent> {
+class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
   final String id;
+  final String entityTable;
+  final String recordId;
+  final String action;
   final String eventType;
   final String payload;
   final String deviceId;
+  final String userId;
   final int sequenceNumber;
   final String status;
-  final String? error;
+  final String? errorMessage;
   final int retryCount;
+  final int maxRetries;
   final DateTime createdAt;
-  final DateTime? processedAt;
-  const SyncEvent(
+  final DateTime? lastAttemptAt;
+  final DateTime? syncedAt;
+  final String? serverId;
+  final DateTime? serverTimestamp;
+  const SyncQueueData(
       {required this.id,
+      required this.entityTable,
+      required this.recordId,
+      required this.action,
       required this.eventType,
       required this.payload,
       required this.deviceId,
+      required this.userId,
       required this.sequenceNumber,
       required this.status,
-      this.error,
+      this.errorMessage,
       required this.retryCount,
+      required this.maxRetries,
       required this.createdAt,
-      this.processedAt});
+      this.lastAttemptAt,
+      this.syncedAt,
+      this.serverId,
+      this.serverTimestamp});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    map['entity_table'] = Variable<String>(entityTable);
+    map['record_id'] = Variable<String>(recordId);
+    map['action'] = Variable<String>(action);
     map['event_type'] = Variable<String>(eventType);
     map['payload'] = Variable<String>(payload);
     map['device_id'] = Variable<String>(deviceId);
+    map['user_id'] = Variable<String>(userId);
     map['sequence_number'] = Variable<int>(sequenceNumber);
     map['status'] = Variable<String>(status);
-    if (!nullToAbsent || error != null) {
-      map['error'] = Variable<String>(error);
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
     }
     map['retry_count'] = Variable<int>(retryCount);
+    map['max_retries'] = Variable<int>(maxRetries);
     map['created_at'] = Variable<DateTime>(createdAt);
-    if (!nullToAbsent || processedAt != null) {
-      map['processed_at'] = Variable<DateTime>(processedAt);
+    if (!nullToAbsent || lastAttemptAt != null) {
+      map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt);
+    }
+    if (!nullToAbsent || syncedAt != null) {
+      map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<String>(serverId);
+    }
+    if (!nullToAbsent || serverTimestamp != null) {
+      map['server_timestamp'] = Variable<DateTime>(serverTimestamp);
     }
     return map;
   }
 
-  SyncEventsCompanion toCompanion(bool nullToAbsent) {
-    return SyncEventsCompanion(
+  SyncQueueCompanion toCompanion(bool nullToAbsent) {
+    return SyncQueueCompanion(
       id: Value(id),
+      entityTable: Value(entityTable),
+      recordId: Value(recordId),
+      action: Value(action),
       eventType: Value(eventType),
       payload: Value(payload),
       deviceId: Value(deviceId),
+      userId: Value(userId),
       sequenceNumber: Value(sequenceNumber),
       status: Value(status),
-      error:
-          error == null && nullToAbsent ? const Value.absent() : Value(error),
-      retryCount: Value(retryCount),
-      createdAt: Value(createdAt),
-      processedAt: processedAt == null && nullToAbsent
+      errorMessage: errorMessage == null && nullToAbsent
           ? const Value.absent()
-          : Value(processedAt),
+          : Value(errorMessage),
+      retryCount: Value(retryCount),
+      maxRetries: Value(maxRetries),
+      createdAt: Value(createdAt),
+      lastAttemptAt: lastAttemptAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAttemptAt),
+      syncedAt: syncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncedAt),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      serverTimestamp: serverTimestamp == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverTimestamp),
     );
   }
 
-  factory SyncEvent.fromJson(Map<String, dynamic> json,
+  factory SyncQueueData.fromJson(Map<String, dynamic> json,
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return SyncEvent(
+    return SyncQueueData(
       id: serializer.fromJson<String>(json['id']),
+      entityTable: serializer.fromJson<String>(json['entityTable']),
+      recordId: serializer.fromJson<String>(json['recordId']),
+      action: serializer.fromJson<String>(json['action']),
       eventType: serializer.fromJson<String>(json['eventType']),
       payload: serializer.fromJson<String>(json['payload']),
       deviceId: serializer.fromJson<String>(json['deviceId']),
+      userId: serializer.fromJson<String>(json['userId']),
       sequenceNumber: serializer.fromJson<int>(json['sequenceNumber']),
       status: serializer.fromJson<String>(json['status']),
-      error: serializer.fromJson<String?>(json['error']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
+      maxRetries: serializer.fromJson<int>(json['maxRetries']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-      processedAt: serializer.fromJson<DateTime?>(json['processedAt']),
+      lastAttemptAt: serializer.fromJson<DateTime?>(json['lastAttemptAt']),
+      syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      serverId: serializer.fromJson<String?>(json['serverId']),
+      serverTimestamp: serializer.fromJson<DateTime?>(json['serverTimestamp']),
     );
   }
   @override
@@ -3839,190 +4013,325 @@ class SyncEvent extends DataClass implements Insertable<SyncEvent> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'entityTable': serializer.toJson<String>(entityTable),
+      'recordId': serializer.toJson<String>(recordId),
+      'action': serializer.toJson<String>(action),
       'eventType': serializer.toJson<String>(eventType),
       'payload': serializer.toJson<String>(payload),
       'deviceId': serializer.toJson<String>(deviceId),
+      'userId': serializer.toJson<String>(userId),
       'sequenceNumber': serializer.toJson<int>(sequenceNumber),
       'status': serializer.toJson<String>(status),
-      'error': serializer.toJson<String?>(error),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
       'retryCount': serializer.toJson<int>(retryCount),
+      'maxRetries': serializer.toJson<int>(maxRetries),
       'createdAt': serializer.toJson<DateTime>(createdAt),
-      'processedAt': serializer.toJson<DateTime?>(processedAt),
+      'lastAttemptAt': serializer.toJson<DateTime?>(lastAttemptAt),
+      'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'serverId': serializer.toJson<String?>(serverId),
+      'serverTimestamp': serializer.toJson<DateTime?>(serverTimestamp),
     };
   }
 
-  SyncEvent copyWith(
+  SyncQueueData copyWith(
           {String? id,
+          String? entityTable,
+          String? recordId,
+          String? action,
           String? eventType,
           String? payload,
           String? deviceId,
+          String? userId,
           int? sequenceNumber,
           String? status,
-          Value<String?> error = const Value.absent(),
+          Value<String?> errorMessage = const Value.absent(),
           int? retryCount,
+          int? maxRetries,
           DateTime? createdAt,
-          Value<DateTime?> processedAt = const Value.absent()}) =>
-      SyncEvent(
+          Value<DateTime?> lastAttemptAt = const Value.absent(),
+          Value<DateTime?> syncedAt = const Value.absent(),
+          Value<String?> serverId = const Value.absent(),
+          Value<DateTime?> serverTimestamp = const Value.absent()}) =>
+      SyncQueueData(
         id: id ?? this.id,
+        entityTable: entityTable ?? this.entityTable,
+        recordId: recordId ?? this.recordId,
+        action: action ?? this.action,
         eventType: eventType ?? this.eventType,
         payload: payload ?? this.payload,
         deviceId: deviceId ?? this.deviceId,
+        userId: userId ?? this.userId,
         sequenceNumber: sequenceNumber ?? this.sequenceNumber,
         status: status ?? this.status,
-        error: error.present ? error.value : this.error,
+        errorMessage:
+            errorMessage.present ? errorMessage.value : this.errorMessage,
         retryCount: retryCount ?? this.retryCount,
+        maxRetries: maxRetries ?? this.maxRetries,
         createdAt: createdAt ?? this.createdAt,
-        processedAt: processedAt.present ? processedAt.value : this.processedAt,
+        lastAttemptAt:
+            lastAttemptAt.present ? lastAttemptAt.value : this.lastAttemptAt,
+        syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+        serverId: serverId.present ? serverId.value : this.serverId,
+        serverTimestamp: serverTimestamp.present
+            ? serverTimestamp.value
+            : this.serverTimestamp,
       );
-  SyncEvent copyWithCompanion(SyncEventsCompanion data) {
-    return SyncEvent(
+  SyncQueueData copyWithCompanion(SyncQueueCompanion data) {
+    return SyncQueueData(
       id: data.id.present ? data.id.value : this.id,
+      entityTable:
+          data.entityTable.present ? data.entityTable.value : this.entityTable,
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      action: data.action.present ? data.action.value : this.action,
       eventType: data.eventType.present ? data.eventType.value : this.eventType,
       payload: data.payload.present ? data.payload.value : this.payload,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      userId: data.userId.present ? data.userId.value : this.userId,
       sequenceNumber: data.sequenceNumber.present
           ? data.sequenceNumber.value
           : this.sequenceNumber,
       status: data.status.present ? data.status.value : this.status,
-      error: data.error.present ? data.error.value : this.error,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
       retryCount:
           data.retryCount.present ? data.retryCount.value : this.retryCount,
+      maxRetries:
+          data.maxRetries.present ? data.maxRetries.value : this.maxRetries,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      processedAt:
-          data.processedAt.present ? data.processedAt.value : this.processedAt,
+      lastAttemptAt: data.lastAttemptAt.present
+          ? data.lastAttemptAt.value
+          : this.lastAttemptAt,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      serverTimestamp: data.serverTimestamp.present
+          ? data.serverTimestamp.value
+          : this.serverTimestamp,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('SyncEvent(')
+    return (StringBuffer('SyncQueueData(')
           ..write('id: $id, ')
+          ..write('entityTable: $entityTable, ')
+          ..write('recordId: $recordId, ')
+          ..write('action: $action, ')
           ..write('eventType: $eventType, ')
           ..write('payload: $payload, ')
           ..write('deviceId: $deviceId, ')
+          ..write('userId: $userId, ')
           ..write('sequenceNumber: $sequenceNumber, ')
           ..write('status: $status, ')
-          ..write('error: $error, ')
+          ..write('errorMessage: $errorMessage, ')
           ..write('retryCount: $retryCount, ')
+          ..write('maxRetries: $maxRetries, ')
           ..write('createdAt: $createdAt, ')
-          ..write('processedAt: $processedAt')
+          ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('serverId: $serverId, ')
+          ..write('serverTimestamp: $serverTimestamp')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, eventType, payload, deviceId,
-      sequenceNumber, status, error, retryCount, createdAt, processedAt);
+  int get hashCode => Object.hash(
+      id,
+      entityTable,
+      recordId,
+      action,
+      eventType,
+      payload,
+      deviceId,
+      userId,
+      sequenceNumber,
+      status,
+      errorMessage,
+      retryCount,
+      maxRetries,
+      createdAt,
+      lastAttemptAt,
+      syncedAt,
+      serverId,
+      serverTimestamp);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is SyncEvent &&
+      (other is SyncQueueData &&
           other.id == this.id &&
+          other.entityTable == this.entityTable &&
+          other.recordId == this.recordId &&
+          other.action == this.action &&
           other.eventType == this.eventType &&
           other.payload == this.payload &&
           other.deviceId == this.deviceId &&
+          other.userId == this.userId &&
           other.sequenceNumber == this.sequenceNumber &&
           other.status == this.status &&
-          other.error == this.error &&
+          other.errorMessage == this.errorMessage &&
           other.retryCount == this.retryCount &&
+          other.maxRetries == this.maxRetries &&
           other.createdAt == this.createdAt &&
-          other.processedAt == this.processedAt);
+          other.lastAttemptAt == this.lastAttemptAt &&
+          other.syncedAt == this.syncedAt &&
+          other.serverId == this.serverId &&
+          other.serverTimestamp == this.serverTimestamp);
 }
 
-class SyncEventsCompanion extends UpdateCompanion<SyncEvent> {
+class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
   final Value<String> id;
+  final Value<String> entityTable;
+  final Value<String> recordId;
+  final Value<String> action;
   final Value<String> eventType;
   final Value<String> payload;
   final Value<String> deviceId;
+  final Value<String> userId;
   final Value<int> sequenceNumber;
   final Value<String> status;
-  final Value<String?> error;
+  final Value<String?> errorMessage;
   final Value<int> retryCount;
+  final Value<int> maxRetries;
   final Value<DateTime> createdAt;
-  final Value<DateTime?> processedAt;
+  final Value<DateTime?> lastAttemptAt;
+  final Value<DateTime?> syncedAt;
+  final Value<String?> serverId;
+  final Value<DateTime?> serverTimestamp;
   final Value<int> rowid;
-  const SyncEventsCompanion({
+  const SyncQueueCompanion({
     this.id = const Value.absent(),
+    this.entityTable = const Value.absent(),
+    this.recordId = const Value.absent(),
+    this.action = const Value.absent(),
     this.eventType = const Value.absent(),
     this.payload = const Value.absent(),
     this.deviceId = const Value.absent(),
+    this.userId = const Value.absent(),
     this.sequenceNumber = const Value.absent(),
     this.status = const Value.absent(),
-    this.error = const Value.absent(),
+    this.errorMessage = const Value.absent(),
     this.retryCount = const Value.absent(),
+    this.maxRetries = const Value.absent(),
     this.createdAt = const Value.absent(),
-    this.processedAt = const Value.absent(),
+    this.lastAttemptAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.serverTimestamp = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  SyncEventsCompanion.insert({
+  SyncQueueCompanion.insert({
     required String id,
+    required String entityTable,
+    required String recordId,
+    required String action,
     required String eventType,
     required String payload,
     required String deviceId,
+    this.userId = const Value.absent(),
     required int sequenceNumber,
     this.status = const Value.absent(),
-    this.error = const Value.absent(),
+    this.errorMessage = const Value.absent(),
     this.retryCount = const Value.absent(),
+    this.maxRetries = const Value.absent(),
     required DateTime createdAt,
-    this.processedAt = const Value.absent(),
+    this.lastAttemptAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.serverTimestamp = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
+        entityTable = Value(entityTable),
+        recordId = Value(recordId),
+        action = Value(action),
         eventType = Value(eventType),
         payload = Value(payload),
         deviceId = Value(deviceId),
         sequenceNumber = Value(sequenceNumber),
         createdAt = Value(createdAt);
-  static Insertable<SyncEvent> custom({
+  static Insertable<SyncQueueData> custom({
     Expression<String>? id,
+    Expression<String>? entityTable,
+    Expression<String>? recordId,
+    Expression<String>? action,
     Expression<String>? eventType,
     Expression<String>? payload,
     Expression<String>? deviceId,
+    Expression<String>? userId,
     Expression<int>? sequenceNumber,
     Expression<String>? status,
-    Expression<String>? error,
+    Expression<String>? errorMessage,
     Expression<int>? retryCount,
+    Expression<int>? maxRetries,
     Expression<DateTime>? createdAt,
-    Expression<DateTime>? processedAt,
+    Expression<DateTime>? lastAttemptAt,
+    Expression<DateTime>? syncedAt,
+    Expression<String>? serverId,
+    Expression<DateTime>? serverTimestamp,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (entityTable != null) 'entity_table': entityTable,
+      if (recordId != null) 'record_id': recordId,
+      if (action != null) 'action': action,
       if (eventType != null) 'event_type': eventType,
       if (payload != null) 'payload': payload,
       if (deviceId != null) 'device_id': deviceId,
+      if (userId != null) 'user_id': userId,
       if (sequenceNumber != null) 'sequence_number': sequenceNumber,
       if (status != null) 'status': status,
-      if (error != null) 'error': error,
+      if (errorMessage != null) 'error_message': errorMessage,
       if (retryCount != null) 'retry_count': retryCount,
+      if (maxRetries != null) 'max_retries': maxRetries,
       if (createdAt != null) 'created_at': createdAt,
-      if (processedAt != null) 'processed_at': processedAt,
+      if (lastAttemptAt != null) 'last_attempt_at': lastAttemptAt,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (serverId != null) 'server_id': serverId,
+      if (serverTimestamp != null) 'server_timestamp': serverTimestamp,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  SyncEventsCompanion copyWith(
+  SyncQueueCompanion copyWith(
       {Value<String>? id,
+      Value<String>? entityTable,
+      Value<String>? recordId,
+      Value<String>? action,
       Value<String>? eventType,
       Value<String>? payload,
       Value<String>? deviceId,
+      Value<String>? userId,
       Value<int>? sequenceNumber,
       Value<String>? status,
-      Value<String?>? error,
+      Value<String?>? errorMessage,
       Value<int>? retryCount,
+      Value<int>? maxRetries,
       Value<DateTime>? createdAt,
-      Value<DateTime?>? processedAt,
+      Value<DateTime?>? lastAttemptAt,
+      Value<DateTime?>? syncedAt,
+      Value<String?>? serverId,
+      Value<DateTime?>? serverTimestamp,
       Value<int>? rowid}) {
-    return SyncEventsCompanion(
+    return SyncQueueCompanion(
       id: id ?? this.id,
+      entityTable: entityTable ?? this.entityTable,
+      recordId: recordId ?? this.recordId,
+      action: action ?? this.action,
       eventType: eventType ?? this.eventType,
       payload: payload ?? this.payload,
       deviceId: deviceId ?? this.deviceId,
+      userId: userId ?? this.userId,
       sequenceNumber: sequenceNumber ?? this.sequenceNumber,
       status: status ?? this.status,
-      error: error ?? this.error,
+      errorMessage: errorMessage ?? this.errorMessage,
       retryCount: retryCount ?? this.retryCount,
+      maxRetries: maxRetries ?? this.maxRetries,
       createdAt: createdAt ?? this.createdAt,
-      processedAt: processedAt ?? this.processedAt,
+      lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+      syncedAt: syncedAt ?? this.syncedAt,
+      serverId: serverId ?? this.serverId,
+      serverTimestamp: serverTimestamp ?? this.serverTimestamp,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4033,6 +4342,15 @@ class SyncEventsCompanion extends UpdateCompanion<SyncEvent> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
+    if (entityTable.present) {
+      map['entity_table'] = Variable<String>(entityTable.value);
+    }
+    if (recordId.present) {
+      map['record_id'] = Variable<String>(recordId.value);
+    }
+    if (action.present) {
+      map['action'] = Variable<String>(action.value);
+    }
     if (eventType.present) {
       map['event_type'] = Variable<String>(eventType.value);
     }
@@ -4042,23 +4360,38 @@ class SyncEventsCompanion extends UpdateCompanion<SyncEvent> {
     if (deviceId.present) {
       map['device_id'] = Variable<String>(deviceId.value);
     }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
     if (sequenceNumber.present) {
       map['sequence_number'] = Variable<int>(sequenceNumber.value);
     }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
-    if (error.present) {
-      map['error'] = Variable<String>(error.value);
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
     }
     if (retryCount.present) {
       map['retry_count'] = Variable<int>(retryCount.value);
     }
+    if (maxRetries.present) {
+      map['max_retries'] = Variable<int>(maxRetries.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
-    if (processedAt.present) {
-      map['processed_at'] = Variable<DateTime>(processedAt.value);
+    if (lastAttemptAt.present) {
+      map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<String>(serverId.value);
+    }
+    if (serverTimestamp.present) {
+      map['server_timestamp'] = Variable<DateTime>(serverTimestamp.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -4068,17 +4401,25 @@ class SyncEventsCompanion extends UpdateCompanion<SyncEvent> {
 
   @override
   String toString() {
-    return (StringBuffer('SyncEventsCompanion(')
+    return (StringBuffer('SyncQueueCompanion(')
           ..write('id: $id, ')
+          ..write('entityTable: $entityTable, ')
+          ..write('recordId: $recordId, ')
+          ..write('action: $action, ')
           ..write('eventType: $eventType, ')
           ..write('payload: $payload, ')
           ..write('deviceId: $deviceId, ')
+          ..write('userId: $userId, ')
           ..write('sequenceNumber: $sequenceNumber, ')
           ..write('status: $status, ')
-          ..write('error: $error, ')
+          ..write('errorMessage: $errorMessage, ')
           ..write('retryCount: $retryCount, ')
+          ..write('maxRetries: $maxRetries, ')
           ..write('createdAt: $createdAt, ')
-          ..write('processedAt: $processedAt, ')
+          ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('serverId: $serverId, ')
+          ..write('serverTimestamp: $serverTimestamp, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4508,7 +4849,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PendingSalesTable pendingSales = $PendingSalesTable(this);
   late final $PendingSaleItemsTable pendingSaleItems =
       $PendingSaleItemsTable(this);
-  late final $SyncEventsTable syncEvents = $SyncEventsTable(this);
+  late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   late final $FavoriteProductsTable favoriteProducts =
       $FavoriteProductsTable(this);
   late final $RecentSearchesTable recentSearches = $RecentSearchesTable(this);
@@ -4524,7 +4865,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         cartItems,
         pendingSales,
         pendingSaleItems,
-        syncEvents,
+        syncQueue,
         favoriteProducts,
         recentSearches
       ];
@@ -6236,36 +6577,52 @@ typedef $$PendingSaleItemsTableProcessedTableManager = ProcessedTableManager<
     ),
     PendingSaleItem,
     PrefetchHooks Function()>;
-typedef $$SyncEventsTableCreateCompanionBuilder = SyncEventsCompanion Function({
+typedef $$SyncQueueTableCreateCompanionBuilder = SyncQueueCompanion Function({
   required String id,
+  required String entityTable,
+  required String recordId,
+  required String action,
   required String eventType,
   required String payload,
   required String deviceId,
+  Value<String> userId,
   required int sequenceNumber,
   Value<String> status,
-  Value<String?> error,
+  Value<String?> errorMessage,
   Value<int> retryCount,
+  Value<int> maxRetries,
   required DateTime createdAt,
-  Value<DateTime?> processedAt,
+  Value<DateTime?> lastAttemptAt,
+  Value<DateTime?> syncedAt,
+  Value<String?> serverId,
+  Value<DateTime?> serverTimestamp,
   Value<int> rowid,
 });
-typedef $$SyncEventsTableUpdateCompanionBuilder = SyncEventsCompanion Function({
+typedef $$SyncQueueTableUpdateCompanionBuilder = SyncQueueCompanion Function({
   Value<String> id,
+  Value<String> entityTable,
+  Value<String> recordId,
+  Value<String> action,
   Value<String> eventType,
   Value<String> payload,
   Value<String> deviceId,
+  Value<String> userId,
   Value<int> sequenceNumber,
   Value<String> status,
-  Value<String?> error,
+  Value<String?> errorMessage,
   Value<int> retryCount,
+  Value<int> maxRetries,
   Value<DateTime> createdAt,
-  Value<DateTime?> processedAt,
+  Value<DateTime?> lastAttemptAt,
+  Value<DateTime?> syncedAt,
+  Value<String?> serverId,
+  Value<DateTime?> serverTimestamp,
   Value<int> rowid,
 });
 
-class $$SyncEventsTableFilterComposer
-    extends Composer<_$AppDatabase, $SyncEventsTable> {
-  $$SyncEventsTableFilterComposer({
+class $$SyncQueueTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -6274,6 +6631,15 @@ class $$SyncEventsTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get recordId => $composableBuilder(
+      column: $table.recordId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get action => $composableBuilder(
+      column: $table.action, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get eventType => $composableBuilder(
       column: $table.eventType, builder: (column) => ColumnFilters(column));
@@ -6284,6 +6650,9 @@ class $$SyncEventsTableFilterComposer
   ColumnFilters<String> get deviceId => $composableBuilder(
       column: $table.deviceId, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<int> get sequenceNumber => $composableBuilder(
       column: $table.sequenceNumber,
       builder: (column) => ColumnFilters(column));
@@ -6291,22 +6660,35 @@ class $$SyncEventsTableFilterComposer
   ColumnFilters<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get error => $composableBuilder(
-      column: $table.error, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+      column: $table.errorMessage, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<int> get maxRetries => $composableBuilder(
+      column: $table.maxRetries, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<DateTime> get processedAt => $composableBuilder(
-      column: $table.processedAt, builder: (column) => ColumnFilters(column));
+  ColumnFilters<DateTime> get lastAttemptAt => $composableBuilder(
+      column: $table.lastAttemptAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get serverId => $composableBuilder(
+      column: $table.serverId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get serverTimestamp => $composableBuilder(
+      column: $table.serverTimestamp,
+      builder: (column) => ColumnFilters(column));
 }
 
-class $$SyncEventsTableOrderingComposer
-    extends Composer<_$AppDatabase, $SyncEventsTable> {
-  $$SyncEventsTableOrderingComposer({
+class $$SyncQueueTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -6315,6 +6697,15 @@ class $$SyncEventsTableOrderingComposer
   });
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get recordId => $composableBuilder(
+      column: $table.recordId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get action => $composableBuilder(
+      column: $table.action, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get eventType => $composableBuilder(
       column: $table.eventType, builder: (column) => ColumnOrderings(column));
@@ -6325,6 +6716,9 @@ class $$SyncEventsTableOrderingComposer
   ColumnOrderings<String> get deviceId => $composableBuilder(
       column: $table.deviceId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get sequenceNumber => $composableBuilder(
       column: $table.sequenceNumber,
       builder: (column) => ColumnOrderings(column));
@@ -6332,22 +6726,37 @@ class $$SyncEventsTableOrderingComposer
   ColumnOrderings<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get error => $composableBuilder(
-      column: $table.error, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+      column: $table.errorMessage,
+      builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get maxRetries => $composableBuilder(
+      column: $table.maxRetries, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<DateTime> get processedAt => $composableBuilder(
-      column: $table.processedAt, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<DateTime> get lastAttemptAt => $composableBuilder(
+      column: $table.lastAttemptAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get serverId => $composableBuilder(
+      column: $table.serverId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get serverTimestamp => $composableBuilder(
+      column: $table.serverTimestamp,
+      builder: (column) => ColumnOrderings(column));
 }
 
-class $$SyncEventsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $SyncEventsTable> {
-  $$SyncEventsTableAnnotationComposer({
+class $$SyncQueueTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -6356,6 +6765,15 @@ class $$SyncEventsTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get entityTable => $composableBuilder(
+      column: $table.entityTable, builder: (column) => column);
+
+  GeneratedColumn<String> get recordId =>
+      $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<String> get action =>
+      $composableBuilder(column: $table.action, builder: (column) => column);
 
   GeneratedColumn<String> get eventType =>
       $composableBuilder(column: $table.eventType, builder: (column) => column);
@@ -6366,97 +6784,147 @@ class $$SyncEventsTableAnnotationComposer
   GeneratedColumn<String> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
 
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
   GeneratedColumn<int> get sequenceNumber => $composableBuilder(
       column: $table.sequenceNumber, builder: (column) => column);
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 
-  GeneratedColumn<String> get error =>
-      $composableBuilder(column: $table.error, builder: (column) => column);
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+      column: $table.errorMessage, builder: (column) => column);
 
   GeneratedColumn<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => column);
 
+  GeneratedColumn<int> get maxRetries => $composableBuilder(
+      column: $table.maxRetries, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get processedAt => $composableBuilder(
-      column: $table.processedAt, builder: (column) => column);
+  GeneratedColumn<DateTime> get lastAttemptAt => $composableBuilder(
+      column: $table.lastAttemptAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get serverTimestamp => $composableBuilder(
+      column: $table.serverTimestamp, builder: (column) => column);
 }
 
-class $$SyncEventsTableTableManager extends RootTableManager<
+class $$SyncQueueTableTableManager extends RootTableManager<
     _$AppDatabase,
-    $SyncEventsTable,
-    SyncEvent,
-    $$SyncEventsTableFilterComposer,
-    $$SyncEventsTableOrderingComposer,
-    $$SyncEventsTableAnnotationComposer,
-    $$SyncEventsTableCreateCompanionBuilder,
-    $$SyncEventsTableUpdateCompanionBuilder,
-    (SyncEvent, BaseReferences<_$AppDatabase, $SyncEventsTable, SyncEvent>),
-    SyncEvent,
+    $SyncQueueTable,
+    SyncQueueData,
+    $$SyncQueueTableFilterComposer,
+    $$SyncQueueTableOrderingComposer,
+    $$SyncQueueTableAnnotationComposer,
+    $$SyncQueueTableCreateCompanionBuilder,
+    $$SyncQueueTableUpdateCompanionBuilder,
+    (
+      SyncQueueData,
+      BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>
+    ),
+    SyncQueueData,
     PrefetchHooks Function()> {
-  $$SyncEventsTableTableManager(_$AppDatabase db, $SyncEventsTable table)
+  $$SyncQueueTableTableManager(_$AppDatabase db, $SyncQueueTable table)
       : super(TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$SyncEventsTableFilterComposer($db: db, $table: table),
+              $$SyncQueueTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$SyncEventsTableOrderingComposer($db: db, $table: table),
+              $$SyncQueueTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$SyncEventsTableAnnotationComposer($db: db, $table: table),
+              $$SyncQueueTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
+            Value<String> entityTable = const Value.absent(),
+            Value<String> recordId = const Value.absent(),
+            Value<String> action = const Value.absent(),
             Value<String> eventType = const Value.absent(),
             Value<String> payload = const Value.absent(),
             Value<String> deviceId = const Value.absent(),
+            Value<String> userId = const Value.absent(),
             Value<int> sequenceNumber = const Value.absent(),
             Value<String> status = const Value.absent(),
-            Value<String?> error = const Value.absent(),
+            Value<String?> errorMessage = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
+            Value<int> maxRetries = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
-            Value<DateTime?> processedAt = const Value.absent(),
+            Value<DateTime?> lastAttemptAt = const Value.absent(),
+            Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> serverId = const Value.absent(),
+            Value<DateTime?> serverTimestamp = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
-              SyncEventsCompanion(
+              SyncQueueCompanion(
             id: id,
+            entityTable: entityTable,
+            recordId: recordId,
+            action: action,
             eventType: eventType,
             payload: payload,
             deviceId: deviceId,
+            userId: userId,
             sequenceNumber: sequenceNumber,
             status: status,
-            error: error,
+            errorMessage: errorMessage,
             retryCount: retryCount,
+            maxRetries: maxRetries,
             createdAt: createdAt,
-            processedAt: processedAt,
+            lastAttemptAt: lastAttemptAt,
+            syncedAt: syncedAt,
+            serverId: serverId,
+            serverTimestamp: serverTimestamp,
             rowid: rowid,
           ),
           createCompanionCallback: ({
             required String id,
+            required String entityTable,
+            required String recordId,
+            required String action,
             required String eventType,
             required String payload,
             required String deviceId,
+            Value<String> userId = const Value.absent(),
             required int sequenceNumber,
             Value<String> status = const Value.absent(),
-            Value<String?> error = const Value.absent(),
+            Value<String?> errorMessage = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
+            Value<int> maxRetries = const Value.absent(),
             required DateTime createdAt,
-            Value<DateTime?> processedAt = const Value.absent(),
+            Value<DateTime?> lastAttemptAt = const Value.absent(),
+            Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> serverId = const Value.absent(),
+            Value<DateTime?> serverTimestamp = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
-              SyncEventsCompanion.insert(
+              SyncQueueCompanion.insert(
             id: id,
+            entityTable: entityTable,
+            recordId: recordId,
+            action: action,
             eventType: eventType,
             payload: payload,
             deviceId: deviceId,
+            userId: userId,
             sequenceNumber: sequenceNumber,
             status: status,
-            error: error,
+            errorMessage: errorMessage,
             retryCount: retryCount,
+            maxRetries: maxRetries,
             createdAt: createdAt,
-            processedAt: processedAt,
+            lastAttemptAt: lastAttemptAt,
+            syncedAt: syncedAt,
+            serverId: serverId,
+            serverTimestamp: serverTimestamp,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -6466,17 +6934,20 @@ class $$SyncEventsTableTableManager extends RootTableManager<
         ));
 }
 
-typedef $$SyncEventsTableProcessedTableManager = ProcessedTableManager<
+typedef $$SyncQueueTableProcessedTableManager = ProcessedTableManager<
     _$AppDatabase,
-    $SyncEventsTable,
-    SyncEvent,
-    $$SyncEventsTableFilterComposer,
-    $$SyncEventsTableOrderingComposer,
-    $$SyncEventsTableAnnotationComposer,
-    $$SyncEventsTableCreateCompanionBuilder,
-    $$SyncEventsTableUpdateCompanionBuilder,
-    (SyncEvent, BaseReferences<_$AppDatabase, $SyncEventsTable, SyncEvent>),
-    SyncEvent,
+    $SyncQueueTable,
+    SyncQueueData,
+    $$SyncQueueTableFilterComposer,
+    $$SyncQueueTableOrderingComposer,
+    $$SyncQueueTableAnnotationComposer,
+    $$SyncQueueTableCreateCompanionBuilder,
+    $$SyncQueueTableUpdateCompanionBuilder,
+    (
+      SyncQueueData,
+      BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>
+    ),
+    SyncQueueData,
     PrefetchHooks Function()>;
 typedef $$FavoriteProductsTableCreateCompanionBuilder
     = FavoriteProductsCompanion Function({
@@ -6763,8 +7234,8 @@ class $AppDatabaseManager {
       $$PendingSalesTableTableManager(_db, _db.pendingSales);
   $$PendingSaleItemsTableTableManager get pendingSaleItems =>
       $$PendingSaleItemsTableTableManager(_db, _db.pendingSaleItems);
-  $$SyncEventsTableTableManager get syncEvents =>
-      $$SyncEventsTableTableManager(_db, _db.syncEvents);
+  $$SyncQueueTableTableManager get syncQueue =>
+      $$SyncQueueTableTableManager(_db, _db.syncQueue);
   $$FavoriteProductsTableTableManager get favoriteProducts =>
       $$FavoriteProductsTableTableManager(_db, _db.favoriteProducts);
   $$RecentSearchesTableTableManager get recentSearches =>

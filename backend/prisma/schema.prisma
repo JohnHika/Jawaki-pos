@@ -633,3 +633,36 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+enum ConflictType {
+  CONCURRENT_UPDATE
+  DELETED_ON_SERVER
+  NEWER_VERSION_EXISTS
+  DUPLICATE_CREATE
+}
+
+enum ConflictResolution {
+  SERVER_WINS
+  CLIENT_WINS
+  MERGE
+  MANUAL
+}
+
+model ConflictLog {
+  id            String              @id @default(uuid())
+  tableName     String
+  recordId      String
+  conflictType  ConflictType
+  resolution    ConflictResolution
+  serverData    Json?
+  clientData    Json?
+  resolvedData  Json?
+  notes         String?
+  createdAt     DateTime            @default(now())
+  createdBy     String?
+
+  @@index([tableName, recordId])
+  @@index([conflictType])
+  @@index([createdAt])
+  @@map("conflict_logs")
+}

@@ -122,12 +122,13 @@ class PendingSaleItems extends Table {
 // Sync Queue (enhanced for offline->online sync with robust retry)
 class SyncQueue extends Table {
   TextColumn get id => text()(); // UUID
-  TextColumn get tableName => text()(); // e.g., 'sales', 'products', 'inventory'
+  TextColumn get entityTable => text()(); // e.g., 'sales', 'products', 'inventory'
   TextColumn get recordId => text()(); // ID of the record being synced
   TextColumn get action => text()(); // 'create', 'update', 'delete'
   TextColumn get eventType => text()(); // e.g., 'SALE_CREATED', 'PRODUCT_UPDATED'
   TextColumn get payload => text()(); // JSON data
   TextColumn get deviceId => text()();
+  TextColumn get userId => text().withDefault(const Constant(''))();
   IntColumn get sequenceNumber => integer()();
   TextColumn get status => text().withDefault(const Constant('pending'))(); // pending, synced, failed
   TextColumn get errorMessage => text().nullable()();
@@ -141,17 +142,7 @@ class SyncQueue extends Table {
   
   @override
   Set<Column> get primaryKey => {id};
-  
-  @override
-  List<String> get customConstraints => [
-    'CHECK (status IN ("pending", "synced", "failed"))',
-    'CHECK (action IN ("create", "update", "delete"))',
-  ];
 }
-
-// Backwards compatibility alias
-@Deprecated('Use SyncQueue instead')
-typedef SyncEvents = SyncQueue;
 
 // Favorite products
 class FavoriteProducts extends Table {
@@ -186,6 +177,21 @@ class AppDatabase extends _$AppDatabase {
   
   @override
   int get schemaVersion => 2; // Increment version for schema change
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (Migrator m) async {
+      await m.createAll();
+    },
+    onUpgrade: (Migrator m, int from, int to) async {
+      if (from < 2) {
+        // Drop old sync_queue table and recreate with new schema
+        // Sync data is ephemeral, so it's safe to drop
+        await m.drop(syncQueue);
+        await m.createTable(syncQueue);
+      }
+    },
+  );
   
   // Categories
   Future<List<Category>> getAllCategories() => select(categories).get();
@@ -272,40 +278,143 @@ class AppDatabase extends _$AppDatabase {
     );
   }
   
-  // Sync Events
-  Future<void> addSyncEvent(SyncEventsCompanion event) {
-    return into(syncEvents).insert(event);
+  // Sync Events (Backwards compatibility - uses SyncQueue table)
+  Future<void> addSyncEvent(SyncQueueCompanion event) {
+    return into(syncQueue).insert(event);
   }
   
-  Future<List<SyncEvent>> getPendingSyncEvents() {
-    return (select(syncEvents)
+  Future<List<SyncQueueData>> getPendingSyncEvents() {
+    return (select(syncQueue)
       ..where((e) => e.status.equals('PENDING'))
       ..orderBy([(e) => OrderingTerm.asc(e.sequenceNumber)]))
       .get();
   }
   
   Future<void> markSyncEventProcessed(String id) {
-    return (update(syncEvents)..where((e) => e.id.equals(id))).write(
-      SyncEventsCompanion(
+    return (update(syncQueue)..where((e) => e.id.equals(id))).write(
+      SyncQueueCompanion(
         status: const Value('PROCESSED'),
-        processedAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
       ),
     );
   }
   
   Future<void> markSyncEventFailed(String id, String error) {
-    return (update(syncEvents)..where((e) => e.id.equals(id))).write(
-      SyncEventsCompanion(
+    return (update(syncQueue)..where((e) => e.id.equals(id))).write(
+      SyncQueueCompanion(
         status: const Value('FAILED'),
-        error: Value(error),
-        retryCount: const Value(0), // Will be incremented manually
+        errorMessage: Value(error),
+        retryCount: const Value(0),
       ),
     );
   }
   
   Future<int> getNextSequenceNumber() async {
     final result = await customSelect(
-      'SELECT COALESCE(MAX(sequence_number), 0) + 1 as next FROM sync_events',
+      'SELECT COALESCE(MAX(sequence_number), 0) + 1 as next FROM sync_queue',
+    ).getSingle();
+    return result.read<int>('next');
+  }
+
+  // ════════ SYNC QUEUE (Enhanced) ════════
+
+  /// Add item to sync queue
+  Future<void> addToSyncQueue(SyncQueueCompanion item) {
+    return into(syncQueue).insert(item, mode: InsertMode.insertOrIgnore);
+  }
+
+  /// Get all pending sync items (not synced, not exceeding max retries)
+  Future<List<SyncQueueData>> getPendingSyncQueue() {
+    return (select(syncQueue)
+      ..where((q) => q.status.equals('pending') & q.retryCount.isSmallerOrEqual(q.maxRetries))
+      ..orderBy([(q) => OrderingTerm.asc(q.sequenceNumber)]))
+      .get();
+  }
+
+  /// Get failed sync items that have exceeded max retries
+  Future<List<SyncQueueData>> getFailedSyncQueue() {
+    return (select(syncQueue)
+      ..where((q) => q.status.equals('failed')))
+      .get();
+  }
+
+  /// Mark sync item as synced
+  Future<void> markSyncQueueSynced(String id, String serverId, DateTime serverTimestamp) {
+    return (update(syncQueue)..where((q) => q.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: const Value('synced'),
+        serverId: Value(serverId),
+        serverTimestamp: Value(serverTimestamp),
+        syncedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Mark sync item as failed and increment retry count
+  Future<void> markSyncQueueFailed(String id, String errorMessage) async {
+    final item = await (select(syncQueue)..where((q) => q.id.equals(id))).getSingleOrNull();
+    if (item == null) return;
+
+    final newRetryCount = item.retryCount + 1;
+    final newStatus = newRetryCount >= item.maxRetries ? 'failed' : 'pending';
+
+    await (update(syncQueue)..where((q) => q.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: Value(newStatus),
+        errorMessage: Value(errorMessage),
+        retryCount: Value(newRetryCount),
+        lastAttemptAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Reset failed item for retry
+  Future<void> resetSyncQueueItem(String id) {
+    return (update(syncQueue)..where((q) => q.id.equals(id))).write(
+      const SyncQueueCompanion(
+        status: Value('pending'),
+        retryCount: Value(0),
+        errorMessage: Value(null),
+      ),
+    );
+  }
+
+  /// Delete synced items older than X days
+  Future<int> cleanupSyncQueue({int olderThanDays = 30}) {
+    final cutoffDate = DateTime.now().subtract(Duration(days: olderThanDays));
+    return (delete(syncQueue)
+      ..where((q) => 
+        q.status.equals('synced') & 
+        q.syncedAt.isSmallerThanValue(cutoffDate)))
+      .go();
+  }
+
+  /// Get sync queue count by status
+  Future<Map<String, int>> getSyncQueueStats() async {
+    final pending = await (select(syncQueue)
+      ..where((q) => q.status.equals('pending')))
+      .get();
+    
+    final synced = await (select(syncQueue)
+      ..where((q) => q.status.equals('synced')))
+      .get();
+    
+    final failed = await (select(syncQueue)
+      ..where((q) => q.status.equals('failed')))
+      .get();
+
+    return {
+      'pending': pending.length,
+      'synced': synced.length,
+      'failed': failed.length,
+      'total': pending.length + synced.length + failed.length,
+    };
+  }
+
+  /// Get next sequence number for sync queue
+  Future<int> getNextSyncSequenceNumber() async {
+    final result = await customSelect(
+      'SELECT COALESCE(MAX(sequence_number), 0) + 1 as next FROM sync_queue',
     ).getSingle();
     return result.read<int>('next');
   }

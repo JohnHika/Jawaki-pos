@@ -54,6 +54,9 @@ dependencies:
   # Connectivity
   connectivity_plus: ^5.0.2
   
+  # Background Work & Sync
+  workmanager: ^0.9.0+3
+  
   # Printing & Receipts
   esc_pos_utils: ^1.1.0
   # TODO: Add bluetooth printing support with updated package
