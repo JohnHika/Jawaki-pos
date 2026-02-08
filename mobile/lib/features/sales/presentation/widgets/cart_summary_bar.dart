@@ -91,10 +91,15 @@ class CartSummaryBar extends ConsumerWidget {
                     style: TextStyle(color: theme.disabledColor, fontSize: 12),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'KES ${cartState.total.toStringAsFixed(0)}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'KES ${cartState.total.toStringAsFixed(0)}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
                     ),
                   ),
                 ],

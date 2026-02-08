@@ -1559,8 +1559,15 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Flexible(
+            flex: 2,
+            child: Text(label, style: const TextStyle(color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 3,
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600), textAlign: TextAlign.end, overflow: TextOverflow.ellipsis),
+          ),
         ],
       ),
     );
@@ -1593,7 +1600,7 @@ class _UserTile extends StatelessWidget {
         ),
         title: Row(
           children: [
-            Text(name),
+            Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
             if (isCurrentUser) ...[
               const SizedBox(width: 8),
               Container(

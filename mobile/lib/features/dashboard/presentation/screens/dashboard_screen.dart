@@ -188,10 +188,17 @@ class _DashboardCard extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 24),
           const SizedBox(height: 12),
-          Text(value,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold, color: color,
-            )),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold, color: color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(title, style: theme.textTheme.bodySmall),
         ],

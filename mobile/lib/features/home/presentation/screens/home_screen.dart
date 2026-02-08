@@ -225,7 +225,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 // Visible nav items
                 ...visibleNavItems.asMap().entries.map((entry) {
@@ -234,29 +233,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   final safeIndex = _currentIndex.clamp(0, allNavItems.length - 1);
                   final isSelected = safeIndex == index;
 
-                  return _NavItemWidget(
-                    item: item,
-                    isSelected: isSelected,
-                    onTap: () {
-                      setState(() {
-                        _currentIndex = index;
-                      });
-                      context.go(item.path);
-                    },
+                  return Expanded(
+                    child: _NavItemWidget(
+                      item: item,
+                      isSelected: isSelected,
+                      onTap: () {
+                        setState(() {
+                          _currentIndex = index;
+                        });
+                        context.go(item.path);
+                      },
+                    ),
                   );
                 }),
 
                 // "More" button if needed
                 if (hasMore)
-                  _NavItemWidget(
-                    item: _NavItem(
-                      icon: Icons.apps_outlined,
-                      activeIcon: Icons.apps,
-                      label: 'More',
-                      path: '/more',
+                  Expanded(
+                    child: _NavItemWidget(
+                      item: _NavItem(
+                        icon: Icons.apps_outlined,
+                        activeIcon: Icons.apps,
+                        label: 'More',
+                        path: '/more',
+                      ),
+                      isSelected: _currentIndex >= maxVisibleTabs - 1,
+                      onTap: () => _showMoreSheet(moreItems),
                     ),
-                    isSelected: _currentIndex >= maxVisibleTabs - 1,
-                    onTap: () => _showMoreSheet(moreItems),
                   ),
               ],
             ),
@@ -302,7 +305,10 @@ class _NavItemWidget extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: MediaQuery.of(context).size.width < 380 ? 8 : 12,
+          vertical: 6,
+        ),
         decoration: BoxDecoration(
           color: isSelected 
               ? primaryColor.withOpacity(0.1) 
@@ -315,16 +321,18 @@ class _NavItemWidget extends StatelessWidget {
             Icon(
               isSelected ? item.activeIcon : item.icon,
               color: isSelected ? primaryColor : inactiveColor,
-              size: 24,
+              size: MediaQuery.of(context).size.width < 380 ? 20 : 22,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               item.label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: MediaQuery.of(context).size.width < 380 ? 9 : 10,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 color: isSelected ? primaryColor : inactiveColor,
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ],
         ),

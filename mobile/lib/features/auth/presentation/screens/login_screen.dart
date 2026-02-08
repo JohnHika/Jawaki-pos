@@ -196,24 +196,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            onChanged: (value) {
-                              setState(() {
-                                _rememberMe = value ?? false;
-                              });
-                            },
-                          ),
-                          const Text('Remember me'),
-                        ],
+                      Flexible(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: _rememberMe,
+                              onChanged: (value) {
+                                setState(() {
+                                  _rememberMe = value ?? false;
+                                });
+                              },
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            const Flexible(
+                              child: Text('Remember me', overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          // Handle forgot password
-                        },
-                        child: const Text('Forgot Password?'),
+                      Flexible(
+                        child: TextButton(
+                          onPressed: () {
+                            // Handle forgot password
+                          },
+                          child: const Text('Forgot Password?', overflow: TextOverflow.ellipsis),
+                        ),
                       ),
                     ],
                   ),

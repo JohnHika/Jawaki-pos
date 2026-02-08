@@ -313,21 +313,27 @@ class _ProductListTile extends StatelessWidget {
             const SizedBox(height: 2),
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    categoryName,
-                    style: const TextStyle(fontSize: 10, color: AppColors.primary),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      categoryName,
+                      style: const TextStyle(fontSize: 10, color: AppColors.primary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'SKU: ${product.sku}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                Flexible(
+                  child: Text(
+                    'SKU: ${product.sku}',
+                    style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),

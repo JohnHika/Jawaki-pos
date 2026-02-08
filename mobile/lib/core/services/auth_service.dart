@@ -41,14 +41,11 @@ class AuthService {
   String? get userRole => _currentUser?['role'];
   
   Future<void> _initializeAuth() async {
-    _accessToken = await _storage.getAccessToken();
-    _currentUser = _storage.getUser();
-    
-    if (_accessToken != null && _currentUser != null) {
-      _updateStatus(AuthStatus.authenticated);
-    } else {
-      _updateStatus(AuthStatus.unauthenticated);
-    }
+    // Always require fresh login on app start — clear any stored session
+    await _storage.clearSession();
+    _accessToken = null;
+    _currentUser = null;
+    _updateStatus(AuthStatus.unauthenticated);
   }
   
   Future<void> login({

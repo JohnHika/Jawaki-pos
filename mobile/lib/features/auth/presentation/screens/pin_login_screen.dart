@@ -232,8 +232,10 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
   }
 
   Widget _buildNumberPad() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final padHorizontal = screenWidth < 380 ? 24.0 : 48.0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 48),
+      padding: EdgeInsets.symmetric(horizontal: padHorizontal),
       child: Column(
         children: [
           Row(
@@ -283,9 +285,12 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
   }
 
   Widget _buildNumberButton(String number) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final btnSize = screenWidth < 380 ? 60.0 : 72.0;
+    final fontSize = screenWidth < 380 ? 24.0 : 28.0;
     return SizedBox(
-      width: 72,
-      height: 72,
+      width: btnSize,
+      height: btnSize,
       child: ElevatedButton(
         onPressed: ref.watch(authControllerProvider).isLoading 
             ? null 
@@ -295,13 +300,13 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
           foregroundColor: AppColors.textPrimary,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(36),
+            borderRadius: BorderRadius.circular(btnSize / 2),
           ),
         ),
         child: Text(
           number,
-          style: const TextStyle(
-            fontSize: 28,
+          style: TextStyle(
+            fontSize: fontSize,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -313,9 +318,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
     required IconData icon,
     required VoidCallback onPressed,
   }) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final btnSize = screenWidth < 380 ? 60.0 : 72.0;
     return SizedBox(
-      width: 72,
-      height: 72,
+      width: btnSize,
+      height: btnSize,
       child: IconButton(
         onPressed: ref.watch(authControllerProvider).isLoading ? null : onPressed,
         icon: Icon(icon, size: 28),
