@@ -32,6 +32,10 @@ class Products extends Table {
   RealColumn get price => real()();
   RealColumn get costPrice => real().nullable()();
   TextColumn get unit => text().withDefault(const Constant('piece'))();
+  TextColumn get secondaryUnit => text().nullable()();
+  RealColumn get secondaryUnitQty => real().nullable()();
+  TextColumn get tertiaryUnit => text().nullable()();
+  RealColumn get tertiaryUnitQty => real().nullable()();
   TextColumn get imageUrl => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get trackInventory => boolean().withDefault(const Constant(true))();
@@ -176,7 +180,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   
   @override
-  int get schemaVersion => 2; // Increment version for schema change
+  int get schemaVersion => 3; // Increment version for multi-unit inventory
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -189,6 +193,13 @@ class AppDatabase extends _$AppDatabase {
         // Sync data is ephemeral, so it's safe to drop
         await m.drop(syncQueue);
         await m.createTable(syncQueue);
+      }
+      if (from < 3) {
+        // Add multi-unit fields to products table
+        await m.addColumn(products, products.secondaryUnit);
+        await m.addColumn(products, products.secondaryUnitQty);
+        await m.addColumn(products, products.tertiaryUnit);
+        await m.addColumn(products, products.tertiaryUnitQty);
       }
     },
   );

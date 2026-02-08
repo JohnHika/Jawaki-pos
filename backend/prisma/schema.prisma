@@ -51,6 +51,7 @@ model Branch {
   sales       Sale[]
   stockMovements StockMovement[]
   priceOverrides BranchPriceOverride[]
+  stockRequests  StockRequest[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -107,6 +108,8 @@ model User {
   sales         Sale[]
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
+  stockRequestsCreated  StockRequest[] @relation("RequestedByUser")
+  stockRequestsResolved StockRequest[] @relation("ResolvedByUser")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -174,6 +177,10 @@ model Product {
   costPrice       Decimal? @db.Decimal(10, 2)
   taxRate         Decimal  @default(0) @db.Decimal(5, 2)
   unit            String   @default("piece")
+  secondaryUnit   String?  // e.g., "box", "carton", "pack"
+  secondaryUnitQty Decimal? @db.Decimal(10, 3) // How many base units per secondary unit
+  tertiaryUnit    String?  // e.g., "carton" if secondary is "box"
+  tertiaryUnitQty Decimal? @db.Decimal(10, 3) // How many base units per tertiary unit
   minStock        Int      @default(0)
   trackInventory  Boolean  @default(true)
   allowFractions  Boolean  @default(false)
@@ -190,6 +197,7 @@ model Product {
   saleItems       SaleItem[]
   priceOverrides  BranchPriceOverride[]
   stockMovements  StockMovement[]
+  stockRequests   StockRequest[]
 
   @@unique([tenantId, sku])
   @@map("products")
@@ -336,6 +344,44 @@ model StockTransferItem {
   transfer        StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
 
   @@map("stock_transfer_items")
+}
+
+// ==================== STOCK REQUESTS ====================
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+model StockRequest {
+  id            String         @id @default(uuid())
+  branchId      String
+  requestedById String
+  productId     String
+  quantity      Decimal        @db.Decimal(10, 3)
+  unit          String         @default("piece")
+  reason        String?
+  priority      String         @default("normal") // low, normal, high, urgent
+  status        RequestStatus  @default(PENDING)
+  images        String[]       @default([])
+  resolvedById  String?
+  resolvedAt    DateTime?
+  resolution    String?        // Approval/rejection notes
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  branch        Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  requestedBy   User           @relation("RequestedByUser", fields: [requestedById], references: [id])
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  resolvedBy    User?          @relation("ResolvedByUser", fields: [resolvedById], references: [id])
+  
+  @@index([branchId, status])
+  @@index([requestedById])
+  @@index([status, createdAt])
+  @@map("stock_requests")
 }
 
 // ==================== SALES & RECEIPTS ====================

@@ -26,6 +26,22 @@ export class BatchDto {
   @Type(() => Number)
   quantity: number;
 
+  @ApiPropertyOptional({ 
+    description: 'Unit of measurement for the quantity (piece, box, carton, etc.)',
+    default: 'piece'
+  })
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Conversion factor: how many base units per this unit (e.g., 12 pieces per box)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  unitsPerQuantity?: number;
+
   @ApiPropertyOptional({ description: 'Batch expiry date (ISO format)' })
   @IsOptional()
   @IsDateString()
@@ -491,4 +507,197 @@ export class ExpiryDashboardResponseDto {
     expiring90Days: number;
     expiring90DaysValue: number;
   };
+}
+
+// ==================== STOCK REQUEST DTOs ====================
+
+export class CreateStockRequestDto {
+  @ApiProperty({ description: 'Branch ID where stock is needed' })
+  @IsString()
+  branchId: string;
+
+  @ApiProperty({ description: 'Product ID being requested' })
+  @IsString()
+  productId: string;
+
+  @ApiProperty({ description: 'Quantity requested' })
+  @IsNumber()
+  @Min(0.001)
+  @Type(() => Number)
+  quantity: number;
+
+  @ApiPropertyOptional({ description: 'Unit of measurement', default: 'piece' })
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @ApiPropertyOptional({ description: 'Reason for the request' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Request priority', 
+    enum: ['low', 'normal', 'high', 'urgent'],
+    default: 'normal'
+  })
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @ApiPropertyOptional({ description: 'Image URLs (e.g., empty shelf photos)', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
+}
+
+export class UpdateStockRequestDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  quantity?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
+}
+
+export class ResolveStockRequestDto {
+  @ApiProperty({ 
+    description: 'Resolution action',
+    enum: ['APPROVED', 'REJECTED', 'FULFILLED']
+  })
+  @IsString()
+  status: 'APPROVED' | 'REJECTED' | 'FULFILLED';
+
+  @ApiPropertyOptional({ description: 'Resolution notes or reason' })
+  @IsOptional()
+  @IsString()
+  resolution?: string;
+}
+
+export class StockRequestQueryDto {
+  @ApiPropertyOptional({ description: 'Filter by branch ID' })
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Filter by status',
+    enum: ['PENDING', 'APPROVED', 'REJECTED', 'FULFILLED', 'CANCELLED']
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by priority' })
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by product ID' })
+  @IsOptional()
+  @IsString()
+  productId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by requester user ID' })
+  @IsOptional()
+  @IsString()
+  requestedById?: string;
+
+  @ApiPropertyOptional({ description: 'Page number', default: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  page?: number;
+
+  @ApiPropertyOptional({ description: 'Items per page', default: 20 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  limit?: number;
+}
+
+export class StockRequestResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  branchId: string;
+
+  @ApiProperty()
+  branchName: string;
+
+  @ApiProperty()
+  requestedById: string;
+
+  @ApiProperty()
+  requestedByName: string;
+
+  @ApiProperty()
+  productId: string;
+
+  @ApiProperty()
+  productName: string;
+
+  @ApiProperty()
+  productSku: string;
+
+  @ApiProperty()
+  quantity: number;
+
+  @ApiProperty()
+  unit: string;
+
+  @ApiProperty()
+  reason?: string;
+
+  @ApiProperty()
+  priority: string;
+
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty({ type: [String] })
+  images: string[];
+
+  @ApiProperty()
+  resolvedById?: string;
+
+  @ApiProperty()
+  resolvedByName?: string;
+
+  @ApiProperty()
+  resolvedAt?: Date;
+
+  @ApiProperty()
+  resolution?: string;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+
+  @ApiProperty()
+  currentStock?: number;
 }

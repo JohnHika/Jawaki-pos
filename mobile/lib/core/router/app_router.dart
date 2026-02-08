@@ -13,6 +13,9 @@ import '../../features/sales/presentation/screens/receipt_screen.dart';
 import '../../features/catalog/presentation/screens/products_screen.dart';
 import '../../features/catalog/presentation/screens/product_detail_screen.dart';
 import '../../features/inventory/presentation/screens/inventory_screen.dart';
+import '../../features/inventory/presentation/screens/stock_request_screen.dart';
+import '../../features/inventory/presentation/screens/stock_requests_list_screen.dart';
+import '../../features/inventory/presentation/screens/batch_receive_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../services/auth_service.dart';
@@ -129,6 +132,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/inventory',
             name: 'inventory',
             builder: (context, state) => const InventoryScreen(),
+            routes: [
+              // Create stock request (cashier+)
+              GoRoute(
+                path: 'request-stock',
+                name: 'request-stock',
+                builder: (context, state) => const StockRequestScreen(),
+              ),
+              // View/manage stock requests (supervisor+)
+              GoRoute(
+                path: 'stock-requests',
+                name: 'stock-requests',
+                builder: (context, state) => const StockRequestsListScreen(),
+              ),
+              // Receive batch with multi-unit (supervisor+)
+              GoRoute(
+                path: 'receive-batch',
+                name: 'receive-batch',
+                builder: (context, state) => const BatchReceiveScreen(),
+              ),
+            ],
           ),
           
           // Reports Screen

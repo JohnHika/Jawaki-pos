@@ -29,6 +29,11 @@ import {
   ExpiryDashboardQueryDto,
   StockWithBatchesResponseDto,
   ExpiryDashboardResponseDto,
+  CreateStockRequestDto,
+  UpdateStockRequestDto,
+  ResolveStockRequestDto,
+  StockRequestQueryDto,
+  StockRequestResponseDto,
 } from './dto/inventory.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -243,5 +248,68 @@ export class InventoryController {
       Number(quantity),
       req.user.tenantId,
     );
+  }
+
+  // ==================== STOCK REQUESTS ====================
+
+  @Post('stock-requests')
+  @ApiOperation({ summary: 'Create a stock request (Cashiers/Sellers request stock from managers)' })
+  @ApiResponse({ status: 201, description: 'Stock request created', type: StockRequestResponseDto })
+  async createStockRequest(@Request() req: any, @Body() dto: CreateStockRequestDto) {
+    return this.inventoryService.createStockRequest(req.user.sub, req.user.tenantId, dto);
+  }
+
+  @Get('stock-requests')
+  @ApiOperation({ summary: 'Get stock requests (filtered by role and branch)' })
+  @ApiResponse({ status: 200, description: 'List of stock requests', type: [StockRequestResponseDto] })
+  async getStockRequests(@Request() req: any, @Query() query: StockRequestQueryDto) {
+    return this.inventoryService.getStockRequests(req.user.sub, req.user.tenantId, query);
+  }
+
+  @Get('stock-requests/:id')
+  @ApiOperation({ summary: 'Get a single stock request by ID' })
+  @ApiResponse({ status: 200, description: 'Stock request details', type: StockRequestResponseDto })
+  async getStockRequest(@Param('id') id: string, @Request() req: any) {
+    return this.inventoryService.getStockRequest(id, req.user.tenantId);
+  }
+
+  @Put('stock-requests/:id')
+  @ApiOperation({ summary: 'Update a stock request (requester can edit before approval)' })
+  @ApiResponse({ status: 200, description: 'Stock request updated', type: StockRequestResponseDto })
+  async updateStockRequest(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() dto: UpdateStockRequestDto,
+  ) {
+    return this.inventoryService.updateStockRequest(id, req.user.sub, req.user.tenantId, dto);
+  }
+
+  @Put('stock-requests/:id/resolve')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Resolve a stock request (approve/reject/fulfill) - Supervisor+ only' })
+  @ApiResponse({ status: 200, description: 'Stock request resolved', type: StockRequestResponseDto })
+  async resolveStockRequest(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() dto: ResolveStockRequestDto,
+  ) {
+    return this.inventoryService.resolveStockRequest(id, req.user.sub, req.user.tenantId, dto);
+  }
+
+  @Put('stock-requests/:id/cancel')
+  @ApiOperation({ summary: 'Cancel a stock request (requester can cancel)' })
+  @ApiResponse({ status: 200, description: 'Stock request cancelled', type: StockRequestResponseDto })
+  async cancelStockRequest(@Param('id') id: string, @Request() req: any) {
+    return this.inventoryService.cancelStockRequest(id, req.user.sub, req.user.tenantId);
+  }
+
+  @Get('stock-requests/stats/summary')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get stock request statistics - Supervisor+ only' })
+  @ApiResponse({ status: 200, description: 'Stock request statistics' })
+  async getStockRequestStats(@Request() req: any, @Query('branchId') branchId?: string) {
+    return this.inventoryService.getStockRequestStats(req.user.tenantId, branchId);
   }
 }

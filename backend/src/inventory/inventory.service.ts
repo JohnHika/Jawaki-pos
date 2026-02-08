@@ -668,25 +668,58 @@ export class InventoryService {
 
       // Create batch records
       for (const batch of dto.batches) {
+        // Unit conversion logic
+        let baseQuantity = batch.quantity;
+        let conversionNote = '';
+
+        // If unit is provided and it's not the base unit, convert to base units
+        if (batch.unit && batch.unit !== product.unit) {
+          const conversionFactor = batch.unitsPerQuantity || this.getConversionFactor(
+            product,
+            batch.unit
+          );
+
+          if (conversionFactor) {
+            baseQuantity = batch.quantity * conversionFactor;
+            conversionNote = `Received ${batch.quantity} ${batch.unit} = ${baseQuantity} ${product.unit}`;
+          } else {
+            throw new Error(
+              `No conversion factor found for unit "${batch.unit}". ` +
+              `Please configure unit conversions for this product.`
+            );
+          }
+        } else if (batch.unitsPerQuantity && batch.unitsPerQuantity !== 1) {
+          // Manual conversion factor provided
+          baseQuantity = batch.quantity * batch.unitsPerQuantity;
+          conversionNote = `Received ${batch.quantity} ${batch.unit || 'units'} = ${baseQuantity} ${product.unit}`;
+        }
+
         const expiryDate = batch.expiryDate ? new Date(batch.expiryDate) : null;
         const isExpired = expiryDate && expiryDate < new Date();
+
+        // Combine notes with conversion info
+        const finalNotes = conversionNote
+          ? batch.notes
+            ? `${conversionNote}. ${batch.notes}`
+            : conversionNote
+          : batch.notes;
 
         const createdBatch = await tx.stockBatch.create({
           data: {
             stockId: stock.id,
             batchNumber: batch.batchNumber,
-            quantity: batch.quantity,
+            quantity: baseQuantity,
             expiryDate,
             manufactureDate: batch.manufactureDate ? new Date(batch.manufactureDate) : null,
             costPrice: batch.costPrice,
             supplierRef: batch.supplierRef,
-            notes: batch.notes,
+            notes: finalNotes,
             isBlocked: isExpired, // Auto-block expired batches
           },
         });
 
         createdBatches.push(createdBatch);
-        totalReceived += batch.quantity;
+        totalReceived += baseQuantity;
 
         // Record stock movement for each batch
         await tx.stockMovement.create({
@@ -695,13 +728,13 @@ export class InventoryService {
             productId: dto.productId,
             batchId: createdBatch.id,
             type: StockMovementType.BATCH_RECEIVE,
-            quantity: batch.quantity,
+            quantity: baseQuantity,
             previousQty: Number(stock.quantity),
-            newQty: Number(stock.quantity) + batch.quantity,
+            newQty: Number(stock.quantity) + baseQuantity,
             batchNumber: batch.batchNumber,
             expiryDate,
             reference: dto.reference,
-            notes: batch.notes,
+            notes: finalNotes,
             createdById: userId,
           },
         });
@@ -723,6 +756,30 @@ export class InventoryService {
         batches: createdBatches,
       };
     });
+  }
+
+  /**
+   * Get conversion factor for a unit based on product configuration
+   */
+  private getConversionFactor(product: any, unit: string): number | null {
+    const unitLower = unit.toLowerCase();
+    const baseUnit = product.unit.toLowerCase();
+
+    // If it's the base unit, no conversion needed
+    if (unitLower === baseUnit) return 1;
+
+    // Check secondary unit
+    if (product.secondaryUnit && unitLower === product.secondaryUnit.toLowerCase()) {
+      return Number(product.secondaryUnitQty) || null;
+    }
+
+    // Check tertiary unit
+    if (product.tertiaryUnit && unitLower === product.tertiaryUnit.toLowerCase()) {
+      return Number(product.tertiaryUnitQty) || null;
+    }
+
+    // No matching unit found
+    return null;
   }
 
   /**
@@ -1130,6 +1187,449 @@ export class InventoryService {
         batchNumber: b.batchNumber,
         expiryDate: b.expiryDate,
       })),
+    };
+  }
+
+  // ==================== STOCK REQUEST METHODS ====================
+
+  /**
+   * Create a new stock request (cashiers/sellers request stock)
+   */
+  async createStockRequest(
+    userId: string,
+    tenantId: string,
+    dto: {
+      branchId: string;
+      productId: string;
+      quantity: number;
+      unit?: string;
+      reason?: string;
+      priority?: string;
+      images?: string[];
+    },
+  ) {
+    // Verify branch and product belong to tenant
+    const [branch, product] = await Promise.all([
+      this.prisma.branch.findFirst({
+        where: { id: dto.branchId, tenantId },
+      }),
+      this.prisma.product.findFirst({
+        where: { id: dto.productId, tenantId },
+      }),
+    ]);
+
+    if (!branch || !product) {
+      throw new Error('Branch or product not found');
+    }
+
+    // Get current stock level
+    const stock = await this.prisma.stock.findUnique({
+      where: {
+        branchId_productId: {
+          branchId: dto.branchId,
+          productId: dto.productId,
+        },
+      },
+    });
+
+    // Create the request
+    const request = await this.prisma.stockRequest.create({
+      data: {
+        branchId: dto.branchId,
+        requestedById: userId,
+        productId: dto.productId,
+        quantity: dto.quantity,
+        unit: dto.unit || product.unit,
+        reason: dto.reason,
+        priority: dto.priority || 'normal',
+        images: dto.images || [],
+      },
+      include: {
+        branch: { select: { name: true } },
+        requestedBy: { select: { firstName: true, lastName: true } },
+        product: { select: { name: true, sku: true, unit: true } },
+      },
+    });
+
+    return {
+      id: request.id,
+      branchId: request.branchId,
+      branchName: request.branch.name,
+      requestedById: request.requestedById,
+      requestedByName: `${request.requestedBy.firstName} ${request.requestedBy.lastName}`,
+      productId: request.productId,
+      productName: request.product.name,
+      productSku: request.product.sku,
+      quantity: Number(request.quantity),
+      unit: request.unit,
+      reason: request.reason,
+      priority: request.priority,
+      status: request.status,
+      images: request.images,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+      currentStock: stock ? Number(stock.quantity) : 0,
+    };
+  }
+
+  /**
+   * Get stock requests (filtered by role and permissions)
+   */
+  async getStockRequests(
+    userId: string,
+    tenantId: string,
+    query: {
+      branchId?: string;
+      status?: string;
+      priority?: string;
+      productId?: string;
+      requestedById?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    // Build where clause
+    const where: any = {
+      branch: { tenantId },
+    };
+
+    if (query.branchId) where.branchId = query.branchId;
+    if (query.status) where.status = query.status;
+    if (query.priority) where.priority = query.priority;
+    if (query.productId) where.productId = query.productId;
+    if (query.requestedById) where.requestedById = query.requestedById;
+
+    const [requests, total] = await Promise.all([
+      this.prisma.stockRequest.findMany({
+        where,
+        include: {
+          branch: { select: { name: true } },
+          requestedBy: { select: { firstName: true, lastName: true } },
+          product: { select: { name: true, sku: true, unit: true } },
+          resolvedBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: [
+          { status: 'asc' }, // Pending first
+          { createdAt: 'desc' },
+        ],
+        skip,
+        take: limit,
+      }),
+      this.prisma.stockRequest.count({ where }),
+    ]);
+
+    // Get current stock for each request
+    const stockData = await Promise.all(
+      requests.map((request) =>
+        this.prisma.stock.findUnique({
+          where: {
+            branchId_productId: {
+              branchId: request.branchId,
+              productId: request.productId,
+            },
+          },
+          select: { quantity: true },
+        }),
+      ),
+    );
+
+    const items = requests.map((request, index) => ({
+      id: request.id,
+      branchId: request.branchId,
+      branchName: request.branch.name,
+      requestedById: request.requestedById,
+      requestedByName: `${request.requestedBy.firstName} ${request.requestedBy.lastName}`,
+      productId: request.productId,
+      productName: request.product.name,
+      productSku: request.product.sku,
+      quantity: Number(request.quantity),
+      unit: request.unit,
+      reason: request.reason,
+      priority: request.priority,
+      status: request.status,
+      images: request.images,
+      resolvedById: request.resolvedById,
+      resolvedByName: request.resolvedBy
+        ? `${request.resolvedBy.firstName} ${request.resolvedBy.lastName}`
+        : undefined,
+      resolvedAt: request.resolvedAt,
+      resolution: request.resolution,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+      currentStock: stockData[index] ? Number(stockData[index].quantity) : 0,
+    }));
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get a single stock request
+   */
+  async getStockRequest(id: string, tenantId: string) {
+    const request = await this.prisma.stockRequest.findFirst({
+      where: {
+        id,
+        branch: { tenantId },
+      },
+      include: {
+        branch: { select: { name: true } },
+        requestedBy: { select: { firstName: true, lastName: true } },
+        product: { select: { name: true, sku: true, unit: true } },
+        resolvedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!request) {
+      throw new Error('Stock request not found');
+    }
+
+    const stock = await this.prisma.stock.findUnique({
+      where: {
+        branchId_productId: {
+          branchId: request.branchId,
+          productId: request.productId,
+        },
+      },
+      select: { quantity: true },
+    });
+
+    return {
+      id: request.id,
+      branchId: request.branchId,
+      branchName: request.branch.name,
+      requestedById: request.requestedById,
+      requestedByName: `${request.requestedBy.firstName} ${request.requestedBy.lastName}`,
+      productId: request.productId,
+      productName: request.product.name,
+      productSku: request.product.sku,
+      quantity: Number(request.quantity),
+      unit: request.unit,
+      reason: request.reason,
+      priority: request.priority,
+      status: request.status,
+      images: request.images,
+      resolvedById: request.resolvedById,
+      resolvedByName: request.resolvedBy
+        ? `${request.resolvedBy.firstName} ${request.resolvedBy.lastName}`
+        : undefined,
+      resolvedAt: request.resolvedAt,
+      resolution: request.resolution,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+      currentStock: stock ? Number(stock.quantity) : 0,
+    };
+  }
+
+  /**
+   * Update a stock request (requester can edit before approval)
+   */
+  async updateStockRequest(
+    id: string,
+    userId: string,
+    tenantId: string,
+    dto: {
+      quantity?: number;
+      unit?: string;
+      reason?: string;
+      priority?: string;
+      images?: string[];
+    },
+  ) {
+    // Verify request exists and belongs to user
+    const existing = await this.prisma.stockRequest.findFirst({
+      where: {
+        id,
+        requestedById: userId,
+        branch: { tenantId },
+        status: 'PENDING', // Can only edit pending requests
+      },
+    });
+
+    if (!existing) {
+      throw new Error('Stock request not found or cannot be edited');
+    }
+
+    const updated = await this.prisma.stockRequest.update({
+      where: { id },
+      data: {
+        ...(dto.quantity !== undefined && { quantity: dto.quantity }),
+        ...(dto.unit && { unit: dto.unit }),
+        ...(dto.reason !== undefined && { reason: dto.reason }),
+        ...(dto.priority && { priority: dto.priority }),
+        ...(dto.images && { images: dto.images }),
+      },
+      include: {
+        branch: { select: { name: true } },
+        requestedBy: { select: { firstName: true, lastName: true } },
+        product: { select: { name: true, sku: true } },
+      },
+    });
+
+    return {
+      id: updated.id,
+      branchId: updated.branchId,
+      branchName: updated.branch.name,
+      requestedById: updated.requestedById,
+      requestedByName: `${updated.requestedBy.firstName} ${updated.requestedBy.lastName}`,
+      productId: updated.productId,
+      productName: updated.product.name,
+      productSku: updated.product.sku,
+      quantity: Number(updated.quantity),
+      unit: updated.unit,
+      reason: updated.reason,
+      priority: updated.priority,
+      status: updated.status,
+      images: updated.images,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    };
+  }
+
+  /**
+   * Resolve a stock request (approve/reject/fulfill) - Supervisor+ only
+   */
+  async resolveStockRequest(
+    id: string,
+    userId: string,
+    tenantId: string,
+    dto: {
+      status: 'APPROVED' | 'REJECTED' | 'FULFILLED';
+      resolution?: string;
+    },
+  ) {
+    const request = await this.prisma.stockRequest.findFirst({
+      where: {
+        id,
+        branch: { tenantId },
+      },
+      include: {
+        branch: { select: { name: true } },
+        requestedBy: { select: { firstName: true, lastName: true } },
+        product: { select: { name: true, sku: true } },
+      },
+    });
+
+    if (!request) {
+      throw new Error('Stock request not found');
+    }
+
+    if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+      throw new Error('Can only resolve pending or approved requests');
+    }
+
+    const updated = await this.prisma.stockRequest.update({
+      where: { id },
+      data: {
+        status: dto.status,
+        resolvedById: userId,
+        resolvedAt: new Date(),
+        resolution: dto.resolution,
+      },
+      include: {
+        branch: { select: { name: true } },
+        requestedBy: { select: { firstName: true, lastName: true } },
+        product: { select: { name: true, sku: true } },
+        resolvedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    return {
+      id: updated.id,
+      branchId: updated.branchId,
+      branchName: updated.branch.name,
+      requestedById: updated.requestedById,
+      requestedByName: `${updated.requestedBy.firstName} ${updated.requestedBy.lastName}`,
+      productId: updated.productId,
+      productName: updated.product.name,
+      productSku: updated.product.sku,
+      quantity: Number(updated.quantity),
+      unit: updated.unit,
+      reason: updated.reason,
+      priority: updated.priority,
+      status: updated.status,
+      images: updated.images,
+      resolvedById: updated.resolvedById,
+      resolvedByName: `${updated.resolvedBy.firstName} ${updated.resolvedBy.lastName}`,
+      resolvedAt: updated.resolvedAt,
+      resolution: updated.resolution,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    };
+  }
+
+  /**
+   * Cancel a stock request
+   */
+  async cancelStockRequest(id: string, userId: string, tenantId: string) {
+    const request = await this.prisma.stockRequest.findFirst({
+      where: {
+        id,
+        requestedById: userId,
+        branch: { tenantId },
+        status: 'PENDING',
+      },
+    });
+
+    if (!request) {
+      throw new Error('Stock request not found or cannot be cancelled');
+    }
+
+    const updated = await this.prisma.stockRequest.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+      },
+      include: {
+        branch: { select: { name: true } },
+        requestedBy: { select: { firstName: true, lastName: true } },
+        product: { select: { name: true, sku: true } },
+      },
+    });
+
+    return {
+      id: updated.id,
+      status: updated.status,
+      cancelledAt: updated.updatedAt,
+    };
+  }
+
+  /**
+   * Get stock request statistics
+   */
+  async getStockRequestStats(tenantId: string, branchId?: string) {
+    const where: any = {
+      branch: { tenantId },
+    };
+
+    if (branchId) where.branchId = branchId;
+
+    const [pending, approved, rejected, fulfilled, cancelled, urgent] = await Promise.all([
+      this.prisma.stockRequest.count({ where: { ...where, status: 'PENDING' } }),
+      this.prisma.stockRequest.count({ where: { ...where, status: 'APPROVED' } }),
+      this.prisma.stockRequest.count({ where: { ...where, status: 'REJECTED' } }),
+      this.prisma.stockRequest.count({ where: { ...where, status: 'FULFILLED' } }),
+      this.prisma.stockRequest.count({ where: { ...where, status: 'CANCELLED' } }),
+      this.prisma.stockRequest.count({ where: { ...where, priority: 'urgent', status: 'PENDING' } }),
+    ]);
+
+    return {
+      pending,
+      approved,
+      rejected,
+      fulfilled,
+      cancelled,
+      urgent,
+      total: pending + approved + rejected + fulfilled + cancelled,
     };
   }
 }

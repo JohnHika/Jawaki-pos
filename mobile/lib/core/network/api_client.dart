@@ -121,6 +121,61 @@ class ApiClient {
     return response.data;
   }
   
+  Future<Map<String, dynamic>> receiveBatches(Map<String, dynamic> data) async {
+    final response = await _dio.post('/inventory/batches/receive', data: data);
+    return response.data;
+  }
+  
+  // Stock Request endpoints
+  Future<Map<String, dynamic>> createStockRequest(Map<String, dynamic> data) async {
+    final response = await _dio.post('/inventory/stock-requests', data: data);
+    return response.data;
+  }
+  
+  Future<List<dynamic>> getStockRequests({
+    String? branchId,
+    String? status,
+    String? priority,
+    int? page,
+    int? limit,
+  }) async {
+    final response = await _dio.get('/inventory/stock-requests', queryParameters: {
+      if (branchId != null) 'branchId': branchId,
+      if (status != null) 'status': status,
+      if (priority != null) 'priority': priority,
+      if (page != null) 'page': page,
+      if (limit != null) 'limit': limit,
+    });
+    return response.data;
+  }
+  
+  Future<Map<String, dynamic>> getStockRequest(String id) async {
+    final response = await _dio.get('/inventory/stock-requests/$id');
+    return response.data;
+  }
+  
+  Future<Map<String, dynamic>> updateStockRequest(String id, Map<String, dynamic> data) async {
+    final response = await _dio.put('/inventory/stock-requests/$id', data: data);
+    return response.data;
+  }
+  
+  Future<Map<String, dynamic>> resolveStockRequest(String id, Map<String, dynamic> data) async {
+    final response = await _dio.put('/inventory/stock-requests/$id/resolve', data: data);
+    return response.data;
+  }
+  
+  Future<Map<String, dynamic>> cancelStockRequest(String id, Map<String, dynamic> data) async {
+    final response = await _dio.put('/inventory/stock-requests/$id/cancel', data: data);
+    return response.data;
+  }
+  
+  Future<Map<String, dynamic>> getStockRequestStats({String? branchId}) async {
+    final response = await _dio.get('/inventory/stock-requests/stats/summary', queryParameters: {
+      if (branchId != null) 'branchId': branchId,
+    });
+    return response.data;
+  }
+  
   // Payment endpoints
   Future<Map<String, dynamic>> initiateMpesaPayment(Map<String, dynamic> data) async {
     final response = await _dio.post('/payments/mpesa/stkpush', data: data);
