@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npm start:*)"
+      "Bash(npm start:*)",
+      "mcp__brave-search__brave_web_search",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
