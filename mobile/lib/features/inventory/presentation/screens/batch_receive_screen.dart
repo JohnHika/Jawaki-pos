@@ -10,15 +10,15 @@ import '../../../../core/di/injection.dart';
 /// Enhanced Batch Receive Screen with Multi-Unit Support
 /// Supervisors can receive stock in cartons/boxes and auto-convert to pieces
 class BatchReceiveScreen extends ConsumerStatefulWidget {
-  final String productId;
-  final String productName;
-  final String branchId;
+  final String? productId;
+  final String? productName;
+  final String? branchId;
 
   const BatchReceiveScreen({
     super.key,
-    required this.productId,
-    required this.productName,
-    required this.branchId,
+    this.productId,
+    this.productName,
+    this.branchId,
   });
 
   @override
@@ -37,15 +37,32 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   @override
   void initState() {
     super.initState();
+    // If no product specified, show error
+    if (widget.productId == null || widget.productName == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select a product first'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.of(context).pop();
+        }
+      });
+      return;
+    }
     _loadProductConfig();
     // Start with one empty batch
     _addBatch();
   }
 
   Future<void> _loadProductConfig() async {
+    if (widget.productId == null) return;
+    
     try {
       final apiClient = ref.read(apiClientProvider);
-      final product = await apiClient.getProduct(widget.productId);
+      final product = await apiClient.getProduct(widget.productId!);
       
       if (mounted) {
         setState(() {
@@ -148,9 +165,16 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       // Call API to receive batches
       final apiClient = ref.read(apiClientProvider);
+      final authService = getIt<AuthService>();
+      final branchId = widget.branchId ?? authService.branchId;
+      
+      if (branchId == null || widget.productId == null) {
+        throw Exception('Missing branch ID or product ID');
+      }
+      
       await apiClient.receiveBatches({
-        'branchId': widget.branchId,
-        'productId': widget.productId,
+        'branchId': branchId,
+        'productId': widget.productId!,
         'batches': batchesData,
       });
 
@@ -225,7 +249,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.productName,
+                    widget.productName ?? 'Unknown Product',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -233,22 +257,22 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Base Unit: ${_unitConfig.baseUnit}',
+                    'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade600,
                     ),
                   ),
-                  if (_unitConfig.availableUnits.length > 1) ...[
+                  if (_unitConfig != null && _unitConfig!.availableUnits.length > 1) ...[
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 4,
-                      children: _unitConfig.availableUnits
+                      children: _unitConfig!.availableUnits
                           .where((u) => u.conversionFactor != 1.0)
                           .map((unit) => Chip(
                                 label: Text(
-                                  '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig.baseUnit}',
+                                  '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
                                   style: const TextStyle(fontSize: 11),
                                 ),
                                 backgroundColor: Colors.white,
@@ -424,7 +448,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       labelText: 'Unit',
                       border: OutlineInputBorder(),
                     ),
-                    items: _unitConfig.availableUnits.map((unit) {
+                    items: _unitConfig!.availableUnits.map((unit) {
                       return DropdownMenuItem(
                         value: unit.name,
                         child: Text(unit.name),
@@ -442,7 +466,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
             // Conversion Preview
             if (batch.quantityController.text.isNotEmpty &&
-                batch.selectedUnit != _unitConfig.baseUnit) ...[
+                _unitConfig != null &&
+                batch.selectedUnit != _unitConfig!.baseUnit) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -534,9 +559,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   // Cost Price
                   TextFormField(
                     controller: batch.costPriceController,
-                    decoration: const InputDecoration(
-                      labelText: 'Cost Price per ${_unitConfig.baseUnit}',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: 'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
+                      border: const OutlineInputBorder(),
                       prefixText: '\$',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),

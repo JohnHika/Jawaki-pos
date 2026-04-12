@@ -1,0 +1,16 @@
+{
+  "name": "pos-system",
+  "version": "1.0.0",
+  "description": "Full-stack POS System",
+  "private": true,
+  "scripts": {
+    "build": "cd backend && npm run build",
+    "start": "cd backend && npm run start",
+    "start:dev": "cd backend && npm run start:dev",
+    "lint": "cd backend && npm run lint",
+    "test": "cd backend && npm test"
+  },
+  "dependencies": {
+    "helmet": "^8.1.0"
+  }
+}

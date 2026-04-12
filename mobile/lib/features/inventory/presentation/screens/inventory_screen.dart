@@ -64,28 +64,7 @@ class InventoryScreen extends ConsumerWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildStockTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.warehouse_outlined,
-            size: 64,
-            color: AppColors.textTertiary,
-          ),
-          const SizedBox(height: 16),
-          const Text('Stock Levels'),
-          const SizedBox(height: 8),
-          Text(
-            'View and manage stock for all products',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ],
-      ),      floatingActionButton: permissions.canManageStock
+      floatingActionButton: permissions.canManageStock
           ? _buildActionButtons(context, role)
           : null,
     );
@@ -122,7 +101,30 @@ class InventoryScreen extends ConsumerWidget {
             label: const Text('Receive Stock'),
             backgroundColor: AppColors.primary,
           ),
-      ],    );
+      ],
+    );
+  }
+
+  Widget _buildStockTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.warehouse_outlined,
+            size: 64,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(height: 16),
+          const Text('Stock Levels'),
+          const SizedBox(height: 8),
+          Text(
+            'View and manage stock for all products',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildLowStockTab() {

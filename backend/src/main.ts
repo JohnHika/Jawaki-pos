@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +21,7 @@ async function bootstrap() {
   });
 
   // API Versioning
+  app.use(helmet());
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',

@@ -2,11 +2,29 @@
 node_modules/
 .pnpm-store/
 
+# Nested repos / large subfolders
+store-management-system/.next/
+store-management-system/dist/
+store-management-system/node_modules/
+store-management-system/*.md
+store-management-system/.git/
+
 # Build outputs
 dist/
 build/
 .dart_tool/
 .packages
+.next/
+store-management-system/dist/
+store-management-system/.next/
+store-management-system/node_modules/
+store-management-system/store-management.exe
+*.exe
+*.g.dart
+*.freezed.dart
+package-lock.json
+yarn.lock
+pubspec.lock
 
 # Environment files
 .env
