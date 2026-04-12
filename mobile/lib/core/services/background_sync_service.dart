@@ -97,6 +97,69 @@ class BackgroundSyncService {
       int failureCount = 0;
       
       // Process each item
+      // Add exponential backoff for failed items
+      int retryCount = 0;
+      for (final item in pendingItems) {
+        try {
+          // Prepare payload
+          final payload = {
+            'id': item.id,
+            'tableName': item.entityTable,
+            'recordId': item.recordId,
+            'action': item.action,
+            'eventType': item.eventType,
+            'payload': jsonDecode(item.payload),
+            'timestamp': item.createdAt.toIso8601String(),
+            'deviceId': item.deviceId,
+          };
+
+          // Send to server
+          try {
+            final response = await apiClient.pushSyncEvents({
+              'events': [payload],
+            });
+
+            final results = response['results'] as List?;
+            if (results != null && results.isNotEmpty) {
+              final result = results.first;
+              final serverId = result['serverId'] ?? result['eventId'] ?? item.id;
+              final serverTimestamp = DateTime.tryParse(
+                result['serverTimestamp']?.toString() ?? ''
+              ) ?? DateTime.now();
+
+              if (result['success'] == true) {
+                await database.markSyncQueueSynced(
+                  item.id,
+                  serverId.toString(),
+                  serverTimestamp,
+                );
+                successCount++;
+                print('[BackgroundSync] ✓ Synced: ${item.entityTable}/${item.action}');
+              } else {
+                final errorMessage = result['error'] ?? 'Unknown server error';
+                await database.markSyncQueueFailed(item.id, errorMessage);
+                failureCount++;
+                print('[BackgroundSync] ✗ Failed: ${item.entityTable}/${item.action} - $errorMessage');
+              }
+            }
+          } on DioException catch (e) {
+            final errorMessage = 'Network error: ${e.message}';
+            await database.markSyncQueueFailed(item.id, errorMessage);
+            failureCount++;
+            print('[BackgroundSync] ✗ Failed: ${item.entityTable}/${item.action} - $errorMessage');
+          }
+        } catch (e) {
+          // Network or processing error - mark as failed
+          final errorMessage = 'Error: ${e.toString()}';
+          await database.markSyncQueueFailed(item.id, errorMessage);
+
+          failureCount++;
+          print('[BackgroundSync] ✗ Exception: ${item.entityTable}/${item.action} - $errorMessage');
+        }
+
+        // Small delay between requests to avoid overwhelming server
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
       for (final item in pendingItems) {
         try {
           // Prepare payload
