@@ -26,10 +26,17 @@ package-lock.json
 yarn.lock
 pubspec.lock
 
-# Environment files
+# Environment files - NEVER COMMIT THESE
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+.env.backup
+**/env-config.js
+# Keep examples
+!.env.example
+!.env.example.local
 
 # IDE
 .idea/

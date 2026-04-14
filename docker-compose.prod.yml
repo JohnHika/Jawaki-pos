@@ -1,0 +1,219 @@
+# Production Docker Compose with Secrets Management
+# DO NOT use .env files in production - use Docker Secrets or environment variables from CI/CD
+
+version: '3.8'
+
+services:
+  # ==================== BACKEND API ====================
+  backend:
+    image: pos-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    secrets:
+      - jwt_secret
+      - jwt_refresh_secret
+      - database_password
+      - redis_password
+      - daraja_consumer_key
+      - daraja_consumer_secret
+      - daraja_passkey
+      - pesapal_consumer_key
+      - pesapal_consumer_secret
+      - touristtap_api_key
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: api
+      API_VERSION: v1
+      # Database - username is public, password from secret
+      DATABASE_URL: postgresql://pos_user:FILE:/run/secrets/database_password@postgres:5432/pos_db?schema=public
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      # JWT - loaded from Docker secrets
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      JWT_REFRESH_SECRET_FILE: /run/secrets/jwt_refresh_secret
+      # Payment providers
+      DARAJA_CONSUMER_KEY_FILE: /run/secrets/daraja_consumer_key
+      DARAJA_CONSUMER_SECRET_FILE: /run/secrets/daraja_consumer_secret
+      DARAJA_PASSKEY_FILE: /run/secrets/daraja_passkey
+      DARAJA_SHORTCODE: 174379
+      DARAJA_CALLBACK_URL: https://your-domain.com/api/v1/payments/mpesa/callback
+      DARAJA_ENV: production
+      PESAPAL_CONSUMER_KEY_FILE: /run/secrets/pesapal_consumer_key
+      PESAPAL_CONSUMER_SECRET_FILE: /run/secrets/pesapal_consumer_secret
+      PESAPAL_IPN_URL: https://your-domain.com/api/v1/payments/pesapal/ipn
+      PESAPAL_ENV: production
+      TOURISTTAP_API_KEY_FILE: /run/secrets/touristtap_api_key
+      TOURISTTAP_MERCHANT_ID: your-merchant-id
+      TOURISTTAP_CALLBACK_URL: https://your-domain.com/api/v1/payments/touristtap/callback
+      # Rate Limiting (stricter for production)
+      THROTTLE_TTL: 60000
+      THROTTLE_LIMIT: 50
+      # Sync Configuration
+      SYNC_BATCH_SIZE: 100
+      SYNC_RETRY_ATTEMPTS: 3
+      SYNC_RETRY_DELAY: 5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pos_internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==================== POSTGRESQL ====================
+  postgres:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      POSTGRES_USER: pos_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_password
+      POSTGRES_DB: pos_db
+    secrets:
+      - database_password
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    networks:
+      - pos_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos_user -d pos_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== REDIS ====================
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass "${REDIS_PASSWORD:-changeme}" --appendonly yes
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - pos_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== NGINX (Reverse Proxy) ====================
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - backend
+    networks:
+      - pos_internal
+      - pos_public
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==================== WORKER (Background Jobs) ====================
+  worker:
+    image: pos-backend:latest
+    command: ["node", "dist/worker.js"]
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    secrets:
+      - jwt_secret
+      - database_password
+      - redis_password
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://pos_user:FILE:/run/secrets/database_password@postgres:5432/pos_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - pos_internal
+
+# ==================== SECRETS ====================
+# In production, these should come from:
+# - Docker Swarm secrets (docker secret create)
+# - Kubernetes secrets
+# - AWS Secrets Manager / Azure Key Vault / GCP Secret Manager
+# - HashiCorp Vault
+#
+# For local testing, create files in ./secrets/ directory:
+#   echo "super-secret-jwt-key" > secrets/jwt_secret
+#   echo "db-password" > secrets/database_password
+
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret
+  jwt_refresh_secret:
+    file: ./secrets/jwt_refresh_secret
+  database_password:
+    file: ./secrets/database_password
+  redis_password:
+    file: ./secrets/redis_password
+  daraja_consumer_key:
+    file: ./secrets/daraja_consumer_key
+  daraja_consumer_secret:
+    file: ./secrets/daraja_consumer_secret
+  daraja_passkey:
+    file: ./secrets/daraja_passkey
+  pesapal_consumer_key:
+    file: ./secrets/pesapal_consumer_key
+  pesapal_consumer_secret:
+    file: ./secrets/pesapal_consumer_secret
+  touristtap_api_key:
+    file: ./secrets/touristtap_api_key
+
+# ==================== VOLUMES ====================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ==================== NETWORKS ====================
+networks:
+  pos_internal:
+    driver: overlay
+    internal: true  # No external access
+  pos_public:
+    driver: overlay

@@ -23,7 +23,9 @@ dependencies:
   
   # Local Database (Offline-first)
   drift: ^2.14.1
+  drift_sqflite: ^2.0.1
   sqlite3_flutter_libs: ^0.5.18
+  sqlcipher_flutter_libs: ^0.5.7
   path_provider: ^2.1.1
   path: ^1.8.3
   
