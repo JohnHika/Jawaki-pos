@@ -75,14 +75,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'CASH',
         total: amount,
       );
-      
-      // If online, sync immediately
-      if (_connectivity.isOnline) {
-        await _syncSaleToServer(saleId, items, 'CASH', amount);
-      } else {
-        // Queue for later sync
-        await _queueSaleForSync(saleId, items, 'CASH', amount);
-      }
+
+      await _syncOrQueueSale(saleId, items, 'CASH', amount);
       
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -140,7 +134,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       
       // Create sale
       final saleId = _uuid.v4();
-      await _syncSaleToServer(saleId, items, 'MPESA', amount, checkoutRequestId);
+      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
+      await _createLocalSale(
+        saleId: saleId,
+        receiptNumber: receiptNumber,
+        items: items,
+        paymentMethod: 'MPESA',
+        total: amount,
+        paymentReference: checkoutRequestId,
+      );
+      await _syncOrQueueSale(saleId, items, 'MPESA', amount, checkoutRequestId);
       
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -177,7 +180,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       
       // For now, simulate successful payment
       final saleId = _uuid.v4();
-      await _syncSaleToServer(saleId, items, 'PESAPAL', amount, orderId);
+      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
+      await _createLocalSale(
+        saleId: saleId,
+        receiptNumber: receiptNumber,
+        items: items,
+        paymentMethod: 'PESAPAL',
+        total: amount,
+        paymentReference: orderId,
+      );
+      await _syncOrQueueSale(saleId, items, 'PESAPAL', amount, orderId);
       
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -212,7 +224,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // NFC payment would be initiated here
       // For now, simulate successful payment
       final saleId = _uuid.v4();
-      await _syncSaleToServer(saleId, items, 'TOURISTTAP', amount, transactionId);
+      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
+      await _createLocalSale(
+        saleId: saleId,
+        receiptNumber: receiptNumber,
+        items: items,
+        paymentMethod: 'TOURISTTAP',
+        total: amount,
+        paymentReference: transactionId,
+      );
+      await _syncOrQueueSale(saleId, items, 'TOURISTTAP', amount, transactionId);
       
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -228,6 +249,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required List<CartItem> items,
     required String paymentMethod,
     required double total,
+    String? paymentReference,
   }) async {
     final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
     final tax = subtotal * 0.16;
@@ -241,6 +263,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         tax: Value(tax),
         total: total,
         paymentMethod: paymentMethod,
+        paymentReference: Value(paymentReference),
         cashierId: _authService.userId!,
         branchId: _authService.branchId!,
         createdAt: DateTime.now(),
@@ -265,6 +288,44 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       );
     }
   }
+
+  Future<void> _syncOrQueueSale(
+    String saleId,
+    List<CartItem> items,
+    String paymentMethod,
+    double total, [
+    String? paymentReference,
+  ]) async {
+    if (!_connectivity.isOnline) {
+      await _queueSaleForSync(
+        saleId,
+        items,
+        paymentMethod,
+        total,
+        paymentReference,
+      );
+      return;
+    }
+
+    try {
+      await _syncSaleToServer(
+        saleId,
+        items,
+        paymentMethod,
+        total,
+        paymentReference,
+      );
+      await _database.markSaleAsSynced(saleId);
+    } catch (_) {
+      await _queueSaleForSync(
+        saleId,
+        items,
+        paymentMethod,
+        total,
+        paymentReference,
+      );
+    }
+  }
   
   Future<void> _syncSaleToServer(
     String saleId,
@@ -283,6 +344,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }).toList(),
       'paymentMethod': paymentMethod,
       'paymentReference': paymentReference,
+      'paidAmount': total,
       'cashierId': _authService.userId,
     });
   }
@@ -292,16 +354,25 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     List<CartItem> items,
     String paymentMethod,
     double total,
+    [
+    String? paymentReference,
+  ]
   ) async {
-    await _syncService.queueEvent(
+    await _syncService.queueSyncItem(
+      tableName: 'sales',
+      recordId: saleId,
+      action: SyncAction.create,
       eventType: SyncEventType.saleCreated,
-      payload: {
+      data: {
         'offlineId': saleId,
         'items': items.map((i) => i.toJson()).toList(),
         'paymentMethod': paymentMethod,
+        'paymentReference': paymentReference,
+        'paidAmount': total,
         'cashierId': _authService.userId,
       },
       deviceId: _authService.deviceId!,
+      userId: _authService.userId ?? '',
     );
   }
   

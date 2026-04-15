@@ -26,6 +26,10 @@ import {
   PaginatedSalesDto,
   DailySummaryDto,
 } from './dto/sales.dto';
+import {
+  BulkCreateSalesDto,
+  BulkVoidSalesDto,
+} from './dto/bulk-sales.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -98,5 +102,24 @@ export class SalesController {
   @ApiResponse({ status: 201, description: 'Refund created' })
   async createRefund(@Request() req: any, @Body() dto: CreateRefundDto) {
     return this.salesService.createRefund(req.user.sub, req.user.tenantId, dto);
+  }
+
+  // ==================== BULK SALES ENDPOINTS ====================
+
+  @Post('bulk')
+  @ApiOperation({ summary: 'Bulk create sales (e.g., offline sync)' })
+  @ApiResponse({ status: 201, description: 'Sales created', type: [SaleResponseDto] })
+  async bulkCreateSales(@Request() req: any, @Body() dto: BulkCreateSalesDto) {
+    return this.salesService.bulkCreateSales(req.user.sub, req.user.tenantId, dto.sales);
+  }
+
+  @Post('bulk/void')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Bulk void sales (Supervisor+ only)' })
+  @ApiResponse({ status: 200, description: 'Sales voided' })
+  async bulkVoidSales(@Request() req: any, @Body() dto: BulkVoidSalesDto) {
+    return this.salesService.bulkVoidSales(req.user.sub, req.user.tenantId, dto.ids, dto.reason);
   }
 }

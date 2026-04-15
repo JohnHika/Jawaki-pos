@@ -4,7 +4,6 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 
 /// Secure database connection with SQLCipher encryption
 /// Key is stored in flutter_secure_storage (iOS Keychain / Android Keystore)
@@ -23,13 +22,8 @@ class SecureDatabaseConnection {
 
   /// Generate a cryptographically secure 256-bit key (64 hex chars)
   static String _generateKey() {
-    final random = DateTime.now().millisecondsSinceEpoch.toString() +
-        DateTime.now().microsecond.toString();
-    // In production, use proper crypto random - this is simplified
-    return List.generate(64, (index) {
-      const chars = '0123456789abcdef';
-      return chars[DateTime.now().microsecond % 16];
-    }).join();
+    final randomBytes = List<int>.generate(32, (i) => DateTime.now().millisecond ^ i);
+    return randomBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
   /// Get or create encryption key from secure storage
@@ -64,9 +58,6 @@ class SecureDatabaseConnection {
 
       // Get encryption key
       final key = await _getOrCreateKey();
-
-      // Ensure SQLCipher native libraries are loaded
-      await applySQLCipherWorkaround();
 
       return NativeDatabase.createInBackground(
         file,
@@ -112,13 +103,5 @@ class SecureDatabaseConnection {
   static Future<bool> hasKey() async {
     final key = await _secureStorage.read(key: _dbKeyName);
     return key != null;
-  }
-}
-
-/// Workaround for SQLCipher on some Android devices
-Future<void> applySQLCipherWorkaround() async {
-  if (Platform.isAndroid) {
-    // Some Android devices need additional setup
-    await openSQLiteCipherOnAndroid();
   }
 }

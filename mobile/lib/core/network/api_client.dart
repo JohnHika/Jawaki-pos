@@ -209,6 +209,23 @@ class ApiClient {
     });
     return response.data;
   }
+
+  Future<List<dynamic>> resolveSyncConflicts(
+    List<Map<String, dynamic>> conflicts,
+  ) async {
+    final response = await _dio.post('/sync/conflicts/resolve', data: conflicts);
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getFailedSyncEvents() async {
+    final response = await _dio.get('/sync/failed');
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> retryFailedSyncEvents() async {
+    final response = await _dio.post('/sync/retry');
+    return response.data;
+  }
   
   Future<void> sendHeartbeat() async {
     await _dio.post('/sync/heartbeat');

@@ -208,6 +208,77 @@ export class BranchesService {
     await this.redisService.del(`branches:${tenantId}`);
   }
 
+  // ==================== BULK BRANCH OPERATIONS ====================
+
+  async bulkCreateBranches(tenantId: string, branches: any[]) {
+    const results = await this.prisma.$transaction(
+      branches.map((dto) =>
+        this.prisma.branch.create({
+          data: {
+            tenantId,
+            ...dto,
+          },
+        }),
+      ),
+    );
+
+    await this.redisService.del(`branches:${tenantId}`);
+    return results;
+  }
+
+  async bulkUpdateBranches(tenantId: string, branches: { id: string; [key: string]: any }[]) {
+    const results = await this.prisma.$transaction(async (tx) => {
+      const updated: any[] = [];
+      for (const item of branches) {
+        const { id, ...updateData } = item;
+
+        const existing = await tx.branch.findFirst({
+          where: { id, tenantId },
+        });
+        if (!existing) {
+          throw new NotFoundException(`Branch ${id} not found`);
+        }
+
+        const result = await tx.branch.update({
+          where: { id },
+          data: updateData,
+        });
+        updated.push(result);
+      }
+      return updated;
+    });
+
+    await this.redisService.del(`branches:${tenantId}`);
+    return results;
+  }
+
+  async bulkDeleteBranches(tenantId: string, ids: string[]) {
+    const branches = await this.prisma.branch.findMany({
+      where: { id: { in: ids }, tenantId },
+      include: { _count: { select: { sales: true } } },
+    });
+
+    if (branches.length !== ids.length) {
+      const foundIds = branches.map((b) => b.id);
+      const missing = ids.filter((id) => !foundIds.includes(id));
+      throw new NotFoundException(`Branches not found: ${missing.join(', ')}`);
+    }
+
+    const withSales = branches.filter((b) => b._count.sales > 0);
+    if (withSales.length > 0) {
+      throw new ForbiddenException(
+        `Cannot delete branches with sales history: ${withSales.map((b) => b.code).join(', ')}. Deactivate instead.`,
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.device.deleteMany({ where: { branchId: { in: ids } } }),
+      this.prisma.branch.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+
+    await this.redisService.del(`branches:${tenantId}`);
+  }
+
   // ==================== DEVICE OPERATIONS ====================
 
   async registerDevice(tenantId: string, dto: RegisterDeviceDto) {

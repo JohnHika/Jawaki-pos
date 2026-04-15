@@ -596,6 +596,65 @@ export class InventoryService {
     return alerts.sort((a, b) => b.shortfall - a.shortfall);
   }
 
+  async bulkAdjustStock(
+    userId: string,
+    tenantId: string,
+    branchId: string,
+    adjustments: Array<{ productId: string; quantity: number; notes?: string }>,
+  ) {
+    // Verify branch exists in the tenant
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+    });
+
+    if (!branch) {
+      throw new ForbiddenException('Branch not found or access denied');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const results: any[] = [];
+
+      for (const adjustment of adjustments) {
+        // Upsert the stock record (increment quantity)
+        const stock = await tx.stock.upsert({
+          where: {
+            branchId_productId: {
+              branchId,
+              productId: adjustment.productId,
+            },
+          },
+          create: {
+            branchId,
+            productId: adjustment.productId,
+            quantity: adjustment.quantity,
+          },
+          update: {
+            quantity: { increment: adjustment.quantity },
+          },
+        });
+
+        // Create a stockMovement record with type ADJUSTMENT
+        const previousQty = Number(stock.quantity) - adjustment.quantity;
+        const movement = await tx.stockMovement.create({
+          data: {
+            branchId,
+            productId: adjustment.productId,
+            type: StockMovementType.ADJUSTMENT,
+            quantity: adjustment.quantity,
+            previousQty,
+            newQty: Number(stock.quantity),
+            notes: adjustment.notes,
+            createdById: userId,
+          },
+        });
+
+        results.push({ stock, movement });
+      }
+
+      return results;
+    });
+  }
+
   // ==================== HELPERS ====================
 
   private async getTransferInternal(transferId: string, tenantId: string) {

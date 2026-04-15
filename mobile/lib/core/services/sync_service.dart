@@ -22,6 +22,78 @@ enum SyncAction {
   delete,
 }
 
+enum SyncConflictResolution {
+  serverWins,
+  clientWins,
+  merge,
+}
+
+extension SyncEventTypeWireFormat on SyncEventType {
+  String get wireName {
+    switch (this) {
+      case SyncEventType.saleCreated:
+        return 'SALE_CREATED';
+      case SyncEventType.saleVoided:
+        return 'SALE_VOIDED';
+      case SyncEventType.refundCreated:
+        return 'REFUND_CREATED';
+      case SyncEventType.stockAdjusted:
+        return 'STOCK_ADJUSTED';
+    }
+  }
+}
+
+extension SyncConflictResolutionWireFormat on SyncConflictResolution {
+  String get wireName {
+    switch (this) {
+      case SyncConflictResolution.serverWins:
+        return 'SERVER_WINS';
+      case SyncConflictResolution.clientWins:
+        return 'CLIENT_WINS';
+      case SyncConflictResolution.merge:
+        return 'MERGE';
+    }
+  }
+}
+
+String _tableNameForEventType(SyncEventType eventType) {
+  switch (eventType) {
+    case SyncEventType.saleCreated:
+    case SyncEventType.saleVoided:
+    case SyncEventType.refundCreated:
+      return 'sales';
+    case SyncEventType.stockAdjusted:
+      return 'inventory';
+  }
+}
+
+SyncAction _actionForEventType(SyncEventType eventType) {
+  switch (eventType) {
+    case SyncEventType.saleCreated:
+    case SyncEventType.refundCreated:
+      return SyncAction.create;
+    case SyncEventType.saleVoided:
+    case SyncEventType.stockAdjusted:
+      return SyncAction.update;
+  }
+}
+
+String _recordIdForEvent(
+  SyncEventType eventType,
+  Map<String, dynamic> payload,
+  String fallbackRecordId,
+) {
+  switch (eventType) {
+    case SyncEventType.saleCreated:
+      return payload['offlineId']?.toString() ?? fallbackRecordId;
+    case SyncEventType.saleVoided:
+    case SyncEventType.refundCreated:
+      return payload['saleId']?.toString() ?? payload['id']?.toString() ?? fallbackRecordId;
+    case SyncEventType.stockAdjusted:
+      return payload['productId']?.toString() ?? payload['id']?.toString() ?? fallbackRecordId;
+  }
+}
+
 class SyncService {
   final AppDatabase _database;
   final ApiClient _apiClient;
@@ -78,25 +150,21 @@ class SyncService {
     required Map<String, dynamic> payload,
     required String deviceId,
   }) async {
-    final eventId = _uuid.v4();
-    final sequenceNumber = await _database.getNextSequenceNumber();
-    
-    await _database.addSyncEvent(SyncQueueCompanion(
-      id: Value(eventId),
-      eventType: Value(eventType.name),
-      payload: Value(jsonEncode(payload)),
-      deviceId: Value(deviceId),
-      entityTable: const Value(''),
-      recordId: const Value(''),
-      action: const Value('create'),
-      sequenceNumber: Value(sequenceNumber),
-      createdAt: Value(DateTime.now()),
-    ));
-    
-    // Try to sync immediately if online
-    if (_connectivity.isOnline) {
-      syncPendingEvents();
-    }
+    final fallbackRecordId =
+        payload['offlineId']?.toString() ??
+        payload['saleId']?.toString() ??
+        payload['id']?.toString() ??
+        _uuid.v4();
+
+    await queueSyncItem(
+      tableName: _tableNameForEventType(eventType),
+      recordId: _recordIdForEvent(eventType, payload, fallbackRecordId),
+      action: _actionForEventType(eventType),
+      eventType: eventType,
+      data: payload,
+      deviceId: deviceId,
+      userId: payload['cashierId']?.toString() ?? payload['userId']?.toString() ?? '',
+    );
   }
 
   /// Queue a sync item to SyncQueue (New method)
@@ -104,9 +172,11 @@ class SyncService {
     required String tableName,
     required String recordId,
     required SyncAction action,
+    required SyncEventType eventType,
     required Map<String, dynamic> data,
     required String deviceId,
     required String userId,
+    int maxRetries = 5,
   }) async {
     final itemId = _uuid.v4();
     final sequenceNumber = await _database.getNextSyncSequenceNumber();
@@ -116,19 +186,19 @@ class SyncService {
       entityTable: Value(tableName),
       recordId: Value(recordId),
       action: Value(action.name),
-      eventType: Value('${tableName.toUpperCase()}_${action.name.toUpperCase()}'),
+      eventType: Value(eventType.wireName),
       payload: Value(jsonEncode(data)),
       deviceId: Value(deviceId),
       userId: Value(userId),
       sequenceNumber: Value(sequenceNumber),
       createdAt: Value(DateTime.now()),
       retryCount: const Value(0),
-      maxRetries: const Value(3),
+      maxRetries: Value(maxRetries),
     ));
     
     // Try to sync immediately if online
     if (_connectivity.isOnline) {
-      await BackgroundSyncService.triggerImmediateSync();
+      await syncPendingEvents();
     }
   }
 
@@ -137,61 +207,89 @@ class SyncService {
     return await _database.getSyncQueueStats();
   }
 
+  Future<List<SyncQueueData>> getConflictItems() {
+    return _database.getConflictSyncQueue();
+  }
+
   /// Retry all failed sync items
   Future<void> retryFailedItems() async {
-    await BackgroundSyncService.retryFailedItems();
+    final failedItems = await _database.getFailedSyncQueue();
+    for (final item in failedItems) {
+      await _database.resetSyncQueueItem(item.id);
+    }
+
+    if (_connectivity.isOnline ||
+        await _connectivity.checkCurrentStatus() == ConnectionStatus.online) {
+      await syncPendingEvents();
+    }
+  }
+
+  Future<void> resolveConflictItem({
+    required String itemId,
+    required SyncConflictResolution resolution,
+    Map<String, dynamic>? mergedPayload,
+  }) async {
+    final results = await _apiClient.resolveSyncConflicts([
+      {
+        'eventId': itemId,
+        'resolution': resolution.wireName,
+        if (mergedPayload != null) 'mergedPayload': mergedPayload,
+      },
+    ]);
+
+    final firstResult = results.isNotEmpty
+        ? Map<String, dynamic>.from(results.first as Map)
+        : null;
+
+    if (firstResult == null || firstResult['success'] != true) {
+      throw Exception(
+        firstResult?['error']?.toString() ?? 'Failed to resolve sync conflict',
+      );
+    }
+
+    if (resolution == SyncConflictResolution.serverWins) {
+      await _database.markSyncQueueResolved(
+        itemId,
+        resolution: resolution.wireName,
+      );
+      await _markLocalSyncItemResolved(itemId);
+      return;
+    }
+
+    await _database.resetSyncQueueItem(itemId);
+
+    if (_connectivity.isOnline ||
+        await _connectivity.checkCurrentStatus() == ConnectionStatus.online) {
+      await syncPendingEvents();
+    }
   }
   
   /// Sync pending events to server
   Future<void> syncPendingEvents() async {
-    if (_isSyncing || !_connectivity.isOnline) return;
+    if (_isSyncing) return;
+
+    final connectionStatus = _connectivity.isOnline
+        ? ConnectionStatus.online
+        : await _connectivity.checkCurrentStatus();
+
+    if (connectionStatus != ConnectionStatus.online) {
+      return;
+    }
     
     _isSyncing = true;
     _statusController.add(SyncStatus.syncing);
     
     try {
-      final pendingEvents = await _database.getPendingSyncEvents();
-      
-      if (pendingEvents.isEmpty) {
+      final result = await BackgroundSyncService.processPendingQueue(
+        database: _database,
+        apiClient: _apiClient,
+      );
+
+      if (result.hasErrors) {
+        _statusController.add(SyncStatus.error);
+      } else {
         _statusController.add(SyncStatus.synced);
-        _isSyncing = false;
-        return;
       }
-      
-      // Convert to API format
-      final events = pendingEvents.map((e) => {
-        'eventId': e.id,
-        'eventType': e.eventType.toUpperCase(),
-        'payload': jsonDecode(e.payload),
-        'deviceId': e.deviceId,
-        'createdAt': e.createdAt.toIso8601String(),
-        'sequenceNumber': e.sequenceNumber,
-      }).toList();
-      
-      final response = await _apiClient.pushSyncEvents({
-        'events': events,
-      });
-      
-      // Process results
-      final results = response['results'] as List;
-      for (final result in results) {
-        final eventId = result['eventId'] as String;
-        final success = result['success'] as bool;
-        
-        if (success) {
-          await _database.markSyncEventProcessed(eventId);
-        } else {
-          await _database.markSyncEventFailed(
-            eventId, 
-            result['error'] ?? 'Unknown error',
-          );
-        }
-      }
-      
-      // Update pending sales sync status
-      await _syncPendingSales();
-      
-      _statusController.add(SyncStatus.synced);
     } catch (e) {
       _statusController.add(SyncStatus.error);
     } finally {
@@ -281,24 +379,6 @@ class SyncService {
     // Update local stock from server event
   }
   
-  Future<void> _syncPendingSales() async {
-    // Mark synced sales in the pending sales table
-    final events = await _database.customSelect(
-      '''
-      SELECT DISTINCT payload FROM sync_queue 
-      WHERE event_type = 'saleCreated' AND status = 'PROCESSED'
-      ''',
-    ).get();
-    
-    for (final event in events) {
-      final payload = jsonDecode(event.read<String>('payload'));
-      final offlineId = payload['offlineId'];
-      if (offlineId != null) {
-        await _database.markSaleAsSynced(offlineId);
-      }
-    }
-  }
-  
   Future<void> _sendHeartbeat() async {
     try {
       await _apiClient.sendHeartbeat();
@@ -309,14 +389,35 @@ class SyncService {
   
   /// Get sync statistics
   Future<SyncStats> getStats() async {
-    final pending = await _database.getPendingSyncEvents();
+    final queueStats = await _database.getSyncQueueStats();
     final unsyncedSales = await _database.getUnsyncedSales();
     
     return SyncStats(
-      pendingEvents: pending.length,
+      pendingEvents:
+          (queueStats['pending'] ?? 0) +
+          (queueStats['failed'] ?? 0) +
+          (queueStats['conflict'] ?? 0),
       unsyncedSales: unsyncedSales.length,
+      failedEvents: queueStats['failed'] ?? 0,
+      conflictEvents: queueStats['conflict'] ?? 0,
       isOnline: _connectivity.isOnline,
     );
+  }
+
+  Future<void> _markLocalSyncItemResolved(String itemId) async {
+    final item = await _database.getSyncQueueItem(itemId);
+    if (item == null || item.eventType != SyncEventType.saleCreated.wireName) {
+      return;
+    }
+
+    final payload = Map<String, dynamic>.from(
+      jsonDecode(item.payload) as Map<String, dynamic>,
+    );
+    final offlineId = payload['offlineId']?.toString() ?? item.recordId;
+
+    if (offlineId.isNotEmpty) {
+      await _database.markSaleAsSynced(offlineId);
+    }
   }
   
   void dispose() {
@@ -336,13 +437,21 @@ enum SyncStatus {
 class SyncStats {
   final int pendingEvents;
   final int unsyncedSales;
+  final int failedEvents;
+  final int conflictEvents;
   final bool isOnline;
   
   SyncStats({
     required this.pendingEvents,
     required this.unsyncedSales,
+    this.failedEvents = 0,
+    this.conflictEvents = 0,
     required this.isOnline,
   });
   
-  bool get hasPendingSync => pendingEvents > 0 || unsyncedSales > 0;
+  bool get hasPendingSync =>
+      pendingEvents > 0 ||
+      unsyncedSales > 0 ||
+      failedEvents > 0 ||
+      conflictEvents > 0;
 }

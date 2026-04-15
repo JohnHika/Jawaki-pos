@@ -28,6 +28,11 @@ import {
   BranchResponseDto,
   DeviceResponseDto,
 } from './dto/branch.dto';
+import {
+  BulkCreateBranchesDto,
+  BulkUpdateBranchesDto,
+  BulkDeleteBranchesDto,
+} from './dto/bulk-branch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -113,6 +118,36 @@ export class BranchesController {
   @ApiResponse({ status: 204, description: 'Branch deleted' })
   async deleteBranch(@Param('id') id: string, @Request() req: any) {
     await this.branchesService.deleteBranch(id, req.user.tenantId);
+  }
+
+  // ==================== BULK BRANCH ENDPOINTS ====================
+
+  @Post('bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Bulk create branches' })
+  @ApiResponse({ status: 201, description: 'Branches created', type: [BranchResponseDto] })
+  async bulkCreateBranches(@Request() req: any, @Body() dto: BulkCreateBranchesDto) {
+    return this.branchesService.bulkCreateBranches(req.user.tenantId, dto.branches);
+  }
+
+  @Patch('bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Bulk update branches' })
+  @ApiResponse({ status: 200, description: 'Branches updated', type: [BranchResponseDto] })
+  async bulkUpdateBranches(@Request() req: any, @Body() dto: BulkUpdateBranchesDto) {
+    return this.branchesService.bulkUpdateBranches(req.user.tenantId, dto.branches);
+  }
+
+  @Delete('bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Bulk delete branches (if no sales)' })
+  @ApiResponse({ status: 204, description: 'Branches deleted' })
+  async bulkDeleteBranches(@Request() req: any, @Body() dto: BulkDeleteBranchesDto) {
+    await this.branchesService.bulkDeleteBranches(req.user.tenantId, dto.ids);
   }
 
   // ==================== DEVICE ENDPOINTS ====================

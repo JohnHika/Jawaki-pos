@@ -162,8 +162,10 @@ export class AuthService {
   }
 
   async refreshToken(refreshTokenDto: RefreshTokenDto): Promise<AuthResponseDto> {
-    const storedToken = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshTokenDto.refreshToken },
+    const tokenHash = require('crypto').createHash('sha256').update(refreshTokenDto.refreshToken).digest('hex');
+
+    const storedToken = await this.prisma.refreshToken.findFirst({
+      where: { tokenHash },
       include: {
         user: {
           include: {
@@ -196,8 +198,9 @@ export class AuthService {
 
   async logout(userId: string, refreshToken?: string): Promise<void> {
     if (refreshToken) {
+      const tokenHash = require('crypto').createHash('sha256').update(refreshToken).digest('hex');
       await this.prisma.refreshToken.deleteMany({
-        where: { userId, token: refreshToken },
+        where: { userId, tokenHash },
       });
     } else {
       // Logout from all devices
@@ -307,6 +310,7 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = uuidv4();
+    const tokenHash = require('crypto').createHash('sha256').update(refreshToken).digest('hex');
 
     // Parse JWT expiry
     const expiresIn = this.parseExpiry(this.configService.get<string>('JWT_EXPIRES_IN', '15m'));
@@ -314,11 +318,11 @@ export class AuthService {
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
     );
 
-    // Store refresh token
+    // Store hashed refresh token
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
-        token: refreshToken,
+        tokenHash,
         deviceId,
         expiresAt: new Date(Date.now() + refreshExpiresIn * 1000),
       },

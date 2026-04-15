@@ -325,6 +325,106 @@ export class CatalogService {
     await this.invalidateProductCache(tenantId);
   }
 
+  // ==================== BULK PRODUCT OPERATIONS ====================
+
+  async bulkCreateProducts(tenantId: string, products: any[]) {
+    const results = await this.prisma.$transaction(
+      products.map((dto) => {
+        const { categoryIds, ...productData } = dto;
+        return this.prisma.product.create({
+          data: {
+            tenantId,
+            ...productData,
+            categories: categoryIds
+              ? { create: categoryIds.map((categoryId: string) => ({ categoryId })) }
+              : undefined,
+          },
+          include: {
+            categories: {
+              include: {
+                category: { select: { id: true, name: true } },
+              },
+            },
+          },
+        });
+      }),
+    );
+
+    await this.invalidateProductCache(tenantId);
+    return results.map((p) => this.formatProduct(p));
+  }
+
+  async bulkUpdateProducts(tenantId: string, products: { id: string; [key: string]: any }[]) {
+    const results = await this.prisma.$transaction(async (tx) => {
+      const updated: any[] = [];
+      for (const item of products) {
+        const { id, categoryIds, ...updateData } = item;
+
+        const existing = await tx.product.findFirst({
+          where: { id, tenantId },
+        });
+        if (!existing) {
+          throw new NotFoundException(`Product ${id} not found`);
+        }
+
+        if (categoryIds !== undefined) {
+          await tx.productCategory.deleteMany({ where: { productId: id } });
+          if (categoryIds.length > 0) {
+            await tx.productCategory.createMany({
+              data: categoryIds.map((categoryId: string) => ({ productId: id, categoryId })),
+            });
+          }
+        }
+
+        const result = await tx.product.update({
+          where: { id },
+          data: updateData,
+          include: {
+            categories: {
+              include: {
+                category: { select: { id: true, name: true } },
+              },
+            },
+          },
+        });
+        updated.push(result);
+      }
+      return updated;
+    });
+
+    await this.invalidateProductCache(tenantId);
+    return results.map((p) => this.formatProduct(p));
+  }
+
+  async bulkDeleteProducts(tenantId: string, ids: string[]) {
+    // Verify all products belong to tenant and have no sales
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids }, tenantId },
+      include: { _count: { select: { saleItems: true } } },
+    });
+
+    if (products.length !== ids.length) {
+      const foundIds = products.map((p) => p.id);
+      const missing = ids.filter((id) => !foundIds.includes(id));
+      throw new NotFoundException(`Products not found: ${missing.join(', ')}`);
+    }
+
+    const withSales = products.filter((p) => p._count.saleItems > 0);
+    if (withSales.length > 0) {
+      throw new ConflictException(
+        `Cannot delete products with sales history: ${withSales.map((p) => p.sku).join(', ')}. Deactivate instead.`,
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.productCategory.deleteMany({ where: { productId: { in: ids } } }),
+      this.prisma.branchPriceOverride.deleteMany({ where: { productId: { in: ids } } }),
+      this.prisma.product.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+
+    await this.invalidateProductCache(tenantId);
+  }
+
   // ==================== PRICING OPERATIONS ====================
 
   async setBranchPrice(tenantId: string, dto: SetBranchPriceDto) {

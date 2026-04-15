@@ -6,6 +6,7 @@ import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
+import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
 
 void main() async {
@@ -22,6 +23,9 @@ void main() async {
   
   // Initialize connectivity monitoring
   getIt<ConnectivityService>().initialize();
+
+  // Initialize background sync worker
+  await BackgroundSyncService.initialize();
   
   runApp(
     const ProviderScope(

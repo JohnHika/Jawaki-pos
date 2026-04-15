@@ -205,28 +205,13 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(products, products.tertiaryUnit);
         await m.addColumn(products, products.tertiaryUnitQty);
       }
-      if (from >= 2 && from < 4) {
-        await m.addColumn(syncQueue, syncQueue.nextRetryAt);
+      if (from < 4) {
+        // Normalize status values
         await customStatement(
           "UPDATE sync_queue SET status = LOWER(status)",
         );
         await customStatement(
           "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
-        );
-        await customStatement(
-          "UPDATE sync_queue SET event_type = 'SALE_CREATED' WHERE event_type IN ('saleCreated', 'SALECREATED')",
-        );
-        await customStatement(
-          "UPDATE sync_queue SET event_type = 'SALE_VOIDED' WHERE event_type IN ('saleVoided', 'SALEVOIDED')",
-        );
-        await customStatement(
-          "UPDATE sync_queue SET event_type = 'REFUND_CREATED' WHERE event_type IN ('refundCreated', 'REFUNDCREATED')",
-        );
-        await customStatement(
-          "UPDATE sync_queue SET event_type = 'STOCK_ADJUSTED' WHERE event_type IN ('stockAdjusted', 'STOCKADJUSTED')",
-        );
-        await customStatement(
-          "UPDATE sync_queue SET next_retry_at = CURRENT_TIMESTAMP WHERE status = 'pending' AND next_retry_at IS NULL",
         );
       }
     },
@@ -399,7 +384,6 @@ class AppDatabase extends _$AppDatabase {
       SyncQueueCompanion(
         status: const Value('synced'),
         errorMessage: const Value(null),
-        nextRetryAt: const Value(null),
         lastAttemptAt: Value(DateTime.now()),
         serverId: Value(serverId),
         serverTimestamp: Value(serverTimestamp),
@@ -426,9 +410,6 @@ class AppDatabase extends _$AppDatabase {
         errorMessage: Value(errorMessage),
         retryCount: Value(newRetryCount),
         lastAttemptAt: Value(DateTime.now()),
-        nextRetryAt: Value(
-          hasRetriesRemaining ? DateTime.now().add(delay) : null,
-        ),
       ),
     );
   }
@@ -440,7 +421,6 @@ class AppDatabase extends _$AppDatabase {
         status: const Value('failed'),
         errorMessage: Value(errorMessage),
         lastAttemptAt: Value(DateTime.now()),
-        nextRetryAt: const Value(null),
       ),
     );
   }
@@ -452,7 +432,6 @@ class AppDatabase extends _$AppDatabase {
         status: const Value('conflict'),
         errorMessage: Value(errorMessage),
         lastAttemptAt: Value(DateTime.now()),
-        nextRetryAt: const Value(null),
       ),
     );
   }
@@ -464,7 +443,6 @@ class AppDatabase extends _$AppDatabase {
         status: const Value('resolved'),
         errorMessage: Value(resolution),
         lastAttemptAt: Value(DateTime.now()),
-        nextRetryAt: const Value(null),
         syncedAt: Value(DateTime.now()),
       ),
     );
@@ -477,7 +455,6 @@ class AppDatabase extends _$AppDatabase {
         status: Value('pending'),
         retryCount: Value(0),
         errorMessage: Value(null),
-        nextRetryAt: Value(null),
       ),
     );
   }
@@ -1041,12 +1018,3 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-/// Legacy unencrypted database connection - DO NOT USE
-/// @deprecated Use SecureDatabaseConnection.openSecureConnection() instead
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'pos_database.sqlite'));
-    return NativeDatabase.createInBackground(file);
-  });
-}
