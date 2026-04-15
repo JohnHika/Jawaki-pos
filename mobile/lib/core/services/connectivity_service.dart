@@ -26,19 +26,43 @@ class ConnectivityService {
   }
   
   Future<void> _checkConnectivity() async {
+    await checkCurrentStatus();
+  }
+
+  Future<ConnectionStatus> checkCurrentStatus() async {
     final result = await _connectivity.checkConnectivity();
-    _onConnectivityChanged(result is List ? (result as List<ConnectivityResult>).first : result as ConnectivityResult);
+    final connectivityResult = _normalizeConnectivityResult(result);
+    _setStatus(_mapStatus(connectivityResult));
+    return _currentStatus;
   }
   
   void _onConnectivityChanged(ConnectivityResult result) {
+    _setStatus(_mapStatus(result));
+  }
+
+  ConnectivityResult _normalizeConnectivityResult(Object? result) {
+    if (result is List<ConnectivityResult> && result.isNotEmpty) {
+      return result.first;
+    }
+
+    if (result is ConnectivityResult) {
+      return result;
+    }
+
+    return ConnectivityResult.none;
+  }
+
+  ConnectionStatus _mapStatus(ConnectivityResult result) {
     final hasConnection = 
       result == ConnectivityResult.mobile || 
       result == ConnectivityResult.wifi ||
       result == ConnectivityResult.ethernet
     ;
-    
-    final newStatus = hasConnection ? ConnectionStatus.online : ConnectionStatus.offline;
-    
+
+    return hasConnection ? ConnectionStatus.online : ConnectionStatus.offline;
+  }
+
+  void _setStatus(ConnectionStatus newStatus) {
     if (newStatus != _currentStatus) {
       _currentStatus = newStatus;
       _statusController.add(_currentStatus);

@@ -7,7 +7,11 @@ import {
   IsOptional,
   IsString,
   Min,
+  Max,
   ValidateNested,
+  IsUUID,
+  MaxLength,
+  MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -18,88 +22,103 @@ import { StockMovementType } from '@prisma/client';
 export class BatchDto {
   @ApiProperty({ description: 'Unique batch number/code' })
   @IsString()
+  @MinLength(1, { message: 'Batch number is required' })
+  @MaxLength(100, { message: 'Batch number must not exceed 100 characters' })
   batchNumber: string;
 
   @ApiProperty({ description: 'Quantity in this batch' })
-  @IsNumber()
-  @Min(0.001)
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must have up to 3 decimal places' })
+  @Min(0.001, { message: 'Quantity must be at least 0.001' })
+  @Max(10000000, { message: 'Quantity cannot exceed 10,000,000' })
   @Type(() => Number)
   quantity: number;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Unit of measurement for the quantity (piece, box, carton, etc.)',
     default: 'piece'
   })
   @IsOptional()
   @IsString()
+  @MaxLength(20, { message: 'Unit must not exceed 20 characters' })
   unit?: string;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Conversion factor: how many base units per this unit (e.g., 12 pieces per box)',
   })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Conversion factor must have up to 3 decimal places' })
+  @Min(0.001, { message: 'Conversion factor must be at least 0.001' })
+  @Max(10000, { message: 'Conversion factor cannot exceed 10,000' })
   @Type(() => Number)
   unitsPerQuantity?: number;
 
   @ApiPropertyOptional({ description: 'Batch expiry date (ISO format)' })
   @IsOptional()
-  @IsDateString()
+  @IsDateString({}, { message: 'Expiry date must be a valid ISO 8601 date' })
   expiryDate?: string;
 
   @ApiPropertyOptional({ description: 'Manufacture date (ISO format)' })
   @IsOptional()
-  @IsDateString()
+  @IsDateString({}, { message: 'Manufacture date must be a valid ISO 8601 date' })
   manufactureDate?: string;
 
   @ApiPropertyOptional({ description: 'Cost price for this batch' })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Cost price must have up to 2 decimal places' })
+  @Min(0, { message: 'Cost price cannot be negative' })
+  @Max(10000000, { message: 'Cost price cannot exceed 10,000,000' })
   @Type(() => Number)
   costPrice?: number;
 
   @ApiPropertyOptional({ description: 'Supplier reference or invoice number' })
   @IsOptional()
   @IsString()
+  @MaxLength(100, { message: 'Supplier reference must not exceed 100 characters' })
   supplierRef?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(500, { message: 'Notes must not exceed 500 characters' })
   notes?: string;
 }
 
 export class ReceiveBatchDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
   branchId: string;
 
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
   productId: string;
 
   @ApiProperty({ type: [BatchDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BatchDto)
+  @MinLength(1, { message: 'At least one batch is required' })
+  @MaxLength(100, { message: 'Cannot receive more than 100 batches at once' })
   batches: BatchDto[];
 
   @ApiPropertyOptional({ description: 'Reference (e.g., PO number, invoice)' })
   @IsOptional()
   @IsString()
+  @MaxLength(100, { message: 'Reference must not exceed 100 characters' })
   reference?: string;
 }
 
 export class UpdateBatchDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(10000000)
   @Type(() => Number)
   quantity?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsDateString()
+  @IsDateString({}, { message: 'Expiry date must be a valid ISO 8601 date' })
   expiryDate?: string;
 
   @ApiPropertyOptional()
@@ -110,33 +129,40 @@ export class UpdateBatchDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(500, { message: 'Notes must not exceed 500 characters' })
   notes?: string;
 }
 
 export class ExpiryDashboardQueryDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
   branchId: string;
 
   @ApiPropertyOptional({ description: 'Filter by zone: expired, 30days, 60days, 90days' })
   @IsOptional()
   @IsString()
+  @MaxLength(20)
   zone?: 'expired' | '30days' | '60days' | '90days';
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(200, { message: 'Search query must not exceed 200 characters' })
   search?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'Page must be a number' })
+  @Min(1, { message: 'Page must be at least 1' })
+  @Max(10000, { message: 'Page cannot exceed 10000' })
   @Type(() => Number)
   page?: number;
 
   @ApiPropertyOptional({ default: 50 })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'Limit must be a number' })
+  @Min(1, { message: 'Limit must be at least 1' })
+  @Max(500, { message: 'Limit cannot exceed 500' })
   @Type(() => Number)
   limit?: number;
 }
@@ -144,78 +170,88 @@ export class ExpiryDashboardQueryDto {
 // Stock Adjustment DTOs
 export class StockAdjustmentItemDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
   productId: string;
 
   @ApiProperty({ description: 'New stock quantity (absolute value)' })
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must have up to 3 decimal places' })
+  @Min(0, { message: 'Quantity cannot be negative' })
+  @Max(10000000, { message: 'Quantity cannot exceed 10,000,000' })
   @Type(() => Number)
   quantity: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(500, { message: 'Notes must not exceed 500 characters' })
   notes?: string;
 }
 
 export class StockAdjustmentDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
   branchId: string;
 
   @ApiProperty({ enum: StockMovementType })
-  @IsEnum(StockMovementType)
+  @IsEnum(StockMovementType, { message: 'Invalid stock movement type' })
   type: StockMovementType;
 
   @ApiProperty({ type: [StockAdjustmentItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StockAdjustmentItemDto)
+  @MinLength(1, { message: 'At least one item is required' })
+  @MaxLength(500, { message: 'Cannot adjust more than 500 items at once' })
   items: StockAdjustmentItemDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(100, { message: 'Reference must not exceed 100 characters' })
   reference?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000, { message: 'Notes must not exceed 1000 characters' })
   notes?: string;
 }
 
 // Stock Transfer DTOs
 export class TransferItemDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
   productId: string;
 
   @ApiProperty()
-  @IsNumber()
-  @Min(0.001)
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must have up to 3 decimal places' })
+  @Min(0.001, { message: 'Quantity must be at least 0.001' })
+  @Max(10000000, { message: 'Quantity cannot exceed 10,000,000' })
   @Type(() => Number)
   quantity: number;
 }
 
 export class CreateTransferDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'From branch ID must be a valid UUID' })
   fromBranchId: string;
 
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'To branch ID must be a valid UUID' })
   toBranchId: string;
 
   @ApiProperty({ type: [TransferItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TransferItemDto)
+  @MinLength(1, { message: 'At least one item is required' })
+  @MaxLength(500, { message: 'Cannot transfer more than 500 items at once' })
   items: TransferItemDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000, { message: 'Notes must not exceed 1000 characters' })
   notes?: string;
 }
 
@@ -224,11 +260,13 @@ export class ReceiveTransferDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TransferItemDto)
+  @MinLength(1, { message: 'At least one item is required' })
   receivedItems: TransferItemDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000, { message: 'Notes must not exceed 1000 characters' })
   notes?: string;
 }
 
@@ -237,31 +275,186 @@ export class StockQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(200, { message: 'Search query must not exceed 200 characters' })
   search?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
+  @IsUUID('4', { message: 'Category ID must be a valid UUID' })
   categoryId?: string;
 
   @ApiPropertyOptional({ description: 'Only show low stock items' })
   @IsOptional()
+  @IsBoolean()
   lowStock?: boolean;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'Page must be a number' })
+  @Min(1, { message: 'Page must be at least 1' })
+  @Max(10000, { message: 'Page cannot exceed 10000' })
   @Type(() => Number)
   page?: number;
 
   @ApiPropertyOptional({ default: 50 })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'Limit must be a number' })
+  @Min(1, { message: 'Limit must be at least 1' })
+  @Max(500, { message: 'Limit cannot exceed 500' })
   @Type(() => Number)
   limit?: number;
 }
 
-// Response DTOs
+// Stock Request DTOs
+export class CreateStockRequestDto {
+  @ApiProperty({ description: 'Branch ID where stock is needed' })
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
+  branchId: string;
+
+  @ApiProperty({ description: 'Product ID being requested' })
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
+  productId: string;
+
+  @ApiProperty({ description: 'Quantity requested' })
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must have up to 3 decimal places' })
+  @Min(0.001, { message: 'Quantity must be at least 0.001' })
+  @Max(10000000, { message: 'Quantity cannot exceed 10,000,000' })
+  @Type(() => Number)
+  quantity: number;
+
+  @ApiPropertyOptional({ description: 'Unit of measurement', default: 'piece' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: 'Unit must not exceed 20 characters' })
+  unit?: string;
+
+  @ApiPropertyOptional({ description: 'Reason for the request' })
+  @IsOptional()
+  @IsString()
+  @MinLength(10, { message: 'Reason must be at least 10 characters' })
+  @MaxLength(500, { message: 'Reason must not exceed 500 characters' })
+  reason?: string;
+
+  @ApiPropertyOptional({
+    description: 'Request priority',
+    enum: ['low', 'normal', 'high', 'urgent'],
+    default: 'normal'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  priority?: string;
+
+  @ApiPropertyOptional({ description: 'Image URLs (e.g., empty shelf photos)', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(500, { each: true, message: 'Each image URL must not exceed 500 characters' })
+  images?: string[];
+}
+
+export class UpdateStockRequestDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(10000000)
+  @Type(() => Number)
+  quantity?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  unit?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  priority?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  images?: string[];
+}
+
+export class ResolveStockRequestDto {
+  @ApiProperty({
+    description: 'Resolution action',
+    enum: ['APPROVED', 'REJECTED', 'FULFILLED']
+  })
+  @IsString()
+  @IsEnum(['APPROVED', 'REJECTED', 'FULFILLED'], { message: 'Status must be APPROVED, REJECTED, or FULFILLED' })
+  status: 'APPROVED' | 'REJECTED' | 'FULFILLED';
+
+  @ApiPropertyOptional({ description: 'Resolution notes or reason' })
+  @IsOptional()
+  @IsString()
+  @MinLength(10, { message: 'Resolution notes must be at least 10 characters' })
+  @MaxLength(1000, { message: 'Resolution notes must not exceed 1000 characters' })
+  resolution?: string;
+}
+
+export class StockRequestQueryDto {
+  @ApiPropertyOptional({ description: 'Filter by branch ID' })
+  @IsOptional()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
+  branchId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by status',
+    enum: ['PENDING', 'APPROVED', 'REJECTED', 'FULFILLED', 'CANCELLED']
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  status?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by priority' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  priority?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by product ID' })
+  @IsOptional()
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
+  productId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by requester user ID' })
+  @IsOptional()
+  @IsUUID('4', { message: 'User ID must be a valid UUID' })
+  requestedById?: string;
+
+  @ApiPropertyOptional({ description: 'Page number', default: 1 })
+  @IsOptional()
+  @IsNumber({}, { message: 'Page must be a number' })
+  @Min(1, { message: 'Page must be at least 1' })
+  @Max(10000, { message: 'Page cannot exceed 10000' })
+  @Type(() => Number)
+  page?: number;
+
+  @ApiPropertyOptional({ description: 'Items per page', default: 20 })
+  @IsOptional()
+  @IsNumber({}, { message: 'Limit must be a number' })
+  @Min(1, { message: 'Limit must be at least 1' })
+  @Max(500, { message: 'Limit cannot exceed 500' })
+  @Type(() => Number)
+  limit?: number;
+}
+
+// Response DTOs (no validation needed)
 export class StockItemResponseDto {
   @ApiProperty()
   productId: string;
@@ -507,134 +700,6 @@ export class ExpiryDashboardResponseDto {
     expiring90Days: number;
     expiring90DaysValue: number;
   };
-}
-
-// ==================== STOCK REQUEST DTOs ====================
-
-export class CreateStockRequestDto {
-  @ApiProperty({ description: 'Branch ID where stock is needed' })
-  @IsString()
-  branchId: string;
-
-  @ApiProperty({ description: 'Product ID being requested' })
-  @IsString()
-  productId: string;
-
-  @ApiProperty({ description: 'Quantity requested' })
-  @IsNumber()
-  @Min(0.001)
-  @Type(() => Number)
-  quantity: number;
-
-  @ApiPropertyOptional({ description: 'Unit of measurement', default: 'piece' })
-  @IsOptional()
-  @IsString()
-  unit?: string;
-
-  @ApiPropertyOptional({ description: 'Reason for the request' })
-  @IsOptional()
-  @IsString()
-  reason?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Request priority', 
-    enum: ['low', 'normal', 'high', 'urgent'],
-    default: 'normal'
-  })
-  @IsOptional()
-  @IsString()
-  priority?: string;
-
-  @ApiPropertyOptional({ description: 'Image URLs (e.g., empty shelf photos)', type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
-}
-
-export class UpdateStockRequestDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  quantity?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  unit?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  reason?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  priority?: string;
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
-}
-
-export class ResolveStockRequestDto {
-  @ApiProperty({ 
-    description: 'Resolution action',
-    enum: ['APPROVED', 'REJECTED', 'FULFILLED']
-  })
-  @IsString()
-  status: 'APPROVED' | 'REJECTED' | 'FULFILLED';
-
-  @ApiPropertyOptional({ description: 'Resolution notes or reason' })
-  @IsOptional()
-  @IsString()
-  resolution?: string;
-}
-
-export class StockRequestQueryDto {
-  @ApiPropertyOptional({ description: 'Filter by branch ID' })
-  @IsOptional()
-  @IsString()
-  branchId?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Filter by status',
-    enum: ['PENDING', 'APPROVED', 'REJECTED', 'FULFILLED', 'CANCELLED']
-  })
-  @IsOptional()
-  @IsString()
-  status?: string;
-
-  @ApiPropertyOptional({ description: 'Filter by priority' })
-  @IsOptional()
-  @IsString()
-  priority?: string;
-
-  @ApiPropertyOptional({ description: 'Filter by product ID' })
-  @IsOptional()
-  @IsString()
-  productId?: string;
-
-  @ApiPropertyOptional({ description: 'Filter by requester user ID' })
-  @IsOptional()
-  @IsString()
-  requestedById?: string;
-
-  @ApiPropertyOptional({ description: 'Page number', default: 1 })
-  @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  page?: number;
-
-  @ApiPropertyOptional({ description: 'Items per page', default: 20 })
-  @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  limit?: number;
 }
 
 export class StockRequestResponseDto {

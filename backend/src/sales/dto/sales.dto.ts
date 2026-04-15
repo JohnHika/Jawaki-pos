@@ -5,8 +5,13 @@ import {
   IsOptional,
   IsString,
   Min,
+  Max,
   ValidateNested,
   IsDateString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -15,26 +20,29 @@ import { PaymentMethod, SaleStatus } from '@prisma/client';
 // Sale Item DTO
 export class CreateSaleItemDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
   productId: string;
 
   @ApiProperty({ example: 2 })
-  @IsNumber()
-  @Min(0.001)
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must be a number with up to 3 decimal places' })
+  @Min(0.001, { message: 'Quantity must be at least 0.001' })
+  @Max(1000000, { message: 'Quantity cannot exceed 1,000,000' })
   @Type(() => Number)
   quantity: number;
 
   @ApiPropertyOptional({ description: 'Override unit price' })
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Price must have up to 2 decimal places' })
+  @Min(0, { message: 'Price cannot be negative' })
+  @Max(10000000, { message: 'Price cannot exceed 10,000,000' })
   @Type(() => Number)
   unitPrice?: number;
 
   @ApiPropertyOptional({ description: 'Line item discount' })
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Discount must have up to 2 decimal places' })
+  @Min(0, { message: 'Discount cannot be negative' })
+  @Max(1000000, { message: 'Discount cannot exceed 1,000,000' })
   @Type(() => Number)
   discount?: number;
 }
@@ -42,88 +50,99 @@ export class CreateSaleItemDto {
 // Create Sale DTO
 export class CreateSaleDto {
   @ApiProperty({ description: 'Branch ID' })
-  @IsString()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
   branchId: string;
 
   @ApiPropertyOptional({ description: 'Device ID (for mobile POS)' })
   @IsOptional()
-  @IsString()
+  @IsUUID('4', { message: 'Device ID must be a valid UUID' })
   deviceId?: string;
 
   @ApiPropertyOptional({ description: 'Customer ID' })
   @IsOptional()
-  @IsString()
+  @IsUUID('4', { message: 'Customer ID must be a valid UUID' })
   customerId?: string;
 
   @ApiProperty({ type: [CreateSaleItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateSaleItemDto)
+  @MinLength(1, { message: 'Sale must have at least one item' })
+  @MaxLength(500, { message: 'Sale cannot exceed 500 items' })
   items: CreateSaleItemDto[];
 
   @ApiPropertyOptional({ description: 'Overall discount amount' })
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Discount must have up to 2 decimal places' })
+  @Min(0, { message: 'Discount cannot be negative' })
+  @Max(10000000, { message: 'Discount cannot exceed 10,000,000' })
   @Type(() => Number)
   discountAmount?: number;
 
   @ApiProperty({ enum: PaymentMethod })
-  @IsEnum(PaymentMethod)
+  @IsEnum(PaymentMethod, { message: 'Invalid payment method' })
   paymentMethod: PaymentMethod;
 
   @ApiProperty({ description: 'Amount paid by customer' })
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Amount must have up to 2 decimal places' })
+  @Min(0, { message: 'Paid amount cannot be negative' })
+  @Max(10000000, { message: 'Paid amount cannot exceed 10,000,000' })
   @Type(() => Number)
   paidAmount: number;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000, { message: 'Notes must not exceed 1000 characters' })
   notes?: string;
 
   @ApiPropertyOptional({ description: 'Offline ID from device (for sync)' })
   @IsOptional()
   @IsString()
+  @MaxLength(100, { message: 'Offline ID must not exceed 100 characters' })
   offlineId?: string;
 
   @ApiPropertyOptional({ description: 'Original timestamp from device' })
   @IsOptional()
-  @IsDateString()
+  @IsDateString({}, { message: 'Device timestamp must be a valid ISO 8601 date' })
   deviceTimestamp?: string;
 }
 
 // Refund DTOs
 export class RefundItemDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Sale Item ID must be a valid UUID' })
   saleItemId: string;
 
   @ApiProperty()
-  @IsNumber()
-  @Min(0.001)
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must be a number with up to 3 decimal places' })
+  @Min(0.001, { message: 'Quantity must be at least 0.001' })
+  @Max(1000000, { message: 'Quantity cannot exceed 1,000,000' })
   @Type(() => Number)
   quantity: number;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()
+  @IsBoolean()
   restockItem?: boolean;
 }
 
 export class CreateRefundDto {
   @ApiProperty()
-  @IsString()
+  @IsUUID('4', { message: 'Sale ID must be a valid UUID' })
   saleId: string;
 
   @ApiProperty()
   @IsString()
+  @MinLength(10, { message: 'Reason must be at least 10 characters' })
+  @MaxLength(500, { message: 'Reason must not exceed 500 characters' })
   reason: string;
 
   @ApiProperty({ type: [RefundItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => RefundItemDto)
+  @MinLength(1, { message: 'Refund must have at least one item' })
   items: RefundItemDto[];
 }
 
@@ -131,48 +150,52 @@ export class CreateRefundDto {
 export class SalesQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
   branchId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
+  @IsUUID('4', { message: 'User ID must be a valid UUID' })
   userId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsEnum(SaleStatus)
+  @IsEnum(SaleStatus, { message: 'Invalid sale status' })
   status?: SaleStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsEnum(PaymentMethod)
+  @IsEnum(PaymentMethod, { message: 'Invalid payment method' })
   paymentMethod?: PaymentMethod;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsDateString()
+  @IsDateString({}, { message: 'Start date must be a valid ISO 8601 date' })
   startDate?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsDateString()
+  @IsDateString({}, { message: 'End date must be a valid ISO 8601 date' })
   endDate?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'Page must be a number' })
+  @Min(1, { message: 'Page must be at least 1' })
+  @Max(10000, { message: 'Page cannot exceed 10000' })
   @Type(() => Number)
   page?: number;
 
   @ApiPropertyOptional({ default: 50 })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'Limit must be a number' })
+  @Min(1, { message: 'Limit must be at least 1' })
+  @Max(500, { message: 'Limit cannot exceed 500' })
   @Type(() => Number)
   limit?: number;
 }
 
-// Response DTOs
+// Response DTOs (no validation needed for responses, keeping as-is)
 export class SaleItemResponseDto {
   @ApiProperty()
   id: string;

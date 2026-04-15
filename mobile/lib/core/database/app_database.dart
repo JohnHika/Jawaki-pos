@@ -4,6 +4,8 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import 'secure_database.dart';
+
 part 'app_database.g.dart';
 
 // Categories table
@@ -134,12 +136,13 @@ class SyncQueue extends Table {
   TextColumn get deviceId => text()();
   TextColumn get userId => text().withDefault(const Constant(''))();
   IntColumn get sequenceNumber => integer()();
-  TextColumn get status => text().withDefault(const Constant('pending'))(); // pending, synced, failed
+  TextColumn get status => text().withDefault(const Constant('pending'))(); // pending, synced, failed, conflict, resolved
   TextColumn get errorMessage => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   IntColumn get maxRetries => integer().withDefault(const Constant(3))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
   DateTimeColumn get syncedAt => dateTime().nullable()();
   TextColumn get serverId => text().nullable()(); // Server-side ID after sync
   DateTimeColumn get serverTimestamp => dateTime().nullable()();
@@ -177,10 +180,11 @@ class RecentSearches extends Table {
   RecentSearches,
 ])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  // Use encrypted database connection
+  AppDatabase() : super(SecureDatabaseConnection.openSecureConnection());
   
   @override
-  int get schemaVersion => 3; // Increment version for multi-unit inventory
+  int get schemaVersion => 4; // Increment version for sync retry scheduling
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -200,6 +204,15 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(products, products.secondaryUnitQty);
         await m.addColumn(products, products.tertiaryUnit);
         await m.addColumn(products, products.tertiaryUnitQty);
+      }
+      if (from < 4) {
+        // Normalize status values
+        await customStatement(
+          "UPDATE sync_queue SET status = LOWER(status)",
+        );
+        await customStatement(
+          "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
+        );
       }
     },
   );
@@ -296,7 +309,7 @@ class AppDatabase extends _$AppDatabase {
   
   Future<List<SyncQueueData>> getPendingSyncEvents() {
     return (select(syncQueue)
-      ..where((e) => e.status.equals('PENDING'))
+      ..where((e) => e.status.equals('pending'))
       ..orderBy([(e) => OrderingTerm.asc(e.sequenceNumber)]))
       .get();
   }
@@ -304,7 +317,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markSyncEventProcessed(String id) {
     return (update(syncQueue)..where((e) => e.id.equals(id))).write(
       SyncQueueCompanion(
-        status: const Value('PROCESSED'),
+        status: const Value('synced'),
         syncedAt: Value(DateTime.now()),
       ),
     );
@@ -313,7 +326,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markSyncEventFailed(String id, String error) {
     return (update(syncQueue)..where((e) => e.id.equals(id))).write(
       SyncQueueCompanion(
-        status: const Value('FAILED'),
+        status: const Value('failed'),
         errorMessage: Value(error),
         retryCount: const Value(0),
       ),
@@ -334,10 +347,20 @@ class AppDatabase extends _$AppDatabase {
     return into(syncQueue).insert(item, mode: InsertMode.insertOrIgnore);
   }
 
+  Future<SyncQueueData?> getSyncQueueItem(String id) {
+    return (select(syncQueue)..where((q) => q.id.equals(id))).getSingleOrNull();
+  }
+
   /// Get all pending sync items (not synced, not exceeding max retries)
   Future<List<SyncQueueData>> getPendingSyncQueue() {
+    final now = DateTime.now();
     return (select(syncQueue)
-      ..where((q) => q.status.equals('pending') & q.retryCount.isSmallerOrEqual(q.maxRetries))
+      ..where(
+        (q) =>
+            q.status.equals('pending') &
+            q.retryCount.isSmallerThan(q.maxRetries) &
+            (q.nextRetryAt.isNull() | q.nextRetryAt.isSmallerOrEqualValue(now)),
+      )
       ..orderBy([(q) => OrderingTerm.asc(q.sequenceNumber)]))
       .get();
   }
@@ -349,11 +372,19 @@ class AppDatabase extends _$AppDatabase {
       .get();
   }
 
+  Future<List<SyncQueueData>> getConflictSyncQueue() {
+    return (select(syncQueue)
+      ..where((q) => q.status.equals('conflict')))
+      .get();
+  }
+
   /// Mark sync item as synced
   Future<void> markSyncQueueSynced(String id, String serverId, DateTime serverTimestamp) {
     return (update(syncQueue)..where((q) => q.id.equals(id))).write(
       SyncQueueCompanion(
         status: const Value('synced'),
+        errorMessage: const Value(null),
+        lastAttemptAt: Value(DateTime.now()),
         serverId: Value(serverId),
         serverTimestamp: Value(serverTimestamp),
         syncedAt: Value(DateTime.now()),
@@ -361,20 +392,58 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  /// Mark sync item as failed and increment retry count
-  Future<void> markSyncQueueFailed(String id, String errorMessage) async {
+  /// Schedule a retry for a sync item with exponential backoff.
+  Future<void> scheduleSyncQueueRetry(
+    String id,
+    String errorMessage,
+    Duration delay,
+  ) async {
     final item = await (select(syncQueue)..where((q) => q.id.equals(id))).getSingleOrNull();
     if (item == null) return;
 
     final newRetryCount = item.retryCount + 1;
-    final newStatus = newRetryCount >= item.maxRetries ? 'failed' : 'pending';
+    final hasRetriesRemaining = newRetryCount < item.maxRetries;
 
     await (update(syncQueue)..where((q) => q.id.equals(id))).write(
       SyncQueueCompanion(
-        status: Value(newStatus),
+        status: Value(hasRetriesRemaining ? 'pending' : 'failed'),
         errorMessage: Value(errorMessage),
         retryCount: Value(newRetryCount),
         lastAttemptAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Mark sync item as terminally failed.
+  Future<void> markSyncQueueFailed(String id, String errorMessage) {
+    return (update(syncQueue)..where((q) => q.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: const Value('failed'),
+        errorMessage: Value(errorMessage),
+        lastAttemptAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Mark sync item as blocked by a data conflict.
+  Future<void> markSyncQueueConflict(String id, String errorMessage) {
+    return (update(syncQueue)..where((q) => q.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: const Value('conflict'),
+        errorMessage: Value(errorMessage),
+        lastAttemptAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Mark sync item as conflict-resolved.
+  Future<void> markSyncQueueResolved(String id, {String? resolution}) {
+    return (update(syncQueue)..where((q) => q.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: const Value('resolved'),
+        errorMessage: Value(resolution),
+        lastAttemptAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
       ),
     );
   }
@@ -395,7 +464,7 @@ class AppDatabase extends _$AppDatabase {
     final cutoffDate = DateTime.now().subtract(Duration(days: olderThanDays));
     return (delete(syncQueue)
       ..where((q) => 
-        q.status.equals('synced') & 
+        (q.status.equals('synced') | q.status.equals('resolved')) & 
         q.syncedAt.isSmallerThanValue(cutoffDate)))
       .go();
   }
@@ -414,11 +483,21 @@ class AppDatabase extends _$AppDatabase {
       ..where((q) => q.status.equals('failed')))
       .get();
 
+    final conflicts = await (select(syncQueue)
+      ..where((q) => q.status.equals('conflict')))
+      .get();
+
+    final resolved = await (select(syncQueue)
+      ..where((q) => q.status.equals('resolved')))
+      .get();
+
     return {
       'pending': pending.length,
       'synced': synced.length,
       'failed': failed.length,
-      'total': pending.length + synced.length + failed.length,
+      'conflict': conflicts.length,
+      'resolved': resolved.length,
+      'total': pending.length + synced.length + failed.length + conflicts.length + resolved.length,
     };
   }
 
@@ -939,10 +1018,3 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'pos_database.sqlite'));
-    return NativeDatabase.createInBackground(file);
-  });
-}

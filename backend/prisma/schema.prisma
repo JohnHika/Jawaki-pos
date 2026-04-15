@@ -130,15 +130,17 @@ model UserBranch {
 }
 
 model RefreshToken {
-  id          String   @id @default(uuid())
-  userId      String
-  token       String   @unique
-  deviceId    String?
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
+  id                String   @id @default(uuid())
+  userId            String
+  tokenHash         String   @unique // Hashed token for security
+  deviceId          String?
+  deviceFingerprint String?  // Device binding for theft detection
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("refresh_tokens")
 }
 

@@ -31,6 +31,11 @@ import {
   ProductResponseDto,
   PaginatedProductsDto,
 } from './dto/catalog.dto';
+import {
+  BulkCreateProductsDto,
+  BulkUpdateProductsDto,
+  BulkDeleteProductsDto,
+} from './dto/bulk-product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -178,6 +183,36 @@ export class CatalogController {
   @ApiResponse({ status: 200, description: 'Favorite toggled' })
   async toggleFavorite(@Param('id') id: string, @Request() req: any) {
     return this.catalogService.toggleFavorite(id, req.user.tenantId);
+  }
+
+  // ==================== BULK PRODUCT ENDPOINTS ====================
+
+  @Post('products/bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Bulk create products' })
+  @ApiResponse({ status: 201, description: 'Products created', type: [ProductResponseDto] })
+  async bulkCreateProducts(@Request() req: any, @Body() dto: BulkCreateProductsDto) {
+    return this.catalogService.bulkCreateProducts(req.user.tenantId, dto.products);
+  }
+
+  @Patch('products/bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Bulk update products' })
+  @ApiResponse({ status: 200, description: 'Products updated', type: [ProductResponseDto] })
+  async bulkUpdateProducts(@Request() req: any, @Body() dto: BulkUpdateProductsDto) {
+    return this.catalogService.bulkUpdateProducts(req.user.tenantId, dto.products);
+  }
+
+  @Delete('products/bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Bulk delete products (if no sales)' })
+  @ApiResponse({ status: 204, description: 'Products deleted' })
+  async bulkDeleteProducts(@Request() req: any, @Body() dto: BulkDeleteProductsDto) {
+    await this.catalogService.bulkDeleteProducts(req.user.tenantId, dto.ids);
   }
 
   // ==================== PRICING ENDPOINTS ====================

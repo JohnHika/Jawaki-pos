@@ -656,6 +656,26 @@ export class SalesService {
     };
   }
 
+  // ==================== BULK SALES OPERATIONS ====================
+
+  async bulkCreateSales(userId: string, tenantId: string, sales: any[]) {
+    const results: any[] = [];
+    for (const dto of sales) {
+      const sale = await this.createSale(userId, tenantId, dto);
+      results.push(sale);
+    }
+    return results;
+  }
+
+  async bulkVoidSales(userId: string, tenantId: string, ids: string[], reason: string) {
+    const results: any[] = [];
+    for (const saleId of ids) {
+      const result = await this.voidSale(saleId, userId, tenantId, reason);
+      results.push(result);
+    }
+    return results;
+  }
+
   // ==================== HELPERS ====================
 
   private async generateReceiptNumber(branchId: string): Promise<string> {
