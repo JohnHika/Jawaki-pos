@@ -21,7 +21,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "test:mpesa": "node scripts/test-mpesa.js",
+    "test:pesapal": "node scripts/test-pesapal.js",
+    "test:touristtap": "node scripts/test-touristtap.js",
+    "test:webhook": "node scripts/test-webhook-server.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
