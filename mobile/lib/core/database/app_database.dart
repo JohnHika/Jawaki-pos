@@ -867,7 +867,17 @@ class AppDatabase extends _$AppDatabase {
       'SELECT id FROM customers WHERE LOWER(name) = LOWER(?)',
       variables: [Variable.withString(name)],
     ).get();
-    if (existing.isNotEmpty) return existing.first.read<String>('id');
+    if (existing.isNotEmpty) {
+      final existingId = existing.first.read<String>('id');
+      // Update phone if provided
+      if (phone != null && phone.isNotEmpty) {
+        await customStatement(
+          'UPDATE customers SET phone = ? WHERE id = ?',
+          [Variable.withString(phone), Variable.withString(existingId)],
+        );
+      }
+      return existingId;
+    }
     // Insert new
     await customInsert(
       'INSERT INTO customers (id, name, phone, total_purchases, total_spent, created_at) VALUES (?, ?, ?, 0, 0, ?)',

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
-import { StockMovementType } from '@prisma/client';
+import { StockMovementType, ExpenseStatus } from '@prisma/client';
 import {
   ReportFilterDto,
   ReportPeriod,
@@ -16,6 +16,7 @@ import {
   InventoryReportDto,
   StockMovementSummaryDto,
   DashboardSummaryDto,
+  DailyProfitAndLossDto,
 } from './dto/reporting.dto';
 
 @Injectable()
@@ -621,5 +622,175 @@ export class ReportingService {
       paymentMethods,
       inventory,
     };
+  }
+
+  /**
+   * Get daily profit and loss report with expense integration
+   */
+  async getDailyProfitAndLoss(
+    branchId: string,
+    date: string,
+    tenantId: string,
+  ): Promise<DailyProfitAndLossDto> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get branch info
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+      select: { name: true },
+    });
+
+    if (!branch) {
+      throw new Error('Branch not found');
+    }
+
+    // Get all completed sales for the day
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        branchId,
+        createdAt: { gte: startOfDay, lte: endOfDay },
+        status: 'COMPLETED',
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                costPrice: true,
+                basePrice: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Get refunds for the day
+    const refunds = await this.prisma.refund.findMany({
+      where: {
+        sale: {
+          branchId,
+          createdAt: { gte: startOfDay, lte: endOfDay },
+        },
+      },
+    });
+
+    // Get all expenses for the day (approved and paid only for accurate P&L)
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        branchId,
+        date: { gte: startOfDay, lte: endOfDay },
+        status: { in: [ExpenseStatus.APPROVED, ExpenseStatus.PAID] },
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    // Calculate sales metrics
+    const grossSales = sales.reduce((sum, s) => sum + Number(s.totalAmount), 0);
+    const totalDiscounts = sales.reduce((sum, s) => sum + Number(s.discountAmount), 0);
+    const totalTax = sales.reduce((sum, s) => sum + Number(s.taxAmount), 0);
+    const netSales = grossSales - totalDiscounts;
+    const refundedAmount = refunds.reduce((sum, r) => sum + Number(r.amount), 0);
+    const netRevenue = netSales - refundedAmount;
+
+    // Calculate Cost of Goods Sold (COGS)
+    let costOfGoodsSold = 0;
+    for (const sale of sales) {
+      for (const item of sale.items) {
+        const productCost = item.product.costPrice
+          ? Number(item.product.costPrice)
+          : Number(item.product.basePrice) * 0.7; // Fallback: estimate 70% of base price
+        costOfGoodsSold += productCost * Number(item.quantity);
+      }
+    }
+
+    const grossProfit = netRevenue - costOfGoodsSold;
+    const grossProfitMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
+
+    // Calculate expenses by category
+    const expensesByCategory: Record<string, number> = {};
+    let totalExpenses = 0;
+
+    for (const expense of expenses) {
+      totalExpenses += Number(expense.amount);
+      const category = expense.category;
+      expensesByCategory[category] = (expensesByCategory[category] || 0) + Number(expense.amount);
+    }
+
+    // Calculate net profit
+    const netProfit = grossProfit - totalExpenses;
+    const netProfitMargin = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0;
+
+    // Transaction metrics
+    const transactionCount = sales.length;
+    const averageTransactionValue = transactionCount > 0 ? netRevenue / transactionCount : 0;
+
+    return {
+      date,
+      branchId,
+      branchName: branch.name,
+      grossSales,
+      totalDiscounts,
+      totalTax,
+      netSales,
+      refundedAmount,
+      netRevenue,
+      costOfGoodsSold,
+      grossProfit,
+      grossProfitMargin,
+      totalExpenses,
+      expensesByCategory,
+      netProfit,
+      netProfitMargin,
+      transactionCount,
+      averageTransactionValue,
+    };
+  }
+
+  /**
+   * Get profit and loss trend over a date range
+   */
+  async getProfitAndLossRange(
+    tenantId: string,
+    filter: ReportFilterDto,
+  ): Promise<DailyProfitAndLossDto[]> {
+    const { start, end } = this.getDateRange(filter);
+
+    // Get all branches for the tenant
+    const branches = await this.prisma.branch.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true },
+    });
+
+    const results: DailyProfitAndLossDto[] = [];
+
+    // Iterate through each day in the range
+    const currentDate = new Date(start);
+    while (currentDate <= end) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+
+      // Get aggregated data for all branches for this day
+      for (const branch of branches) {
+        try {
+          const dailyPnL = await this.getDailyProfitAndLoss(
+            branch.id,
+            dateStr,
+            tenantId,
+          );
+          results.push(dailyPnL);
+        } catch (e) {
+          // Skip branches/days with no data
+        }
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return results;
   }
 }

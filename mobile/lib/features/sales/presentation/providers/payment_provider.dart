@@ -204,7 +204,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required List<CartItem> items,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
-    
+
     if (!_connectivity.isOnline) {
       state = state.copyWith(
         isProcessing: false,
@@ -212,15 +212,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       );
       return null;
     }
-    
+
     try {
       final response = await _apiClient.initiateTouristTapPayment({
         'amount': amount,
         'currency': 'KES',
       });
-      
+
       final transactionId = response['transactionId'];
-      
+
       // NFC payment would be initiated here
       // For now, simulate successful payment
       final saleId = _uuid.v4();
@@ -234,7 +234,41 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentReference: transactionId,
       );
       await _syncOrQueueSale(saleId, items, 'TOURISTTAP', amount, transactionId);
-      
+
+      state = state.copyWith(isProcessing: false);
+      return saleId;
+    } catch (e) {
+      state = state.copyWith(isProcessing: false, error: e.toString());
+      return null;
+    }
+  }
+
+  Future<String?> processCreditPayment({
+    required double amount,
+    required List<CartItem> items,
+    String? customerId,
+    String? customerName,
+    String? notes,
+  }) async {
+    state = state.copyWith(isProcessing: true, error: null);
+
+    try {
+      final saleId = _uuid.v4();
+      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
+
+      // Create sale locally first
+      await _createLocalSale(
+        saleId: saleId,
+        receiptNumber: receiptNumber,
+        items: items,
+        paymentMethod: 'CREDIT',
+        total: amount,
+        paymentReference: customerId,
+        notes: notes,
+      );
+
+      await _syncOrQueueSale(saleId, items, 'CREDIT', amount, customerId);
+
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {

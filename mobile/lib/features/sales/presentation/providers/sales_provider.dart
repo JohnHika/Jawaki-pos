@@ -15,6 +15,13 @@ final dailySummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   return await apiClient.getDailySummary();
 });
 
+// Daily Profit & Loss provider (with expense integration)
+final dailyProfitLossProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, branchId) async {
+  final apiClient = getIt<ApiClient>();
+  final today = DateTime.now().toIso8601String().split('T').first;
+  return await apiClient.getDailyProfitLoss(branchId, today);
+});
+
 // Sales history provider
 final salesHistoryProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final apiClient = getIt<ApiClient>();

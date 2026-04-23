@@ -90,6 +90,12 @@ class ReportsScreen extends ConsumerWidget {
               subtitle: 'Stock levels and movements',
               onTap: () => _showInventoryReport(context, ref),
             ),
+            _ReportTile(
+              icon: Icons.people,
+              title: 'Customer Report',
+              subtitle: 'Customer purchases and loyalty',
+              onTap: () => _showCustomerReport(context, ref),
+            ),
           ],
         ),
       ),
@@ -640,6 +646,178 @@ class ReportsScreen extends ConsumerWidget {
     );
   }
 
+  // ═══════ CUSTOMER REPORT ═══════
+  void _showCustomerReport(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.8,
+        maxChildSize: 0.95,
+        builder: (ctx, scroll) => Consumer(builder: (ctx, ref, _) {
+          final db = getIt<AppDatabase>();
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sheetHandle(ctx),
+                Text('Customer Report', style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: db.getAllCustomers(),
+                    builder: (ctx, snap) {
+                      final data = snap.data ?? [];
+                      if (data.isEmpty) {
+                        return const Center(child: Text('No customer data'));
+                      }
+                      return ListView.builder(
+                        controller: scroll,
+                        itemCount: data.length,
+                        itemBuilder: (ctx, i) {
+                          final c = data[i];
+                          final totalPurchases = c['totalPurchases'] as int;
+                          final totalSpent = c['totalSpent'] as double;
+                          final lastPurchase = c['lastPurchaseAt'] as String?;
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: AppColors.secondary.withValues(alpha: 0.1),
+                                child: Text(
+                                  (c['name'] as String).substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(color: AppColors.secondary, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              title: Text(c['name'] as String),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if ((c['phone'] as String?)?.isNotEmpty == true)
+                                    Text(c['phone'] as String, style: const TextStyle(fontSize: 12)),
+                                  Text('$totalPurchases purchases • ${_currencyFmt.format(totalSpent)}',
+                                    style: const TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (lastPurchase != null)
+                                    Text(
+                                      DateFormat('d MMM').format(DateTime.parse(lastPurchase)),
+                                      style: Theme.of(ctx).textTheme.bodySmall,
+                                    ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${(totalPurchases > 0 ? totalSpent / totalPurchases : 0).toStringAsFixed(0)} avg',
+                                    style: Theme.of(ctx).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                              onTap: () => _showCustomerDetails(ctx, c),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  void _showCustomerDetails(BuildContext context, Map<String, dynamic> customer) async {
+    final db = getIt<AppDatabase>();
+    final topProducts = await db.getCustomerTopProducts(customer['id'] as String);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _sheetHandle(ctx),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppColors.secondary.withValues(alpha: 0.1),
+                  child: Text(
+                    (customer['name'] as String).substring(0, 1).toUpperCase(),
+                    style: const TextStyle(color: AppColors.secondary, fontWeight: FontWeight.bold, fontSize: 20),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(customer['name'] as String, style: Theme.of(ctx).textTheme.titleMedium),
+                      if ((customer['phone'] as String?)?.isNotEmpty == true)
+                        Text(customer['phone'] as String, style: Theme.of(ctx).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    label: 'Purchases',
+                    value: '${customer['totalPurchases']}',
+                    icon: Icons.shopping_bag,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Total Spent',
+                    value: _currencyFmt.format(customer['totalSpent']),
+                    icon: Icons.attach_money,
+                  ),
+                ),
+              ],
+            ),
+            if (topProducts.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('Top Products', style: Theme.of(ctx).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              ...topProducts.map((p) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: Text(p['productName'] as String, overflow: TextOverflow.ellipsis)),
+                    Text('${p['totalQty']} units', style: Theme.of(ctx).textTheme.bodySmall),
+                  ],
+                ),
+              )),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ═══ Helpers ═══
   Widget _sheetHandle(BuildContext context) => Column(
     children: [
@@ -663,6 +841,34 @@ class ReportsScreen extends ConsumerWidget {
     'CARD' || 'CREDIT_CARD' || 'DEBIT_CARD' => AppColors.info,
     _ => AppColors.primary,
   };
+}
+
+// ═══ Stat Card Widget ═══
+class _StatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _StatCard({required this.label, required this.value, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.secondary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: AppColors.secondary, size: 20),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
 }
 
 // ═══ Date Range Selector Widget ═══

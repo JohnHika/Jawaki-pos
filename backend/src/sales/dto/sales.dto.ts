@@ -83,12 +83,13 @@ export class CreateSaleDto {
   @IsEnum(PaymentMethod, { message: 'Invalid payment method' })
   paymentMethod: PaymentMethod;
 
-  @ApiProperty({ description: 'Amount paid by customer' })
+  @ApiPropertyOptional({ description: 'Amount paid by customer (optional for CREDIT payment method)' })
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Amount must have up to 2 decimal places' })
   @Min(0, { message: 'Paid amount cannot be negative' })
   @Max(10000000, { message: 'Paid amount cannot exceed 10,000,000' })
   @Type(() => Number)
-  paidAmount: number;
+  paidAmount?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -325,6 +326,12 @@ export class DailySummaryDto {
 
   @ApiProperty()
   cardSales: number;
+
+  @ApiPropertyOptional()
+  creditSales?: number;
+
+  @ApiPropertyOptional()
+  outstandingBalance?: number;
 
   @ApiProperty()
   voidedCount: number;

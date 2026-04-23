@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -8,11 +9,14 @@ import '../../../../core/theme/app_theme.dart';
 import '../providers/cart_provider.dart';
 import '../providers/payment_provider.dart';
 
+const _uuid = Uuid();
+
 enum PaymentMethod {
   cash,
   mpesa,
   pesapal,
   touristtap,
+  credit,
 }
 
 class PaymentScreen extends ConsumerStatefulWidget {
@@ -25,10 +29,14 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod? _selectedMethod;
   final _phoneController = TextEditingController();
+  final _creditNotesController = TextEditingController();
+  final _customerNameController = TextEditingController();
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _creditNotesController.dispose();
+    _customerNameController.dispose();
     super.dispose();
   }
 
@@ -156,7 +164,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               isSelected: _selectedMethod == PaymentMethod.touristtap,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.touristtap),
             ),
-            
+            const SizedBox(height: 12),
+
+            // Credit (Pay Later)
+            _PaymentMethodTile(
+              icon: Icons.account_balance_wallet,
+              title: 'Credit',
+              subtitle: 'Pay later / Credit sale',
+              color: AppColors.primary,
+              isSelected: _selectedMethod == PaymentMethod.credit,
+              onTap: () => setState(() => _selectedMethod = PaymentMethod.credit),
+            ),
+
             // Phone number input for M-Pesa
             if (_selectedMethod == PaymentMethod.mpesa) ...[
               const SizedBox(height: 24),
@@ -172,6 +191,44 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   hintText: '0712345678',
                   prefixIcon: Icon(Icons.phone),
                   prefixText: '+254 ',
+                ),
+              ),
+            ],
+
+            // Customer details for Credit payment
+            if (_selectedMethod == PaymentMethod.credit) ...[
+              const SizedBox(height: 24),
+              Text(
+                'Customer Details',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _customerNameController,
+                keyboardType: TextInputType.name,
+                decoration: const InputDecoration(
+                  hintText: 'Customer Name',
+                  prefixIcon: Icon(Icons.person),
+                  labelText: 'Customer Name *',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _creditNotesController,
+                keyboardType: TextInputType.multiline,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Payment terms, due date, etc.',
+                  prefixIcon: Icon(Icons.note),
+                  labelText: 'Credit Notes',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Note: Credit sales require customer name. Payment will be collected later.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],
@@ -242,6 +299,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'Pay with PesaPal';
       case PaymentMethod.touristtap:
         return 'Initiate NFC Payment';
+      case PaymentMethod.credit:
+        return 'Create Credit Sale';
       case null:
         return 'Select Payment Method';
     }
@@ -287,11 +346,48 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           items: cart.items,
         );
         break;
+      case PaymentMethod.credit:
+        // Validate customer name for credit sales
+        if (_customerNameController.text.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enter customer name for credit sale')),
+          );
+          return;
+        }
+
+        // Create or get customer ID
+        final customerName = _customerNameController.text.trim();
+        final customerId = await getIt<AppDatabase>().insertOrGetCustomer(
+          'cust-${_uuid.v4()}',
+          customerName,
+        );
+
+        // Build credit notes
+        String? creditNotes = _creditNotesController.text.trim();
+        if (creditNotes!.isEmpty) {
+          creditNotes = null;
+        }
+
+        result = await paymentNotifier.processCreditPayment(
+          amount: cart.total,
+          items: cart.items,
+          customerId: customerId,
+          customerName: customerName,
+          notes: creditNotes,
+        );
+        break;
     }
 
     if (result != null && mounted) {
       // Record customer purchase if customer is set
-      final customerId = cart.customerId;
+      final customerId = cart.customerId ??
+          (_selectedMethod == PaymentMethod.credit
+              ? await getIt<AppDatabase>().insertOrGetCustomer(
+                  'cust-${_uuid.v4()}',
+                  _customerNameController.text.trim(),
+                )
+              : null);
+
       if (customerId != null) {
         await getIt<AppDatabase>().recordCustomerPurchase(customerId, cart.total);
       }

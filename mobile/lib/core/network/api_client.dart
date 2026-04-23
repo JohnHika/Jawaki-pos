@@ -242,4 +242,9 @@ class ApiClient {
     });
     return response.data;
   }
+
+  Future<Map<String, dynamic>> getDailyProfitLoss(String branchId, String date) async {
+    final response = await _dio.get('/reports/profit-loss/$branchId/$date');
+    return response.data;
+  }
 }

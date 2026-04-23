@@ -205,10 +205,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   // ════════ Customer Dialog ════════
 
   void _showCustomerDialog(BuildContext context) {
-    final ctrl = TextEditingController(
-      text: ref.read(cartProvider).customerName ?? '',
+    final cart = ref.read(cartProvider);
+    final nameCtrl = TextEditingController(
+      text: cart.customerName ?? '',
     );
+    final phoneCtrl = TextEditingController();
     final db = getIt<AppDatabase>();
+
+    // Load customer phone if customer is already set
+    if (cart.customerId != null) {
+      db.getCustomer(cart.customerId!).then((customer) {
+        if (customer != null) {
+          phoneCtrl.text = customer['phone'] as String? ?? '';
+        }
+      });
+    }
 
     showModalBottomSheet(
       context: context,
@@ -245,7 +256,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   const SizedBox(height: 12),
 
                   TextField(
-                    controller: ctrl,
+                    controller: nameCtrl,
                     autofocus: true,
                     textCapitalization: TextCapitalization.words,
                     decoration: InputDecoration(
@@ -255,7 +266,28 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.clear),
                         onPressed: () {
-                          ctrl.clear();
+                          nameCtrl.clear();
+                          setSheetState(() {});
+                        },
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onChanged: (_) => setSheetState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    textCapitalization: TextCapitalization.none,
+                    decoration: InputDecoration(
+                      labelText: 'Phone Number',
+                      hintText: 'e.g. 0712345678',
+                      prefixIcon: const Icon(Icons.phone_outlined),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          phoneCtrl.clear();
                           setSheetState(() {});
                         },
                       ),
@@ -328,13 +360,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: FilledButton(
-                          onPressed: ctrl.text.trim().isEmpty
+                          onPressed: nameCtrl.text.trim().isEmpty
                               ? null
                               : () async {
-                                  final name = ctrl.text.trim();
+                                  final name = nameCtrl.text.trim();
+                                  final phone = phoneCtrl.text.trim();
                                   final id = await db.insertOrGetCustomer(
                                     const Uuid().v4(),
                                     name,
+                                    phone: phone.isEmpty ? null : phone,
                                   );
                                   ref.read(cartProvider.notifier).setCustomer(id, customerName: name);
                                   if (ctx.mounted) Navigator.pop(ctx);

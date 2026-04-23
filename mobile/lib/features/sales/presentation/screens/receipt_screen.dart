@@ -137,11 +137,43 @@ class ReceiptScreen extends ConsumerWidget {
               textAlign: TextAlign.center,
             ),
             
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Divider(),
-            ),
-            
+            // Customer Info (if available)
+            if (receipt['customerName'] != null || receipt['customerPhone'] != null) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Customer',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                  Text(
+                    receipt['customerName'] ?? 'N/A',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              if (receipt['customerPhone'] != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Phone',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                    Text(
+                      receipt['customerPhone'] ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ],
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(),
+              ),
+            ],
+
             // Date & Time
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -169,6 +201,11 @@ class ReceiptScreen extends ConsumerWidget {
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
               ],
+            ),
+
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Divider(),
             ),
             
             const Padding(

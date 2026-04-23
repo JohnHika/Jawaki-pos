@@ -92,7 +92,7 @@ class CartState {
   }
 
   double get taxableAmount => subtotal - discount;
-  double get tax => taxableAmount * 0.16; // 16% VAT
+  double get tax => taxableAmount * 0.16; // 16% VAT - TODO: Use product-level tax rates from backend
   double get total => taxableAmount + tax;
 
   CartState copyWith({

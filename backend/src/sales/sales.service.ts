@@ -186,11 +186,22 @@ export class SalesService {
 
     const discountAmount = dto.discountAmount || 0;
     const totalAmount = subtotal + totalTax - discountAmount;
-    const changeAmount = dto.paidAmount - totalAmount;
 
-    if (dto.paidAmount < totalAmount && dto.paymentMethod !== PaymentMethod.CREDIT) {
+    // For CREDIT payment, paidAmount is optional (defaults to 0, creating an outstanding balance)
+    const paidAmount = dto.paymentMethod === PaymentMethod.CREDIT
+      ? (dto.paidAmount ?? 0)
+      : (dto.paidAmount ?? totalAmount);
+
+    const changeAmount = paidAmount - totalAmount;
+
+    if (paidAmount < totalAmount && dto.paymentMethod !== PaymentMethod.CREDIT) {
       throw new BadRequestException('Paid amount is less than total');
     }
+
+    // For credit sales, store the outstanding balance in metadata
+    const outstandingBalance = dto.paymentMethod === PaymentMethod.CREDIT
+      ? totalAmount - paidAmount
+      : 0;
 
     // Generate receipt number
     const receiptNumber = await this.generateReceiptNumber(dto.branchId);
@@ -210,11 +221,14 @@ export class SalesService {
           taxAmount: totalTax,
           discountAmount,
           totalAmount,
-          paidAmount: dto.paidAmount,
+          paidAmount: paidAmount,
           changeAmount: Math.max(0, changeAmount),
           paymentMethod: dto.paymentMethod,
           notes: dto.notes,
           offlineId: dto.offlineId,
+          metadata: outstandingBalance > 0
+            ? { outstandingBalance, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() }
+            : {},
           items: {
             create: saleItems,
           },
@@ -636,6 +650,13 @@ export class SalesService {
     const completedSales = sales.filter((s) => s.status === SaleStatus.COMPLETED);
     const voidedSales = sales.filter((s) => s.status === SaleStatus.VOIDED);
 
+    // Calculate credit sales and outstanding balances
+    const creditSales = completedSales.filter((s) => s.paymentMethod === PaymentMethod.CREDIT);
+    const totalOutstanding = creditSales.reduce((sum, s) => {
+      const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
+      return sum + Number(outstanding);
+    }, 0);
+
     return {
       date,
       totalSales: completedSales.reduce((sum, s) => sum + Number(s.totalAmount), 0),
@@ -651,8 +672,65 @@ export class SalesService {
       cardSales: completedSales
         .filter((s) => s.paymentMethod === PaymentMethod.PESAPAL)
         .reduce((sum, s) => sum + Number(s.totalAmount), 0),
+      creditSales: creditSales.reduce((sum, s) => sum + Number(s.totalAmount), 0),
+      outstandingBalance: totalOutstanding,
       voidedCount: voidedSales.length,
       refundedAmount: refunds.reduce((sum, r) => sum + Number(r.amount), 0),
+    };
+  }
+
+  async getCreditSalesWithOutstandingBalance(
+    tenantId: string,
+    query: SalesQueryDto,
+  ) {
+    const { branchId, startDate, endDate, page = 1, limit = 50 } = query;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      branch: { tenantId },
+      paymentMethod: PaymentMethod.CREDIT,
+      status: SaleStatus.COMPLETED,
+    };
+
+    if (branchId) where.branchId = branchId;
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // Filter for sales with outstanding balance
+    const sales = await this.prisma.sale.findMany({
+      where,
+      include: {
+        branch: { select: { name: true } },
+        user: { select: { firstName: true, lastName: true } },
+        customer: { select: { name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    });
+
+    // Filter to only those with outstanding balance
+    const salesWithOutstanding = sales.filter((s) => {
+      const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
+      return Number(outstanding) > 0;
+    });
+
+    const total = salesWithOutstanding.length;
+
+    return {
+      items: salesWithOutstanding.map((s) => ({
+        ...this.formatSale(s, true),
+        outstandingBalance: (s.metadata as any)?.outstandingBalance ?? 0,
+        dueDate: (s.metadata as any)?.dueDate,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -722,6 +800,7 @@ export class SalesService {
       userName: sale.user ? `${sale.user.firstName} ${sale.user.lastName}` : undefined,
       customerId: sale.customerId,
       customerName: sale.customer?.name,
+      customerPhone: sale.customer?.phone,
       status: sale.status,
       subtotal: Number(sale.subtotal),
       taxAmount: Number(sale.taxAmount),
