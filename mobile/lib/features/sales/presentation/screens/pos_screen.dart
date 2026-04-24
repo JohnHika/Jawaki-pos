@@ -298,9 +298,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   const SizedBox(height: 12),
 
                   // Recent / matching customers
-                  if (ctrl.text.trim().length >= 2)
+                  if (nameCtrl.text.trim().length >= 2)
                     FutureBuilder<List<Map<String, dynamic>>>(
-                      future: db.searchCustomers(ctrl.text.trim()),
+                      future: db.searchCustomers(nameCtrl.text.trim()),
                       builder: (context, snap) {
                         final customers = snap.data ?? [];
                         if (customers.isEmpty) return const SizedBox.shrink();

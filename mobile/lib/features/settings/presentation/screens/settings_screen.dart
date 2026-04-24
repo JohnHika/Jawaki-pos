@@ -708,7 +708,7 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AboutDialog(
-        applicationName: 'JAWAKI ADVENTURES POS',
+        applicationName: 'Levisa Adventures POS',
         applicationVersion: '1.0.0 (Build 1)',
         applicationIcon: Container(
           width: 48, height: 48,
@@ -722,7 +722,7 @@ class SettingsScreen extends ConsumerWidget {
           Text('A complete point-of-sale system for managing sales, inventory, and business operations.'),
           SizedBox(height: 12),
           Text('Built with Flutter', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-          Text('© 2026 Jawaki Adventures', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text('© 2026 Levisa Adventures', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
         ],
       ),
     );

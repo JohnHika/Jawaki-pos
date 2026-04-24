@@ -1,4 +1,4 @@
-package com.pos.pos_mobile
+package com.levisaadventures.pos
 
 import io.flutter.embedding.android.FlutterActivity
 

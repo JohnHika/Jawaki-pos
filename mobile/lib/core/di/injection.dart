@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../database/app_database.dart';
 import '../network/api_client.dart';
@@ -8,42 +9,106 @@ import '../services/connectivity_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/storage_service.dart';
+import '../services/haptic_service.dart';
 
 final getIt = GetIt.instance;
 
+/// Configure all dependencies for the app
+/// This must be called after WidgetsFlutterBinding.ensureInitialized()
 Future<void> configureDependencies() async {
-  // Core Services
-  getIt.registerSingleton<StorageService>(StorageService());
-  await getIt<StorageService>().initialize();
-  
-  getIt.registerSingleton<ConnectivityService>(ConnectivityService());
-  
-  // Database
-  final database = AppDatabase();
-  getIt.registerSingleton<AppDatabase>(database);
-  
-  // Seed demo products on first launch
-  await database.seedDemoData();
-  
-  // Network
-  getIt.registerSingleton<Dio>(_createDio());
-  getIt.registerSingleton<ApiClient>(ApiClient(getIt<Dio>()));
-  
-  // Auth
-  getIt.registerSingleton<AuthService>(AuthService(
-    storage: getIt<StorageService>(),
-    apiClient: getIt<ApiClient>(),
-  ));
-  
-  // Add auth interceptor after auth service is registered
-  getIt<Dio>().interceptors.add(AuthInterceptor(getIt<AuthService>()));
-  
-  // Sync Service
-  getIt.registerSingleton<SyncService>(SyncService(
-    database: getIt<AppDatabase>(),
-    apiClient: getIt<ApiClient>(),
-    connectivity: getIt<ConnectivityService>(),
-  ));
+  debugPrint('[DI] Starting dependency injection configuration...');
+
+  try {
+    // ============================================
+    // STEP 1: Core Services (no dependencies)
+    // ============================================
+    debugPrint('[DI] Registering StorageService...');
+    final storageService = StorageService();
+    getIt.registerSingleton<StorageService>(storageService);
+
+    // Initialize storage FIRST (required by all other services)
+    debugPrint('[DI] Initializing StorageService...');
+    await storageService.initialize();
+    debugPrint('[DI] StorageService initialized');
+
+    debugPrint('[DI] Registering ConnectivityService...');
+    final connectivityService = ConnectivityService();
+    getIt.registerSingleton<ConnectivityService>(connectivityService);
+
+    // Register Haptic Service (singleton, no initialization needed)
+    debugPrint('[DI] Registering HapticService...');
+    getIt.registerSingleton<HapticService>(HapticService());
+
+    // ============================================
+    // STEP 2: Database (depends on nothing)
+    // ============================================
+    debugPrint('[DI] Registering AppDatabase...');
+    final database = AppDatabase();
+    getIt.registerSingleton<AppDatabase>(database);
+    debugPrint('[DI] AppDatabase registered');
+
+    // Seed demo products on first launch (non-blocking)
+    database.seedDemoData().catchError((e) {
+      debugPrint('[DI] Demo data seed error (non-critical): $e');
+    });
+
+    // ============================================
+    // STEP 3: Network Layer
+    // ============================================
+    debugPrint('[DI] Creating Dio HTTP client...');
+    final dio = _createDio();
+    getIt.registerSingleton<Dio>(dio);
+
+    debugPrint('[DI] Registering ApiClient...');
+    final apiClient = ApiClient(dio);
+    getIt.registerSingleton<ApiClient>(apiClient);
+    debugPrint('[DI] ApiClient registered');
+
+    // ============================================
+    // STEP 4: Auth Service (depends on StorageService, ApiClient)
+    // ============================================
+    debugPrint('[DI] Registering AuthService...');
+    final authService = AuthService(
+      storage: getIt<StorageService>(),
+      apiClient: getIt<ApiClient>(),
+    );
+    getIt.registerSingleton<AuthService>(authService);
+
+    // Initialize auth service (explicit initialization pattern)
+    debugPrint('[DI] Initializing AuthService...');
+    await authService.initialize();
+    debugPrint('[DI] AuthService initialized');
+
+    // ============================================
+    // STEP 5: Add Auth Interceptor (after AuthService)
+    // ============================================
+    debugPrint('[DI] Adding AuthInterceptor to Dio...');
+    dio.interceptors.add(AuthInterceptor(getIt<AuthService>()));
+    debugPrint('[DI] AuthInterceptor added');
+
+    // ============================================
+    // STEP 6: Sync Service (depends on Database, ApiClient, Connectivity)
+    // ============================================
+    debugPrint('[DI] Registering SyncService...');
+    final syncService = SyncService(
+      database: getIt<AppDatabase>(),
+      apiClient: getIt<ApiClient>(),
+      connectivity: getIt<ConnectivityService>(),
+    );
+    getIt.registerSingleton<SyncService>(syncService);
+    debugPrint('[DI] SyncService registered');
+
+    debugPrint('[DI] Dependency injection configuration complete!');
+  } catch (e, stackTrace) {
+    debugPrint('╔═══════════════════════════════════════════════════════════╗');
+    debugPrint('║ DI CONFIGURATION ERROR                                    ║');
+    debugPrint('╚═══════════════════════════════════════════════════════════╝');
+    debugPrint('Error: $e');
+    debugPrint('Stack trace:');
+    debugPrint('$stackTrace');
+    debugPrint('═══════════════════════════════════════════════════════════');
+    rethrow;
+  }
 }
 
 Dio _createDio() {
@@ -51,7 +116,7 @@ Dio _createDio() {
     BaseOptions(
       baseUrl: const String.fromEnvironment(
         'API_URL',
-        defaultValue: 'http://10.30.168.100:3000/api/v1',
+        defaultValue: 'https://breezy-kiwis-teach.loca.lt/api/v1',
       ),
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
@@ -61,11 +126,12 @@ Dio _createDio() {
       },
     ),
   );
-  
+
   dio.interceptors.add(LogInterceptor(
     requestBody: true,
     responseBody: true,
+    logPrint: (obj) => debugPrint('[Dio] $obj'),
   ));
-  
+
   return dio;
 }

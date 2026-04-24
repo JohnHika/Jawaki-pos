@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/di/injection.dart';
-import '../../../../core/services/auth_service.dart';
 import '../providers/auth_provider.dart';
 
 class PinLoginScreen extends ConsumerStatefulWidget {
@@ -14,16 +12,18 @@ class PinLoginScreen extends ConsumerStatefulWidget {
   ConsumerState<PinLoginScreen> createState() => _PinLoginScreenState();
 }
 
-class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
+class _PinLoginScreenState extends ConsumerState<PinLoginScreen> with SingleTickerProviderStateMixin {
   String _pin = '';
   static const int _pinLength = 4;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
 
   void _onNumberPressed(String number) {
     if (_pin.length < _pinLength) {
       setState(() {
         _pin += number;
       });
-      
+
       if (_pin.length == _pinLength) {
         _handlePinLogin();
       }
@@ -46,7 +46,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
 
   Future<void> _handlePinLogin() async {
     final result = await ref.read(authControllerProvider.notifier).loginWithPin(_pin);
-    
+
     if (result && mounted) {
       context.go('/');
     } else {
@@ -64,271 +64,422 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
+    final size = MediaQuery.of(context).size;
+    final isSmallScreen = size.height < 700;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF6366F1),
+              Color(0xFF4F46E5),
+              Color(0xFF3730A3),
+            ],
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            const Spacer(),
-            
-            // Brand Logo
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.storefront,
-                size: 44,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // Brand Name
-            Text(
-              'JAWAKI ADVENTURES',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            // Title
-            Text(
-              'Enter PIN',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter your 4-digit PIN to continue',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 32),
-            
-            // PIN Dots
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_pinLength, (index) {
-                final isFilled = index < _pin.length;
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: isFilled ? AppColors.primary : Colors.transparent,
-                    border: Border.all(
-                      color: isFilled ? AppColors.primary : AppColors.border,
-                      width: 2,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // App Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  children: [
+                    Material(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        onTap: () => context.pop(),
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.arrow_back_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(8),
+                    const SizedBox(width: 12),
+                    Text(
+                      'PIN Login',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        SizedBox(height: isSmallScreen ? 20 : 40),
+
+                        // Logo
+                        Container(
+                          width: isSmallScreen ? 70 : 80,
+                          height: isSmallScreen ? 70 : 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 2,
+                            ),
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(
+                              Icons.lock_rounded,
+                              size: 40,
+                              color: Color(0xFF6366F1),
+                            ),
+                          ),
+                        ),
+
+                        SizedBox(height: isSmallScreen ? 16 : 20),
+
+                        // Title
+                        const Text(
+                          'Enter PIN',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Enter your 4-digit PIN to continue',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.8),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        SizedBox(height: isSmallScreen ? 24 : 32),
+
+                        // PIN Dots
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(_pinLength, (index) {
+                            final isFilled = index < _pin.length;
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: const EdgeInsets.symmetric(horizontal: 10),
+                              width: isFilled ? 20 : 16,
+                              height: isFilled ? 20 : 16,
+                              decoration: BoxDecoration(
+                                color: isFilled ? Colors.white : Colors.transparent,
+                                border: Border.all(
+                                  color: isFilled ? Colors.white : Colors.white.withOpacity(0.5),
+                                  width: 2.5,
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: isFilled
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.white.withOpacity(0.3),
+                                          blurRadius: 8,
+                                          spreadRadius: 2,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: isFilled
+                                  ? Container(
+                                      margin: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6366F1),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    )
+                                  : null,
+                            );
+                          }),
+                        ),
+
+                        // Error Message
+                        if (authState.error != null) ...[
+                          SizedBox(height: isSmallScreen ? 16 : 20),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.error_outline_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  authState.error!,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Loading indicator
+                        if (authState.isLoading) ...[
+                          SizedBox(height: isSmallScreen ? 16 : 20),
+                          const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ],
+
+                        SizedBox(height: isSmallScreen ? 24 : 32),
+
+                        // Dev hint
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.amber.withOpacity(0.4),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.lightbulb_outline_rounded, size: 16, color: Colors.amber),
+                              SizedBox(width: 8),
+                              Text(
+                                'Demo PIN: 0000',
+                                style: TextStyle(
+                                  color: Colors.amber,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        SizedBox(height: isSmallScreen ? 32 : 48),
+
+                        // Number Pad
+                        _buildNumberPad(isSmallScreen),
+
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+
+                        // Switch to email login
+                        TextButton(
+                          onPressed: () => context.pop(),
+                          child: Text(
+                            'Use email instead',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+
+                        // Biometric login button
+                        FutureBuilder<bool>(
+                          future: ref.read(authControllerProvider.notifier).isBiometricAvailable(),
+                          builder: (context, snapshot) {
+                            if (snapshot.data != true) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Material(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(30),
+                                child: InkWell(
+                                  onTap: authState.isLoading ? null : _handleBiometricLogin,
+                                  borderRadius: BorderRadius.circular(30),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(30),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.3),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.fingerprint_rounded,
+                                      size: 44,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+                      ],
+                    ),
                   ),
-                );
-              }),
-            ),
-            
-            // Error Message
-            if (authState.error != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                authState.error!,
-                style: const TextStyle(
-                  color: AppColors.error,
-                  fontSize: 14,
                 ),
               ),
             ],
-            
-            // Loading indicator
-            if (authState.isLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 16),
-                child: CircularProgressIndicator(),
-              ),
-            
-            // Dev hint for testing - TODO: Remove before production
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: AppColors.warning),
-                  SizedBox(width: 8),
-                  Text(
-                    'Demo PIN: 0000',
-                    style: TextStyle(
-                      color: AppColors.warning,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNumberPad(bool isSmallScreen) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final padHorizontal = screenWidth < 380 ? 16.0 : 32.0;
+    final btnSize = isSmallScreen ? 64.0 : 76.0;
+    final fontSize = isSmallScreen ? 26.0 : 30.0;
+
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padHorizontal),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildNumberButton('1', btnSize, fontSize),
+                _buildNumberButton('2', btnSize, fontSize),
+                _buildNumberButton('3', btnSize, fontSize),
+              ],
             ),
-            
-            const Spacer(),
-            
-            // Number Pad
-            _buildNumberPad(),
-            
-            const SizedBox(height: 24),
-            
-            // Switch to email login
-            TextButton(
-              onPressed: () => context.pop(),
-              child: const Text('Use email instead'),
+            SizedBox(height: isSmallScreen ? 14 : 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildNumberButton('4', btnSize, fontSize),
+                _buildNumberButton('5', btnSize, fontSize),
+                _buildNumberButton('6', btnSize, fontSize),
+              ],
             ),
-            
-            // Biometric login button
-            FutureBuilder<bool>(
-              future: getIt<AuthService>().isBiometricAvailable(),
-              builder: (context, snapshot) {
-                if (snapshot.data != true) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: IconButton(
-                    onPressed: _handleBiometricLogin,
-                    icon: const Icon(Icons.fingerprint, size: 40),
-                    tooltip: 'Login with fingerprint or face',
-                    style: IconButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                    ),
-                  ),
-                );
-              },
+            SizedBox(height: isSmallScreen ? 14 : 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildNumberButton('7', btnSize, fontSize),
+                _buildNumberButton('8', btnSize, fontSize),
+                _buildNumberButton('9', btnSize, fontSize),
+              ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isSmallScreen ? 14 : 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionButton(Icons.clear_rounded, _onClearPressed, btnSize),
+                _buildNumberButton('0', btnSize, fontSize),
+                _buildActionButton(Icons.backspace_outlined, _onBackspacePressed, btnSize),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNumberPad() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final padHorizontal = screenWidth < 380 ? 24.0 : 48.0;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: padHorizontal),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNumberButton('1'),
-              _buildNumberButton('2'),
-              _buildNumberButton('3'),
-            ],
+  Widget _buildNumberButton(String number, double btnSize, double fontSize) {
+    final isLoading = ref.watch(authControllerProvider).isLoading;
+
+    return Material(
+      color: Colors.white.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(btnSize / 2),
+      child: InkWell(
+        onTap: isLoading ? null : () => _onNumberPressed(number),
+        borderRadius: BorderRadius.circular(btnSize / 2),
+        onTapDown: (_) => _animationController.forward(),
+        onTapUp: (_) => _animationController.reverse(),
+        onTapCancel: () => _animationController.reverse(),
+        child: Container(
+          width: btnSize,
+          height: btnSize,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(btnSize / 2),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 1.5,
+            ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNumberButton('4'),
-              _buildNumberButton('5'),
-              _buildNumberButton('6'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNumberButton('7'),
-              _buildNumberButton('8'),
-              _buildNumberButton('9'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildActionButton(
-                icon: Icons.close,
-                onPressed: _onClearPressed,
+          child: Center(
+            child: Text(
+              number,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
               ),
-              _buildNumberButton('0'),
-              _buildActionButton(
-                icon: Icons.backspace_outlined,
-                onPressed: _onBackspacePressed,
-              ),
-            ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildNumberButton(String number) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final btnSize = screenWidth < 380 ? 60.0 : 72.0;
-    final fontSize = screenWidth < 380 ? 24.0 : 28.0;
-    return SizedBox(
-      width: btnSize,
-      height: btnSize,
-      child: ElevatedButton(
-        onPressed: ref.watch(authControllerProvider).isLoading 
-            ? null 
-            : () => _onNumberPressed(number),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.surfaceVariant,
-          foregroundColor: AppColors.textPrimary,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
+  Widget _buildActionButton(IconData icon, VoidCallback onPressed, double btnSize) {
+    final isLoading = ref.watch(authControllerProvider).isLoading;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(btnSize / 2),
+      child: InkWell(
+        onTap: isLoading ? null : onPressed,
+        borderRadius: BorderRadius.circular(btnSize / 2),
+        child: Container(
+          width: btnSize,
+          height: btnSize,
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(btnSize / 2),
           ),
-        ),
-        child: Text(
-          number,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: FontWeight.w500,
+          child: Icon(
+            icon,
+            size: btnSize * 0.4,
+            color: Colors.white.withOpacity(0.8),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final btnSize = screenWidth < 380 ? 60.0 : 72.0;
-    return SizedBox(
-      width: btnSize,
-      height: btnSize,
-      child: IconButton(
-        onPressed: ref.watch(authControllerProvider).isLoading ? null : onPressed,
-        icon: Icon(icon, size: 28),
-        style: IconButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          foregroundColor: AppColors.textSecondary,
         ),
       ),
     );

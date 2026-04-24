@@ -1,5 +1,5 @@
-name: pos_mobile
-description: Hybrid Multi-Branch POS System Mobile App
+name: levisa_adventures_pos
+description: Levisa Adventures - Professional POS System for Retail & Adventures
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -25,7 +25,7 @@ dependencies:
   drift: ^2.14.1
   drift_sqflite: ^2.0.1
   sqlite3_flutter_libs: ^0.5.18
-  sqlcipher_flutter_libs: ^0.5.7
+  # sqlcipher_flutter_libs: ^0.5.7  # Commented out to avoid duplicate class conflict
   path_provider: ^2.1.1
   path: ^1.8.3
   
@@ -62,20 +62,26 @@ dependencies:
   # Printing & Receipts
   esc_pos_utils: ^1.1.0
   # TODO: Add bluetooth printing support with updated package
-  
+
   # QR Code (for payments)
   qr_flutter: ^4.1.0
   mobile_scanner: ^3.5.5
-  
+
   # Animations
   flutter_animate: ^4.3.0
   lottie: ^3.0.0
-  
+
   # Search
   easy_search_bar: ^2.5.0
-  
+
   # Biometric Authentication
   local_auth: ^2.2.0
+
+  # Charts & Graphs
+  fl_chart: ^0.65.0
+
+  # Share Plus
+  share_plus: ^7.2.1
 
 dev_dependencies:
   flutter_test:

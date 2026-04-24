@@ -264,7 +264,6 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'CREDIT',
         total: amount,
         paymentReference: customerId,
-        notes: notes,
       );
 
       await _syncOrQueueSale(saleId, items, 'CREDIT', amount, customerId);

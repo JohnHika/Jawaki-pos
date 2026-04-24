@@ -2,7 +2,26 @@
   "permissions": {
     "allow": [
       "Bash(npx prisma:*)",
-      "Bash(findstr pos:*)"
+      "Bash(findstr pos:*)",
+      "Bash(./build-apk.bat 2>&1)",
+      "Bash(flutter clean:*)",
+      "Bash(C:\\\\Projects\\\\pos-system\\\\rebuild-clean.bat 2>&1)",
+      "Bash(./rebuild-clean.bat 2>&1)",
+      "Bash(timeout 30 dir C:Projectspos-systemmobilebuildappoutputsflutter-apk)",
+      "Bash(findstr \"app-release\")",
+      "Bash(export JAVA_HOME=\"C:\\\\Program Files\\\\Java\\\\jdk-26.0.1\")",
+      "Bash(export PATH=\"$JAVA_HOME/bin:$PATH\")",
+      "Bash(/c/src/flutter/bin/flutter build:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command \"Get-ChildItem -Path 'C:\\\\Users\\\\admin\\\\AppData\\\\Local\\\\Temp\\\\axon\\\\C--Projects-pos-system\\\\7bec78bd-3c28-4a0c-bb16-5c770f55eb5d\\\\tasks\\\\' -Recurse -Filter '*.output' 2>$null | Select-Object -First 5 FullName\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path 'C:\\\\Users\\\\admin\\\\AppData\\\\Local\\\\Temp\\\\axon\\\\C--Projects-pos-system\\\\7bec78bd-3c28-4a0c-bb16-5c770f55eb5d\\\\tasks\\\\' -Recurse -File 2>$null | Where-Object { $_.Extension -match '\\\\.\\(output|log|txt\\)' } | Select-Object -First 5 FullName\")",
+      "Bash(ls -lt /c/Users/admin/AppData/Local/Temp/axon/C--Projects-pos-system/7bec78bd-3c28-4a0c-bb16-5c770f55eb5d/tasks/*.output)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\admin\\\\AppData\\\\Local\\\\Temp\\\\axon\\\\C--Projects-pos-system\\\\7bec78bd-3c28-4a0c-bb16-5c770f55eb5d\\\\tasks\\\\*.output\")",
+      "Bash(Sort-Object LastWriteTime -Descending)",
+      "Bash(Select-Object -First 5 -ExpandProperty FullName)",
+      "Bash(C:/src/flutter/bin/flutter build:*)",
+      "Bash($env:JAVA_HOME=\"C:\\\\Program Files\\\\Java\\\\jdk-26.0.1\")",
+      "Bash(C:/src/flutter/bin/flutter clean:*)"
     ]
   }
 }

@@ -566,6 +566,49 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  // Low Stock Alerts
+  Future<List<Map<String, dynamic>>> getLowStockProducts({int threshold = 10}) async {
+    final result = await customSelect(
+      'SELECT p.id, p.name, p.sku, p.price, ls.quantity, ls.branch_id, '
+      '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
+      'FROM products p '
+      'LEFT JOIN local_stock ls ON ls.product_id = p.id '
+      'WHERE p.is_active = 1 AND (ls.quantity IS NULL OR ls.quantity < ?) '
+      'ORDER BY ls.quantity ASC, p.name ASC',
+      variables: [Variable.withInt(threshold)],
+    ).get();
+
+    return result.map((r) => <String, dynamic>{
+      'id': r.read<String>('id'),
+      'name': r.read<String>('name'),
+      'sku': r.read<String>('sku'),
+      'price': r.read<double>('price'),
+      'quantity': r.readNullable<int>('quantity') ?? 0,
+      'branchId': r.readNullable<String>('branch_id') ?? '',
+      'categoryName': r.readNullable<String>('category_name') ?? 'Uncategorized',
+    }).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getOutOfStockProducts() async {
+    final result = await customSelect(
+      'SELECT p.id, p.name, p.sku, ls.quantity, ls.branch_id, '
+      '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
+      'FROM products p '
+      'LEFT JOIN local_stock ls ON ls.product_id = p.id '
+      'WHERE p.is_active = 1 AND (ls.quantity IS NULL OR ls.quantity = 0) '
+      'ORDER BY p.name ASC',
+    ).get();
+
+    return result.map((r) => <String, dynamic>{
+      'id': r.read<String>('id'),
+      'name': r.read<String>('name'),
+      'sku': r.read<String>('sku'),
+      'quantity': r.readNullable<int>('quantity') ?? 0,
+      'branchId': r.readNullable<String>('branch_id') ?? '',
+      'categoryName': r.readNullable<String>('category_name') ?? 'Uncategorized',
+    }).toList();
+  }
+
   // ════════ REPORTS QUERIES ════════
 
   /// All sales within [from]..[to].
@@ -726,6 +769,150 @@ class AppDatabase extends _$AppDatabase {
     };
   }
 
+  /// Weekly summary for analytics dashboard.
+  Future<Map<String, dynamic>> getWeeklySummary(DateTime from, DateTime to) async {
+    final result = await customSelect(
+      'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
+      'COALESCE(AVG(total), 0) as avg_ticket '
+      'FROM pending_sales WHERE created_at >= ? AND created_at <= ?',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).getSingle();
+    final itemsResult = await customSelect(
+      'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
+      'FROM pending_sale_items psi '
+      'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).getSingle();
+    return {
+      'transactionCount': result.read<int>('count'),
+      'totalRevenue': result.read<double>('revenue'),
+      'avgTicket': result.read<double>('avg_ticket'),
+      'itemsSold': itemsResult.read<int>('items_sold'),
+    };
+  }
+
+  /// Monthly summary for analytics dashboard.
+  Future<Map<String, dynamic>> getMonthlySummary(DateTime from, DateTime to) async {
+    final result = await customSelect(
+      'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
+      'COALESCE(AVG(total), 0) as avg_ticket '
+      'FROM pending_sales WHERE created_at >= ? AND created_at <= ?',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).getSingle();
+    final itemsResult = await customSelect(
+      'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
+      'FROM pending_sale_items psi '
+      'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).getSingle();
+    return {
+      'transactionCount': result.read<int>('count'),
+      'totalRevenue': result.read<double>('revenue'),
+      'avgTicket': result.read<double>('avg_ticket'),
+      'itemsSold': itemsResult.read<int>('items_sold'),
+    };
+  }
+
+  /// Hourly sales breakdown for a date range.
+  Future<List<Map<String, dynamic>>> getHourlySales(DateTime from, DateTime to) async {
+    final result = await customSelect(
+      'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
+      'FROM pending_sales '
+      'WHERE created_at >= ? AND created_at <= ? '
+      'GROUP BY strftime(\'%H\', created_at) '
+      'ORDER BY hour',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).get();
+    return result.map((r) => {
+      'hour': r.read<String>('hour'),
+      'transactionCount': r.read<int>('transaction_count'),
+      'totalAmount': r.read<double>('total_amount'),
+      'date': from.toIso8601String(),
+    }).toList();
+  }
+
+  /// Daily sales breakdown for a date range.
+  Future<List<Map<String, dynamic>>> getDailySales(DateTime from, DateTime to) async {
+    final result = await customSelect(
+      'SELECT date(created_at) as date, COUNT(*) as transaction_count, SUM(total) as total_amount '
+      'FROM pending_sales '
+      'WHERE created_at >= ? AND created_at <= ? '
+      'GROUP BY date(created_at) '
+      'ORDER BY date',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).get();
+    return result.map((r) => {
+      'date': r.read<String>('date'),
+      'transactionCount': r.read<int>('transaction_count'),
+      'totalAmount': r.read<double>('total_amount'),
+    }).toList();
+  }
+
+  /// Payment summary for analytics.
+  Future<Map<String, dynamic>> getPaymentSummary(DateTime from, DateTime to) async {
+    final result = await customSelect(
+      'SELECT '
+      'COUNT(*) as transaction_count, '
+      'SUM(total) as total_amount, '
+      'AVG(total) as avg_payment, '
+      'SUM(CASE WHEN payment_method = \'cash\' THEN 1 ELSE 0 END) as cash_count, '
+      'SUM(CASE WHEN payment_method LIKE \'%card%\' OR payment_method LIKE \'%credit%\' THEN 1 ELSE 0 END) as card_count, '
+      'SUM(CASE WHEN payment_method LIKE \'%mpesa%\' OR payment_method LIKE \'%pesapal%\' OR payment_method LIKE \'%touristtap%\' THEN 1 ELSE 0 END) as digital_count '
+      'FROM pending_sales '
+      'WHERE created_at >= ? AND created_at <= ?',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).getSingle();
+    return {
+      'transactionCount': result.read<int>('transaction_count'),
+      'totalAmount': result.read<double>('total_amount'),
+      'avgPayment': result.read<double>('avg_payment'),
+      'cashCount': result.read<int>('cash_count'),
+      'cardCount': result.read<int>('card_count'),
+      'digitalCount': result.read<int>('digital_count'),
+    };
+  }
+
+  /// Peak hours analysis.
+  Future<List<Map<String, dynamic>>> getPeakHours(DateTime from, DateTime to) async {
+    final result = await customSelect(
+      'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
+      'FROM pending_sales '
+      'WHERE created_at >= ? AND created_at <= ? '
+      'GROUP BY strftime(\'%H\', created_at) '
+      'ORDER BY transaction_count DESC '
+      'LIMIT 5',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).get();
+    return result.map((r) => {
+      'hour': r.read<int>('hour'),
+      'transactionCount': r.read<int>('transaction_count'),
+      'totalAmount': r.read<double>('total_amount'),
+    }).toList();
+  }
+
+  /// Slow moving products (products with low sales).
+  Future<List<Map<String, dynamic>>> getSlowMovingProducts(DateTime from, DateTime to, {int limit = 10}) async {
+    final result = await customSelect(
+      'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, SUM(psi.total) as total_revenue '
+      'FROM pending_sale_items psi '
+      'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'GROUP BY psi.product_id, psi.product_name '
+      'HAVING total_qty < 5 '
+      'ORDER BY total_qty ASC '
+      'LIMIT ?',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to), Variable.withInt(limit)],
+    ).get();
+    return result.map((r) => {
+      'productId': r.read<String>('product_id'),
+      'productName': r.read<String>('product_name'),
+      'totalQty': r.read<int>('total_qty'),
+      'totalRevenue': r.read<double>('total_revenue'),
+    }).toList();
+  }
+
   // ════════ BRANCH MANAGEMENT ════════
 
   /// Get branches stored in a simple JSON table.
@@ -800,7 +987,10 @@ class AppDatabase extends _$AppDatabase {
       '  total_purchases INTEGER NOT NULL DEFAULT 0, '
       '  total_spent REAL NOT NULL DEFAULT 0, '
       '  last_purchase_at TEXT, '
-      '  created_at TEXT NOT NULL'
+      '  created_at TEXT NOT NULL, '
+      '  balance REAL NOT NULL DEFAULT 0, '
+      '  credit_limit REAL NOT NULL DEFAULT 0, '
+      '  loyalty_points INTEGER NOT NULL DEFAULT 0'
       ')',
     );
   }
@@ -880,7 +1070,7 @@ class AppDatabase extends _$AppDatabase {
     }
     // Insert new
     await customInsert(
-      'INSERT INTO customers (id, name, phone, total_purchases, total_spent, created_at) VALUES (?, ?, ?, 0, 0, ?)',
+      'INSERT INTO customers (id, name, phone, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) VALUES (?, ?, ?, 0, 0, ?, 0, 0, 0)',
       variables: [
         Variable.withString(id),
         Variable.withString(name),
@@ -889,6 +1079,62 @@ class AppDatabase extends _$AppDatabase {
       ],
     );
     return id;
+  }
+
+  // Customer Debt/Balance Management
+  Future<void> updateCustomerBalance(String customerId, double amount) async {
+    await createCustomersTable();
+    await customStatement(
+      'UPDATE customers SET balance = balance + ? WHERE id = ?',
+      [Variable.withReal(amount), Variable.withString(customerId)],
+    );
+  }
+
+  Future<void> setCustomerBalance(String customerId, double amount) async {
+    await createCustomersTable();
+    await customStatement(
+      'UPDATE customers SET balance = ? WHERE id = ?',
+      [Variable.withReal(amount), Variable.withString(customerId)],
+    );
+  }
+
+  Future<void> setCustomerCreditLimit(String customerId, double limit) async {
+    await createCustomersTable();
+    await customStatement(
+      'UPDATE customers SET credit_limit = ? WHERE id = ?',
+      [Variable.withReal(limit), Variable.withString(customerId)],
+    );
+  }
+
+  Future<void> addLoyaltyPoints(String customerId, int points) async {
+    await createCustomersTable();
+    await customStatement(
+      'UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
+      [Variable.withInt(points), Variable.withString(customerId)],
+    );
+  }
+
+  Future<void> redeemLoyaltyPoints(String customerId, int points) async {
+    await createCustomersTable();
+    await customStatement(
+      'UPDATE customers SET loyalty_points = loyalty_points - ? WHERE id = ? AND loyalty_points >= ?',
+      [Variable.withInt(points), Variable.withString(customerId), Variable.withInt(points)],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getCustomersWithDebt() async {
+    await createCustomersTable();
+    final result = await customSelect(
+      'SELECT * FROM customers WHERE balance > 0 ORDER BY balance DESC',
+    ).get();
+    return result.map((r) => <String, dynamic>{
+      'id': r.read<String>('id'),
+      'name': r.read<String>('name'),
+      'phone': r.readNullable<String>('phone') ?? '',
+      'balance': r.read<double>('balance'),
+      'creditLimit': r.read<double>('credit_limit'),
+      'loyaltyPoints': r.read<int>('loyalty_points'),
+    }).toList();
   }
 
   Future<void> recordCustomerPurchase(String customerId, double amount) async {

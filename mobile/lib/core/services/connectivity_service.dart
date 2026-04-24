@@ -20,11 +20,11 @@ class ConnectivityService {
   bool get isOnline => _currentStatus == ConnectionStatus.online;
   bool get isOffline => _currentStatus == ConnectionStatus.offline;
   
-  void initialize() {
-    _checkConnectivity();
+  Future<void> initialize() async {
+    await _checkConnectivity();
     _subscription = _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
   }
-  
+
   Future<void> _checkConnectivity() async {
     await checkCurrentStatus();
   }
@@ -76,8 +76,15 @@ class ConnectivityService {
 }
 
 // Riverpod providers
+// NOTE: The actual ConnectivityService instance is created in injection.dart
+// This provider is a fallback that should not be used in production
 final connectivityServiceProvider = Provider<ConnectivityService>((ref) {
-  throw UnimplementedError('Must be overridden');
+  // This should never be called in production as the service is registered in GetIt
+  // If you hit this error, make sure injection.dart is properly configured
+  throw StateError(
+    'ConnectivityService accessed via Riverpod before DI initialization. '
+    'Use getIt<ConnectivityService>() instead, or ensure configureDependencies() is called first.',
+  );
 });
 
 final connectionStatusProvider = StreamProvider<ConnectionStatus>((ref) {

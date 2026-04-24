@@ -87,6 +87,7 @@ class BackgroundSyncService {
 
   /// Process the sync queue (called by workmanager callback)
   static Future<bool> processSyncQueue() async {
+    // Create isolated instances for background work (runs in isolate)
     final database = AppDatabase();
     final connectivityService = ConnectivityService();
 
@@ -130,8 +131,12 @@ class BackgroundSyncService {
       print('[BackgroundSync] Fatal error: $e');
       return false;
     } finally {
-      connectivityService.dispose();
-      await database.close();
+      try {
+        connectivityService.dispose();
+      } catch (_) {}
+      try {
+        await database.close();
+      } catch (_) {}
     }
   }
 

@@ -17,7 +17,11 @@ import '../../features/inventory/presentation/screens/stock_request_screen.dart'
 import '../../features/inventory/presentation/screens/stock_requests_list_screen.dart';
 import '../../features/inventory/presentation/screens/batch_receive_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
+import '../../features/reports/presentation/screens/analytics_dashboard_screen.dart';
+import '../../features/reports/presentation/screens/inventory_forecasting_screen.dart';
+import '../../features/payments/presentation/screens/payment_analytics_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../services/auth_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
@@ -159,8 +163,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/reports',
             name: 'reports',
             builder: (context, state) => const ReportsScreen(),
+            routes: [
+              // Analytics Dashboard
+              GoRoute(
+                path: 'analytics',
+                name: 'analytics',
+                builder: (context, state) => const AnalyticsDashboardScreen(),
+              ),
+              // Inventory Forecasting
+              GoRoute(
+                path: 'inventory-forecast',
+                name: 'inventory-forecast',
+                builder: (context, state) => const InventoryForecastingScreen(),
+              ),
+            ],
           ),
-          
+
+          // Payment Analytics Screen
+          GoRoute(
+            path: '/payment-analytics',
+            name: 'payment-analytics',
+            builder: (context, state) => const PaymentAnalyticsScreen(),
+          ),
+
+          // Payments Hub Screen (Manual Payments, Hold Queue, Bulk Payments)
+          GoRoute(
+            path: '/payments',
+            name: 'payments',
+            builder: (context, state) => const PaymentsHubScreen(),
+          ),
+
           // Settings Screen
           GoRoute(
             path: '/settings',

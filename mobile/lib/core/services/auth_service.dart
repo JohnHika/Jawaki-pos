@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'storage_service.dart';
 import '../network/api_client.dart';
@@ -25,7 +26,23 @@ class AuthService {
     required StorageService storage,
     required ApiClient apiClient,
   }) : _storage = storage, _apiClient = apiClient {
-    _initializeAuth();
+    // Note: Auth initialization is now done explicitly in main.dart
+    // to avoid async operations in constructor which can cause crashes
+    _updateStatus(AuthStatus.unknown);
+  }
+
+  /// Initialize auth state - call this after AuthService is registered in DI
+  Future<void> initialize() async {
+    try {
+      debugPrint('[AuthService] Initializing auth service...');
+      await _initializeAuth();
+      debugPrint('[AuthService] Auth service initialized successfully');
+    } catch (e, stackTrace) {
+      debugPrint('[AuthService] Initialization error: $e');
+      debugPrint('[AuthService] Stack trace: $stackTrace');
+      // Set to unauthenticated on error - app can still function
+      _currentStatus = AuthStatus.unauthenticated;
+    }
   }
   
   Stream<AuthStatus> get authStatusStream => _authStatusController.stream;

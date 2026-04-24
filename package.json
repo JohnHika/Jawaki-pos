@@ -11,6 +11,7 @@
     "test": "cd backend && npm test"
   },
   "dependencies": {
-    "helmet": "^8.1.0"
+    "helmet": "^8.1.0",
+    "qrcode": "^1.5.4"
   }
 }
