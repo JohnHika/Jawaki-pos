@@ -349,7 +349,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 barTouchData: BarTouchData(
                   enabled: true,
                   touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => AppColors.textPrimary,
                     tooltipPadding: const EdgeInsets.all(12),
                     tooltipMargin: 8,
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
@@ -409,13 +408,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
                 borderData: FlBorderData(show: false),
                 barGroups: [
-                  BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 4500, gradient: AppColors.primaryGradient, width: 12, radius: const Radius.circular(6))]),
-                  BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 6200, gradient: AppColors.primaryGradient, width: 12, radius: const Radius.circular(6))]),
-                  BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 5800, gradient: AppColors.primaryGradient, width: 12, radius: const Radius.circular(6))]),
-                  BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: 7300, gradient: AppColors.primaryGradient, width: 12, radius: const Radius.circular(6))]),
-                  BarChartGroupData(x: 4, barRods: [BarChartRodData(toY: 8900, gradient: AppColors.successGradient, width: 12, radius: const Radius.circular(6))]),
-                  BarChartGroupData(x: 5, barRods: [BarChartRodData(toY: 3200, gradient: AppColors.primaryGradient, width: 12, radius: const Radius.circular(6))]),
-                  BarChartGroupData(x: 6, barRods: [BarChartRodData(toY: 2100, gradient: AppColors.primaryGradient, width: 12, radius: const Radius.circular(6))]),
+                  BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 4500, gradient: AppColors.primaryGradient, width: 12)]),
+                  BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 6200, gradient: AppColors.primaryGradient, width: 12)]),
+                  BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 5800, gradient: AppColors.primaryGradient, width: 12)]),
+                  BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: 7300, gradient: AppColors.primaryGradient, width: 12)]),
+                  BarChartGroupData(x: 4, barRods: [BarChartRodData(toY: 8900, gradient: AppColors.successGradient, width: 12)]),
+                  BarChartGroupData(x: 5, barRods: [BarChartRodData(toY: 3200, gradient: AppColors.primaryGradient, width: 12)]),
+                  BarChartGroupData(x: 6, barRods: [BarChartRodData(toY: 2100, gradient: AppColors.primaryGradient, width: 12)]),
                 ],
               ),
             ),
@@ -837,7 +836,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      quantity == 0 ? 'Out of Stock' : '$qty left',
+                      quantity == 0 ? 'Out of Stock' : '$quantity left',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

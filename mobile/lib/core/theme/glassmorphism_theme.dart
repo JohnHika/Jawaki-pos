@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 /// Glassmorphism Theme for Levisa Adventures POS
@@ -159,7 +161,6 @@ class GlassTheme {
     style: ElevatedButton.styleFrom(
       backgroundColor: GlassColors.glassBackground.withOpacity(0.4),
       foregroundColor: GlassColors.glassTextPrimary,
-      elevation: 0,
       shadowColor: GlassColors.glassGlow.withOpacity(0.2),
       minimumSize: const Size(double.infinity, 56),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -176,7 +177,6 @@ class GlassTheme {
         letterSpacing: 0.3,
       ),
       animationDuration: const Duration(milliseconds: 300),
-      elevation: 0,
     ),
   );
 

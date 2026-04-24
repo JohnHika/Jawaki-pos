@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/database/app_database.dart';
@@ -95,6 +96,32 @@ class ReportsScreen extends ConsumerWidget {
               title: 'Customer Report',
               subtitle: 'Customer purchases and loyalty',
               onTap: () => _showCustomerReport(context, ref),
+            ),
+            const SizedBox(height: 16),
+            Text('Analytics', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+
+            // Glassmorphism Analytics Tiles
+            _GlassmorphismReportTile(
+              icon: Icons.bar_chart_rounded,
+              title: 'Analytics Dashboard',
+              subtitle: 'Comprehensive sales analytics with multiple chart types',
+              color: AppColors.primary,
+              onTap: () => context.push('/reports/analytics'),
+            ),
+            _GlassmorphismReportTile(
+              icon: Icons.trending_up_rounded,
+              title: 'Inventory Forecast',
+              subtitle: 'Predictive inventory analytics and demand forecasting',
+              color: AppColors.accent,
+              onTap: () => context.push('/reports/inventory-forecast'),
+            ),
+            _GlassmorphismReportTile(
+              icon: Icons.payments_rounded,
+              title: 'Payment Analytics',
+              subtitle: 'Detailed payment method analysis and transaction trends',
+              color: AppColors.secondary,
+              onTap: () => context.push('/payment-analytics'),
             ),
           ],
         ),
@@ -955,6 +982,100 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(title, style: Theme.of(context).textTheme.bodySmall),
         ],
+      ),
+    );
+  }
+}
+
+// ═══ Glassmorphism Report Tile ═══
+class _GlassmorphismReportTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _GlassmorphismReportTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: color.withOpacity(0.2),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.1),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

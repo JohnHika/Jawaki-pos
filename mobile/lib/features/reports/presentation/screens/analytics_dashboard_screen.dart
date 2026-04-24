@@ -261,10 +261,6 @@ class _AnalyticsDashboardScreenState
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: AppColors.primaryGradient,
-                  gradientBlendColors: [
-                    AppColors.primary.withOpacity(0.1),
-                    AppColors.primary.withOpacity(0.0),
-                  ],
                 ),
               ),
             ],
@@ -543,7 +539,7 @@ class _AnalyticsDashboardScreenState
               final color = _getPaymentMethodColor(method);
               final percentage =
                   (_salesByPayment.isNotEmpty
-                          ? (_salesByPayment.fold(0, (sum, p) => sum + (p['totalAmount'] ?? 0)) as num)
+                          ? (_salesByPayment.fold(0, (sum, p) => sum + (p['totalAmount'] ?? 0)) as int)
                           : 1)
                       .toDouble();
               final percent = (total / percentage * 100).toStringAsFixed(1);
