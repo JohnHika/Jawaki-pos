@@ -1,13 +1,16 @@
+import 'dart:math' show Random;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'dart:math' show Random;
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/glassmorphism_theme.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
+
+final _random = Random();
 
 class InventoryForecastingScreen extends ConsumerStatefulWidget {
   const InventoryForecastingScreen({super.key});
@@ -71,7 +74,7 @@ class _InventoryForecastingScreenState
   Future<List<Map<String, dynamic>>> _generateForecast() async {
     // Generate synthetic forecast data for demo
     // In production, this would use actual forecasting algorithms
-    final forecast = [];
+    final forecast = <Map<String, dynamic>>[];
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final today = DateTime.now().day;
 
@@ -79,7 +82,7 @@ class _InventoryForecastingScreenState
       final dayIndex = (today + i) % 7;
       // Simulate higher sales on weekends
       final baseDemand = dayIndex >= 5 ? 150 : 100;
-      final variance = (Math.random() * 40 - 20).round();
+      final variance = (_random.nextDouble() * 40 - 20).round();
       final forecastedDemand = (baseDemand + variance).clamp(50, 200);
 
       forecast.add({
@@ -248,10 +251,6 @@ class _InventoryForecastingScreenState
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: AppColors.primaryGradient,
-                  gradientBlendColors: [
-                    AppColors.primary.withOpacity(0.1),
-                    AppColors.primary.withOpacity(0.0),
-                  ],
                 ),
               ),
             ],
@@ -748,4 +747,3 @@ class _InventoryForecastingScreenState
 }
 
 import 'dart:math' show Random;
-
