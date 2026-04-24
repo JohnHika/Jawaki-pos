@@ -537,11 +537,10 @@ class _AnalyticsDashboardScreenState
               final count = payment['count'] ?? 0;
               final total = payment['totalAmount'] ?? 0.0;
               final color = _getPaymentMethodColor(method);
-              final percentage =
-                  (_salesByPayment.isNotEmpty
-                          ? (_salesByPayment.fold(0, (sum, p) => sum + (p['totalAmount'] ?? 0)) as int)
-                          : 1)
-                      .toDouble();
+              final totalBreakdown = (_salesByPayment.isNotEmpty
+                  ? _salesByPayment.fold<double>(0, (sum, p) => sum + ((p['totalAmount'] ?? 0) as double))
+                  : 1);
+              final percentage = totalBreakdown;
               final percent = (total / percentage * 100).toStringAsFixed(1);
 
               return Padding(
@@ -712,7 +711,7 @@ class _AnalyticsDashboardScreenState
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: (_salesByCategory.isNotEmpty
-                                ? (_salesByCategory.fold(0, (sum, c) => sum + (c['totalAmount'] ?? 0)) as num)
+                                ? _salesByCategory.fold<double>(0, (sum, c) => sum + ((c['totalAmount'] ?? 0) as double))
                                 : 1)
                             .toDouble(),
                         valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -782,7 +781,7 @@ class _AnalyticsDashboardScreenState
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
                   maxY: (_hourlySales.isNotEmpty
-                          ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
+                          ? _hourlySales.fold<double>(0, (sum, e) => (e['totalAmount'] ?? 0) > sum ? (e['totalAmount'] ?? 0) as double : sum)
                           : 1000)
                       .toDouble() *
                       1.2,

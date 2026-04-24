@@ -320,7 +320,7 @@ class _PaymentAnalyticsScreenState
                             borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
                               value: (_paymentMethodBreakdown.isNotEmpty
-                                      ? (_paymentMethodBreakdown.fold(0, (sum, p) => sum + (p['totalAmount'] ?? 0)) as num)
+                                      ? _paymentMethodBreakdown.fold<double>(0, (sum, p) => sum + ((p['totalAmount'] ?? 0) as double))
                                       : 1)
                                   .toDouble(),
                               valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -372,10 +372,6 @@ class _PaymentAnalyticsScreenState
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: AppColors.primaryGradient,
-                  gradientBlendColors: [
-                    AppColors.primary.withOpacity(0.1),
-                    AppColors.primary.withOpacity(0.0),
-                  ],
                 ),
               ),
             ],
@@ -422,7 +418,7 @@ class _PaymentAnalyticsScreenState
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
-                        'KSh ${value.toInt() ~/ 1000}k',
+                        'KSh ${(value as num).toInt() ~/ 1000}k',
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
@@ -443,7 +439,7 @@ class _PaymentAnalyticsScreenState
               show: true,
               drawVerticalLine: false,
               horizontalInterval: (_transactionTrends.isNotEmpty
-                      ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
+                      ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as int)
                       : 1000)
                   .toDouble() /
                   5,

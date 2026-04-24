@@ -281,7 +281,7 @@ class _InventoryForecastingScreenState
                   },
                 ),
               ),
-              leftTitles: const AxisTitles(
+              leftTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
                   getTitlesWidget: (value, meta) {
@@ -289,7 +289,7 @@ class _InventoryForecastingScreenState
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
                         '${value.toInt()}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
                         ),
@@ -745,5 +745,3 @@ class _InventoryForecastingScreenState
     );
   }
 }
-
-import 'dart:math' show Random;
