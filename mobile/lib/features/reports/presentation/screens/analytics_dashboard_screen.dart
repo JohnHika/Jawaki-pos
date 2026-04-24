@@ -789,7 +789,6 @@ class _AnalyticsDashboardScreenState
                   barTouchData: BarTouchData(
                     enabled: true,
                     touchTooltipData: BarTouchTooltipData(
-                      getTooltipColor: (_) => AppColors.textPrimary,
                       tooltipPadding: const EdgeInsets.all(12),
                       tooltipMargin: 8,
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
@@ -867,7 +866,6 @@ class _AnalyticsDashboardScreenState
                             toY: (_hourlySales[i]['totalAmount'] ?? 0).toDouble(),
                             gradient: AppColors.primaryGradient,
                             width: 14,
-                            radius: const Radius.circular(6),
                           ),
                         ],
                       ),
