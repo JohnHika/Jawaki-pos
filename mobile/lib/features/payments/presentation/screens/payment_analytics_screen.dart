@@ -411,7 +411,7 @@ class _PaymentAnalyticsScreenState
                   },
                 ),
               ),
-              leftTitles: const AxisTitles(
+              leftTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
                   getTitlesWidget: (value, meta) {
@@ -419,7 +419,7 @@ class _PaymentAnalyticsScreenState
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
                         'KSh ${(value as num).toInt() ~/ 1000}k',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
                         ),
@@ -582,7 +582,7 @@ class _PaymentAnalyticsScreenState
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${(count / (_peakHours.fold(0, (sum, h) => sum + (h['transactionCount'] ?? 0)) as num) * 100).toStringAsFixed(1)}% of traffic',
+                          '${(count / (_peakHours.fold(0, (sum, h) => sum + ((h['transactionCount'] ?? 0) as int))) * 100).toStringAsFixed(1)}% of traffic',
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary,
