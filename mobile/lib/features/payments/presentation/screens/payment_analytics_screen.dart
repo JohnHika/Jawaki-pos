@@ -3,8 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/theme/glassmorphism_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 
@@ -79,11 +78,8 @@ class _PaymentAnalyticsScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Payment Analytics'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -95,9 +91,8 @@ class _PaymentAnalyticsScreenState
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadPaymentData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
+              child: PageContainer(
+                withScroll: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -128,42 +123,52 @@ class _PaymentAnalyticsScreenState
   }
 
   Widget _buildPeriodSelector() {
-    return GlassUI.glassBox(
-      child: Row(
-        mainAxisSize: MainAxisSize.max,
-        children: _periods.asMap().entries.map((entry) {
-          final index = entry.key;
-          final period = entry.value;
-          final isSelected = _selectedPeriod == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        borderRadius: 14,
+        blur: 10,
+        tint: Colors.transparent,
+        borderColor: DesignColors.surfaceBorder,
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: _periods.asMap().entries.map((entry) {
+            final index = entry.key;
+            final period = entry.value;
+            final isSelected = _selectedPeriod == index;
 
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _selectedPeriod = index);
-                _loadPaymentData();
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primary.withOpacity(0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  period,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            return Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _selectedPeriod = index);
+                  _loadPaymentData();
+                },
+                child: AnimatedContainer(
+                  duration: DesignAnimation.fast,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
                     color: isSelected
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
+                        ? DesignColors.brand.withValues(alpha:0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    period,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? DesignColors.brand
+                          : DesignColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -172,62 +177,74 @@ class _PaymentAnalyticsScreenState
     final totalPayments = (_paymentSummary['totalAmount'] ?? 0.0).toDouble();
     final transactionCount = _paymentSummary['transactionCount'] ?? 0;
     final avgPayment = (_paymentSummary['avgPayment'] ?? 0.0).toDouble();
-    final cashCount = _paymentSummary['cashCount'] ?? 0;
-    final cardCount = _paymentSummary['cardCount'] ?? 0;
-    final digitalCount = _paymentSummary['digitalCount'] ?? 0;
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Total Payments',
-              value: 'KSh ${totalPayments.toStringAsFixed(0)}',
-              icon: Icons.payments_rounded,
-              color: AppColors.primary,
-              trend: '+12.5%',
-              trendValue: 12.5,
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Transactions',
-              value: transactionCount.toString(),
-              icon: Icons.receipt_long_rounded,
-              color: AppColors.secondary,
-              trend: '+8.2%',
-              trendValue: 8.2,
-            )),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Avg Payment',
-              value: 'KSh ${avgPayment.toStringAsFixed(0)}',
-              icon: Icons.calculate_rounded,
-              color: AppColors.accentOrange,
-              trend: '+5.3%',
-              trendValue: 5.3,
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Success Rate',
-              value: '98.5%',
-              icon: Icons.check_circle_rounded,
-              color: AppColors.success,
-              trend: '+0.5%',
-              trendValue: 0.5,
-            )),
-          ],
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: MetricCard(
+                  title: 'Total Payments',
+                  value: 'KSh ${totalPayments.toStringAsFixed(0)}',
+                  icon: Icons.payments_rounded,
+                  color: DesignColors.brand,
+                  trend: '+12.5%',
+                  trendValue: 12.5,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: MetricCard(
+                  title: 'Transactions',
+                  value: transactionCount.toString(),
+                  icon: Icons.receipt_long_rounded,
+                  color: DesignColors.teal,
+                  trend: '+8.2%',
+                  trendValue: 8.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: MetricCard(
+                  title: 'Avg Payment',
+                  value: 'KSh ${avgPayment.toStringAsFixed(0)}',
+                  icon: Icons.calculate_rounded,
+                  color: DesignColors.accent,
+                  trend: '+5.3%',
+                  trendValue: 5.3,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: MetricCard(
+                  title: 'Success Rate',
+                  value: '98.5%',
+                  icon: Icons.check_circle_rounded,
+                  color: DesignColors.success,
+                  trend: '+0.5%',
+                  trendValue: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildPaymentMethodBreakdown() {
-    return GlassUI.glassBox(
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.info.withValues(alpha:0.05),
+      borderColor: DesignColors.info.withValues(alpha:0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -236,16 +253,16 @@ class _PaymentAnalyticsScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.info.withOpacity(0.15),
+                  color: DesignColors.info.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.info.withOpacity(0.3),
+                    color: DesignColors.info.withValues(alpha:0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.payment_rounded,
-                  color: AppColors.info,
+                  color: DesignColors.info,
                   size: 22,
                 ),
               ),
@@ -255,21 +272,16 @@ class _PaymentAnalyticsScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: DesignColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
           if (_paymentMethodBreakdown.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  'No payment data available',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
+            const EmptyState(
+              icon: Icons.payment_rounded,
+              title: 'No payment data available',
             )
           else
             ..._paymentMethodBreakdown.map((payment) {
@@ -298,16 +310,16 @@ class _PaymentAnalyticsScreenState
                           _formatPaymentMethod(method),
                           style: const TextStyle(
                             fontSize: 14,
-                            color: AppColors.textPrimary,
+                            color: DesignColors.textPrimary,
                           ),
                         ),
                         const Spacer(),
                         Text(
-                          '${count} transactions',
+                          '$count transactions',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: DesignColors.textPrimary,
                           ),
                         ),
                       ],
@@ -325,7 +337,7 @@ class _PaymentAnalyticsScreenState
                                   .toDouble(),
                               valueColor: AlwaysStoppedAnimation<Color>(color),
                               minHeight: 10,
-                              backgroundColor: AppColors.border,
+                              backgroundColor: DesignColors.surfaceBorder,
                             ),
                           ),
                         ),
@@ -350,116 +362,12 @@ class _PaymentAnalyticsScreenState
   }
 
   Widget _buildTransactionTrendChart() {
-    return GlassUI.glassChartContainer(
-      title: 'Transaction Trends',
-      icon: Icons.trending_up_rounded,
-      primaryColor: AppColors.primary,
-      chart: SizedBox(
-        height: 280,
-        child: LineChart(
-          LineChartData(
-            lineBarsData: [
-              LineChartBarData(
-                spots: [
-                  for (int i = 0; i < _transactionTrends.length; i++)
-                    FlSpot(i.toDouble(), (_transactionTrends[i]['totalAmount'] ?? 0).toDouble()),
-                ],
-                isCurved: true,
-                gradient: AppColors.primaryGradient,
-                barWidth: 4,
-                isStrokeCapRound: true,
-                dotData: const FlDotData(show: true),
-                belowBarData: BarAreaData(
-                  show: true,
-                  gradient: AppColors.primaryGradient,
-                ),
-              ),
-            ],
-            minX: 0,
-            maxX: (_transactionTrends.length - 1).toDouble(),
-            minY: 0,
-            maxY: (_transactionTrends.isNotEmpty
-                    ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                    : 1000)
-                .toDouble() *
-                1.2,
-            titlesData: FlTitlesData(
-              show: true,
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  getTitlesWidget: (value, meta) {
-                    if (_transactionTrends.isEmpty) return const Text('');
-                    final index = value.toInt();
-                    if (index >= 0 && index < _transactionTrends.length) {
-                      final date = DateTime.parse(_transactionTrends[index]['date'] ?? '');
-                      final time = _selectedPeriod == 0
-                          ? '${date.hour}:00'
-                          : '${date.day}/${date.month}';
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          time,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                      );
-                    }
-                    return const Text('');
-                  },
-                ),
-              ),
-              leftTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  getTitlesWidget: (value, meta) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Text(
-                        'KSh ${(value as num).toInt() ~/ 1000}k',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-            ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              horizontalInterval: (_transactionTrends.isNotEmpty
-                      ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as int)
-                      : 1000)
-                  .toDouble() /
-                  5,
-              getDrawingHorizontalLine: (value) {
-                return FlLine(
-                  color: AppColors.border.withOpacity(0.3),
-                  strokeWidth: 1,
-                );
-              },
-            ),
-            borderData: FlBorderData(show: false),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPeakHoursAnalysis() {
-    return GlassUI.glassBox(
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.brand.withValues(alpha:0.05),
+      borderColor: DesignColors.brand.withValues(alpha:0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -468,16 +376,168 @@ class _PaymentAnalyticsScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.accentCyan.withOpacity(0.15),
+                  color: DesignColors.brand.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.accentCyan.withOpacity(0.3),
+                    color: DesignColors.brand.withValues(alpha:0.25),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.trending_up_rounded,
+                  color: DesignColors.brand,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Transaction Trends',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: DesignColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 280,
+            child: LineChart(
+              LineChartData(
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: [
+                      for (int i = 0; i < _transactionTrends.length; i++)
+                        FlSpot(i.toDouble(), (_transactionTrends[i]['totalAmount'] ?? 0).toDouble()),
+                    ],
+                    isCurved: true,
+                    gradient: const LinearGradient(
+                      colors: [DesignColors.brand, DesignColors.brandLight],
+                    ),
+                    barWidth: 4,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          DesignColors.brand.withValues(alpha:0.3),
+                          DesignColors.brand.withValues(alpha:0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                minX: 0,
+                maxX: (_transactionTrends.length - 1).toDouble(),
+                minY: 0,
+                maxY: (_transactionTrends.isNotEmpty
+                        ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
+                        : 1000)
+                    .toDouble() *
+                    1.2,
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        if (_transactionTrends.isEmpty) return const Text('');
+                        final index = value.toInt();
+                        if (index >= 0 && index < _transactionTrends.length) {
+                          final date = DateTime.parse(_transactionTrends[index]['date'] ?? '');
+                          final time = _selectedPeriod == 0
+                              ? '${date.hour}:00'
+                              : '${date.day}/${date.month}';
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              time,
+                              style: const TextStyle(
+                                color: DesignColors.textTertiary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text(
+                            'KSh ${(value as num).toInt() ~/ 1000}k',
+                            style: TextStyle(
+                              color: DesignColors.textTertiary,
+                              fontSize: 11,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (_transactionTrends.isNotEmpty
+                          ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as int)
+                          : 1000)
+                      .toDouble() /
+                      5,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(
+                      color: DesignColors.surfaceBorder.withValues(alpha:0.5),
+                      strokeWidth: 1,
+                    );
+                  },
+                ),
+                borderData: FlBorderData(show: false),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeakHoursAnalysis() {
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.accent.withValues(alpha:0.05),
+      borderColor: DesignColors.accent.withValues(alpha:0.12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: DesignColors.accent.withValues(alpha:0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: DesignColors.accent.withValues(alpha:0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.access_time_rounded,
-                  color: AppColors.accentCyan,
+                  color: DesignColors.accent,
                   size: 22,
                 ),
               ),
@@ -487,21 +547,16 @@ class _PaymentAnalyticsScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: DesignColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
           if (_peakHours.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  'No peak hours data available',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
+            const EmptyState(
+              icon: Icons.access_time_rounded,
+              title: 'No peak hours data available',
             )
           else
             ..._peakHours.map((hour) {
@@ -518,10 +573,10 @@ class _PaymentAnalyticsScreenState
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.15),
+                        color: color.withValues(alpha:0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: color.withOpacity(0.3),
+                          color: color.withValues(alpha:0.3),
                           width: 1,
                         ),
                       ),
@@ -545,7 +600,7 @@ class _PaymentAnalyticsScreenState
                             children: [
                               Icon(
                                 Icons.access_time_rounded,
-                                color: AppColors.textSecondary,
+                                color: DesignColors.textSecondary,
                                 size: 14,
                               ),
                               const SizedBox(width: 4),
@@ -553,7 +608,7 @@ class _PaymentAnalyticsScreenState
                                 _formatHourLabel(hourNum),
                                 style: const TextStyle(
                                   fontSize: 13,
-                                  color: AppColors.textPrimary,
+                                  color: DesignColors.textPrimary,
                                 ),
                               ),
                             ],
@@ -563,7 +618,7 @@ class _PaymentAnalyticsScreenState
                             '$count transactions',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary,
+                              color: DesignColors.textSecondary,
                             ),
                           ),
                         ],
@@ -585,7 +640,7 @@ class _PaymentAnalyticsScreenState
                           '${(count / (_peakHours.fold(0, (sum, h) => sum + ((h['transactionCount'] ?? 0) as int))) * 100).toStringAsFixed(1)}% of traffic',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: AppColors.textSecondary,
+                            color: DesignColors.textSecondary,
                           ),
                         ),
                       ],
@@ -602,26 +657,26 @@ class _PaymentAnalyticsScreenState
   Color _getPaymentMethodColor(String method) {
     switch (method.toLowerCase()) {
       case 'cash':
-        return AppColors.cash;
+        return DesignColors.cash;
       case 'mpesa':
-        return AppColors.mpesa;
+        return DesignColors.mpesa;
       case 'card':
       case 'credit':
-        return AppColors.credit;
+        return DesignColors.credit;
       case 'pesapal':
-        return AppColors.pesapal;
+        return DesignColors.pesapal;
       case 'touristtap':
-        return AppColors.touristtap;
+        return DesignColors.touristtap;
       default:
-        return AppColors.primary;
+        return DesignColors.brand;
     }
   }
 
   Color _getPeakHourColor(int hour) {
-    if (hour >= 8 && hour <= 10) return AppColors.success;
-    if (hour >= 12 && hour <= 14) return AppColors.accentOrange;
-    if (hour >= 17 && hour <= 19) return AppColors.primary;
-    return AppColors.info;
+    if (hour >= 8 && hour <= 10) return DesignColors.success;
+    if (hour >= 12 && hour <= 14) return DesignColors.accent;
+    if (hour >= 17 && hour <= 19) return DesignColors.brand;
+    return DesignColors.info;
   }
 
   String _formatPaymentMethod(String method) {

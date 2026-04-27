@@ -6,6 +6,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/api_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/theme/design_system.dart';
 
 /// Enhanced Batch Receive Screen with Multi-Unit Support
 /// Supervisors can receive stock in cartons/boxes and auto-convert to pieces
@@ -22,7 +23,8 @@ class BatchReceiveScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<BatchReceiveScreen> createState() => _BatchReceiveScreenState();
+  ConsumerState<BatchReceiveScreen> createState() =>
+      _BatchReceiveScreenState();
 }
 
 class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
@@ -41,11 +43,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     if (widget.productId == null || widget.productName == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please select a product first'),
-              backgroundColor: Colors.red,
-            ),
+          showGlassSnackBar(
+            context,
+            'Please select a product first',
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
           );
           Navigator.of(context).pop();
         }
@@ -59,11 +61,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
   Future<void> _loadProductConfig() async {
     if (widget.productId == null) return;
-    
+
     try {
       final apiClient = ref.read(apiClientProvider);
       final product = await apiClient.getProduct(widget.productId!);
-      
+
       if (mounted) {
         setState(() {
           _unitConfig = UnitConfig(
@@ -95,8 +97,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   }
 
   void _addBatch() {
-    if (_unitConfig == null) return; // Don't add batch until config is loaded
-    
+    if (_unitConfig == null) return;
+
     setState(() {
       _batches.add(BatchEntry(
         batchNumberController: TextEditingController(),
@@ -111,8 +113,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
   void _removeBatch(int index) {
     if (_batches.length == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('At least one batch is required')),
+      showGlassSnackBar(
+        context,
+        'At least one batch is required',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.warning,
       );
       return;
     }
@@ -127,8 +132,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_batches.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add at least one batch')),
+      showGlassSnackBar(
+        context,
+        'Please add at least one batch',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.warning,
       );
       return;
     }
@@ -141,7 +149,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         final quantity = double.parse(batch.quantityController.text);
         final unitOption = _unitConfig!.availableUnits.firstWhere(
           (u) => u.name == batch.selectedUnit,
-          orElse: () => UnitOption(name: batch.selectedUnit, conversionFactor: 1.0),
+          orElse: () =>
+              UnitOption(name: batch.selectedUnit, conversionFactor: 1.0),
         );
 
         return {
@@ -167,11 +176,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       final apiClient = ref.read(apiClientProvider);
       final authService = getIt<AuthService>();
       final branchId = widget.branchId ?? authService.branchId;
-      
+
       if (branchId == null || widget.productId == null) {
         throw Exception('Missing branch ID or product ID');
       }
-      
+
       await apiClient.receiveBatches({
         'branchId': branchId,
         'productId': widget.productId!,
@@ -180,22 +189,22 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Batches received successfully'),
-          backgroundColor: Colors.green,
-        ),
+      showGlassSnackBar(
+        context,
+        'Batches received successfully',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
       );
 
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error receiving batches: $e'),
-          backgroundColor: Colors.red,
-        ),
+      showGlassSnackBar(
+        context,
+        'Error receiving batches: $e',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
       );
     } finally {
       if (mounted) {
@@ -216,147 +225,223 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   Widget build(BuildContext context) {
     if (_isLoadingConfig || _unitConfig == null) {
       return Scaffold(
+        extendBodyBehindAppBar: true,
         appBar: AppBar(
-          title: const Text('Receive Stock'),
+          title: const Text(
+            'Receive Stock',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+            ),
+          ),
+          centerTitle: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
         ),
         body: const Center(
-          child: CircularProgressIndicator(),
+          child: CircularProgressIndicator(color: DesignColors.brand),
         ),
       );
     }
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Receive Stock'),
+        title: const Text(
+          'Receive Stock',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_circle_outline),
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: DesignColors.brand.withValues(alpha:0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.add_circle_outline_rounded,
+                  color: DesignColors.brand, size: 20),
+            ),
             tooltip: 'Add another batch',
             onPressed: _addBatch,
           ),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            // Product Info Header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.productName ?? 'Unknown Product',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  if (_unitConfig != null && _unitConfig!.availableUnits.length > 1) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: _unitConfig!.availableUnits
-                          .where((u) => u.conversionFactor != 1.0)
-                          .map((unit) => Chip(
-                                label: Text(
-                                  '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                backgroundColor: Colors.white,
-                                padding: EdgeInsets.zero,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+      body: PageContainer(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              const SizedBox(height: kToolbarHeight + 8),
 
-            // Batch List
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _batches.length,
-                itemBuilder: (context, index) {
-                  return _buildBatchCard(index);
-                },
-              ),
-            ),
-
-            // Submit Button
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Summary
-                    if (_batches.isNotEmpty) ...[
+              // Product Info Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  borderRadius: 14,
+                  tint: DesignColors.brand.withValues(alpha:0.05),
+                  borderColor: DesignColors.brand.withValues(alpha:0.15),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Total Batches:',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade600,
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: DesignColors.brand.withValues(alpha:0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.inventory_2_rounded,
+                              color: DesignColors.brand,
+                              size: 22,
                             ),
                           ),
-                          Text(
-                            '${_batches.length}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.productName ??
+                                      'Unknown Product',
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    color: DesignColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: DesignColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      if (_unitConfig != null &&
+                          _unitConfig!.availableUnits.length > 1) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: _unitConfig!.availableUnits
+                              .where((u) => u.conversionFactor != 1.0)
+                              .map((unit) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: DesignColors.brand
+                                          .withValues(alpha:0.08),
+                                      borderRadius:
+                                          BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: DesignColors.brand
+                                              .withValues(alpha:0.15)),
+                                    ),
+                                    child: Text(
+                                      '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: DesignColors.brand,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                      ],
                     ],
+                  ),
+                ),
+              ),
 
-                    // Submit Button
-                    FilledButton(
-                      onPressed: _isLoading ? null : _submitBatches,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 52),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Receive Batches'),
+              const SizedBox(height: 16),
+
+              // Batch List
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _batches.length,
+                  itemBuilder: (context, index) {
+                    return _buildBatchCard(index);
+                  },
+                ),
+              ),
+
+              // Bottom Submit Section
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha:0.05),
+                      blurRadius: 12,
+                      offset: const Offset(0, -4),
                     ),
                   ],
                 ),
+                child: SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Summary
+                      if (_batches.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Total Batches:',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: DesignColors.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                '${_batches.length}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: DesignColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // Submit Button
+                      GradientButton(
+                        label: 'Receive Batches',
+                        icon: Icons.check_rounded,
+                        onPressed: _isLoading ? null : _submitBatches,
+                        isLoading: _isLoading,
+                        height: 52,
+                        borderRadius: 14,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -365,29 +450,61 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   Widget _buildBatchCard(int index) {
     final batch = _batches[index];
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: GlassCard(
         padding: const EdgeInsets.all(16),
+        borderRadius: 14,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header with batch number and delete button
             Row(
               children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [DesignColors.brand, DesignColors.brandDark],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Text(
                   'Batch ${index + 1}',
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
+                    color: DesignColors.textPrimary,
                   ),
                 ),
                 const Spacer(),
                 if (_batches.length > 1)
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => _removeBatch(index),
-                    tooltip: 'Remove batch',
+                  GestureDetector(
+                    onTap: () => _removeBatch(index),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: DesignColors.error.withValues(alpha:0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: DesignColors.error,
+                        size: 18,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -397,10 +514,34 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
             // Batch Number
             TextFormField(
               controller: batch.batchNumberController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Batch Number *',
                 hintText: 'e.g., BTH-2024-001',
-                border: OutlineInputBorder(),
+                hintStyle: TextStyle(color: DesignColors.textTertiary),
+                labelStyle: const TextStyle(
+                  color: DesignColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+                floatingLabelBehavior: FloatingLabelBehavior.auto,
+                prefixIcon: const Icon(Icons.qr_code_rounded,
+                    color: DesignColors.textTertiary, size: 20),
+                filled: true,
+                fillColor: DesignColors.surfaceBorder.withValues(alpha:0.15),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                      color: DesignColors.brand, width: 1.5),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 14),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -410,7 +551,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
               },
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             // Quantity with Unit Selector
             Row(
@@ -420,11 +561,36 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: batch.quantityController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Quantity *',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(
+                          color: DesignColors.textTertiary),
+                      labelStyle: const TextStyle(
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      floatingLabelBehavior: FloatingLabelBehavior.auto,
+                      filled: true,
+                      fillColor:
+                          DesignColors.surfaceBorder.withValues(alpha:0.15),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: DesignColors.brand, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Required';
@@ -442,23 +608,41 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: batch.selectedUnit,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit',
-                      border: OutlineInputBorder(),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color:
+                          DesignColors.surfaceBorder.withValues(alpha:0.15),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    items: _unitConfig!.availableUnits.map((unit) {
-                      return DropdownMenuItem(
-                        value: unit.name,
-                        child: Text(unit.name),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => batch.selectedUnit = value);
-                      }
-                    },
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: batch.selectedUnit,
+                        isExpanded: true,
+                        dropdownColor:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? DesignColors.darkSurface
+                                : Colors.white,
+                        style: const TextStyle(
+                          color: DesignColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        items: _unitConfig!.availableUnits.map((unit) {
+                          return DropdownMenuItem(
+                            value: unit.name,
+                            child: Text(unit.name),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(
+                                () => batch.selectedUnit = value);
+                          }
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -469,124 +653,272 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 _unitConfig != null &&
                 batch.selectedUnit != _unitConfig!.baseUnit) ...[
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.calculate,
-                      size: 18,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _getConversionText(batch),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildConversionPreview(batch),
             ],
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             // Expiry Date
             InkWell(
-              onTap: () => _selectDate(context, batch, isExpiry: true),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Expiry Date',
-                  border: OutlineInputBorder(),
-                  suffixIcon: Icon(Icons.calendar_today),
+              onTap: () =>
+                  _selectDate(context, batch, isExpiry: true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: DesignColors.surfaceBorder.withValues(alpha:0.15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  batch.expiryDate == null
-                      ? 'Select date'
-                      : DateFormat('MMM d, yyyy').format(batch.expiryDate!),
-                  style: TextStyle(
-                    color: batch.expiryDate == null
-                        ? Theme.of(context).hintColor
-                        : null,
-                  ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today_rounded,
+                        color: DesignColors.textTertiary, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Expiry Date',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: DesignColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            batch.expiryDate == null
+                                ? 'Select date'
+                                : DateFormat('MMM d, yyyy')
+                                    .format(batch.expiryDate!),
+                            style: TextStyle(
+                              color: batch.expiryDate == null
+                                  ? DesignColors.textTertiary
+                                  : DesignColors.textPrimary,
+                              fontWeight: batch.expiryDate != null
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded,
+                        color: DesignColors.textTertiary, size: 20),
+                  ],
                 ),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             // Collapsible Additional Details
             Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              data: Theme.of(context)
+                  .copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
-                title: const Text('Additional Details (Optional)'),
+                title: const Text(
+                  'Additional Details (Optional)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: DesignColors.textSecondary,
+                  ),
+                ),
                 tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(top: 8),
+                childrenPadding: const EdgeInsets.only(top: 12),
+                iconColor: DesignColors.textTertiary,
+                collapsedIconColor: DesignColors.textTertiary,
                 children: [
                   // Manufacture Date
                   InkWell(
-                    onTap: () => _selectDate(context, batch, isExpiry: false),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Manufacture Date',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today),
+                    onTap: () =>
+                        _selectDate(context, batch, isExpiry: false),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: DesignColors.surfaceBorder
+                            .withValues(alpha:0.15),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        batch.manufactureDate == null
-                            ? 'Select date'
-                            : DateFormat('MMM d, yyyy').format(batch.manufactureDate!),
-                        style: TextStyle(
-                          color: batch.manufactureDate == null
-                              ? Theme.of(context).hintColor
-                              : null,
-                        ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_month_rounded,
+                              color: DesignColors.textTertiary,
+                              size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Manufacture Date',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color:
+                                        DesignColors.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  batch.manufactureDate == null
+                                      ? 'Select date'
+                                      : DateFormat('MMM d, yyyy')
+                                          .format(
+                                              batch.manufactureDate!),
+                                  style: TextStyle(
+                                    color:
+                                        batch.manufactureDate == null
+                                            ? DesignColors
+                                                .textTertiary
+                                            : DesignColors
+                                                .textPrimary,
+                                    fontWeight: batch
+                                            .manufactureDate != null
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: DesignColors.textTertiary,
+                              size: 20),
+                        ],
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
                   // Cost Price
                   TextFormField(
                     controller: batch.costPriceController,
                     decoration: InputDecoration(
-                      labelText: 'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
-                      border: const OutlineInputBorder(),
-                      prefixText: '\$',
+                      labelText:
+                          'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
+                      hintStyle: TextStyle(
+                          color: DesignColors.textTertiary),
+                      labelStyle: const TextStyle(
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      floatingLabelBehavior:
+                          FloatingLabelBehavior.auto,
+                      prefixText: 'KES ',
+                      prefixStyle: const TextStyle(
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      filled: true,
+                      fillColor: DesignColors.surfaceBorder
+                          .withValues(alpha:0.15),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: DesignColors.brand, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
                   // Supplier Reference
                   TextFormField(
                     controller: batch.supplierRefController,
-                    decoration: const InputDecoration(
-                      labelText: 'Supplier Reference / Invoice #',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText:
+                          'Supplier Reference / Invoice #',
+                      hintText: 'e.g., INV-001',
+                      hintStyle: TextStyle(
+                          color: DesignColors.textTertiary),
+                      labelStyle: const TextStyle(
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      floatingLabelBehavior:
+                          FloatingLabelBehavior.auto,
+                      prefixIcon: const Icon(Icons.receipt_rounded,
+                          color: DesignColors.textTertiary,
+                          size: 20),
+                      filled: true,
+                      fillColor: DesignColors.surfaceBorder
+                          .withValues(alpha:0.15),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: DesignColors.brand, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
                   // Notes
                   TextFormField(
                     controller: batch.notesController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Notes',
                       hintText: 'Any additional notes...',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(
+                          color: DesignColors.textTertiary),
+                      labelStyle: const TextStyle(
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      floatingLabelBehavior:
+                          FloatingLabelBehavior.auto,
+                      prefixIcon: const Icon(Icons.notes_rounded,
+                          color: DesignColors.textTertiary,
+                          size: 20),
+                      filled: true,
+                      fillColor: DesignColors.surfaceBorder
+                          .withValues(alpha:0.15),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: DesignColors.brand, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                     ),
                     maxLines: 2,
                   ),
@@ -599,29 +931,79 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     );
   }
 
-  String _getConversionText(BatchEntry batch) {
-    if (_unitConfig == null) return '';
-    
+  Widget _buildConversionPreview(BatchEntry batch) {
     final qty = double.tryParse(batch.quantityController.text);
-    if (qty == null) return '';
+    if (qty == null) return const SizedBox.shrink();
 
     final unitOption = _unitConfig!.availableUnits.firstWhere(
       (u) => u.name == batch.selectedUnit,
-      orElse: () => UnitOption(name: batch.selectedUnit, conversionFactor: 1.0),
+      orElse: () =>
+          UnitOption(name: batch.selectedUnit, conversionFactor: 1.0),
     );
 
     final baseQty = qty * unitOption.conversionFactor;
-    return '= ${baseQty.toStringAsFixed(baseQty % 1 == 0 ? 0 : 2)} ${_unitConfig!.baseUnit}';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            DesignColors.brand.withValues(alpha:0.08),
+            DesignColors.brand.withValues(alpha:0.03),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: DesignColors.brand.withValues(alpha:0.15),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.calculate_rounded,
+            size: 18,
+            color: DesignColors.brand,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '= $baseQty ${_unitConfig!.baseUnit}${baseQty > 1 ? 's' : ''}',
+              style: const TextStyle(
+                fontSize: 14,
+                color: DesignColors.brand,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> _selectDate(BuildContext context, BatchEntry batch, {required bool isExpiry}) async {
+  Future<void> _selectDate(
+      BuildContext context, BatchEntry batch,
+      {required bool isExpiry}) async {
     final initialDate = isExpiry ? batch.expiryDate : batch.manufactureDate;
-    
+
     final date = await showDatePicker(
       context: context,
       initialDate: initialDate ?? DateTime.now(),
       firstDate: isExpiry ? DateTime.now() : DateTime(2000),
       lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: DesignColors.brand,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (date != null) {

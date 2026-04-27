@@ -10,6 +10,7 @@ import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/haptic_service.dart';
+import '../services/local_server_service.dart';
 
 final getIt = GetIt.instance;
 
@@ -46,11 +47,6 @@ Future<void> configureDependencies() async {
     final database = AppDatabase();
     getIt.registerSingleton<AppDatabase>(database);
     debugPrint('[DI] AppDatabase registered');
-
-    // Seed demo products on first launch (non-blocking)
-    database.seedDemoData().catchError((e) {
-      debugPrint('[DI] Demo data seed error (non-critical): $e');
-    });
 
     // ============================================
     // STEP 3: Network Layer
@@ -98,6 +94,14 @@ Future<void> configureDependencies() async {
     getIt.registerSingleton<SyncService>(syncService);
     debugPrint('[DI] SyncService registered');
 
+    // ============================================
+    // STEP 7: Local Server Service (phone server mode)
+    // ============================================
+    debugPrint('[DI] Registering LocalServerService...');
+    final localServerService = LocalServerService();
+    getIt.registerSingleton<LocalServerService>(localServerService);
+    debugPrint('[DI] LocalServerService registered');
+
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
@@ -116,7 +120,7 @@ Dio _createDio() {
     BaseOptions(
       baseUrl: const String.fromEnvironment(
         'API_URL',
-        defaultValue: 'https://breezy-kiwis-teach.loca.lt/api/v1',
+        defaultValue: 'http://192.168.100.47:3000/api/v1',
       ),
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),

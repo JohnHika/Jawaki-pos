@@ -68,7 +68,7 @@ class GlassTheme {
       ),
       boxShadow: [
         BoxShadow(
-          color: effectiveShadow.withOpacity(0.15),
+          color: effectiveShadow.withValues(alpha:0.15),
           blurRadius: blur,
           spreadRadius: spread,
           offset: const Offset(0, 8),
@@ -76,8 +76,8 @@ class GlassTheme {
       ],
       gradient: LinearGradient(
         colors: [
-          effectiveColor.withOpacity(0.4),
-          effectiveColor.withOpacity(0.2),
+          effectiveColor.withValues(alpha:0.4),
+          effectiveColor.withValues(alpha:0.2),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -105,7 +105,7 @@ class GlassTheme {
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.2),
+          color: Colors.black.withValues(alpha:0.2),
           blurRadius: blur,
           spreadRadius: spread,
           offset: const Offset(0, 8),
@@ -113,8 +113,8 @@ class GlassTheme {
       ],
       gradient: LinearGradient(
         colors: [
-          effectiveColor.withOpacity(0.6),
-          effectiveColor.withOpacity(0.3),
+          effectiveColor.withValues(alpha:0.6),
+          effectiveColor.withValues(alpha:0.3),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -135,15 +135,15 @@ class GlassTheme {
       padding: padding,
       margin: margin,
       decoration: BoxDecoration(
-        color: (backgroundColor ?? GlassColors.glassBackground).withOpacity(0.3),
+        color: (backgroundColor ?? GlassColors.glassBackground).withValues(alpha:0.3),
         borderRadius: borderRadius ?? BorderRadius.circular(20),
         border: Border.all(
-          color: GlassColors.glassBorder.withOpacity(0.2),
+          color: GlassColors.glassBorder.withValues(alpha:0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha:0.1),
             blurRadius: blur,
             offset: const Offset(0, 4),
           ),
@@ -159,15 +159,15 @@ class GlassTheme {
   /// Glass button style
   static ElevatedButtonThemeData glassButtonTheme = ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: GlassColors.glassBackground.withOpacity(0.4),
+      backgroundColor: GlassColors.glassBackground.withValues(alpha:0.4),
       foregroundColor: GlassColors.glassTextPrimary,
-      shadowColor: GlassColors.glassGlow.withOpacity(0.2),
+      shadowColor: GlassColors.glassGlow.withValues(alpha:0.2),
       minimumSize: const Size(double.infinity, 56),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: GlassColors.glassBorder.withOpacity(0.5),
+          color: GlassColors.glassBorder.withValues(alpha:0.5),
           width: 1,
         ),
       ),
@@ -183,19 +183,19 @@ class GlassTheme {
   /// Glass input decoration
   static InputDecorationTheme glassInputDecoration = InputDecorationTheme(
     filled: true,
-    fillColor: GlassColors.glassBackground.withOpacity(0.3),
+    fillColor: GlassColors.glassBackground.withValues(alpha:0.3),
     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
       borderSide: BorderSide(
-        color: GlassColors.glassBorder.withOpacity(0.3),
+        color: GlassColors.glassBorder.withValues(alpha:0.3),
         width: 1,
       ),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
       borderSide: BorderSide(
-        color: GlassColors.glassBorder.withOpacity(0.3),
+        color: GlassColors.glassBorder.withValues(alpha:0.3),
         width: 1,
       ),
     ),
@@ -213,20 +213,20 @@ class GlassTheme {
       fontSize: 15,
     ),
     hintStyle: TextStyle(
-      color: GlassColors.glassTextSecondary.withOpacity(0.6),
+      color: GlassColors.glassTextSecondary.withValues(alpha:0.6),
       fontSize: 15,
     ),
   );
 
   /// Glass card theme
   static CardThemeData glassCardTheme = CardThemeData(
-    color: GlassColors.glassBackground.withOpacity(0.3),
+    color: GlassColors.glassBackground.withValues(alpha:0.3),
     elevation: 0,
-    shadowColor: GlassColors.glassGlow.withOpacity(0.2),
+    shadowColor: GlassColors.glassGlow.withValues(alpha:0.2),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
       side: BorderSide(
-        color: GlassColors.glassBorder.withOpacity(0.3),
+        color: GlassColors.glassBorder.withValues(alpha:0.3),
         width: 1,
       ),
     ),
@@ -234,8 +234,8 @@ class GlassTheme {
 
   /// Glass chip theme
   static ChipThemeData glassChipTheme = ChipThemeData(
-    backgroundColor: GlassColors.glassBackground.withOpacity(0.3),
-    selectedColor: GlassColors.glassGlow.withOpacity(0.3),
+    backgroundColor: GlassColors.glassBackground.withValues(alpha:0.3),
+    selectedColor: GlassColors.glassGlow.withValues(alpha:0.3),
     deleteIconColor: GlassColors.glassTextSecondary,
     labelStyle: TextStyle(
       color: GlassColors.glassTextPrimary,
@@ -246,7 +246,7 @@ class GlassTheme {
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(12),
       side: BorderSide(
-        color: GlassColors.glassBorder.withOpacity(0.3),
+        color: GlassColors.glassBorder.withValues(alpha:0.3),
         width: 1,
       ),
     ),
@@ -269,15 +269,15 @@ class GlassUI {
       padding: padding,
       margin: margin,
       decoration: BoxDecoration(
-        color: (backgroundColor ?? GlassColors.glassBackground).withOpacity(0.25),
+        color: (backgroundColor ?? GlassColors.glassBackground).withValues(alpha:0.25),
         borderRadius: BorderRadius.circular(borderRadiusValue),
         border: Border.all(
-          color: GlassColors.glassBorder.withOpacity(0.2),
+          color: GlassColors.glassBorder.withValues(alpha:0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha:0.05),
             blurRadius: blur,
             offset: const Offset(0, 4),
           ),
@@ -300,15 +300,15 @@ class GlassUI {
     return Container(
       padding: padding ?? const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: GlassColors.glassBackground.withOpacity(0.4),
+        color: GlassColors.glassBackground.withValues(alpha:0.4),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: GlassColors.glassBorder.withOpacity(0.2),
+          color: GlassColors.glassBorder.withValues(alpha:0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: effectiveColor.withOpacity(0.2),
+            color: effectiveColor.withValues(alpha:0.2),
             blurRadius: blur,
             spreadRadius: 2,
             offset: const Offset(0, 8),
@@ -322,10 +322,10 @@ class GlassUI {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: effectiveColor.withOpacity(0.15),
+                color: effectiveColor.withValues(alpha:0.15),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: effectiveColor.withOpacity(0.3),
+                  color: effectiveColor.withValues(alpha:0.3),
                   width: 1,
                 ),
               ),
@@ -363,10 +363,10 @@ class GlassUI {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: effectiveColor.withOpacity(0.15),
+                color: effectiveColor.withValues(alpha:0.15),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: effectiveColor.withOpacity(0.3),
+                  color: effectiveColor.withValues(alpha:0.3),
                   width: 1,
                 ),
               ),
@@ -418,15 +418,15 @@ class GlassUI {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: GlassColors.glassBackground.withOpacity(0.3),
+        color: GlassColors.glassBackground.withValues(alpha:0.3),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: GlassColors.glassBorder.withOpacity(0.2),
+          color: GlassColors.glassBorder.withValues(alpha:0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha:0.15),
             blurRadius: blur,
             spreadRadius: 1,
             offset: const Offset(0, 4),
@@ -441,10 +441,10 @@ class GlassUI {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
+                  color: color.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: color.withOpacity(0.3),
+                    color: color.withValues(alpha:0.3),
                     width: 1,
                   ),
                 ),
@@ -459,10 +459,10 @@ class GlassUI {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: trendColor.withOpacity(0.15),
+                    color: trendColor.withValues(alpha:0.15),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: trendColor.withOpacity(0.3),
+                      color: trendColor.withValues(alpha:0.3),
                       width: 1,
                     ),
                   ),
@@ -524,15 +524,15 @@ class GlassUI {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: GlassColors.glassBackground.withOpacity(0.3),
+        color: GlassColors.glassBackground.withValues(alpha:0.3),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: GlassColors.glassBorder.withOpacity(0.2),
+          color: GlassColors.glassBorder.withValues(alpha:0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: effectiveColor.withOpacity(0.15),
+            color: effectiveColor.withValues(alpha:0.15),
             blurRadius: blur,
             spreadRadius: 1,
             offset: const Offset(0, 4),
@@ -547,10 +547,10 @@ class GlassUI {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: effectiveColor.withOpacity(0.15),
+                  color: effectiveColor.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: effectiveColor.withOpacity(0.3),
+                    color: effectiveColor.withValues(alpha:0.3),
                     width: 1,
                   ),
                 ),
@@ -592,26 +592,26 @@ class GlassUI {
       padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: isSelected
-            ? effectiveColor.withOpacity(0.15)
-            : GlassColors.glassBackground.withOpacity(0.2),
+            ? effectiveColor.withValues(alpha:0.15)
+            : GlassColors.glassBackground.withValues(alpha:0.2),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
-              ? effectiveColor.withOpacity(0.3)
-              : GlassColors.glassBorder.withOpacity(0.2),
+              ? effectiveColor.withValues(alpha:0.3)
+              : GlassColors.glassBorder.withValues(alpha:0.2),
           width: 1,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: effectiveColor.withOpacity(0.2),
+                  color: effectiveColor.withValues(alpha:0.2),
                   blurRadius: blur,
                   offset: const Offset(0, 2),
                 ),
               ]
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha:0.05),
                   blurRadius: blur,
                   offset: const Offset(0, 2),
                 ),
@@ -631,15 +631,15 @@ class GlassUI {
     return Container(
       padding: padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha:0.15),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.3),
+          color: color.withValues(alpha:0.3),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha:0.15),
             blurRadius: blur,
             offset: const Offset(0, 2),
           ),

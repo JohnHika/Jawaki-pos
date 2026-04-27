@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/auth/app_roles.dart';
@@ -17,14 +17,32 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
+  late AnimationController _bounceController;
+  late Animation<double> _bounceAnimation;
 
-  /// Build the nav items list based on the user's role permissions.
+  @override
+  void initState() {
+    super.initState();
+    _bounceController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..repeat(reverse: true);
+    _bounceAnimation = Tween<double>(begin: 0.0, end: 6.0).animate(
+      CurvedAnimation(parent: _bounceController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
+  }
+
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
-
-    // Dashboard — store manager+ (first item)
     if (perms.canSeeDashboard) {
       items.add(_NavItem(
         icon: Icons.dashboard_outlined,
@@ -33,16 +51,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         path: '/dashboard',
       ));
     }
-
-    // POS — everyone
     items.add(_NavItem(
       icon: Icons.point_of_sale_outlined,
       activeIcon: Icons.point_of_sale_rounded,
       label: 'POS',
       path: '/',
     ));
-
-    // Products — stock keeper+
+    items.add(_NavItem(
+      icon: Icons.people_outlined,
+      activeIcon: Icons.people_rounded,
+      label: 'Customers',
+      path: '/customers',
+    ));
     if (perms.canSeeProducts) {
       items.add(_NavItem(
         icon: Icons.inventory_2_outlined,
@@ -51,8 +71,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         path: '/products',
       ));
     }
-
-    // Inventory — stock keeper+
     if (perms.canSeeInventory) {
       items.add(_NavItem(
         icon: Icons.warehouse_outlined,
@@ -61,8 +79,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         path: '/inventory',
       ));
     }
-
-    // Reports — store manager+
     if (perms.canSeeReports) {
       items.add(_NavItem(
         icon: Icons.analytics_outlined,
@@ -71,49 +87,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         path: '/reports',
       ));
     }
-
-    // Payments — everyone
     items.add(_NavItem(
       icon: Icons.payments_outlined,
       activeIcon: Icons.payments_rounded,
       label: 'Payments',
       path: '/payments',
     ));
-
-    // Settings — everyone
     items.add(_NavItem(
       icon: Icons.settings_outlined,
       activeIcon: Icons.settings_rounded,
       label: 'Settings',
       path: '/settings',
     ));
-
     return items;
   }
 
   void _showMoreSheet(List<_NavItem> moreItems) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: isDark ? DesignColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha:isDark ? 0.5 : 0.08),
+              blurRadius: 30,
+              offset: const Offset(0, -8),
+            ),
+          ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Container(
-                width: 48,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(3),
-                ),
+            Container(
+              margin: const EdgeInsets.only(top: 16),
+              width: 48, height: 5,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? DesignColors.darkTextTertiary
+                    : DesignColors.surfaceBorder,
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
             const SizedBox(height: 20),
@@ -124,55 +142,76 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      gradient: LinearGradient(
+                        colors: [DesignColors.brand, DesignColors.brandDark],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: DesignColors.brand.withValues(alpha:0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: const Icon(
                       Icons.apps_rounded,
-                      color: AppColors.primary,
+                      color: Colors.white,
                       size: 24,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Text(
                     'More Options',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: DesignColors.textPrimary,
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text(
                 'Access additional features',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: DesignColors.textTertiary,
+                ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             const Divider(height: 1),
-            Expanded(
+            Flexible(
               child: ListView.builder(
+                shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: moreItems.length,
                 itemBuilder: (context, index) {
                   final item = moreItems[index];
                   return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                     leading: Container(
-                      width: 48,
-                      height: 48,
+                      width: 48, height: 48,
                       decoration: BoxDecoration(
-                        gradient: AppColors.primaryGradient,
+                        gradient: LinearGradient(
+                          colors: [
+                            DesignColors.brand,
+                            DesignColors.brandDark,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.primary.withOpacity(0.3),
+                            color: DesignColors.brand.withValues(alpha:0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -189,18 +228,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: DesignColors.textPrimary,
                       ),
                     ),
                     trailing: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceVariant,
+                        color: DesignColors.surfaceSubtle,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.chevron_right_rounded,
-                        color: AppColors.textSecondary,
+                        color: DesignColors.textSecondary,
                         size: 20,
                       ),
                     ),
@@ -208,11 +247,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Navigator.pop(context);
                       context.go(item.path);
                       final allItems = _buildNavItems(ref.read(permissionsProvider));
-                      final itemIndex = allItems.indexWhere((i) => i.path == item.path);
+                      final itemIndex =
+                          allItems.indexWhere((i) => i.path == item.path);
                       if (itemIndex != -1) {
-                        setState(() {
-                          _currentIndex = itemIndex;
-                        });
+                        setState(() => _currentIndex = itemIndex);
                       }
                     },
                   );
@@ -230,24 +268,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final connectivity = getIt<ConnectivityService>();
     final perms = ref.watch(permissionsProvider);
     final allNavItems = _buildNavItems(perms);
-
-    // Maximum 5 items visible, rest in "More"
     final hasMore = allNavItems.length > 5;
     final visibleNavItems = hasMore ? allNavItems.take(4).toList() : allNavItems;
-    final moreItems = hasMore ? allNavItems.skip(4).toList() : <_NavItem>[];
+    final moreItems =
+        hasMore ? allNavItems.skip(4).toList() : <_NavItem>[];
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       body: Column(
         children: [
-          // Offline Banner - Modern Design
           StreamBuilder<ConnectionStatus>(
             stream: connectivity.statusStream,
             initialData: connectivity.currentStatus,
             builder: (context, snapshot) {
               final isOffline = snapshot.data == ConnectionStatus.offline;
-
               return AnimatedCrossFade(
-                duration: const Duration(milliseconds: 300),
+                duration: DesignAnimation.normal,
                 crossFadeState: isOffline
                     ? CrossFadeState.showSecond
                     : CrossFadeState.showFirst,
@@ -256,35 +293,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.warning,
-                        AppColors.warning.withOpacity(0.8),
+                        DesignColors.warning,
+                        DesignColors.warning.withValues(alpha:0.85),
                       ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.warning.withOpacity(0.3),
+                        color: DesignColors.warning.withValues(alpha:0.3),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: SafeArea(
+                    bottom: false,
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.white.withValues(alpha:0.2),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
-                            Icons.cloud_off_rounded,
+                            Icons.wifi_off_rounded,
                             color: Colors.white,
-                            size: 18,
+                            size: 16,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,34 +334,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 'Offline Mode',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(height: 2),
                               Text(
-                                'Changes will sync when you\'re back online',
+                                'Sales will sync when reconnected',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 12,
+                                  color: Colors.white.withValues(alpha:0.85),
+                                  fontSize: 11,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha:0.2),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Text(
-                            'Auto-sync',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.sync_disabled,
+                                  color: Colors.white, size: 12),
+                              SizedBox(width: 4),
+                              Text(
+                                'Queued',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -330,17 +379,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
             },
           ),
-
-          // Main Content
           Expanded(child: widget.child),
         ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? DesignColors.darkSurface : Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha:isDark ? 0.3 : 0.06),
               blurRadius: 20,
               offset: const Offset(0, -4),
             ),
@@ -348,10 +395,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         child: SafeArea(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             child: Row(
               children: [
-                // Visible nav items
                 ...visibleNavItems.asMap().entries.map((entry) {
                   final index = entry.key;
                   final item = entry.value;
@@ -363,16 +409,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       item: item,
                       isSelected: isSelected,
                       onTap: () {
-                        setState(() {
-                          _currentIndex = index;
-                        });
+                        setState(() => _currentIndex = index);
                         context.go(item.path);
                       },
+                      isDark: isDark,
                     ),
                   );
                 }),
-
-                // "More" button if needed
                 if (hasMore)
                   Expanded(
                     child: _NavItemWidget(
@@ -384,6 +427,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       isSelected: _currentIndex >= 4,
                       onTap: () => _showMoreSheet(moreItems),
+                      isDark: isDark,
                     ),
                   ),
               ],
@@ -413,57 +457,62 @@ class _NavItemWidget extends StatelessWidget {
   final _NavItem item;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isDark;
 
   const _NavItemWidget({
     required this.item,
     required this.isSelected,
     required this.onTap,
+    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size.width;
-    final isSmallScreen = size < 380;
-    final iconSize = isSmallScreen ? 22.0 : 24.0;
-    final fontSize = isSmallScreen ? 10.0 : 11.0;
-    final horizontalPadding = isSmallScreen ? 4.0 : 8.0;
-
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 8,
-        ),
+        duration: DesignAnimation.fast,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.08) : Colors.transparent,
+          color: isSelected
+              ? DesignColors.brand.withValues(alpha:0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: DesignAnimation.fast,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+                color: isSelected
+                    ? DesignColors.brand.withValues(alpha:0.15)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 isSelected ? item.activeIcon : item.icon,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                size: iconSize,
+                color: isSelected
+                    ? DesignColors.brand
+                    : (isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary),
+                size: 22,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               item.label,
               style: TextStyle(
-                fontSize: fontSize,
+                fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                color: isSelected
+                    ? DesignColors.brand
+                    : (isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary),
                 letterSpacing: 0.1,
               ),
               overflow: TextOverflow.ellipsis,

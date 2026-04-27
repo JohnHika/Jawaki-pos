@@ -2,71 +2,240 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/services/auth_service.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
 
-class InventoryScreen extends ConsumerWidget {
+class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConsumerStatefulWidget> createState() => _InventoryScreenState();
+}
+
+class _InventoryScreenState extends ConsumerState<InventoryScreen> {
+  int _totalItems = 0;
+  int _lowStockCount = 0;
+  double _totalValue = 0;
+  List<Map<String, dynamic>> _inventoryItems = [];
+  List<Map<String, dynamic>> _lowStockItems = [];
+  bool _isLoading = true;
+  String _stockSearchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final db = getIt<AppDatabase>();
+      final results = await Future.wait([
+        db.getProductCount(),
+        db.getLowStockProducts(),
+        db.getInventoryReport(),
+      ]);
+
+      final totalItems = results[0] as int;
+      final lowStockList = results[1] as List<Map<String, dynamic>>;
+      final inventoryReport = results[2] as List<Map<String, dynamic>>;
+
+      final totalValue = inventoryReport.fold<double>(
+        0,
+        (sum, item) => sum + ((item['price'] as double?) ?? 0) * ((item['stock'] as int?) ?? 0),
+      );
+
+      setState(() {
+        _totalItems = totalItems;
+        _lowStockCount = lowStockList.length;
+        _totalValue = totalValue;
+        _lowStockItems = lowStockList;
+        _inventoryItems = inventoryReport;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading inventory data: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showGlassSnackBar(context, 'Failed to load inventory data', icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    }
+  }
+
+  String _formatCurrency(double amount) {
+    return 'KES ${amount.toStringAsFixed(amount % 1 == 0 ? 0 : 2)}';
+  }
+
+  Color _stockColor(int stock, int minStock) {
+    if (stock == 0) return DesignColors.error;
+    if (stock <= minStock && minStock > 0) return DesignColors.warning;
+    if (stock < 5) return DesignColors.warning;
+    return DesignColors.success;
+  }
+
+  IconData _stockIcon(int stock, int minStock) {
+    if (stock == 0) return Icons.cancel_rounded;
+    if (stock <= minStock && minStock > 0) return Icons.warning_amber_rounded;
+    if (stock < 5) return Icons.warning_amber_rounded;
+    return Icons.check_circle_rounded;
+  }
+
+  String _stockLabel(int stock, int minStock) {
+    if (stock == 0) return 'Out of Stock';
+    if (stock <= minStock && minStock > 0) return 'Low Stock';
+    if (stock < 5) return 'Low Stock';
+    return 'In Stock';
+  }
+
+  List<Map<String, dynamic>> get _filteredInventoryItems {
+    if (_stockSearchQuery.isEmpty) return _inventoryItems;
+    final q = _stockSearchQuery.toLowerCase();
+    return _inventoryItems.where((item) {
+      final name = (item['name'] as String? ?? '').toLowerCase();
+      final sku = (item['sku'] as String? ?? '').toLowerCase();
+      final category = (item['categoryName'] as String? ?? '').toLowerCase();
+      return name.contains(q) || sku.contains(q) || category.contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authService = getIt<AuthService>();
     final role = AppRole.fromString(authService.userRole);
     final permissions = RolePermissions(role);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Inventory'),
+        title: const Text(
+          'Inventory',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
-          // Stock Requests button (for managers/supervisors)
           if (permissions.canManageStock && role.isAtLeast(AppRole.stockKeeper))
             IconButton(
-              icon: const Icon(Icons.assignment_outlined),
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: DesignColors.brand.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.assignment_outlined, color: DesignColors.brand, size: 20),
+              ),
               tooltip: 'Stock Requests',
               onPressed: () => context.push('/inventory/stock-requests'),
             ),
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              // Refresh inventory
-            },
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.refresh_rounded, color: DesignColors.textSecondary, size: 20),
+            ),
+            onPressed: _loadData,
           ),
         ],
       ),
-      body: DefaultTabController(
-        length: 3,
-        child: Column(
-          children: [
-            Container(
-              color: AppColors.surface,
-              child: const TabBar(
-                labelColor: AppColors.primary,
-                unselectedLabelColor: AppColors.textSecondary,
-                indicatorColor: AppColors.primary,
-                tabs: [
-                  Tab(text: 'Stock'),
-                  Tab(text: 'Low Stock'),
-                  Tab(text: 'Transfers'),
-                ],
+      body: PageContainer(
+        child: DefaultTabController(
+          length: 3,
+          child: Column(
+            children: [
+              const SizedBox(height: kToolbarHeight + 8),
+              // Metrics Row
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: MetricCard(
+                        title: 'Total Items',
+                        value: _isLoading ? '...' : '$_totalItems',
+                        icon: Icons.inventory_2_rounded,
+                        color: DesignColors.brand,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: MetricCard(
+                        title: 'Low Stock',
+                        value: _isLoading ? '...' : '$_lowStockCount',
+                        icon: Icons.warning_amber_rounded,
+                        color: DesignColors.warning,
+                        trend: _lowStockCount > 0 ? 'Alerts' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: MetricCard(
+                        title: 'Total Value',
+                        value: _isLoading ? '...' : _formatCurrency(_totalValue),
+                        icon: Icons.account_balance_wallet_rounded,
+                        color: DesignColors.teal,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildStockTab(),
-                  _buildLowStockTab(),
-                  _buildTransfersTab(),
-                ],
+              const SizedBox(height: 20),
+              // Premium Tab Bar
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: TabBar(
+                  labelColor: DesignColors.textOnBrand,
+                  unselectedLabelColor: DesignColors.textSecondary,
+                  indicator: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      colors: [DesignColors.brand, DesignColors.brandDark],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  indicatorPadding: const EdgeInsets.all(4),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                  tabs: const [
+                    Tab(text: 'Stock'),
+                    Tab(text: 'Low Stock'),
+                    Tab(text: 'Transfers'),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildStockTab(context, permissions, role),
+                    _buildLowStockTab(context, permissions),
+                    _buildTransfersTab(context),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: permissions.canManageStock
-          ? _buildActionButtons(context, role)
-          : null,
+      floatingActionButton: permissions.canManageStock ? _buildActionButtons(context, role) : null,
     );
   }
 
@@ -75,21 +244,21 @@ class InventoryScreen extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // Request Stock button (all roles with inventory access)
-        FloatingActionButton.extended(
-          heroTag: 'request_stock',
+        GradientButton(
+          label: 'Request Stock',
+          icon: Icons.add_shopping_cart_rounded,
           onPressed: () => context.push('/inventory/request-stock'),
-          icon: const Icon(Icons.add_shopping_cart),
-          label: const Text('Request Stock'),
-          backgroundColor: AppColors.warning,
+          gradient: [DesignColors.warning, const Color(0xFFD97706)],
+          height: 48,
+          expanded: false,
+          borderRadius: 14,
         ),
-        const SizedBox(height: 12),
-        // Receive Batch button (supervisor+)
+        const SizedBox(height: 10),
         if (role.isAtLeast(AppRole.stockKeeper))
-          FloatingActionButton.extended(
-            heroTag: 'receive_batch',
+          GradientButton(
+            label: 'Receive Stock',
+            icon: Icons.inventory_rounded,
             onPressed: () {
-              // For now, show a snackbar. Will need product selection
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Select a product from Stock tab, then tap Receive'),
@@ -97,77 +266,561 @@ class InventoryScreen extends ConsumerWidget {
                 ),
               );
             },
-            icon: const Icon(Icons.inventory),
-            label: const Text('Receive Stock'),
-            backgroundColor: AppColors.primary,
+            gradient: [DesignColors.brand, DesignColors.brandDark],
+            height: 48,
+            expanded: false,
+            borderRadius: 14,
           ),
       ],
     );
   }
 
-  Widget _buildStockTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.warehouse_outlined,
-            size: 64,
-            color: AppColors.textTertiary,
+  Widget _buildStockTab(BuildContext context, RolePermissions permissions, AppRole role) {
+    if (_isLoading) {
+      return _buildLoadingList();
+    }
+
+    final items = _filteredInventoryItems;
+
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Container(
+            decoration: BoxDecoration(
+              color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TextField(
+              onChanged: (value) => setState(() => _stockSearchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Search products, SKU, category...',
+                hintStyle: TextStyle(color: DesignColors.textTertiary, fontSize: 14),
+                prefixIcon: Icon(Icons.search_rounded, color: DesignColors.textTertiary, size: 20),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              style: const TextStyle(fontSize: 14, color: DesignColors.textPrimary),
+            ),
           ),
-          const SizedBox(height: 16),
-          const Text('Stock Levels'),
-          const SizedBox(height: 8),
-          Text(
-            'View and manage stock for all products',
-            style: TextStyle(color: AppColors.textSecondary),
+        ),
+        SectionHeader(
+          title: 'Stock Levels',
+          subtitle: '${items.length} product${items.length == 1 ? '' : 's'}',
+          icon: Icons.warehouse_rounded,
+          trailing: items.isEmpty ? null : StatusBadge(
+            label: '${items.length}',
+            color: DesignColors.brand,
+            isActive: false,
           ),
-        ],
+        ),
+        Expanded(
+          child: items.isEmpty
+              ? EmptyState(
+                  icon: _stockSearchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.inventory_2_rounded,
+                  title: _stockSearchQuery.isNotEmpty ? 'No matches found' : 'No Products Yet',
+                  subtitle: _stockSearchQuery.isNotEmpty
+                      ? 'Try a different search term'
+                      : 'Products will appear here once added to inventory.',
+                  iconColor: DesignColors.textTertiary,
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return _buildStockItemCard(item, permissions, role);
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStockItemCard(Map<String, dynamic> item, RolePermissions permissions, AppRole role) {
+    final name = item['name'] as String? ?? 'Unknown';
+    final sku = item['sku'] as String? ?? '';
+    final price = (item['price'] as double?) ?? 0.0;
+    final stock = (item['stock'] as int?) ?? 0;
+    final minStock = (item['minStock'] as int?) ?? 0;
+    final category = item['categoryName'] as String? ?? 'Uncategorised';
+    final productId = item['id'] as String? ?? '';
+    final stockColor = _stockColor(stock, minStock);
+    final stockIcon = _stockIcon(stock, minStock);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GlassCard(
+        padding: const EdgeInsets.all(14),
+        borderRadius: 14,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Product icon
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: stockColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: stockColor.withValues(alpha: 0.2)),
+                  ),
+                  child: Icon(Icons.inventory_2_outlined, color: stockColor, size: 22),
+                ),
+                const SizedBox(width: 12),
+                // Name + SKU + category
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: DesignColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            sku,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: DesignColors.textTertiary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (sku.isNotEmpty) ...[
+                            Text(' · ', style: TextStyle(color: DesignColors.textTertiary, fontSize: 11)),
+                          ],
+                          Text(
+                            category,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: DesignColors.textTertiary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Price
+                Text(
+                  _formatCurrency(price),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: DesignColors.brand,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Stock row + actions
+            Row(
+              children: [
+                // Stock count badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: stockColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: stockColor.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(stockIcon, color: stockColor, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$stock units',
+                        style: TextStyle(
+                          color: stockColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (minStock > 0) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    'Min: $minStock',
+                    style: TextStyle(fontSize: 11, color: DesignColors.textTertiary),
+                  ),
+                ],
+                const Spacer(),
+                // Receive button
+                if (permissions.canManageStock && role.isAtLeast(AppRole.stockKeeper))
+                  SizedBox(
+                    height: 34,
+                    child: GradientButton(
+                      label: 'Receive',
+                      icon: Icons.add_box_outlined,
+                      onPressed: () => context.push('/inventory/batch-receive?productId=$productId'),
+                      gradient: [DesignColors.brand, DesignColors.brandDark],
+                      height: 34,
+                      expanded: false,
+                      borderRadius: 8,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildLowStockTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.warning_amber_outlined,
-            size: 64,
-            color: AppColors.warning,
+  Widget _buildLowStockTab(BuildContext context, RolePermissions permissions) {
+    if (_isLoading) {
+      return _buildLoadingList();
+    }
+
+    final critical = _lowStockItems.where((i) => ((i['quantity'] as int?) ?? 0) == 0).toList();
+    final warning = _lowStockItems.where((i) {
+      final qty = (i['quantity'] as int?) ?? 0;
+      return qty > 0 && qty < 5;
+    }).toList();
+    final low = _lowStockItems.where((i) {
+      final qty = (i['quantity'] as int?) ?? 0;
+      return qty >= 5;
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      children: [
+        SectionHeader(
+          title: 'Low Stock Alerts',
+          subtitle: '${_lowStockItems.length} item${_lowStockItems.length == 1 ? '' : 's'} need attention',
+          icon: Icons.warning_amber_rounded,
+          trailing: StatusBadge(
+            label: '${_lowStockItems.length}',
+            color: _lowStockItems.isEmpty ? DesignColors.success : DesignColors.warning,
+            isActive: _lowStockItems.isNotEmpty,
           ),
-          const SizedBox(height: 16),
-          const Text('Low Stock Alerts'),
-          const SizedBox(height: 8),
-          Text(
-            'Items that need restocking',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
+        ),
+        if (_lowStockItems.isEmpty)
+          GlassCard(
+            padding: const EdgeInsets.all(24),
+            borderRadius: 16,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: DesignColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.check_circle_outline_rounded, size: 48, color: DesignColors.success),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'All Stocked Up',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: DesignColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'No items are currently low in stock. Everything looks good!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: DesignColors.textSecondary, height: 1.4),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          if (critical.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildSeveritySection(
+              title: 'Out of Stock',
+              icon: Icons.cancel_rounded,
+              color: DesignColors.error,
+              items: critical,
+              permissions: permissions,
+            ),
+          ],
+          if (warning.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildSeveritySection(
+              title: 'Critical Low',
+              icon: Icons.error_rounded,
+              color: DesignColors.warning,
+              items: warning,
+              permissions: permissions,
+            ),
+          ],
+          if (low.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildSeveritySection(
+              title: 'Running Low',
+              icon: Icons.info_rounded,
+              color: DesignColors.info,
+              items: low,
+              permissions: permissions,
+            ),
+          ],
         ],
+      ],
+    );
+  }
+
+  Widget _buildSeveritySection({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required List<Map<String, dynamic>> items,
+    required RolePermissions permissions,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 8),
+              StatusBadge(
+                label: '${items.length}',
+                color: color,
+                isActive: false,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...items.map((item) => _buildLowStockCard(item, color, permissions)),
+      ],
+    );
+  }
+
+  Widget _buildLowStockCard(Map<String, dynamic> item, Color severityColor, RolePermissions permissions) {
+    final name = item['name'] as String? ?? 'Unknown';
+    final sku = item['sku'] as String? ?? '';
+    final quantity = (item['quantity'] as int?) ?? 0;
+    final category = item['categoryName'] as String? ?? 'Uncategorised';
+    final price = (item['price'] as double?) ?? 0.0;
+    final productId = item['id'] as String? ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GlassCard(
+        padding: const EdgeInsets.all(12),
+        borderRadius: 12,
+        borderColor: severityColor.withValues(alpha: 0.2),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: severityColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: severityColor.withValues(alpha: 0.15)),
+              ),
+              child: Icon(
+                quantity == 0 ? Icons.cancel_rounded : Icons.warning_amber_rounded,
+                color: severityColor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: DesignColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(sku, style: TextStyle(fontSize: 11, color: DesignColors.textTertiary)),
+                      if (sku.isNotEmpty) ...[
+                        Text(' · ', style: TextStyle(color: DesignColors.textTertiary, fontSize: 11)),
+                      ],
+                      Text(category, style: TextStyle(fontSize: 11, color: DesignColors.textTertiary)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: severityColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: severityColor.withValues(alpha: 0.25)),
+              ),
+              child: Text(
+                quantity == 0 ? 'OUT' : '$quantity left',
+                style: TextStyle(
+                  color: severityColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (permissions.canManageStock) ...[
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: GradientButton(
+                  label: 'Request',
+                  icon: Icons.add_shopping_cart_rounded,
+                  onPressed: () => context.push('/inventory/request-stock?productId=$productId'),
+                  gradient: [DesignColors.warning, const Color(0xFFD97706)],
+                  height: 32,
+                  expanded: false,
+                  borderRadius: 8,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildTransfersTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.swap_horiz_outlined,
-            size: 64,
-            color: AppColors.textTertiary,
+  Widget _buildTransfersTab(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      children: [
+        SectionHeader(
+          title: 'Stock Transfers',
+          subtitle: 'Transfer stock between branches',
+          icon: Icons.swap_horiz_rounded,
+        ),
+        const SizedBox(height: 8),
+        GlassCard(
+          padding: const EdgeInsets.all(32),
+          borderRadius: 16,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: DesignColors.info.withValues(alpha: 0.15)),
+                ),
+                child: const Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 56,
+                  color: DesignColors.info,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Coming Soon',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: DesignColors.textPrimary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Inter-branch stock transfers will be available in a future update. Stay tuned!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: DesignColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: DesignColors.info.withValues(alpha: 0.1)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lightbulb_outline_rounded, color: DesignColors.info, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'For now, use Receive Stock to add inventory',
+                      style: TextStyle(
+                        color: DesignColors.info,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          const Text('Stock Transfers'),
-          const SizedBox(height: 8),
-          Text(
-            'Transfer stock between branches',
-            style: TextStyle(color: AppColors.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingList() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      children: List.generate(5, (index) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: GlassCard(
+            padding: const EdgeInsets.all(14),
+            borderRadius: 14,
+            child: Row(
+              children: [
+                const ShimmerWidget(width: 42, height: 42, borderRadius: 12),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const ShimmerWidget(width: 160, height: 14, borderRadius: 4),
+                      const SizedBox(height: 6),
+                      const ShimmerWidget(width: 100, height: 10, borderRadius: 4),
+                    ],
+                  ),
+                ),
+                const ShimmerWidget(width: 60, height: 14, borderRadius: 4),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      }),
     );
   }
 }

@@ -2,126 +2,201 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
+import '../../../../core/theme/design_system.dart';
 
 /// Payments Hub - Main screen for all payment-related features
 /// Includes: Manual Payments, Hold Queue, Bulk Payments, Receipts
-class PaymentsHubScreen extends ConsumerWidget {
+class PaymentsHubScreen extends ConsumerStatefulWidget {
   const PaymentsHubScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PaymentsHubScreen> createState() => _PaymentsHubScreenState();
+}
+
+class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
+  late final AppDatabase _db;
+  List<PendingSale> _todaysSales = [];
+  List<Map<String, dynamic>> _paymentMethodBreakdown = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _db = getIt<AppDatabase>();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      final sales = await _db.watchTodaysSales().first;
+      final breakdown = await _db.getSalesByPaymentMethod(startOfDay, endOfDay);
+
+      if (mounted) {
+        setState(() {
+          _todaysSales = sales;
+          _paymentMethodBreakdown = breakdown;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  double get _todaysTotal =>
+      _todaysSales.fold<double>(0.0, (sum, s) => sum + s.total);
+
+  int get _creditSalesCount {
+    for (final entry in _paymentMethodBreakdown) {
+      final method = (entry['paymentMethod'] as String).toLowerCase();
+      if (method == 'credit') {
+        return entry['count'] as int;
+      }
+    }
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Payments'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.receipt_long_rounded),
             onPressed: () => context.go('/receipts'),
             tooltip: 'View Receipts',
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: PageContainer(
+        withScroll: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            Text(
-              'Payment Management',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            SectionHeader(
+              title: 'Payment Management',
+              subtitle: 'Manage manual payments, credit sales, and bulk transactions',
+              icon: Icons.payments_rounded,
             ),
             const SizedBox(height: 8),
-            Text(
-              'Manage manual payments, credit sales, and bulk transactions',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 24),
 
-            // Manual Payments Card
-            _buildFeatureCard(
-              context,
-              icon: Icons.approval,
-              iconColor: AppColors.success,
-              title: 'Manual Payments',
-              subtitle: 'Request and approve manual payment methods',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Manual payment requests can be made from the payment screen'),
-                    duration: Duration(seconds: 3),
+            // Quick action grid
+            Row(
+              children: [
+                Expanded(
+                  child: QuickActionTile(
+                    icon: Icons.approval_rounded,
+                    label: 'Manual Payments',
+                    subtitle: 'Request & approve',
+                    color: DesignColors.success,
+                    onTap: () {
+                      showGlassSnackBar(
+                        context,
+                        'Manual payment requests can be made from the payment screen',
+                        icon: Icons.info_outline_rounded,
+                        color: DesignColors.info,
+                      );
+                    },
                   ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            // Hold Queue / Credit Sales Card
-            _buildFeatureCard(
-              context,
-              icon: Icons.schedule,
-              iconColor: AppColors.warning,
-              title: 'Hold Queue (Pay Later)',
-              subtitle: 'View and manage credit sales and pay-later payments',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Credit sales are tracked in the reports section'),
-                    duration: Duration(seconds: 3),
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            // Bulk Payments Card
-            _buildFeatureCard(
-              context,
-              icon: Icons.payments,
-              iconColor: AppColors.primary,
-              title: 'Bulk Payments',
-              subtitle: 'Process multiple payments at once for customers',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Bulk payments can be processed from the web dashboard'),
-                    duration: Duration(seconds: 3),
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            // Receipts Card
-            _buildFeatureCard(
-              context,
-              icon: Icons.receipt_long,
-              iconColor: AppColors.info,
-              title: 'Receipts',
-              subtitle: 'View, search, and reprint sales receipts with customer details',
-              onTap: () => context.go('/receipts'),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Quick Stats
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primary, AppColors.primary.withOpacity(0.7)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(16),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: QuickActionTile(
+                    icon: Icons.schedule_rounded,
+                    label: 'Hold Queue',
+                    subtitle: 'Pay Later',
+                    color: DesignColors.warning,
+                    onTap: () {
+                      showGlassSnackBar(
+                        context,
+                        'Credit sales are tracked in the reports section',
+                        icon: Icons.info_outline_rounded,
+                        color: DesignColors.info,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: QuickActionTile(
+                    icon: Icons.payments_rounded,
+                    label: 'Bulk Payments',
+                    subtitle: 'Process multiple',
+                    color: DesignColors.brand,
+                    onTap: () {
+                      showGlassSnackBar(
+                        context,
+                        'Bulk payments can be processed from the web dashboard',
+                        icon: Icons.info_outline_rounded,
+                        color: DesignColors.info,
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: QuickActionTile(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Receipts',
+                    subtitle: 'View & reprint',
+                    color: DesignColors.info,
+                    onTap: () => context.go('/receipts'),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // Payment Methods
+            SectionHeader(
+              title: 'Payment Methods',
+              subtitle: 'Supported payment types',
+              icon: Icons.credit_card_rounded,
+            ),
+            const SizedBox(height: 8),
+
+            // Payment method chips
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: const [
+                PaymentChip(method: 'Cash', isSelected: true),
+                PaymentChip(method: 'Mpesa'),
+                PaymentChip(method: 'Card'),
+                PaymentChip(method: 'PesaPal'),
+                PaymentChip(method: 'TouristTap'),
+                PaymentChip(method: 'Credit'),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // Quick Stats with glass card (real data)
+            GlassCard(
+              padding: const EdgeInsets.all(20),
+              borderRadius: 16,
+              blur: 12,
+              gradient: const LinearGradient(
+                colors: [DesignColors.brand, DesignColors.brandDark],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,10 +206,10 @@ class PaymentsHubScreen extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.analytics, color: Colors.white, size: 24),
+                        child: const Icon(Icons.analytics_rounded, color: Colors.white, size: 24),
                       ),
                       const SizedBox(width: 12),
                       const Text(
@@ -147,19 +222,19 @@ class PaymentsHubScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const Row(
+                  const SizedBox(height: 20),
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _StatItem(
-                        label: 'Today\'s Sales',
-                        value: 'KES 0',
-                        icon: Icons.point_of_sale,
+                      _buildGlassStatItem(
+                        label: "Today's Sales",
+                        value: _isLoading ? '...' : 'KES ${_todaysTotal.toStringAsFixed(0)}',
+                        icon: Icons.point_of_sale_rounded,
                       ),
-                      _StatItem(
+                      _buildGlassStatItem(
                         label: 'Credit Sales',
-                        value: '0',
-                        icon: Icons.credit_card,
+                        value: _isLoading ? '...' : '$_creditSalesCount',
+                        icon: Icons.credit_card_rounded,
                       ),
                     ],
                   ),
@@ -169,17 +244,23 @@ class PaymentsHubScreen extends ConsumerWidget {
 
             const SizedBox(height: 16),
 
-            // Info Card
-            Container(
+            // Info card
+            GlassCard(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.info.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.info.withOpacity(0.3)),
-              ),
+              borderRadius: 12,
+              blur: 8,
+              tint: DesignColors.info.withValues(alpha: 0.08),
+              borderColor: DesignColors.info.withValues(alpha: 0.2),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline, color: AppColors.info, size: 24),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: DesignColors.info.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 24),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -189,7 +270,7 @@ class PaymentsHubScreen extends ConsumerWidget {
                           'Levisa Adventures POS',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: AppColors.info,
+                            color: DesignColors.info,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -197,7 +278,7 @@ class PaymentsHubScreen extends ConsumerWidget {
                           'Complete payment management with manual approvals, credit tracking, and bulk processing',
                           style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.textSecondary,
+                            color: DesignColors.textSecondary,
                           ),
                         ),
                       ],
@@ -206,92 +287,29 @@ class PaymentsHubScreen extends ConsumerWidget {
                 ],
               ),
             ),
+
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFeatureCard(
-    BuildContext context, {
+  Widget _buildGlassStatItem({
+    required String label,
+    required String value,
     required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: iconColor, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.chevron_right,
-              color: AppColors.textSecondary,
-              size: 24,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-
-  const _StatItem({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white.withOpacity(0.9), size: 28),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: Colors.white, size: 24),
+        ),
         const SizedBox(height: 8),
         Text(
           value,
@@ -305,7 +323,7 @@ class _StatItem extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             fontSize: 12,
           ),
         ),

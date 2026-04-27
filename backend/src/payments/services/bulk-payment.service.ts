@@ -237,25 +237,33 @@ export class BulkPaymentService {
         let customerId = sale.customerId;
 
         if (!customerId && (dto.customerName || dto.customerPhone)) {
-          const customer = await this.prisma.customer.upsert({
+          // Find existing customer by tenant + phone
+          const existing = await this.prisma.customer.findFirst({
             where: {
-              tenantId_phone: {
-                tenantId,
-                phone: dto.customerPhone || 'unknown',
-              },
-            },
-            create: {
               tenantId,
-              name: dto.customerName || 'Unknown Customer',
-              phone: dto.customerPhone,
-            },
-            update: {
-              name: dto.customerName || 'Unknown Customer',
-              phone: dto.customerPhone,
+              phone: dto.customerPhone || undefined,
             },
           });
 
-          customerId = customer.id;
+          if (existing) {
+            customerId = existing.id;
+            await this.prisma.customer.update({
+              where: { id: existing.id },
+              data: {
+                name: dto.customerName || 'Unknown Customer',
+                phone: dto.customerPhone,
+              },
+            });
+          } else {
+            const newCustomer = await this.prisma.customer.create({
+              data: {
+                tenantId,
+                name: dto.customerName || 'Unknown Customer',
+                phone: dto.customerPhone,
+              },
+            });
+            customerId = newCustomer.id;
+          }
 
           // Link sale to customer
           await this.prisma.sale.update({

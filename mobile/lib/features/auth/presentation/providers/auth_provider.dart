@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
@@ -130,13 +131,22 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   String _getErrorMessage(dynamic error) {
-    if (error.toString().contains('401')) {
+    final msg = error.toString();
+    if (msg.contains('401') || msg.contains('Invalid credentials')) {
       return 'Invalid email or password';
     }
-    if (error.toString().contains('network')) {
-      return 'Network error. Please check your connection.';
+    if (msg.contains('network') || msg.contains('Connection refused') || msg.contains('SocketException')) {
+      return 'Server not reachable. Tap "Start Phone Server" first.';
     }
-    return 'An error occurred. Please try again.';
+    if (msg.contains('403') || msg.contains('deactivated')) {
+      return 'Account deactivated. Contact administrator.';
+    }
+    // Show the actual error when debugging
+    if (msg.contains('400') || msg.contains('Bad Request')) {
+      return 'Server error. Try restarting server mode.';
+    }
+    debugPrint('[AuthError] $error');
+    return msg.length > 80 ? 'Login failed. Check server is running.' : msg;
   }
 }
 

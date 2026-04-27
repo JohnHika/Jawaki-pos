@@ -77,6 +77,14 @@ dependencies:
   # Biometric Authentication
   local_auth: ^2.2.0
 
+  # HTTP Server (for Phone Server Mode)
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  http_parser: ^4.0.2
+
+  # Crypto (for token generation)
+  crypto: ^3.0.3
+
   # Charts & Graphs
   fl_chart: ^0.65.0
 

@@ -467,7 +467,7 @@ export class ExpensesService {
     tenantId: string,
     startDate: string,
     endDate: string,
-    groupBy: 'day' | 'week' | 'month' = 'day',
+    groupBy: 'hour' | 'day' | 'week' | 'month' = 'day',
   ) {
     const expenses = await this.prisma.expense.findMany({
       where: {

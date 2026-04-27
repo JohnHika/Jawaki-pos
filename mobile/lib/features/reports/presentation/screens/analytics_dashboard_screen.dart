@@ -3,8 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/theme/glassmorphism_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 
@@ -83,11 +82,8 @@ class _AnalyticsDashboardScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Analytics'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -99,9 +95,8 @@ class _AnalyticsDashboardScreenState
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadAnalyticsData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
+              child: PageContainer(
+                withScroll: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -109,7 +104,7 @@ class _AnalyticsDashboardScreenState
                     _buildPeriodSelector(),
                     const SizedBox(height: 24),
 
-                    // Summary Cards
+                    // Summary Cards with MetricCard
                     _buildSummaryCards(),
                     const SizedBox(height: 24),
 
@@ -143,42 +138,52 @@ class _AnalyticsDashboardScreenState
   }
 
   Widget _buildPeriodSelector() {
-    return GlassUI.glassBox(
-      child: Row(
-        mainAxisSize: MainAxisSize.max,
-        children: _periods.asMap().entries.map((entry) {
-          final index = entry.key;
-          final period = entry.value;
-          final isSelected = _selectedPeriod == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        borderRadius: 14,
+        blur: 10,
+        tint: Colors.transparent,
+        borderColor: DesignColors.surfaceBorder,
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: _periods.asMap().entries.map((entry) {
+            final index = entry.key;
+            final period = entry.value;
+            final isSelected = _selectedPeriod == index;
 
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _selectedPeriod = index);
-                _loadAnalyticsData();
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primary.withOpacity(0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  period,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            return Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _selectedPeriod = index);
+                  _loadAnalyticsData();
+                },
+                child: AnimatedContainer(
+                  duration: DesignAnimation.fast,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
                     color: isSelected
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
+                        ? DesignColors.brand.withValues(alpha:0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    period,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? DesignColors.brand
+                          : DesignColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -189,152 +194,73 @@ class _AnalyticsDashboardScreenState
     final avgTicket = (_summary['avgTicket'] ?? 0.0).toDouble();
     final itemsSold = _summary['itemsSold'] ?? 0;
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Total Revenue',
-              value: 'KSh ${revenue.toStringAsFixed(0)}',
-              icon: Icons.attach_money_rounded,
-              color: AppColors.success,
-              trend: '+12.5%',
-              trendValue: 12.5,
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Transactions',
-              value: transactions.toString(),
-              icon: Icons.receipt_long_rounded,
-              color: AppColors.primary,
-              trend: '+8.2%',
-              trendValue: 8.2,
-            )),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Avg Ticket',
-              value: 'KSh ${avgTicket.toStringAsFixed(0)}',
-              icon: Icons.trending_up_rounded,
-              color: AppColors.accentOrange,
-              trend: '+5.3%',
-              trendValue: 5.3,
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: GlassUI.glassMetricCard(
-              title: 'Items Sold',
-              value: itemsSold.toString(),
-              icon: Icons.shopping_bag_rounded,
-              color: AppColors.info,
-              trend: '+15.7%',
-              trendValue: 15.7,
-            )),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSalesTrendChart() {
-    return GlassUI.glassChartContainer(
-      title: 'Sales Trend',
-      icon: Icons.bar_chart_rounded,
-      primaryColor: AppColors.primary,
-      chart: SizedBox(
-        height: 250,
-        child: LineChart(
-          LineChartData(
-            lineBarsData: [
-              LineChartBarData(
-                spots: [
-                  for (int i = 0; i < _hourlySales.length; i++)
-                    FlSpot(i.toDouble(), (_hourlySales[i]['totalAmount'] ?? 0).toDouble()),
-                ],
-                isCurved: true,
-                gradient: AppColors.primaryGradient,
-                barWidth: 3,
-                isStrokeCapRound: true,
-                dotData: const FlDotData(show: true),
-                belowBarData: BarAreaData(
-                  show: true,
-                  gradient: AppColors.primaryGradient,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: MetricCard(
+                  title: 'Total Revenue',
+                  value: 'KSh ${revenue.toStringAsFixed(0)}',
+                  icon: Icons.attach_money_rounded,
+                  color: DesignColors.success,
+                  trend: '+12.5%',
+                  trendValue: 12.5,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: MetricCard(
+                  title: 'Transactions',
+                  value: transactions.toString(),
+                  icon: Icons.receipt_long_rounded,
+                  color: DesignColors.brand,
+                  trend: '+8.2%',
+                  trendValue: 8.2,
                 ),
               ),
             ],
-            minX: 0,
-            maxX: (_hourlySales.length - 1).toDouble(),
-            minY: 0,
-            maxY: (_hourlySales.isNotEmpty
-                    ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                    : 1000)
-                .toDouble() *
-                1.2,
-            titlesData: FlTitlesData(
-              show: true,
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  getTitlesWidget: (value, meta) {
-                    if (_hourlySales.isEmpty) return const Text('');
-                    final index = value.toInt();
-                    if (index >= 0 && index < _hourlySales.length) {
-                      final date = DateTime.parse(_hourlySales[index]['date'] ?? '');
-                      final time = _selectedPeriod == 0
-                          ? '${date.hour}:00'
-                          : '${date.day}/${date.month}';
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          time,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                      );
-                    }
-                    return const Text('');
-                  },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: MetricCard(
+                  title: 'Avg Ticket',
+                  value: 'KSh ${avgTicket.toStringAsFixed(0)}',
+                  icon: Icons.trending_up_rounded,
+                  color: DesignColors.accent,
+                  trend: '+5.3%',
+                  trendValue: 5.3,
                 ),
               ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
+              const SizedBox(width: 12),
+              Expanded(
+                child: MetricCard(
+                  title: 'Items Sold',
+                  value: itemsSold.toString(),
+                  icon: Icons.shopping_bag_rounded,
+                  color: DesignColors.info,
+                  trend: '+15.7%',
+                  trendValue: 15.7,
+                ),
               ),
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-            ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              horizontalInterval: (_hourlySales.isNotEmpty
-                      ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                      : 1000)
-                  .toDouble() /
-                  5,
-              getDrawingHorizontalLine: (value) {
-                return FlLine(
-                  color: AppColors.border.withOpacity(0.3),
-                  strokeWidth: 1,
-                );
-              },
-            ),
-            borderData: FlBorderData(show: false),
+            ],
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildTopProducts() {
-    return GlassUI.glassBox(
+  Widget _buildSalesTrendChart() {
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.brand.withValues(alpha:0.05),
+      borderColor: DesignColors.brand.withValues(alpha:0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -343,16 +269,154 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.15),
+                  color: DesignColors.brand.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.accent.withOpacity(0.3),
+                    color: DesignColors.brand.withValues(alpha:0.25),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.bar_chart_rounded,
+                  color: DesignColors.brand,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Sales Trend',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: DesignColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 250,
+            child: LineChart(
+              LineChartData(
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: [
+                      for (int i = 0; i < _hourlySales.length; i++)
+                        FlSpot(i.toDouble(), (_hourlySales[i]['totalAmount'] ?? 0).toDouble()),
+                    ],
+                    isCurved: true,
+                    gradient: const LinearGradient(
+                      colors: [DesignColors.brand, DesignColors.brandLight],
+                    ),
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          DesignColors.brand.withValues(alpha:0.3),
+                          DesignColors.brand.withValues(alpha:0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                minX: 0,
+                maxX: (_hourlySales.length - 1).toDouble(),
+                minY: 0,
+                maxY: (_hourlySales.isNotEmpty
+                        ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
+                        : 1000)
+                    .toDouble() *
+                    1.2,
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        if (_hourlySales.isEmpty) return const Text('');
+                        final index = value.toInt();
+                        if (index >= 0 && index < _hourlySales.length) {
+                          final date = DateTime.parse(_hourlySales[index]['date'] ?? '');
+                          final time = _selectedPeriod == 0
+                              ? '${date.hour}:00'
+                              : '${date.day}/${date.month}';
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              time,
+                              style: const TextStyle(
+                                color: DesignColors.textTertiary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (_hourlySales.isNotEmpty
+                          ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
+                          : 1000)
+                      .toDouble() /
+                      5,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(
+                      color: DesignColors.surfaceBorder.withValues(alpha:0.5),
+                      strokeWidth: 1,
+                    );
+                  },
+                ),
+                borderData: FlBorderData(show: false),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopProducts() {
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.teal.withValues(alpha:0.04),
+      borderColor: DesignColors.teal.withValues(alpha:0.1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: DesignColors.teal.withValues(alpha:0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: DesignColors.teal.withValues(alpha:0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.star_rounded,
-                  color: AppColors.accent,
+                  color: DesignColors.teal,
                   size: 22,
                 ),
               ),
@@ -362,21 +426,16 @@ class _AnalyticsDashboardScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: DesignColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
           if (_topProducts.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  'No sales data available',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
+            const EmptyState(
+              icon: Icons.shopping_bag_rounded,
+              title: 'No sales data available',
             )
           else
             ..._topProducts.asMap().entries.map((entry) {
@@ -393,12 +452,12 @@ class _AnalyticsDashboardScreenState
                       height: 36,
                       decoration: BoxDecoration(
                         color: index == 0
-                            ? Colors.amber.withOpacity(0.2)
+                            ? Colors.amber.withValues(alpha:0.2)
                             : index == 1
-                                ? Colors.grey.withOpacity(0.2)
+                                ? Colors.grey.withValues(alpha:0.2)
                                 : index == 2
-                                    ? Colors.orange.withOpacity(0.2)
-                                    : AppColors.surfaceVariant,
+                                    ? Colors.orange.withValues(alpha:0.2)
+                                    : DesignColors.surfaceSubtle,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: (index == 0
@@ -407,8 +466,8 @@ class _AnalyticsDashboardScreenState
                                       ? Colors.grey
                                       : index == 2
                                           ? Colors.orange
-                                          : AppColors.textSecondary)
-                              .withOpacity(0.3),
+                                          : DesignColors.textTertiary)
+                              .withValues(alpha:0.3),
                           width: 1,
                         ),
                       ),
@@ -422,7 +481,7 @@ class _AnalyticsDashboardScreenState
                                     ? Colors.grey[700]
                                     : index == 2
                                         ? Colors.orange[700]
-                                        : AppColors.textSecondary,
+                                        : DesignColors.textTertiary,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
@@ -439,7 +498,7 @@ class _AnalyticsDashboardScreenState
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
+                              color: DesignColors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -449,7 +508,7 @@ class _AnalyticsDashboardScreenState
                             '${product['totalQty']} units sold',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary,
+                              color: DesignColors.textSecondary,
                             ),
                           ),
                         ],
@@ -463,7 +522,7 @@ class _AnalyticsDashboardScreenState
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.success,
+                            color: DesignColors.success,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -471,7 +530,7 @@ class _AnalyticsDashboardScreenState
                           '${(revenue / (_summary['totalRevenue'] ?? 1) * 100).toStringAsFixed(1)}%',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: AppColors.textSecondary,
+                            color: DesignColors.textSecondary,
                           ),
                         ),
                       ],
@@ -486,8 +545,12 @@ class _AnalyticsDashboardScreenState
   }
 
   Widget _buildPaymentMethods() {
-    return GlassUI.glassBox(
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.info.withValues(alpha:0.04),
+      borderColor: DesignColors.info.withValues(alpha:0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -496,40 +559,35 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.info.withOpacity(0.15),
+                  color: DesignColors.info.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.info.withOpacity(0.3),
+                    color: DesignColors.info.withValues(alpha:0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.payment_rounded,
-                  color: AppColors.info,
+                  color: DesignColors.info,
                   size: 22,
                 ),
               ),
               const SizedBox(width: 12),
               const Text(
-                'Payment Methods',
+                'Payments',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: DesignColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
           if (_salesByPayment.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  'No payment data available',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
+            const EmptyState(
+              icon: Icons.payment_rounded,
+              title: 'No payment data',
             )
           else
             ..._salesByPayment.map((payment) {
@@ -551,10 +609,10 @@ class _AnalyticsDashboardScreenState
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.15),
+                        color: color.withValues(alpha:0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: color.withOpacity(0.3),
+                          color: color.withValues(alpha:0.3),
                           width: 1,
                         ),
                       ),
@@ -576,7 +634,7 @@ class _AnalyticsDashboardScreenState
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
+                              color: DesignColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -584,7 +642,7 @@ class _AnalyticsDashboardScreenState
                             '$count transactions',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary,
+                              color: DesignColors.textSecondary,
                             ),
                           ),
                         ],
@@ -598,7 +656,7 @@ class _AnalyticsDashboardScreenState
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
+                            color: DesignColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -606,7 +664,7 @@ class _AnalyticsDashboardScreenState
                           '$percent%',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: AppColors.textSecondary,
+                            color: DesignColors.textSecondary,
                           ),
                         ),
                       ],
@@ -621,8 +679,12 @@ class _AnalyticsDashboardScreenState
   }
 
   Widget _buildCategoryBreakdown() {
-    return GlassUI.glassBox(
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.teal.withValues(alpha:0.04),
+      borderColor: DesignColors.teal.withValues(alpha:0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -631,16 +693,16 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.secondary.withOpacity(0.15),
+                  color: DesignColors.teal.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.secondary.withOpacity(0.3),
+                    color: DesignColors.teal.withValues(alpha:0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.category_rounded,
-                  color: AppColors.secondary,
+                  color: DesignColors.teal,
                   size: 22,
                 ),
               ),
@@ -650,21 +712,16 @@ class _AnalyticsDashboardScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: DesignColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
           if (_salesByCategory.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  'No category data available',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
+            const EmptyState(
+              icon: Icons.category_rounded,
+              title: 'No category data available',
             )
           else
             ..._salesByCategory.map((category) {
@@ -692,7 +749,7 @@ class _AnalyticsDashboardScreenState
                           catName,
                           style: const TextStyle(
                             fontSize: 13,
-                            color: AppColors.textPrimary,
+                            color: DesignColors.textPrimary,
                           ),
                         ),
                         const Spacer(),
@@ -701,7 +758,7 @@ class _AnalyticsDashboardScreenState
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: DesignColors.textPrimary,
                           ),
                         ),
                       ],
@@ -716,7 +773,7 @@ class _AnalyticsDashboardScreenState
                             .toDouble(),
                         valueColor: AlwaysStoppedAnimation<Color>(color),
                         minHeight: 8,
-                        backgroundColor: AppColors.border,
+                        backgroundColor: DesignColors.surfaceBorder,
                       ),
                     ),
                   ],
@@ -729,8 +786,12 @@ class _AnalyticsDashboardScreenState
   }
 
   Widget _buildHourlyDistribution() {
-    return GlassUI.glassBox(
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      borderRadius: 16,
+      blur: 12,
+      tint: DesignColors.info.withValues(alpha:0.04),
+      borderColor: DesignColors.info.withValues(alpha:0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -739,16 +800,16 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.accentCyan.withOpacity(0.15),
+                  color: DesignColors.accent.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.accentCyan.withOpacity(0.3),
+                    color: DesignColors.accent.withValues(alpha:0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.access_time_rounded,
-                  color: AppColors.accentCyan,
+                  color: DesignColors.accent,
                   size: 22,
                 ),
               ),
@@ -758,21 +819,16 @@ class _AnalyticsDashboardScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: DesignColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
           if (_hourlySales.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text(
-                  'No hourly data available',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
+            const EmptyState(
+              icon: Icons.access_time_rounded,
+              title: 'No hourly data available',
             )
           else
             SizedBox(
@@ -820,7 +876,7 @@ class _AnalyticsDashboardScreenState
                               child: Text(
                                 time,
                                 style: const TextStyle(
-                                  color: AppColors.textSecondary,
+                                  color: DesignColors.textTertiary,
                                   fontSize: 11,
                                 ),
                               ),
@@ -850,7 +906,7 @@ class _AnalyticsDashboardScreenState
                         5,
                     getDrawingHorizontalLine: (value) {
                       return FlLine(
-                        color: AppColors.border.withOpacity(0.3),
+                        color: DesignColors.surfaceBorder.withValues(alpha:0.5),
                         strokeWidth: 1,
                       );
                     },
@@ -863,7 +919,9 @@ class _AnalyticsDashboardScreenState
                         barRods: [
                           BarChartRodData(
                             toY: (_hourlySales[i]['totalAmount'] ?? 0).toDouble(),
-                            gradient: AppColors.primaryGradient,
+                            gradient: const LinearGradient(
+                              colors: [DesignColors.brand, DesignColors.brandLight],
+                            ),
                             width: 14,
                           ),
                         ],
@@ -880,18 +938,18 @@ class _AnalyticsDashboardScreenState
   Color _getPaymentMethodColor(String method) {
     switch (method.toLowerCase()) {
       case 'cash':
-        return AppColors.cash;
+        return DesignColors.cash;
       case 'mpesa':
-        return AppColors.mpesa;
+        return DesignColors.mpesa;
       case 'card':
       case 'credit':
-        return AppColors.credit;
+        return DesignColors.credit;
       case 'pesapal':
-        return AppColors.pesapal;
+        return DesignColors.pesapal;
       case 'touristtap':
-        return AppColors.touristtap;
+        return DesignColors.touristtap;
       default:
-        return AppColors.primary;
+        return DesignColors.brand;
     }
   }
 
@@ -922,15 +980,15 @@ class _AnalyticsDashboardScreenState
   Color _getCategoryColor(String category) {
     switch (category.toLowerCase()) {
       case 'electronics':
-        return AppColors.accentCyan;
+        return DesignColors.info;
       case 'clothing':
-        return AppColors.accent;
+        return DesignColors.teal;
       case 'food':
-        return AppColors.success;
+        return DesignColors.success;
       case 'services':
-        return AppColors.info;
+        return DesignColors.accent;
       default:
-        return AppColors.primary;
+        return DesignColors.brand;
     }
   }
 }

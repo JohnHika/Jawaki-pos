@@ -10,6 +10,7 @@ import '../../features/sales/presentation/screens/pos_screen.dart';
 import '../../features/sales/presentation/screens/cart_screen.dart';
 import '../../features/sales/presentation/screens/payment_screen.dart';
 import '../../features/sales/presentation/screens/receipt_screen.dart';
+import '../../features/sales/presentation/screens/receipts_list_screen.dart';
 import '../../features/catalog/presentation/screens/products_screen.dart';
 import '../../features/catalog/presentation/screens/product_detail_screen.dart';
 import '../../features/inventory/presentation/screens/inventory_screen.dart';
@@ -22,6 +23,8 @@ import '../../features/reports/presentation/screens/inventory_forecasting_screen
 import '../../features/payments/presentation/screens/payment_analytics_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
+import '../../features/customers/presentation/screens/customers_screen.dart';
+import '../../features/customers/presentation/screens/customer_profile_screen.dart';
 import '../services/auth_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
@@ -115,6 +118,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
           
+          // Receipts List Screen
+          GoRoute(
+            path: '/receipts',
+            name: 'receipts',
+            builder: (context, state) => const ReceiptsListScreen(),
+          ),
+
           // Products Screen
           GoRoute(
             path: '/products',
@@ -191,6 +201,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/payments',
             name: 'payments',
             builder: (context, state) => const PaymentsHubScreen(),
+          ),
+
+          // Customers Screen
+          GoRoute(
+            path: '/customers',
+            name: 'customers',
+            builder: (context, state) => const CustomersScreen(),
+            routes: [
+              GoRoute(
+                path: ':customerId',
+                name: 'customer-profile',
+                builder: (context, state) => CustomerProfileScreen(
+                  customerId: state.pathParameters['customerId']!,
+                ),
+              ),
+            ],
           ),
 
           // Settings Screen

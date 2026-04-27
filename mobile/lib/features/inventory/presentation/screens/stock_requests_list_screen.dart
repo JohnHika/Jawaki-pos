@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/theme/design_system.dart';
 
 /// Stock Requests List Screen - For managers to view and approve stock requests
 class StockRequestsListScreen extends ConsumerStatefulWidget {
@@ -14,7 +15,8 @@ class StockRequestsListScreen extends ConsumerStatefulWidget {
       _StockRequestsListScreenState();
 }
 
-class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScreen>
+class _StockRequestsListScreenState
+    extends ConsumerState<StockRequestsListScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _selectedStatus = 'PENDING';
@@ -62,20 +64,23 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
     try {
       final authService = getIt<AuthService>();
       final stockRequestService = ref.read(stockRequestServiceProvider);
-      
+
       final branchId = authService.branchId;
       final requests = await stockRequestService.getRequests(
         branchId: branchId,
         status: _selectedStatus == 'ALL' ? null : _selectedStatus,
       );
-      
+
       if (mounted) {
         setState(() => _requests = requests);
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
+      showGlassSnackBar(
+        context,
+        'Error loading requests',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
       );
     } finally {
       if (mounted) {
@@ -87,71 +92,117 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Stock Requests'),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Pending'),
-            Tab(text: 'Approved'),
-            Tab(text: 'Fulfilled'),
-            Tab(text: 'All'),
-          ],
+        title: const Text(
+          'Stock Requests',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
         ),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.filter_list_rounded,
+                  color: DesignColors.textSecondary, size: 20),
+            ),
             onPressed: () {
               // TODO: Show filter dialog
             },
           ),
         ],
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildRequestsList('PENDING'),
-          _buildRequestsList('APPROVED'),
-          _buildRequestsList('FULFILLED'),
-          _buildRequestsList('ALL'),
-        ],
+      body: PageContainer(
+        child: Column(
+          children: [
+            const SizedBox(height: kToolbarHeight + 8),
+            // Premium Tab Bar
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                labelColor: DesignColors.textOnBrand,
+                unselectedLabelColor: DesignColors.textSecondary,
+                indicator: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    colors: [DesignColors.brand, DesignColors.brandDark],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                indicatorPadding: const EdgeInsets.all(4),
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+                tabs: const [
+                  Tab(text: 'Pending'),
+                  Tab(text: 'Approved'),
+                  Tab(text: 'Fulfilled'),
+                  Tab(text: 'All'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildRequestsList('PENDING'),
+                  _buildRequestsList('APPROVED'),
+                  _buildRequestsList('FULFILLED'),
+                  _buildRequestsList('ALL'),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildRequestsList(String status) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(color: DesignColors.brand),
+      );
     }
 
     if (_requests.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No ${status.toLowerCase()} requests',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.inbox_outlined,
+        title: 'No ${status.toLowerCase()} requests',
+        subtitle: 'All caught up! No requests to review.',
+        iconColor: DesignColors.textTertiary,
       );
     }
 
     return RefreshIndicator(
       onRefresh: _loadRequests,
+      color: DesignColors.brand,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         itemCount: _requests.length,
         itemBuilder: (context, index) {
           final request = _requests[index];
@@ -162,7 +213,6 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
-    // Extract request data
     final id = request['id'] as String;
     final productName = request['productName'] as String? ?? 'Unknown Product';
     final productSku = request['productSku'] as String? ?? '';
@@ -176,216 +226,238 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
     final createdAt = request['createdAt'] as DateTime? ?? DateTime.now();
     final currentStock = request['currentStock'] as num? ?? 0;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GlassCard(
         onTap: () => _showRequestDetails(request),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Priority Badge
-                  _buildPriorityBadge(priority),
-                  const SizedBox(width: 12),
+        padding: const EdgeInsets.all(16),
+        borderRadius: 14,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Row
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Priority Badge
+                _buildPriorityBadge(priority),
+                const SizedBox(width: 10),
 
-                  // Product Info
+                // Product Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        productName,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: DesignColors.textPrimary,
+                        ),
+                      ),
+                      if (productSku.isNotEmpty)
+                        Text(
+                          'SKU: $productSku',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: DesignColors.textTertiary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                // Status Badge
+                _buildStatusBadge(requestStatus),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // Quantity & Stock Info
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: DesignColors.surfaceBorder.withValues(alpha:0.25),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          productName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                        const Text(
+                          'Requested',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: DesignColors.textSecondary,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                        if (productSku.isNotEmpty)
-                          Text(
-                            'SKU: $productSku',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '$quantity $unit',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: DesignColors.textPrimary,
                           ),
+                        ),
                       ],
                     ),
                   ),
-
-                  // Status Badge
-                  _buildStatusBadge(requestStatus),
+                  Container(
+                    width: 1,
+                    height: 44,
+                    color: DesignColors.surfaceBorder,
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Current Stock',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: DesignColors.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '$currentStock $unit',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: currentStock == 0
+                                ? DesignColors.error
+                                : currentStock < quantity
+                                    ? DesignColors.warning
+                                    : DesignColors.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
+            ),
 
-              const SizedBox(height: 12),
-
-              // Quantity & Stock Info
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Requested',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$quantity $unit',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 40,
-                      color: Colors.grey.shade300,
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Current Stock',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$currentStock $unit',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: currentStock == 0
-                                  ? Colors.red
-                                  : Colors.orange,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+            if (reason != null && reason.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                reason,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: DesignColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                  height: 1.3,
                 ),
               ),
+            ],
 
-              if (reason != null && reason.isNotEmpty) ...[
-                const SizedBox(height: 12),
+            const SizedBox(height: 12),
+
+            // Footer Row
+            Row(
+              children: [
+                Icon(Icons.person_outline_rounded,
+                    size: 14, color: DesignColors.textTertiary),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    requesterName,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: DesignColors.textTertiary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Icon(Icons.store_outlined,
+                    size: 14, color: DesignColors.textTertiary),
+                const SizedBox(width: 4),
                 Text(
-                  'Reason: $reason',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                    fontStyle: FontStyle.italic,
+                  branchName,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: DesignColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Icon(Icons.access_time_rounded,
+                    size: 14, color: DesignColors.textTertiary),
+                const SizedBox(width: 4),
+                Text(
+                  _formatDate(createdAt),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: DesignColors.textTertiary,
                   ),
                 ),
               ],
+            ),
 
-              const SizedBox(height: 12),
-
-              // Footer Row
+            // Action Buttons for Pending Requests
+            if (requestStatus == 'PENDING') ...[
+              const SizedBox(height: 14),
               Row(
                 children: [
-                  Icon(Icons.person_outline, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 4),
                   Expanded(
-                    child: Text(
-                      requesterName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _rejectRequest(id),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('Reject'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: DesignColors.error,
+                        side: const BorderSide(color: DesignColors.error),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Icon(Icons.store_outlined, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 4),
-                  Text(
-                    branchName,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatDate(createdAt),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GradientButton(
+                      label: 'Approve',
+                      icon: Icons.check_rounded,
+                      onPressed: () => _approveRequest(id),
+                      gradient: [
+                        DesignColors.success,
+                        const Color(0xFF059669),
+                      ],
+                      height: 44,
+                      borderRadius: 12,
                     ),
                   ),
                 ],
               ),
-
-              // Action Buttons for Pending Requests
-              if (requestStatus == 'PENDING') ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _rejectRequest(id),
-                        icon: const Icon(Icons.close, size: 18),
-                        label: const Text('Reject'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => _approveRequest(id),
-                        icon: const Icon(Icons.check, size: 18),
-                        label: const Text('Approve'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-
-              // Mark as Fulfilled button for Approved Requests
-              if (requestStatus == 'APPROVED') ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => _fulfillRequest(id),
-                    icon: const Icon(Icons.done_all, size: 18),
-                    label: const Text('Mark as Fulfilled'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.green,
-                    ),
-                  ),
-                ),
-              ],
             ],
-          ),
+
+            // Mark as Fulfilled button for Approved Requests
+            if (requestStatus == 'APPROVED') ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: GradientButton(
+                  label: 'Mark as Fulfilled',
+                  icon: Icons.done_all_rounded,
+                  onPressed: () => _fulfillRequest(id),
+                  gradient: [
+                    DesignColors.teal,
+                    const Color(0xFF0F766E),
+                  ],
+                  height: 44,
+                  borderRadius: 12,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -397,40 +469,41 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
 
     switch (priority.toLowerCase()) {
       case 'urgent':
-        color = Colors.red;
-        icon = Icons.warning;
+        color = DesignColors.error;
+        icon = Icons.warning_rounded;
         break;
       case 'high':
-        color = Colors.orange;
-        icon = Icons.arrow_upward;
+        color = DesignColors.warning;
+        icon = Icons.arrow_upward_rounded;
         break;
       case 'low':
-        color = Colors.blue;
-        icon = Icons.arrow_downward;
+        color = DesignColors.info;
+        icon = Icons.arrow_downward_rounded;
         break;
       default:
-        color = Colors.grey;
-        icon = Icons.remove;
+        color = DesignColors.textTertiary;
+        icon = Icons.remove_rounded;
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color),
+        color: color.withValues(alpha:0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha:0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
+          Icon(icon, size: 13, color: color),
           const SizedBox(width: 4),
           Text(
             priority.toUpperCase(),
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
               color: color,
+              letterSpacing: 0.5,
             ),
           ),
         ],
@@ -440,51 +513,35 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
 
   Widget _buildStatusBadge(String status) {
     Color color;
-    IconData icon;
+    IconData? icon;
 
     switch (status) {
       case 'PENDING':
-        color = Colors.orange;
-        icon = Icons.hourglass_empty;
+        color = DesignColors.warning;
+        icon = Icons.hourglass_empty_rounded;
         break;
       case 'APPROVED':
-        color = Colors.blue;
-        icon = Icons.check_circle_outline;
+        color = DesignColors.info;
+        icon = Icons.check_circle_outline_rounded;
         break;
       case 'FULFILLED':
-        color = Colors.green;
-        icon = Icons.done_all;
+        color = DesignColors.success;
+        icon = Icons.done_all_rounded;
         break;
       case 'REJECTED':
-        color = Colors.red;
+        color = DesignColors.error;
         icon = Icons.cancel_outlined;
         break;
       default:
-        color = Colors.grey;
-        icon = Icons.help_outline;
+        color = DesignColors.textTertiary;
+        icon = Icons.help_outline_rounded;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.white),
-          const SizedBox(width: 4),
-          Text(
-            status,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
+    return StatusBadge(
+      label: status,
+      color: color,
+      icon: icon,
+      isActive: true,
     );
   }
 
@@ -510,105 +567,174 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
   }
 
   Future<void> _showRequestDetails(Map<String, dynamic> request) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) {
-          return SingleChildScrollView(
-            controller: scrollController,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    GlassBottomSheet.show(
+      context,
+      initialSize: 0.6,
+      maxSize: 0.9,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            Row(
               children: [
-                Row(
+                const Expanded(
+                  child: Text(
+                    'Request Details',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: DesignColors.textPrimary,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.close, size: 18),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Product Info
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: DesignColors.brand.withValues(alpha:0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.inventory_2_rounded,
+                      color: DesignColors.brand, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'Request Details',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    Text(
+                      request['productName'] ?? '',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: DesignColors.textPrimary,
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
+                    Text(
+                      'SKU: ${request['productSku'] ?? ''}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: DesignColors.textTertiary,
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 24),
-                
-                // Product Info
-                ListTile(
-                  leading: const Icon(Icons.inventory_2),
-                  title: Text(request['productName'] ?? ''),
-                  subtitle: Text('SKU: ${request['productSku'] ?? ''}'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-
-                const Divider(),
-
-                // Quantity
-                ListTile(
-                  leading: const Icon(Icons.numbers),
-                  title: const Text('Requested Quantity'),
-                  subtitle: Text('${request['quantity']} ${request['unit']}'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-
-                // Branch
-                ListTile(
-                  leading: const Icon(Icons.store),
-                  title: const Text('Branch'),
-                  subtitle: Text(request['branchName'] ?? ''),
-                  contentPadding: EdgeInsets.zero,
-                ),
-
-                // Requester
-                ListTile(
-                  leading: const Icon(Icons.person),
-                  title: const Text('Requested By'),
-                  subtitle: Text(request['requestedByName'] ?? ''),
-                  contentPadding: EdgeInsets.zero,
-                ),
-
-                // Date
-                ListTile(
-                  leading: const Icon(Icons.calendar_today),
-                  title: const Text('Requested On'),
-                  subtitle: Text(
-                    DateFormat('MMM d, yyyy - hh:mm a').format(
-                      request['createdAt'] as DateTime? ?? DateTime.now(),
-                    ),
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                ),
-
-                if (request['reason'] != null && (request['reason'] as String).isNotEmpty) ...[
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.comment),
-                    title: const Text('Reason'),
-                    subtitle: Text(request['reason'] as String),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
-
-                // TODO: Display images if any
               ],
             ),
-          );
-        },
+
+            const SizedBox(height: 16),
+            const LabelDivider(label: 'DETAILS'),
+
+            _detailRow(
+              Icons.numbers_rounded,
+              'Requested Quantity',
+              '${request['quantity']} ${request['unit']}',
+            ),
+            const SizedBox(height: 10),
+            _detailRow(
+              Icons.store_rounded,
+              'Branch',
+              request['branchName'] ?? '',
+            ),
+            const SizedBox(height: 10),
+            _detailRow(
+              Icons.person_rounded,
+              'Requested By',
+              request['requestedByName'] ?? '',
+            ),
+            const SizedBox(height: 10),
+            _detailRow(
+              Icons.calendar_today_rounded,
+              'Requested On',
+              DateFormat('MMM d, yyyy - hh:mm a').format(
+                request['createdAt'] as DateTime? ?? DateTime.now(),
+              ),
+            ),
+
+            if (request['reason'] != null &&
+                (request['reason'] as String).isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const LabelDivider(label: 'REASON'),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: DesignColors.surfaceBorder.withValues(alpha:0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  request['reason'] as String,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: DesignColors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: DesignColors.textSecondary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: DesignColors.textTertiary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: DesignColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -620,81 +746,65 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
         approve: true,
         resolution: 'Approved by manager',
       );
-      
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request approved'),
-          backgroundColor: Colors.green,
-        ),
+      showGlassSnackBar(
+        context,
+        'Request approved',
+        icon: Icons.check_circle_rounded,
+        color: DesignColors.success,
       );
       _loadRequests();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+      showGlassSnackBar(
+        context,
+        'Error: ${e.toString()}',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
       );
     }
   }
 
   Future<void> _rejectRequest(String requestId) async {
     final reasonController = TextEditingController();
-    
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reject Request'),
-        content: TextField(
-          controller: reasonController,
-          decoration: const InputDecoration(
-            labelText: 'Reason (optional)',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
+
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Reject Request',
+      message: 'Are you sure you want to reject this stock request?',
+      confirmLabel: 'Reject',
+      confirmColor: DesignColors.error,
     );
-    
-    if (result != true) return;
-    
+
+    if (confirmed != true) {
+      reasonController.dispose();
+      return;
+    }
+
     try {
       final stockRequestService = ref.read(stockRequestServiceProvider);
       await stockRequestService.resolveRequest(
         requestId,
         approve: false,
-        resolution: reasonController.text.trim().isEmpty 
-            ? 'Rejected by manager' 
-            : reasonController.text.trim(),
+        resolution: 'Rejected by manager',
       );
-      
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request rejected'),
-          backgroundColor: Colors.orange,
-        ),
+      showGlassSnackBar(
+        context,
+        'Request rejected',
+        icon: Icons.cancel_outlined,
+        color: DesignColors.warning,
       );
       _loadRequests();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+      showGlassSnackBar(
+        context,
+        'Error: ${e.toString()}',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
       );
     } finally {
       reasonController.dispose();
@@ -702,50 +812,37 @@ class _StockRequestsListScreenState extends ConsumerState<StockRequestsListScree
   }
 
   Future<void> _fulfillRequest(String requestId) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Mark as Fulfilled'),
-        content: const Text('Has this stock request been fulfilled?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Mark as Fulfilled',
+      message: 'Has this stock request been fulfilled?',
+      confirmLabel: 'Confirm',
+      confirmColor: DesignColors.success,
     );
-    
+
     if (confirmed != true) return;
-    
+
     try {
       final stockRequestService = ref.read(stockRequestServiceProvider);
-      // For fulfilled status, we update the request
-      // In the backend, you might need to add a separate endpoint or use update
       await stockRequestService.updateRequest(
         requestId,
-        // Backend should handle status change to FULFILLED
       );
-      
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request marked as fulfilled'),
-          backgroundColor: Colors.green,
-        ),
+      showGlassSnackBar(
+        context,
+        'Request marked as fulfilled',
+        icon: Icons.done_all_rounded,
+        color: DesignColors.success,
       );
       _loadRequests();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+      showGlassSnackBar(
+        context,
+        'Error: ${e.toString()}',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
       );
     }
   }

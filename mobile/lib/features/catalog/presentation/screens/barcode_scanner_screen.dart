@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/haptic_service.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 
 class BarcodeScannerScreen extends ConsumerStatefulWidget {
   const BarcodeScannerScreen({super.key});
@@ -25,7 +26,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
     _controller = MobileScannerController(
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
-      torchEnabled: true,
+      torchEnabled: false,
     );
   }
 
@@ -70,7 +71,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Barcode: $barcode',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
                     ),
                   ],
                 ),
@@ -82,41 +83,54 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
     }
 
     try {
-      // Simulate product lookup (replace with actual database query)
-      await Future.delayed(const Duration(milliseconds: 800));
+      final db = getIt<AppDatabase>();
 
-      // Navigate to product or add to cart
-      if (mounted) {
-        Navigator.pop(context); // Close dialog
+      // Look up product by exact SKU match
+      final results = await (db.select(db.products)
+            ..where((p) => p.sku.equals(barcode)))
+          .get();
 
-        // Show success
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Product found: $barcode'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+      if (!mounted) return;
 
-        // TODO: Navigate to product detail or add to cart
-        // For now, just close the scanner
+      // Close the processing dialog
+      Navigator.pop(context);
+
+      if (results.isNotEmpty) {
+        final product = results.first;
+        // Navigate to product detail screen
         context.pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
+        context.push('/products/${product.id}');
+      } else {
+        // Product not found - show error and let user scan again
+        _lastScannedBarcode = null;
         getIt<HapticService>().error();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Product not found: $barcode'),
-            backgroundColor: AppColors.error,
+            content: Text('Product not found with barcode: $barcode'),
+            backgroundColor: DesignColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+
+      // Close the processing dialog
+      Navigator.pop(context);
+
+      _lastScannedBarcode = null;
+      getIt<HapticService>().error();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error looking up product: $e'),
+          backgroundColor: DesignColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
     } finally {
       _isProcessing = false;
     }
@@ -133,7 +147,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
           icon: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha:0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.close_rounded, color: Colors.white),
@@ -149,25 +163,16 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
           ValueListenableBuilder(
             valueListenable: _controller!.torchState,
             builder: (context, state, child) {
-              switch (state) {
-                case TorchState.off:
-                  return IconButton(
-                    icon: const Icon(Icons.flash_off_rounded, color: Colors.grey),
-                    onPressed: () => _controller?.toggleTorch(),
-                  );
-                case TorchState.on:
-                  return IconButton(
-                    icon: const Icon(Icons.flash_on_rounded, color: Colors.amber),
-                    onPressed: () => _controller?.toggleTorch(),
-                  );
-                case TorchState.auto:
-                  return IconButton(
-                    icon: const Icon(Icons.flash_auto_rounded, color: Colors.white),
-                    onPressed: () => _controller?.toggleTorch(),
-                  );
-                case TorchState.unavailable:
-                  return const SizedBox.shrink();
+              if (state == TorchState.on) {
+                return IconButton(
+                  icon: const Icon(Icons.flash_on_rounded, color: Colors.amber),
+                  onPressed: () => _controller?.toggleTorch(),
+                );
               }
+              return IconButton(
+                icon: const Icon(Icons.flash_off_rounded, color: Colors.grey),
+                onPressed: () => _controller?.toggleTorch(),
+              );
             },
           ),
         ],
@@ -204,7 +209,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
+                    color: Colors.black.withValues(alpha:0.7),
                     borderRadius: BorderRadius.circular(30),
                   ),
                   margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -225,7 +230,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
+                        color: Colors.black.withValues(alpha:0.7),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
@@ -258,7 +263,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
 class ScannerOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black.withOpacity(0.6);
+    final paint = Paint()..color = Colors.black.withValues(alpha:0.6);
     final scanAreaSize = size.width * 0.7;
     final scanAreaOffset = Offset(
       (size.width - scanAreaSize) / 2,
@@ -288,7 +293,7 @@ class ScannerOverlayPainter extends CustomPainter {
 
     // Draw scan area border
     final borderPaint = Paint()
-      ..color = AppColors.primary
+      ..color = DesignColors.brand
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
 
@@ -340,7 +345,7 @@ class ScannerOverlayPainter extends CustomPainter {
 
     // Draw scanning line animation
     final linePaint = Paint()
-      ..color = AppColors.primary.withOpacity(0.5)
+      ..color = DesignColors.brand.withValues(alpha:0.5)
       ..strokeWidth = 2;
 
     canvas.drawLine(

@@ -1,4 +1,4 @@
-/// Role-based access control for Jawaki Adventures POS.
+/// Role-based access control for Levisa Adventures POS.
 ///
 /// Hierarchy (higher inherits all lower permissions):
 ///   ADMIN > STORE_MANAGER > STOCK_KEEPER > SELLER

@@ -1,2 +1,2 @@
 @echo off
-call "C:\Projects\Claude Code\claude-code\axoncode.cmd" %*
+call "C:\Users\admin\AppData\Roaming\npm\axoncode.cmd" %*

@@ -163,6 +163,48 @@ class StorageService {
     return getFavoriteProducts().contains(productId);
   }
 
+  // Server mode keys
+  static const String keyServerModeEnabled = 'server_mode_enabled';
+  static const String keyServerPort = 'server_port';
+  static const String keyBackendServerIp = 'backend_server_ip';
+  static const String keyBackendServerPort = 'backend_server_port';
+
+  bool isServerModeEnabled() {
+    return _prefs?.getBool(keyServerModeEnabled) ?? false;
+  }
+
+  Future<void> setServerModeEnabled(bool enabled) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyServerModeEnabled, enabled);
+  }
+
+  int getServerPort() {
+    return _prefs?.getInt(keyServerPort) ?? 3000;
+  }
+
+  Future<void> setServerPort(int port) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyServerPort, port);
+  }
+
+  String? getBackendServerIp() {
+    return _prefs?.getString(keyBackendServerIp);
+  }
+
+  Future<void> setBackendServerIp(String ip) async {
+    _checkInitialized();
+    await _prefs!.setString(keyBackendServerIp, ip);
+  }
+
+  int getBackendServerPort() {
+    return _prefs?.getInt(keyBackendServerPort) ?? 3000;
+  }
+
+  Future<void> setBackendServerPort(int port) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyBackendServerPort, port);
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await clearSecureStorage();

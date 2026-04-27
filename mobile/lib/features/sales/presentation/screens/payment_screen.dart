@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/payment_provider.dart';
 
@@ -44,69 +44,118 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final paymentState = ref.watch(paymentProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+        leading: Container(
+          margin: const EdgeInsets.only(left: 4),
+          child: IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? DesignColors.darkSurfaceElevated
+                    : DesignColors.surfaceSubtle,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.arrow_back_rounded, size: 20),
+            ),
+            onPressed: () => context.pop(),
+          ),
         ),
-        title: const Text('Payment'),
+        title: Text(
+          'Payment',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            letterSpacing: -0.5,
+            color: isDark
+                ? DesignColors.darkTextPrimary
+                : DesignColors.textPrimary,
+          ),
+        ),
+        centerTitle: false,
+        backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
+      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Order Total Card
-            Container(
-              width: double.infinity,
+            GlassCard(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, AppColors.primaryDark],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
+              borderRadius: 20,
+              blur: 8,
+              tint: DesignColors.brand.withValues(alpha:0.08),
+              borderColor: DesignColors.brand.withValues(alpha:0.15),
+              gradient: LinearGradient(
+                colors: [
+                  DesignColors.brand.withValues(alpha:0.1),
+                  DesignColors.brandDark.withValues(alpha:0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
               child: Column(
                 children: [
                   const Text(
                     'Total Amount',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: DesignColors.textSecondary,
                       fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'KES ${cart.total.toStringAsFixed(2)}',
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
+                      color: DesignColors.textPrimary,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '${cart.itemCount} items',
-                    style: const TextStyle(
-                      color: Colors.white70,
+                    style: TextStyle(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
                       fontSize: 14,
                     ),
                   ),
                   if (cart.customerName != null) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: DesignColors.teal.withValues(alpha:0.12),
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: DesignColors.teal.withValues(alpha:0.25)),
                       ),
-                      child: Text(
-                        cart.customerName!,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.person_rounded,
+                              size: 15, color: DesignColors.teal),
+                          const SizedBox(width: 6),
+                          Text(
+                            cart.customerName!,
+                            style: const TextStyle(
+                                color: DesignColors.teal,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -114,64 +163,64 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            
-            // Payment Methods
-            Text(
-              'Select Payment Method',
-              style: Theme.of(context).textTheme.titleMedium,
+
+            // Select Payment Method
+            SectionHeader(
+              title: 'Payment Method',
+              subtitle: 'Choose how to pay',
             ),
-            const SizedBox(height: 16),
-            
+            const SizedBox(height: 8),
+
             // Cash
             _PaymentMethodTile(
-              icon: Icons.money,
+              icon: Icons.money_rounded,
               title: 'Cash',
               subtitle: 'Pay with cash',
-              color: AppColors.cash,
+              color: DesignColors.cash,
               isSelected: _selectedMethod == PaymentMethod.cash,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.cash),
             ),
-            const SizedBox(height: 12),
-            
+            const SizedBox(height: 10),
+
             // M-Pesa
             _PaymentMethodTile(
-              icon: Icons.phone_android,
+              icon: Icons.phone_android_rounded,
               title: 'M-Pesa',
               subtitle: 'Pay via M-Pesa STK Push',
-              color: AppColors.mpesa,
+              color: DesignColors.mpesa,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.mpesa),
             ),
-            const SizedBox(height: 12),
-            
+            const SizedBox(height: 10),
+
             // PesaPal
             _PaymentMethodTile(
-              icon: Icons.credit_card,
+              icon: Icons.payments_rounded,
               title: 'PesaPal',
               subtitle: 'Card, Mobile Money, Bank',
-              color: AppColors.pesapal,
+              color: DesignColors.pesapal,
               isSelected: _selectedMethod == PaymentMethod.pesapal,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.pesapal),
             ),
-            const SizedBox(height: 12),
-            
+            const SizedBox(height: 10),
+
             // TouristTap
             _PaymentMethodTile(
-              icon: Icons.contactless,
+              icon: Icons.nfc_rounded,
               title: 'TouristTap',
               subtitle: 'NFC / Contactless Payment',
-              color: AppColors.touristtap,
+              color: DesignColors.touristtap,
               isSelected: _selectedMethod == PaymentMethod.touristtap,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.touristtap),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // Credit (Pay Later)
             _PaymentMethodTile(
-              icon: Icons.account_balance_wallet,
+              icon: Icons.credit_card_rounded,
               title: 'Credit',
               subtitle: 'Pay later / Credit sale',
-              color: AppColors.primary,
+              color: DesignColors.credit,
               isSelected: _selectedMethod == PaymentMethod.credit,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.credit),
             ),
@@ -179,18 +228,24 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             // Phone number input for M-Pesa
             if (_selectedMethod == PaymentMethod.mpesa) ...[
               const SizedBox(height: 24),
-              Text(
-                'Enter M-Pesa Phone Number',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              LabelDivider(label: 'M-PESA DETAILS'),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: '0712345678',
-                  prefixIcon: Icon(Icons.phone),
+                  labelText: 'Phone Number',
+                  prefixIcon: const Icon(Icons.phone_rounded, size: 20),
                   prefixText: '+254 ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: isDark
+                      ? DesignColors.darkSurfaceElevated
+                      : DesignColors.surfaceMuted,
                 ),
               ),
             ],
@@ -198,18 +253,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             // Customer details for Credit payment
             if (_selectedMethod == PaymentMethod.credit) ...[
               const SizedBox(height: 24),
-              Text(
-                'Customer Details',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              LabelDivider(label: 'CREDIT DETAILS'),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _customerNameController,
                 keyboardType: TextInputType.name,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Customer Name',
-                  prefixIcon: Icon(Icons.person),
                   labelText: 'Customer Name *',
+                  prefixIcon: const Icon(Icons.person_outline_rounded, size: 20),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: isDark
+                      ? DesignColors.darkSurfaceElevated
+                      : DesignColors.surfaceMuted,
                 ),
               ),
               const SizedBox(height: 12),
@@ -217,72 +277,95 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 controller: _creditNotesController,
                 keyboardType: TextInputType.multiline,
                 maxLines: 3,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Payment terms, due date, etc.',
-                  prefixIcon: Icon(Icons.note),
                   labelText: 'Credit Notes',
+                  prefixIcon: const Icon(Icons.note_outlined, size: 20),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: isDark
+                      ? DesignColors.darkSurfaceElevated
+                      : DesignColors.surfaceMuted,
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Note: Credit sales require customer name. Payment will be collected later.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-            
-            // Error message
-            if (paymentState.error != null) ...[
-              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.error.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  color: DesignColors.info.withValues(alpha:0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: DesignColors.info.withValues(alpha:0.15)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                    Icon(Icons.info_outline_rounded,
+                        size: 18, color: DesignColors.info),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        paymentState.error!,
-                        style: const TextStyle(color: AppColors.error),
+                        'Credit sales require customer name. Payment will be collected later.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
             ],
+
+            // Error message
+            if (paymentState.error != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: DesignColors.error.withValues(alpha:0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: DesignColors.error.withValues(alpha:0.2)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline_rounded,
+                        color: DesignColors.error, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        paymentState.error!,
+                        style: const TextStyle(
+                            color: DesignColors.error, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
           ],
         ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: ElevatedButton(
-            onPressed: _selectedMethod == null || paymentState.isProcessing
-                ? null
-                : _processPayment,
-            child: paymentState.isProcessing
-                ? const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Text('Processing...'),
-                    ],
-                  )
-                : Text(_getButtonText()),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: GradientButton(
+            label: _getButtonText(),
+            icon: Icons.payment_rounded,
+            onPressed:
+                _selectedMethod == null || paymentState.isProcessing
+                    ? null
+                    : _processPayment,
+            isLoading: paymentState.isProcessing,
+            height: 56,
+            borderRadius: 16,
+            gradient: const [DesignColors.brand, DesignColors.brandDark],
           ),
         ),
       ),
@@ -323,8 +406,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         break;
       case PaymentMethod.mpesa:
         if (_phoneController.text.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter phone number')),
+          showGlassSnackBar(
+            context,
+            'Please enter phone number',
+            icon: Icons.warning_amber_rounded,
+            color: DesignColors.warning,
           );
           return;
         }
@@ -347,22 +433,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         );
         break;
       case PaymentMethod.credit:
-        // Validate customer name for credit sales
         if (_customerNameController.text.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter customer name for credit sale')),
+          showGlassSnackBar(
+            context,
+            'Please enter customer name for credit sale',
+            icon: Icons.warning_amber_rounded,
+            color: DesignColors.warning,
           );
           return;
         }
 
-        // Create or get customer ID
         final customerName = _customerNameController.text.trim();
         final customerId = await getIt<AppDatabase>().insertOrGetCustomer(
           'cust-${_uuid.v4()}',
           customerName,
         );
 
-        // Build credit notes
         String? creditNotes = _creditNotesController.text.trim();
         if (creditNotes!.isEmpty) {
           creditNotes = null;
@@ -379,7 +465,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
 
     if (result != null && mounted) {
-      // Record customer purchase if customer is set
       final customerId = cart.customerId ??
           (_selectedMethod == PaymentMethod.credit
               ? await getIt<AppDatabase>().insertOrGetCustomer(
@@ -389,10 +474,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               : null);
 
       if (customerId != null) {
-        await getIt<AppDatabase>().recordCustomerPurchase(customerId, cart.total);
+        await getIt<AppDatabase>()
+            .recordCustomerPurchase(customerId, cart.total);
       }
 
-      // Clear cart and navigate to receipt
       ref.read(cartProvider.notifier).clear();
       context.go('/receipt/$result');
     }
@@ -418,58 +503,88 @@ class _PaymentMethodTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GlassCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? color : theme.dividerColor,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+      padding: const EdgeInsets.all(14),
+      borderRadius: 14,
+      blur: isSelected ? 12 : 4,
+      tint: isSelected
+          ? color.withValues(alpha:0.08)
+          : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
+      borderColor: isSelected
+          ? color.withValues(alpha:0.4)
+          : (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder),
+      boxShadow: isSelected
+          ? [
+              BoxShadow(
+                color: color.withValues(alpha:0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-              child: Icon(icon, color: color),
+            ]
+          : null,
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha:0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withValues(alpha:0.2)),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? color : null,
-                    ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected
+                        ? color
+                        : (isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary),
                   ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: theme.disabledColor,
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isSelected)
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha:0.4),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
+              child: const Icon(Icons.check_rounded,
+                  color: Colors.white, size: 18),
             ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: color),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -70,65 +70,21 @@ class AuthService {
     required String password,
     String? deviceId,
   }) async {
-    // DEV MODE: Hardcoded admin login
-    // TODO: Remove before production and use API auth
-    if (email == 'johnkimani576@gmail.com' && password == 'admin123') {
-      final adminUser = {
-        'id': 'admin-001',
-        'email': 'johnkimani576@gmail.com',
-        'name': 'John Kimani',
-        'role': 'admin',
-        'branchId': 'branch-001',
-        'tenantId': 'jawaki-adventures',
-      };
-      _accessToken = 'admin-token-${DateTime.now().millisecondsSinceEpoch}';
-      _currentUser = adminUser;
-      await _storage.saveAccessToken(_accessToken!);
-      await _storage.saveRefreshToken('admin-refresh-token');
-      await _storage.saveUser(adminUser);
-      await _storage.saveBranchId('branch-001');
-      await _storage.saveTenantId('jawaki-adventures');
-      _updateStatus(AuthStatus.authenticated);
-      return;
-    }
-    
     final response = await _apiClient.login(
       email: email,
       password: password,
       deviceId: deviceId ?? _storage.getDeviceId(),
     );
-    
+
     await _handleAuthResponse(response);
   }
-  
+
   Future<void> loginWithPin(String pin) async {
-    // DEV MODE: Accept dummy PIN 0000 for development testing
-    // TODO: Remove this before production deployment
-    if (pin == '0000') {
-      final devUser = {
-        'id': 'admin-001',
-        'email': 'johnkimani576@gmail.com',
-        'name': 'John Kimani',
-        'role': 'admin',
-        'branchId': 'branch-001',
-        'tenantId': 'jawaki-adventures',
-      };
-      _accessToken = 'dev-token-${DateTime.now().millisecondsSinceEpoch}';
-      _currentUser = devUser;
-      await _storage.saveAccessToken(_accessToken!);
-      await _storage.saveRefreshToken('dev-refresh-token');
-      await _storage.saveUser(devUser);
-      await _storage.saveBranchId('branch-001');
-      await _storage.saveTenantId('jawaki-adventures');
-      _updateStatus(AuthStatus.authenticated);
-      return;
-    }
-    
     final response = await _apiClient.loginWithPin(
       pin: pin,
       deviceId: _storage.getDeviceId()!,
     );
-    
+
     await _handleAuthResponse(response);
   }
   
@@ -149,15 +105,12 @@ class AuthService {
   }
   
   Future<void> logout() async {
-    // Only call logout API if we have a valid token and it's not a dev token
-    if (_accessToken != null && !_accessToken!.startsWith('admin-token-')) {
-      try {
-        await _apiClient.logout();
-      } catch (_) {
-        // Ignore logout API errors
-      }
+    try {
+      await _apiClient.logout();
+    } catch (_) {
+      // Ignore logout API errors
     }
-    
+
     await _storage.clearSession();
     _accessToken = null;
     _currentUser = null;
@@ -166,19 +119,38 @@ class AuthService {
   
   Future<void> _handleAuthResponse(Map<String, dynamic> response) async {
     _accessToken = response['accessToken'];
-    _currentUser = response['user'];
-    
+    Map<String, dynamic> userData = Map<String, dynamic>.from(response['user']);
+
+    // Normalize name from firstName + lastName if name is not present
+    if (userData['name'] == null && userData['firstName'] != null) {
+      userData['name'] = '${userData['firstName']} ${userData['lastName'] ?? ''}'.trim();
+    }
+
+    // Extract branch ID from branches array if branchId is not directly present
+    if (userData['branchId'] == null && userData['branches'] is List && (userData['branches'] as List).isNotEmpty) {
+      final primaryBranch = (userData['branches'] as List).firstWhere(
+        (b) => b['isPrimary'] == true,
+        orElse: () => (userData['branches'] as List).first,
+      );
+      userData['branchId'] = primaryBranch['id'];
+      if (primaryBranch['name'] != null) {
+        userData['branchName'] = primaryBranch['name'];
+      }
+    }
+
+    _currentUser = userData;
+
     await _storage.saveAccessToken(_accessToken!);
     await _storage.saveRefreshToken(response['refreshToken']);
     await _storage.saveUser(_currentUser!);
-    
+
     if (_currentUser!['branchId'] != null) {
       await _storage.saveBranchId(_currentUser!['branchId']);
     }
     if (_currentUser!['tenantId'] != null) {
       await _storage.saveTenantId(_currentUser!['tenantId']);
     }
-    
+
     _updateStatus(AuthStatus.authenticated);
   }
   
@@ -227,7 +199,7 @@ class AuthService {
   Future<bool> loginWithBiometrics() async {
     try {
       final didAuthenticate = await _localAuth.authenticate(
-        localizedReason: 'Sign in to JAWAKI ADVENTURES POS',
+        localizedReason: 'Sign in to Levisa Adventures POS',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: false, // Allow PIN/pattern fallback
@@ -244,25 +216,8 @@ class AuthService {
           return true;
         }
         
-        // No stored session - use default admin for dev
-        // TODO: Remove before production
-        final adminUser = {
-          'id': 'admin-001',
-          'email': 'johnkimani576@gmail.com',
-          'name': 'John Kimani',
-          'role': 'admin',
-          'branchId': 'branch-001',
-          'tenantId': 'jawaki-adventures',
-        };
-        _accessToken = 'bio-token-${DateTime.now().millisecondsSinceEpoch}';
-        _currentUser = adminUser;
-        await _storage.saveAccessToken(_accessToken!);
-        await _storage.saveRefreshToken('bio-refresh-token');
-        await _storage.saveUser(adminUser);
-        await _storage.saveBranchId('branch-001');
-        await _storage.saveTenantId('jawaki-adventures');
-        _updateStatus(AuthStatus.authenticated);
-        return true;
+        // No stored session — cannot auto-login
+        return false;
       }
       return false;
     } catch (_) {

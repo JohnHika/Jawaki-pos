@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,14 +9,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/local_server_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 // Settings keys for SharedPreferences
@@ -45,25 +50,24 @@ class SettingsScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // User Profile Card
-          Container(
+          GlassCard(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
+            borderRadius: 12,
+            blur: 10,
+            tint: Colors.transparent,
+            borderColor: DesignColors.surfaceBorder,
             child: Row(
               children: [
                 Container(
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
+                    color: DesignColors.brand.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(28),
                   ),
                   child: const Icon(
                     Icons.person,
-                    color: AppColors.primary,
+                    color: DesignColors.brand,
                     size: 28,
                   ),
                 ),
@@ -80,7 +84,7 @@ class SettingsScreen extends ConsumerWidget {
                       Text(
                         user?['email'] ?? '',
                         style: const TextStyle(
-                          color: AppColors.textSecondary,
+                          color: DesignColors.textSecondary,
                           fontSize: 13,
                         ),
                       ),
@@ -88,13 +92,13 @@ class SettingsScreen extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
+                          color: DesignColors.brand.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           (user?['role'] ?? 'CASHIER').toString().toUpperCase(),
                           style: const TextStyle(
-                            color: AppColors.primary,
+                            color: DesignColors.brand,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -106,6 +110,25 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
+          const SizedBox(height: 24),
+
+          // ═══════ PHONE SERVER MODE (always at top) ═══════
+          const SizedBox(height: 8),
+          Text(
+            'Phone Server Mode',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: DesignColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _ServerModeTile(),
+          _SettingsTile(
+            icon: Icons.dns,
+            title: 'Backend Server',
+            subtitle: 'Set this device as a client of another phone server',
+            onTap: () => _showBackendServerSettings(context),
+          ),
+
           const SizedBox(height: 24),
 
           // Sync Status (manager+)
@@ -121,8 +144,8 @@ class SettingsScreen extends ConsumerWidget {
                       ? '${stats?.pendingEvents ?? 0} pending events'
                       : 'All synced',
                   trailing: stats?.isOnline == true
-                      ? const _StatusBadge(text: 'Online', color: AppColors.success)
-                      : const _StatusBadge(text: 'Offline', color: AppColors.warning),
+                      ? const _StatusBadge(text: 'Online', color: DesignColors.success)
+                      : const _StatusBadge(text: 'Offline', color: DesignColors.warning),
                   onTap: () => _showSyncSettings(context, syncService),
                 );
               },
@@ -133,7 +156,7 @@ class SettingsScreen extends ConsumerWidget {
             Text(
               'Preferences',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: DesignColors.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
@@ -168,7 +191,7 @@ class SettingsScreen extends ConsumerWidget {
           Text(
             'Account',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: AppColors.textSecondary,
+              color: DesignColors.textSecondary,
             ),
           ),
           const SizedBox(height: 8),
@@ -190,7 +213,7 @@ class SettingsScreen extends ConsumerWidget {
           Text(
             'Support',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: AppColors.textSecondary,
+              color: DesignColors.textSecondary,
             ),
           ),
           const SizedBox(height: 8),
@@ -214,7 +237,7 @@ class SettingsScreen extends ConsumerWidget {
             Text(
               'Administration',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: DesignColors.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
@@ -249,13 +272,13 @@ class SettingsScreen extends ConsumerWidget {
           // Logout Button
           OutlinedButton.icon(
             onPressed: () => _showLogoutDialog(context, ref),
-            icon: const Icon(Icons.logout, color: AppColors.error),
+            icon: const Icon(Icons.logout, color: DesignColors.error),
             label: const Text(
               'Logout',
-              style: TextStyle(color: AppColors.error),
+              style: TextStyle(color: DesignColors.error),
             ),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.error),
+              side: const BorderSide(color: DesignColors.error),
             ),
           ),
           const SizedBox(height: 16),
@@ -289,7 +312,7 @@ class SettingsScreen extends ConsumerWidget {
             },
             child: const Text(
               'Logout',
-              style: TextStyle(color: AppColors.error),
+              style: TextStyle(color: DesignColors.error),
             ),
           ),
         ],
@@ -311,7 +334,7 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(child: Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+              decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Text('Sync Settings', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
@@ -426,7 +449,7 @@ class SettingsScreen extends ConsumerWidget {
                 leading: const Icon(Icons.light_mode),
                 title: const Text('Light Mode'),
                 trailing: currentMode == ThemeMode.light
-                    ? const Icon(Icons.check_circle, color: AppColors.primary)
+                    ? const Icon(Icons.check_circle, color: DesignColors.brand)
                     : null,
                 onTap: () {
                   ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
@@ -437,7 +460,7 @@ class SettingsScreen extends ConsumerWidget {
                 leading: const Icon(Icons.dark_mode),
                 title: const Text('Dark Mode'),
                 trailing: currentMode == ThemeMode.dark
-                    ? const Icon(Icons.check_circle, color: AppColors.primary)
+                    ? const Icon(Icons.check_circle, color: DesignColors.brand)
                     : null,
                 onTap: () {
                   ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
@@ -449,7 +472,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('System Default'),
                 subtitle: const Text('Follow device theme'),
                 trailing: currentMode == ThemeMode.system
-                    ? const Icon(Icons.check_circle, color: AppColors.primary)
+                    ? const Icon(Icons.check_circle, color: DesignColors.brand)
                     : null,
                 onTap: () {
                   ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
@@ -525,7 +548,7 @@ class SettingsScreen extends ConsumerWidget {
               final newPin = newPinController.text;
               final confirmPin = confirmPinController.text;
 
-              if (currentPin != '0000' && currentPin.length != 4) {
+              if (currentPin.length != 4) {
                 _showSnack(context, 'Enter your current 4-digit PIN', isError: true);
                 return;
               }
@@ -587,22 +610,18 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(child: Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+              decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Text('Help & Support', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
             
             ListTile(
-              leading: const Icon(Icons.email_outlined, color: AppColors.primary),
+              leading: const Icon(Icons.email_outlined, color: DesignColors.brand),
               title: const Text('Email Support'),
-              subtitle: const Text('johnkimani576@gmail.com'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSnack(context, 'Email copied to clipboard');
-              },
+              subtitle: const Text('support@levisa.com'),
             ),
             ListTile(
-              leading: const Icon(Icons.phone_outlined, color: AppColors.primary),
+              leading: const Icon(Icons.phone_outlined, color: DesignColors.brand),
               title: const Text('Phone Support'),
               subtitle: const Text('Contact your system administrator'),
               onTap: () {},
@@ -713,7 +732,7 @@ class SettingsScreen extends ConsumerWidget {
         applicationIcon: Container(
           width: 48, height: 48,
           decoration: BoxDecoration(
-            color: AppColors.primary,
+            color: DesignColors.brand,
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Icon(Icons.storefront, color: Colors.white, size: 28),
@@ -721,8 +740,8 @@ class SettingsScreen extends ConsumerWidget {
         children: const [
           Text('A complete point-of-sale system for managing sales, inventory, and business operations.'),
           SizedBox(height: 12),
-          Text('Built with Flutter', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-          Text('© 2026 Levisa Adventures', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text('Built with Flutter', style: TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
+          Text('© 2026 Levisa Adventures', style: TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
         ],
       ),
     );
@@ -733,7 +752,7 @@ class SettingsScreen extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? AppColors.error : null,
+        backgroundColor: isError ? DesignColors.error : null,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
@@ -758,7 +777,7 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+                decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -779,18 +798,23 @@ class SettingsScreen extends ConsumerWidget {
                 child: ListView(
                   controller: scrollController,
                   children: [
-                    _UserTile(
-                      name: 'John Kimani',
-                      email: 'johnkimani576@gmail.com',
-                      role: AppRole.admin,
-                      isCurrentUser: true,
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final user = ref.watch(currentUserProvider) ?? {};
+                        return _UserTile(
+                          name: user['name'] as String? ?? 'User',
+                          email: user['email'] as String? ?? '',
+                          role: AppRole.fromString(user['role'] as String? ?? 'CASHIER'),
+                          isCurrentUser: true,
+                        );
+                      },
                     ),
                     // Placeholder for additional users
                     Card(
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: AppColors.surfaceVariant,
-                          child: const Icon(Icons.person_add, color: AppColors.textSecondary),
+                          backgroundColor: DesignColors.surfaceSubtle,
+                          child: const Icon(Icons.person_add, color: DesignColors.textSecondary),
                         ),
                         title: const Text('No other users yet'),
                         subtitle: const Text('Tap + Add to create staff accounts'),
@@ -925,7 +949,7 @@ class SettingsScreen extends ConsumerWidget {
             Text('Data Export', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
             ListTile(
-              leading: const Icon(Icons.receipt_long, color: AppColors.primary),
+              leading: const Icon(Icons.receipt_long, color: DesignColors.brand),
               title: const Text('Export Sales Data'),
               subtitle: const Text('CSV format'),
               trailing: const Icon(Icons.chevron_right),
@@ -935,7 +959,7 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.inventory, color: AppColors.primary),
+              leading: const Icon(Icons.inventory, color: DesignColors.brand),
               title: const Text('Export Inventory'),
               subtitle: const Text('CSV format'),
               trailing: const Icon(Icons.chevron_right),
@@ -945,7 +969,7 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.category, color: AppColors.primary),
+              leading: const Icon(Icons.category, color: DesignColors.brand),
               title: const Text('Export Products'),
               subtitle: const Text('CSV format'),
               trailing: const Icon(Icons.chevron_right),
@@ -1074,11 +1098,11 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+                decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
               Text('Audit Trail', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
-              const Text('Recent system activity', style: TextStyle(color: AppColors.textSecondary)),
+              const Text('Recent system activity', style: TextStyle(color: DesignColors.textSecondary)),
               const SizedBox(height: 16),
               Expanded(
                 child: ListView(
@@ -1086,27 +1110,9 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     _AuditEntry(
                       icon: Icons.login,
-                      title: 'Admin Login',
-                      subtitle: 'John Kimani logged in via PIN',
+                      title: 'Session Started',
+                      subtitle: 'Logged in successfully',
                       time: 'Just now',
-                    ),
-                    _AuditEntry(
-                      icon: Icons.edit,
-                      title: 'Product Updated',
-                      subtitle: 'Price changed for "Product A"',
-                      time: '5 min ago',
-                    ),
-                    _AuditEntry(
-                      icon: Icons.point_of_sale,
-                      title: 'Sale Completed',
-                      subtitle: 'KES 2,450.00 — Cash payment',
-                      time: '15 min ago',
-                    ),
-                    _AuditEntry(
-                      icon: Icons.sync,
-                      title: 'Data Synced',
-                      subtitle: '12 events synced to server',
-                      time: '1 hour ago',
                     ),
                   ],
                 ),
@@ -1125,6 +1131,123 @@ class SettingsScreen extends ConsumerWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  // ===== BACKEND SERVER SETTINGS (Client Mode) =====
+  void _showBackendServerSettings(BuildContext context) {
+    final storage = getIt<StorageService>();
+    final serverIpController = TextEditingController(text: storage.getBackendServerIp() ?? '');
+    final serverPortController = TextEditingController(text: storage.getBackendServerPort().toString());
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            Text('Backend Server', style: Theme.of(ctx).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('Point this device to a phone server on your network',
+              style: const TextStyle(color: DesignColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: serverIpController,
+              decoration: const InputDecoration(
+                labelText: 'Server IP Address',
+                hintText: 'e.g. 192.168.1.50',
+                prefixIcon: Icon(Icons.dns),
+              ),
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: serverPortController,
+              decoration: const InputDecoration(
+                labelText: 'Port',
+                hintText: '3000',
+                prefixIcon: Icon(Icons.settings_ethernet),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final ip = serverIpController.text.trim();
+                  final port = int.tryParse(serverPortController.text.trim()) ?? 3000;
+                  if (ip.isEmpty) {
+                    _showSnack(context, 'Please enter a server IP address', isError: true);
+                    return;
+                  }
+                  await storage.setBackendServerIp(ip);
+                  await storage.setBackendServerPort(port);
+
+                  // Update the API client base URL
+                  final apiClient = getIt<ApiClient>();
+                  apiClient.setBaseUrl('http://$ip:$port/api/v1');
+
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _showSnack(context, 'Server set to http://$ip:$port');
+                },
+                icon: const Icon(Icons.link),
+                label: const Text('Connect'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Test connection button
+            if (storage.getBackendServerIp() != null)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final ip = serverIpController.text.trim();
+                    final port = int.tryParse(serverPortController.text.trim()) ?? 3000;
+                    _showSnack(context, 'Testing connection...');
+                    try {
+                      final client = getIt<ApiClient>();
+                      client.setBaseUrl('http://$ip:$port/api/v1');
+                      await client.getDashboard();
+                      _showSnack(context, '✅ Connected! Server is online.');
+                    } catch (e) {
+                      _showSnack(context, '❌ Connection failed: $e', isError: true);
+                    }
+                  },
+                  icon: const Icon(Icons.network_check),
+                  label: const Text('Test Connection'),
+                ),
+              ),
+            // Clear server setting
+            if (storage.getBackendServerIp() != null)
+              TextButton.icon(
+                onPressed: () async {
+                  await storage.setBackendServerIp('');
+                  await storage.setBackendServerPort(3000);
+                  // Reset to built-in URL
+                  final apiClient = getIt<ApiClient>();
+                  apiClient.setBaseUrl('http://192.168.100.47:3000/api/v1');
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _showSnack(context, 'Cleared server setting — using default backend');
+                },
+                icon: const Icon(Icons.clear, color: DesignColors.error),
+                label: const Text('Clear & Use Default', style: TextStyle(color: DesignColors.error)),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1175,7 +1298,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(child: Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 16),
           Text('Printer Settings', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 20),
@@ -1290,7 +1413,7 @@ class _NotificationSettingsSheetState extends State<_NotificationSettingsSheet> 
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(child: Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 16),
           Text('Notifications', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 20),
@@ -1504,15 +1627,15 @@ class _SettingsTile extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
+            color: DesignColors.surfaceSubtle,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, color: AppColors.textSecondary, size: 20),
+          child: Icon(icon, color: DesignColors.textSecondary, size: 20),
         ),
         title: Text(title),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
         ),
         trailing: trailing ?? const Icon(Icons.chevron_right),
         onTap: onTap,
@@ -1561,7 +1684,7 @@ class _InfoRow extends StatelessWidget {
         children: [
           Flexible(
             flex: 2,
-            child: Text(label, style: const TextStyle(color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+            child: Text(label, style: const TextStyle(color: DesignColors.textSecondary), overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
           Flexible(
@@ -1592,10 +1715,10 @@ class _UserTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+          backgroundColor: DesignColors.brand.withValues(alpha: 0.1),
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+            style: const TextStyle(color: DesignColors.brand, fontWeight: FontWeight.bold),
           ),
         ),
         title: Row(
@@ -1606,10 +1729,10 @@ class _UserTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
+                  color: DesignColors.brand.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text('You', style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                child: const Text('You', style: TextStyle(fontSize: 10, color: DesignColors.brand, fontWeight: FontWeight.w600)),
               ),
             ],
           ],
@@ -1647,10 +1770,10 @@ class _AuditEntry extends StatelessWidget {
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
+              color: DesignColors.surfaceSubtle,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: AppColors.textSecondary),
+            child: Icon(icon, size: 18, color: DesignColors.textSecondary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1659,12 +1782,380 @@ class _AuditEntry extends StatelessWidget {
               children: [
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text(subtitle, style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary)),
               ],
             ),
           ),
-          Text(time, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+          Text(time, style: const TextStyle(fontSize: 11, color: DesignColors.textTertiary)),
         ],
+      ),
+    );
+  }
+}
+
+// ═══════ SERVER MODE TILE ═══════
+class _ServerModeTile extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_ServerModeTile> createState() => _ServerModeTileState();
+}
+
+class _ServerModeTileState extends ConsumerState<_ServerModeTile> {
+  bool _serverRunning = false;
+  List<String> _localIps = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    final server = getIt<LocalServerService>();
+    final ips = await LocalServerService.getLocalIpAddresses();
+    setState(() {
+      _serverRunning = server.isRunning;
+      _localIps = ips;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final server = getIt<LocalServerService>();
+    final storage = getIt<StorageService>();
+    final serverMode = storage.isServerModeEnabled();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: _serverRunning ? DesignColors.success.withValues(alpha: 0.1) : DesignColors.surfaceSubtle,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _serverRunning ? Icons.dns : Icons.dns_outlined,
+                color: _serverRunning ? DesignColors.success : DesignColors.textSecondary,
+                size: 20,
+              ),
+            ),
+            title: const Text('Server Mode'),
+            subtitle: Text(
+              _serverRunning
+                  ? 'Running on port ${server.port}'
+                  : serverMode ? 'Tap to start' : 'Turn on to start the phone server',
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_serverRunning)
+                  const _StatusBadge(text: 'RUNNING', color: DesignColors.success),
+                Switch(
+                  value: serverMode,
+                  onChanged: (v) async {
+                    if (v) {
+                      final port = storage.getServerPort();
+                      final started = await server.start(port: port);
+                      if (started) {
+                        await storage.setServerModeEnabled(true);
+                        _loadStatus();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Server mode started')),
+                          );
+                        }
+                      } else {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Failed to start server. Try a different port.'),
+                              backgroundColor: DesignColors.error,
+                            ),
+                          );
+                        }
+                      }
+                    } else {
+                      await server.stop();
+                      await storage.setServerModeEnabled(false);
+                      _loadStatus();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Server mode stopped')),
+                        );
+                      }
+                    }
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ),
+          if (_serverRunning && _localIps.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(),
+                  const SizedBox(height: 4),
+                  const Text('Connect from other devices:',
+                    style: TextStyle(fontSize: 12, color: DesignColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  ..._localIps.map((ip) => Text(
+                    'http://$ip:${server.port}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: DesignColors.brand),
+                  )),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showServerUserManagement(context),
+                      icon: const Icon(Icons.people, size: 16),
+                      label: const Text('Manage Server Users'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showServerUserManagement(BuildContext context) {
+    final db = getIt<AppDatabase>();
+
+    Future<List<Map<String, dynamic>>> _getUsers() async {
+      try {
+        final result = await db.customSelect('SELECT * FROM server_users ORDER BY created_at DESC').get();
+        return result.map((r) => {
+          'id': r.read<String>('id'),
+          'email': r.read<String>('email'),
+          'firstName': r.read<String>('first_name'),
+          'lastName': r.read<String>('last_name'),
+          'role': r.read<String>('role'),
+          'isActive': r.read<int>('is_active') == 1,
+          'lastLoginAt': r.readNullable<String>('last_login_at'),
+        }).toList();
+      } catch (_) {
+        return [];
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        builder: (ctx, scrollController) => FutureBuilder<List<Map<String, dynamic>>>(
+          future: _getUsers(),
+          builder: (ctx, snapshot) {
+            final users = snapshot.data ?? [];
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: DesignColors.surfaceBorder, borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Server Users', style: Theme.of(ctx).textTheme.titleLarge),
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showAddServerUserDialog(context);
+                        },
+                        icon: const Icon(Icons.person_add, size: 18),
+                        label: const Text('Add'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Activate or deactivate user accounts',
+                    style: TextStyle(color: DesignColors.textSecondary, fontSize: 13)),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: users.isEmpty
+                        ? const Center(child: Text('No users yet. Add your first user.'))
+                        : ListView.builder(
+                            controller: scrollController,
+                            itemCount: users.length,
+                            itemBuilder: (ctx, i) {
+                              final u = users[i];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: u['isActive'] == true
+                                        ? DesignColors.brand.withValues(alpha: 0.1)
+                                        : DesignColors.surfaceSubtle,
+                                    child: Text(
+                                      (u['firstName'] as String).isNotEmpty
+                                          ? (u['firstName'] as String)[0].toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        color: u['isActive'] == true ? DesignColors.brand : DesignColors.textTertiary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text('${u['firstName']} ${u['lastName']}'),
+                                  subtitle: Text('${u['email']}  •  ${u['role']}'),
+                                  trailing: Switch(
+                                    value: u['isActive'] == true,
+                                    onChanged: (active) async {
+                                      await db.customStatement(
+                                        'UPDATE server_users SET is_active = ? WHERE id = ?',
+                                        [Variable.withInt(active ? 1 : 0), Variable.withString(u['id'] as String)],
+                                      );
+                                      setState(() {});
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: Text(active
+                                                ? '${u['firstName']} activated'
+                                                : '${u['firstName']} deactivated'),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showAddServerUserDialog(BuildContext context) {
+    final emailController = TextEditingController();
+    final firstNameController = TextEditingController();
+    final lastNameController = TextEditingController();
+    final passwordController = TextEditingController();
+    final pinController = TextEditingController();
+    String selectedRole = 'CASHIER';
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Add Server User'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: firstNameController,
+                  decoration: const InputDecoration(labelText: 'First Name', prefixIcon: Icon(Icons.person)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: lastNameController,
+                  decoration: const InputDecoration(labelText: 'Last Name', prefixIcon: Icon(Icons.person)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'PIN (4 digits)', prefixIcon: Icon(Icons.lock), counterText: ''),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedRole,
+                  decoration: const InputDecoration(labelText: 'Role', prefixIcon: Icon(Icons.badge)),
+                  items: const [
+                    DropdownMenuItem(value: 'ADMIN', child: Text('Admin')),
+                    DropdownMenuItem(value: 'MANAGER', child: Text('Manager')),
+                    DropdownMenuItem(value: 'SUPERVISOR', child: Text('Supervisor')),
+                    DropdownMenuItem(value: 'CASHIER', child: Text('Cashier')),
+                  ],
+                  onChanged: (v) => setDialogState(() => selectedRole = v ?? 'CASHIER'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                if (emailController.text.isEmpty || passwordController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Email and password are required'), backgroundColor: DesignColors.error),
+                  );
+                  return;
+                }
+                final db = getIt<AppDatabase>();
+                final passwordHash = sha256.convert(utf8.encode(passwordController.text)).toString();
+                final pinHash = pinController.text.length == 4
+                    ? sha256.convert(utf8.encode(pinController.text)).toString()
+                    : null;
+                final id = const Uuid().v4();
+
+                try {
+                  await db.customInsert(
+                    'INSERT INTO server_users (id, email, password_hash, pin_hash, first_name, last_name, role, is_active, created_at, updated_at) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+                    variables: [
+                      Variable.withString(id),
+                      Variable.withString(emailController.text.trim()),
+                      Variable.withString(passwordHash),
+                      pinHash != null ? Variable.withString(pinHash) : Variable.withString(''),
+                      Variable.withString(firstNameController.text.trim()),
+                      Variable.withString(lastNameController.text.trim()),
+                      Variable.withString(selectedRole),
+                      Variable.withString(DateTime.now().toIso8601String()),
+                      Variable.withString(DateTime.now().toIso8601String()),
+                    ],
+                  );
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('User ${firstNameController.text.trim()} added as $selectedRole')),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e'), backgroundColor: DesignColors.error),
+                    );
+                  }
+                }
+              },
+              child: const Text('Add User'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1832,7 +2323,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(backgroundColor: DesignColors.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -1876,7 +2367,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: AppColors.primary,
+                            backgroundColor: DesignColors.brand,
                             child: const Icon(Icons.store, color: Colors.white, size: 20),
                           ),
                           title: Text(branch['name'] as String),
@@ -1884,7 +2375,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const _StatusBadge(text: 'Active', color: AppColors.success),
+                              const _StatusBadge(text: 'Active', color: DesignColors.success),
                               PopupMenuButton<String>(
                                 onSelected: (value) {
                                   if (value == 'edit') _showEditBranchDialog(branch);
