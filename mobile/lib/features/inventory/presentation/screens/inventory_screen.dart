@@ -242,22 +242,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _buildActionButtons(BuildContext context, AppRole role) {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        GradientButton(
-          label: 'Request Stock',
-          icon: Icons.add_shopping_cart_rounded,
+        FloatingActionButton.small(
+          heroTag: 'requestStock',
+          backgroundColor: DesignColors.warning,
           onPressed: () => context.push('/inventory/request-stock'),
-          gradient: [DesignColors.warning, const Color(0xFFD97706)],
-          height: 48,
-          expanded: false,
-          borderRadius: 14,
+          tooltip: 'Request Stock',
+          child: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white),
         ),
         const SizedBox(height: 10),
         if (role.isAtLeast(AppRole.stockKeeper))
-          GradientButton(
-            label: 'Receive Stock',
-            icon: Icons.inventory_rounded,
+          FloatingActionButton.small(
+            heroTag: 'receiveStock',
+            backgroundColor: DesignColors.brand,
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -266,10 +263,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
               );
             },
-            gradient: [DesignColors.brand, DesignColors.brandDark],
-            height: 48,
-            expanded: false,
-            borderRadius: 14,
+            tooltip: 'Receive Stock',
+            child: const Icon(Icons.inventory_rounded, color: Colors.white),
           ),
       ],
     );

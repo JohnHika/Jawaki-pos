@@ -167,6 +167,35 @@ class RecentSearches extends Table {
   DateTimeColumn get searchedAt => dateTime()();
 }
 
+// Suppliers table
+class Suppliers extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get contactName => text().nullable()();
+  TextColumn get email => text().nullable()();
+  TextColumn get phone => text().nullable()();
+  TextColumn get address => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// Supplier payment records
+class SupplierPayments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get supplierId => text()();
+  RealColumn get amount => real()();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get paymentDate => dateTime()();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(tables: [
   Categories,
   Products,
@@ -184,12 +213,37 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(SecureDatabaseConnection.openSecureConnection());
   
   @override
-  int get schemaVersion => 4; // Increment version for sync retry scheduling
+  int get schemaVersion => 5; // v5: added suppliers table
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator m) async {
       await m.createAll();
+      // Create supplier tables via raw SQL (not in Drift table list to avoid rebuild)
+      await customStatement('''
+        CREATE TABLE IF NOT EXISTS suppliers (
+          id TEXT NOT NULL PRIMARY KEY,
+          name TEXT NOT NULL,
+          contact_name TEXT,
+          email TEXT,
+          phone TEXT,
+          address TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      await customStatement('''
+        CREATE TABLE IF NOT EXISTS supplier_payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          supplier_id TEXT NOT NULL,
+          amount REAL NOT NULL,
+          notes TEXT,
+          payment_date TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+        )
+      ''');
     },
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
@@ -213,6 +267,33 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
         );
+      }
+      if (from < 5) {
+        // Create supplier tables
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS suppliers (
+            id TEXT NOT NULL PRIMARY KEY,
+            name TEXT NOT NULL,
+            contact_name TEXT,
+            email TEXT,
+            phone TEXT,
+            address TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS supplier_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            notes TEXT,
+            payment_date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+          )
+        ''');
       }
     },
   );
@@ -1206,6 +1287,79 @@ class AppDatabase extends _$AppDatabase {
       'SELECT COUNT(*) as count FROM categories',
     ).getSingle();
     return result.read<int>('count');
+  }
+
+  // ── Supplier Finance Tracking ──
+
+  /// Add or update a supplier record
+  Future<String> insertOrGetSupplier(String id, String name, {String? phone, String? email}) async {
+    final existing = await customSelect(
+      'SELECT id FROM suppliers WHERE name = ? OR phone = ?',
+      variables: [Variable.withString(name), Variable.withString(phone ?? '')],
+    ).getSingleOrNull();
+
+    if (existing != null) return existing.read<String>('id');
+
+    final now = DateTime.now().toIso8601String();
+    await customStatement(
+      'INSERT OR IGNORE INTO suppliers (id, name, phone, email, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
+      [id, name, phone, email, now, now],
+    );
+    return id;
+  }
+
+  /// Get all suppliers with their debt balances
+  Future<List<Map<String, dynamic>>> getSupplierDebts() async {
+    final result = await customSelect('''
+      SELECT
+        s.id, s.name, s.phone, s.email,
+        COALESCE(SUM(sp.amount), 0) as total_paid,
+        (SELECT COALESCE(SUM(p."costPrice" * ls.quantity), 0)
+         FROM products p
+         JOIN local_stock ls ON ls.product_id = p.id
+         WHERE p.id IN (SELECT product_id FROM products)
+        ) as total_ordered,
+        (SELECT MAX(sp2.payment_date) FROM supplier_payments sp2 WHERE sp2.supplier_id = s.id) as last_payment_date
+      FROM suppliers s
+      LEFT JOIN supplier_payments sp ON sp.supplier_id = s.id
+      WHERE s.is_active = 1
+      GROUP BY s.id
+      ORDER BY total_ordered DESC
+    ''').get();
+
+    return result.map((row) => {
+      'id': row.read<String>('id'),
+      'name': row.read<String>('name'),
+      'phone': row.read<String?>('phone') ?? '',
+      'email': row.read<String?>('email') ?? '',
+      'totalOwed': 0.0, // placeholder until actual orders are linked
+      'totalPaid': (row.read<double?>('total_paid') ?? 0),
+      'lastPaymentDate': row.read<String?>('last_payment_date'),
+    }).toList();
+  }
+
+  /// Record a payment to a supplier
+  Future<void> recordSupplierPayment(String supplierId, double amount) async {
+    final now = DateTime.now().toIso8601String();
+    await customStatement(
+      'INSERT INTO supplier_payments (supplier_id, amount, payment_date, created_at) VALUES (?, ?, ?, ?)',
+      [supplierId, amount, now, now],
+    );
+  }
+
+  /// Get payment history for a supplier
+  Future<List<Map<String, dynamic>>> getSupplierPaymentHistory(String supplierId) async {
+    final result = await customSelect(
+      'SELECT id, amount, notes, payment_date FROM supplier_payments WHERE supplier_id = ? ORDER BY payment_date DESC',
+      variables: [Variable.withString(supplierId)],
+    ).get();
+
+    return result.map((row) => {
+      'id': row.read<int>('id'),
+      'amount': row.read<double>('amount'),
+      'notes': row.read<String?>('notes') ?? '',
+      'paymentDate': row.read<String>('payment_date'),
+    }).toList();
   }
 }
 

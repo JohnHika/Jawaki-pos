@@ -157,7 +157,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                   top: Radius.circular(20)),
                           child: Image.network(
                             product.imageUrl!,
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                             width: double.infinity,
                             height: 200,
                             errorBuilder: (_, __, ___) =>
@@ -423,21 +423,22 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: DesignColors.brand.withValues(alpha:0.1),
-            borderRadius: BorderRadius.circular(20),
+            color: DesignColors.brand.withValues(alpha:0.08),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: const Icon(
             Icons.inventory_2_rounded,
-            size: 64,
-            color: DesignColors.brand,
+            size: 56,
+            color: DesignColors.textTertiary,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Text(
           _product?.name ?? 'Product',
           style: const TextStyle(
             color: DesignColors.textTertiary,
             fontWeight: FontWeight.w500,
+            fontSize: 13,
           ),
         ),
       ],

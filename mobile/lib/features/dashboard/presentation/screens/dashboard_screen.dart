@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -46,11 +47,7 @@ class DashboardScreen extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Share coming soon')),
-              );
-            },
+            onPressed: () => _shareDashboardReport(context, ref),
           ),
         ],
       ),
@@ -327,5 +324,24 @@ class DashboardScreen extends ConsumerWidget {
     if (hour < 12) return 'Morning';
     if (hour < 17) return 'Afternoon';
     return 'Evening';
+  }
+
+  Future<void> _shareDashboardReport(BuildContext context, WidgetRef ref) async {
+    final db = getIt<AppDatabase>();
+    final summary = await db.getDashboardSummary();
+    final report = '''
+Levisa Adventures — Daily Summary
+═══════════════════════════════
+${_dateFmt.format(DateTime.now())}
+
+Sales:    ${_currencyFmt.format(summary['totalSales'] ?? 0)}
+Sales Count: ${summary['salesCount'] ?? 0}
+Profit:   ${_currencyFmt.format(summary['grossProfit'] ?? 0)}
+Avg Ticket: ${_currencyFmt.format(summary['avgTicket'] ?? 0)}
+Items Sold: ${summary['itemsSold'] ?? 0}
+
+Sent from Levisa Adventures POS
+''';
+    await Share.share(report, subject: 'Daily Sales Report');
   }
 }
