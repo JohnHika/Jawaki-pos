@@ -7,8 +7,14 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 
 final _supplierBalancesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final db = getIt<AppDatabase>();
-  return await db.getSupplierDebts();
+  try {
+    final db = getIt<AppDatabase>();
+    return await db.getSupplierDebts();
+  } catch (e) {
+    // Tables may not exist yet — return empty list
+    debugPrint('Finance: supplier tables not available ($e)');
+    return [];
+  }
 });
 
 class FinanceScreen extends ConsumerWidget {

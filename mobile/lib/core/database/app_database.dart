@@ -1314,17 +1314,12 @@ class AppDatabase extends _$AppDatabase {
       SELECT
         s.id, s.name, s.phone, s.email,
         COALESCE(SUM(sp.amount), 0) as total_paid,
-        (SELECT COALESCE(SUM(p."costPrice" * ls.quantity), 0)
-         FROM products p
-         JOIN local_stock ls ON ls.product_id = p.id
-         WHERE p.id IN (SELECT product_id FROM products)
-        ) as total_ordered,
         (SELECT MAX(sp2.payment_date) FROM supplier_payments sp2 WHERE sp2.supplier_id = s.id) as last_payment_date
       FROM suppliers s
       LEFT JOIN supplier_payments sp ON sp.supplier_id = s.id
       WHERE s.is_active = 1
       GROUP BY s.id
-      ORDER BY total_ordered DESC
+      ORDER BY s.name ASC
     ''').get();
 
     return result.map((row) => {
@@ -1332,7 +1327,7 @@ class AppDatabase extends _$AppDatabase {
       'name': row.read<String>('name'),
       'phone': row.read<String?>('phone') ?? '',
       'email': row.read<String?>('email') ?? '',
-      'totalOwed': 0.0, // placeholder until actual orders are linked
+      'totalOwed': 0.0,
       'totalPaid': (row.read<double?>('total_paid') ?? 0),
       'lastPaymentDate': row.read<String?>('last_payment_date'),
     }).toList();
