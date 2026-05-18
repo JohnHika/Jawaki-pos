@@ -2043,6 +2043,361 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
   }
 }
 
+class $DailyPurchasesTable extends DailyPurchases
+    with TableInfo<$DailyPurchasesTable, DailyPurchase> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DailyPurchasesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _branchIdMeta =
+      const VerificationMeta('branchId');
+  @override
+  late final GeneratedColumn<String> branchId = GeneratedColumn<String>(
+      'branch_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+      'amount', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _descriptionMeta =
+      const VerificationMeta('description');
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+      'description', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _purchaseDateMeta =
+      const VerificationMeta('purchaseDate');
+  @override
+  late final GeneratedColumn<DateTime> purchaseDate = GeneratedColumn<DateTime>(
+      'purchase_date', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _isManualMeta =
+      const VerificationMeta('isManual');
+  @override
+  late final GeneratedColumn<bool> isManual = GeneratedColumn<bool>(
+      'is_manual', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_manual" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, branchId, amount, description, purchaseDate, isManual];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'daily_purchases';
+  @override
+  VerificationContext validateIntegrity(Insertable<DailyPurchase> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('branch_id')) {
+      context.handle(_branchIdMeta,
+          branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta));
+    } else if (isInserting) {
+      context.missing(_branchIdMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(_amountMeta,
+          amount.isAcceptableOrUnknown(data['amount']!, _amountMeta));
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+          _descriptionMeta,
+          description.isAcceptableOrUnknown(
+              data['description']!, _descriptionMeta));
+    }
+    if (data.containsKey('purchase_date')) {
+      context.handle(
+          _purchaseDateMeta,
+          purchaseDate.isAcceptableOrUnknown(
+              data['purchase_date']!, _purchaseDateMeta));
+    } else if (isInserting) {
+      context.missing(_purchaseDateMeta);
+    }
+    if (data.containsKey('is_manual')) {
+      context.handle(_isManualMeta,
+          isManual.isAcceptableOrUnknown(data['is_manual']!, _isManualMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DailyPurchase map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DailyPurchase(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      branchId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}branch_id'])!,
+      amount: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}amount'])!,
+      description: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}description']),
+      purchaseDate: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}purchase_date'])!,
+      isManual: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_manual'])!,
+    );
+  }
+
+  @override
+  $DailyPurchasesTable createAlias(String alias) {
+    return $DailyPurchasesTable(attachedDatabase, alias);
+  }
+}
+
+class DailyPurchase extends DataClass implements Insertable<DailyPurchase> {
+  final String id;
+  final String branchId;
+  final double amount;
+  final String? description;
+  final DateTime purchaseDate;
+  final bool isManual;
+  const DailyPurchase(
+      {required this.id,
+      required this.branchId,
+      required this.amount,
+      this.description,
+      required this.purchaseDate,
+      required this.isManual});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['branch_id'] = Variable<String>(branchId);
+    map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['purchase_date'] = Variable<DateTime>(purchaseDate);
+    map['is_manual'] = Variable<bool>(isManual);
+    return map;
+  }
+
+  DailyPurchasesCompanion toCompanion(bool nullToAbsent) {
+    return DailyPurchasesCompanion(
+      id: Value(id),
+      branchId: Value(branchId),
+      amount: Value(amount),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      purchaseDate: Value(purchaseDate),
+      isManual: Value(isManual),
+    );
+  }
+
+  factory DailyPurchase.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DailyPurchase(
+      id: serializer.fromJson<String>(json['id']),
+      branchId: serializer.fromJson<String>(json['branchId']),
+      amount: serializer.fromJson<double>(json['amount']),
+      description: serializer.fromJson<String?>(json['description']),
+      purchaseDate: serializer.fromJson<DateTime>(json['purchaseDate']),
+      isManual: serializer.fromJson<bool>(json['isManual']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'branchId': serializer.toJson<String>(branchId),
+      'amount': serializer.toJson<double>(amount),
+      'description': serializer.toJson<String?>(description),
+      'purchaseDate': serializer.toJson<DateTime>(purchaseDate),
+      'isManual': serializer.toJson<bool>(isManual),
+    };
+  }
+
+  DailyPurchase copyWith(
+          {String? id,
+          String? branchId,
+          double? amount,
+          Value<String?> description = const Value.absent(),
+          DateTime? purchaseDate,
+          bool? isManual}) =>
+      DailyPurchase(
+        id: id ?? this.id,
+        branchId: branchId ?? this.branchId,
+        amount: amount ?? this.amount,
+        description: description.present ? description.value : this.description,
+        purchaseDate: purchaseDate ?? this.purchaseDate,
+        isManual: isManual ?? this.isManual,
+      );
+  DailyPurchase copyWithCompanion(DailyPurchasesCompanion data) {
+    return DailyPurchase(
+      id: data.id.present ? data.id.value : this.id,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      description:
+          data.description.present ? data.description.value : this.description,
+      purchaseDate: data.purchaseDate.present
+          ? data.purchaseDate.value
+          : this.purchaseDate,
+      isManual: data.isManual.present ? data.isManual.value : this.isManual,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DailyPurchase(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('amount: $amount, ')
+          ..write('description: $description, ')
+          ..write('purchaseDate: $purchaseDate, ')
+          ..write('isManual: $isManual')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, branchId, amount, description, purchaseDate, isManual);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DailyPurchase &&
+          other.id == this.id &&
+          other.branchId == this.branchId &&
+          other.amount == this.amount &&
+          other.description == this.description &&
+          other.purchaseDate == this.purchaseDate &&
+          other.isManual == this.isManual);
+}
+
+class DailyPurchasesCompanion extends UpdateCompanion<DailyPurchase> {
+  final Value<String> id;
+  final Value<String> branchId;
+  final Value<double> amount;
+  final Value<String?> description;
+  final Value<DateTime> purchaseDate;
+  final Value<bool> isManual;
+  final Value<int> rowid;
+  const DailyPurchasesCompanion({
+    this.id = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.description = const Value.absent(),
+    this.purchaseDate = const Value.absent(),
+    this.isManual = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DailyPurchasesCompanion.insert({
+    required String id,
+    required String branchId,
+    required double amount,
+    this.description = const Value.absent(),
+    required DateTime purchaseDate,
+    this.isManual = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        branchId = Value(branchId),
+        amount = Value(amount),
+        purchaseDate = Value(purchaseDate);
+  static Insertable<DailyPurchase> custom({
+    Expression<String>? id,
+    Expression<String>? branchId,
+    Expression<double>? amount,
+    Expression<String>? description,
+    Expression<DateTime>? purchaseDate,
+    Expression<bool>? isManual,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (branchId != null) 'branch_id': branchId,
+      if (amount != null) 'amount': amount,
+      if (description != null) 'description': description,
+      if (purchaseDate != null) 'purchase_date': purchaseDate,
+      if (isManual != null) 'is_manual': isManual,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DailyPurchasesCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? branchId,
+      Value<double>? amount,
+      Value<String?>? description,
+      Value<DateTime>? purchaseDate,
+      Value<bool>? isManual,
+      Value<int>? rowid}) {
+    return DailyPurchasesCompanion(
+      id: id ?? this.id,
+      branchId: branchId ?? this.branchId,
+      amount: amount ?? this.amount,
+      description: description ?? this.description,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      isManual: isManual ?? this.isManual,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (branchId.present) {
+      map['branch_id'] = Variable<String>(branchId.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (purchaseDate.present) {
+      map['purchase_date'] = Variable<DateTime>(purchaseDate.value);
+    }
+    if (isManual.present) {
+      map['is_manual'] = Variable<bool>(isManual.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DailyPurchasesCompanion(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('amount: $amount, ')
+          ..write('description: $description, ')
+          ..write('purchaseDate: $purchaseDate, ')
+          ..write('isManual: $isManual, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $CartItemsTable extends CartItems
     with TableInfo<$CartItemsTable, CartItem> {
   @override
@@ -3855,6 +4210,12 @@ class $SyncQueueTable extends SyncQueue
   late final GeneratedColumn<DateTime> lastAttemptAt =
       GeneratedColumn<DateTime>('last_attempt_at', aliasedName, true,
           type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _nextRetryAtMeta =
+      const VerificationMeta('nextRetryAt');
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+      'next_retry_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _syncedAtMeta =
       const VerificationMeta('syncedAt');
   @override
@@ -3890,6 +4251,7 @@ class $SyncQueueTable extends SyncQueue
         maxRetries,
         createdAt,
         lastAttemptAt,
+        nextRetryAt,
         syncedAt,
         serverId,
         serverTimestamp
@@ -3993,6 +4355,12 @@ class $SyncQueueTable extends SyncQueue
           lastAttemptAt.isAcceptableOrUnknown(
               data['last_attempt_at']!, _lastAttemptAtMeta));
     }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+          _nextRetryAtMeta,
+          nextRetryAt.isAcceptableOrUnknown(
+              data['next_retry_at']!, _nextRetryAtMeta));
+    }
     if (data.containsKey('synced_at')) {
       context.handle(_syncedAtMeta,
           syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
@@ -4046,6 +4414,8 @@ class $SyncQueueTable extends SyncQueue
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       lastAttemptAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}last_attempt_at']),
+      nextRetryAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}next_retry_at']),
       syncedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at']),
       serverId: attachedDatabase.typeMapping
@@ -4077,6 +4447,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
   final int maxRetries;
   final DateTime createdAt;
   final DateTime? lastAttemptAt;
+  final DateTime? nextRetryAt;
   final DateTime? syncedAt;
   final String? serverId;
   final DateTime? serverTimestamp;
@@ -4096,6 +4467,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       required this.maxRetries,
       required this.createdAt,
       this.lastAttemptAt,
+      this.nextRetryAt,
       this.syncedAt,
       this.serverId,
       this.serverTimestamp});
@@ -4120,6 +4492,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || lastAttemptAt != null) {
       map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt);
+    }
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
     }
     if (!nullToAbsent || syncedAt != null) {
       map['synced_at'] = Variable<DateTime>(syncedAt);
@@ -4154,6 +4529,9 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       lastAttemptAt: lastAttemptAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastAttemptAt),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
       syncedAt: syncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(syncedAt),
@@ -4185,6 +4563,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       maxRetries: serializer.fromJson<int>(json['maxRetries']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastAttemptAt: serializer.fromJson<DateTime?>(json['lastAttemptAt']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
       serverId: serializer.fromJson<String?>(json['serverId']),
       serverTimestamp: serializer.fromJson<DateTime?>(json['serverTimestamp']),
@@ -4209,6 +4588,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       'maxRetries': serializer.toJson<int>(maxRetries),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastAttemptAt': serializer.toJson<DateTime?>(lastAttemptAt),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
       'serverId': serializer.toJson<String?>(serverId),
       'serverTimestamp': serializer.toJson<DateTime?>(serverTimestamp),
@@ -4231,6 +4611,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           int? maxRetries,
           DateTime? createdAt,
           Value<DateTime?> lastAttemptAt = const Value.absent(),
+          Value<DateTime?> nextRetryAt = const Value.absent(),
           Value<DateTime?> syncedAt = const Value.absent(),
           Value<String?> serverId = const Value.absent(),
           Value<DateTime?> serverTimestamp = const Value.absent()}) =>
@@ -4252,6 +4633,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
         createdAt: createdAt ?? this.createdAt,
         lastAttemptAt:
             lastAttemptAt.present ? lastAttemptAt.value : this.lastAttemptAt,
+        nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
         syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
         serverId: serverId.present ? serverId.value : this.serverId,
         serverTimestamp: serverTimestamp.present
@@ -4284,6 +4666,8 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       lastAttemptAt: data.lastAttemptAt.present
           ? data.lastAttemptAt.value
           : this.lastAttemptAt,
+      nextRetryAt:
+          data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
       serverId: data.serverId.present ? data.serverId.value : this.serverId,
       serverTimestamp: data.serverTimestamp.present
@@ -4310,6 +4694,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           ..write('maxRetries: $maxRetries, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('serverId: $serverId, ')
           ..write('serverTimestamp: $serverTimestamp')
@@ -4334,6 +4719,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       maxRetries,
       createdAt,
       lastAttemptAt,
+      nextRetryAt,
       syncedAt,
       serverId,
       serverTimestamp);
@@ -4356,6 +4742,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           other.maxRetries == this.maxRetries &&
           other.createdAt == this.createdAt &&
           other.lastAttemptAt == this.lastAttemptAt &&
+          other.nextRetryAt == this.nextRetryAt &&
           other.syncedAt == this.syncedAt &&
           other.serverId == this.serverId &&
           other.serverTimestamp == this.serverTimestamp);
@@ -4377,6 +4764,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
   final Value<int> maxRetries;
   final Value<DateTime> createdAt;
   final Value<DateTime?> lastAttemptAt;
+  final Value<DateTime?> nextRetryAt;
   final Value<DateTime?> syncedAt;
   final Value<String?> serverId;
   final Value<DateTime?> serverTimestamp;
@@ -4397,6 +4785,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     this.maxRetries = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastAttemptAt = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.serverId = const Value.absent(),
     this.serverTimestamp = const Value.absent(),
@@ -4418,6 +4807,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     this.maxRetries = const Value.absent(),
     required DateTime createdAt,
     this.lastAttemptAt = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.serverId = const Value.absent(),
     this.serverTimestamp = const Value.absent(),
@@ -4447,6 +4837,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     Expression<int>? maxRetries,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastAttemptAt,
+    Expression<DateTime>? nextRetryAt,
     Expression<DateTime>? syncedAt,
     Expression<String>? serverId,
     Expression<DateTime>? serverTimestamp,
@@ -4468,6 +4859,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       if (maxRetries != null) 'max_retries': maxRetries,
       if (createdAt != null) 'created_at': createdAt,
       if (lastAttemptAt != null) 'last_attempt_at': lastAttemptAt,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
       if (syncedAt != null) 'synced_at': syncedAt,
       if (serverId != null) 'server_id': serverId,
       if (serverTimestamp != null) 'server_timestamp': serverTimestamp,
@@ -4491,6 +4883,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       Value<int>? maxRetries,
       Value<DateTime>? createdAt,
       Value<DateTime?>? lastAttemptAt,
+      Value<DateTime?>? nextRetryAt,
       Value<DateTime?>? syncedAt,
       Value<String?>? serverId,
       Value<DateTime?>? serverTimestamp,
@@ -4511,6 +4904,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       maxRetries: maxRetries ?? this.maxRetries,
       createdAt: createdAt ?? this.createdAt,
       lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
       syncedAt: syncedAt ?? this.syncedAt,
       serverId: serverId ?? this.serverId,
       serverTimestamp: serverTimestamp ?? this.serverTimestamp,
@@ -4566,6 +4960,9 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     if (lastAttemptAt.present) {
       map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt.value);
     }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
@@ -4599,6 +4996,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
           ..write('maxRetries: $maxRetries, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('serverId: $serverId, ')
           ..write('serverTimestamp: $serverTimestamp, ')
@@ -5027,6 +5425,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ProductsTable products = $ProductsTable(this);
   late final $BranchPricesTable branchPrices = $BranchPricesTable(this);
   late final $LocalStockTable localStock = $LocalStockTable(this);
+  late final $DailyPurchasesTable dailyPurchases = $DailyPurchasesTable(this);
   late final $CartItemsTable cartItems = $CartItemsTable(this);
   late final $PendingSalesTable pendingSales = $PendingSalesTable(this);
   late final $PendingSaleItemsTable pendingSaleItems =
@@ -5044,6 +5443,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         products,
         branchPrices,
         localStock,
+        dailyPurchases,
         cartItems,
         pendingSales,
         pendingSaleItems,
@@ -6021,6 +6421,196 @@ typedef $$LocalStockTableProcessedTableManager = ProcessedTableManager<
     ),
     LocalStockData,
     PrefetchHooks Function()>;
+typedef $$DailyPurchasesTableCreateCompanionBuilder = DailyPurchasesCompanion
+    Function({
+  required String id,
+  required String branchId,
+  required double amount,
+  Value<String?> description,
+  required DateTime purchaseDate,
+  Value<bool> isManual,
+  Value<int> rowid,
+});
+typedef $$DailyPurchasesTableUpdateCompanionBuilder = DailyPurchasesCompanion
+    Function({
+  Value<String> id,
+  Value<String> branchId,
+  Value<double> amount,
+  Value<String?> description,
+  Value<DateTime> purchaseDate,
+  Value<bool> isManual,
+  Value<int> rowid,
+});
+
+class $$DailyPurchasesTableFilterComposer
+    extends Composer<_$AppDatabase, $DailyPurchasesTable> {
+  $$DailyPurchasesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get branchId => $composableBuilder(
+      column: $table.branchId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get purchaseDate => $composableBuilder(
+      column: $table.purchaseDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isManual => $composableBuilder(
+      column: $table.isManual, builder: (column) => ColumnFilters(column));
+}
+
+class $$DailyPurchasesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DailyPurchasesTable> {
+  $$DailyPurchasesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get branchId => $composableBuilder(
+      column: $table.branchId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get purchaseDate => $composableBuilder(
+      column: $table.purchaseDate,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isManual => $composableBuilder(
+      column: $table.isManual, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DailyPurchasesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DailyPurchasesTable> {
+  $$DailyPurchasesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get purchaseDate => $composableBuilder(
+      column: $table.purchaseDate, builder: (column) => column);
+
+  GeneratedColumn<bool> get isManual =>
+      $composableBuilder(column: $table.isManual, builder: (column) => column);
+}
+
+class $$DailyPurchasesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DailyPurchasesTable,
+    DailyPurchase,
+    $$DailyPurchasesTableFilterComposer,
+    $$DailyPurchasesTableOrderingComposer,
+    $$DailyPurchasesTableAnnotationComposer,
+    $$DailyPurchasesTableCreateCompanionBuilder,
+    $$DailyPurchasesTableUpdateCompanionBuilder,
+    (
+      DailyPurchase,
+      BaseReferences<_$AppDatabase, $DailyPurchasesTable, DailyPurchase>
+    ),
+    DailyPurchase,
+    PrefetchHooks Function()> {
+  $$DailyPurchasesTableTableManager(
+      _$AppDatabase db, $DailyPurchasesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DailyPurchasesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DailyPurchasesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DailyPurchasesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> branchId = const Value.absent(),
+            Value<double> amount = const Value.absent(),
+            Value<String?> description = const Value.absent(),
+            Value<DateTime> purchaseDate = const Value.absent(),
+            Value<bool> isManual = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              DailyPurchasesCompanion(
+            id: id,
+            branchId: branchId,
+            amount: amount,
+            description: description,
+            purchaseDate: purchaseDate,
+            isManual: isManual,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String branchId,
+            required double amount,
+            Value<String?> description = const Value.absent(),
+            required DateTime purchaseDate,
+            Value<bool> isManual = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              DailyPurchasesCompanion.insert(
+            id: id,
+            branchId: branchId,
+            amount: amount,
+            description: description,
+            purchaseDate: purchaseDate,
+            isManual: isManual,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DailyPurchasesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DailyPurchasesTable,
+    DailyPurchase,
+    $$DailyPurchasesTableFilterComposer,
+    $$DailyPurchasesTableOrderingComposer,
+    $$DailyPurchasesTableAnnotationComposer,
+    $$DailyPurchasesTableCreateCompanionBuilder,
+    $$DailyPurchasesTableUpdateCompanionBuilder,
+    (
+      DailyPurchase,
+      BaseReferences<_$AppDatabase, $DailyPurchasesTable, DailyPurchase>
+    ),
+    DailyPurchase,
+    PrefetchHooks Function()>;
 typedef $$CartItemsTableCreateCompanionBuilder = CartItemsCompanion Function({
   Value<int> id,
   required String productId,
@@ -6841,6 +7431,7 @@ typedef $$SyncQueueTableCreateCompanionBuilder = SyncQueueCompanion Function({
   Value<int> maxRetries,
   required DateTime createdAt,
   Value<DateTime?> lastAttemptAt,
+  Value<DateTime?> nextRetryAt,
   Value<DateTime?> syncedAt,
   Value<String?> serverId,
   Value<DateTime?> serverTimestamp,
@@ -6862,6 +7453,7 @@ typedef $$SyncQueueTableUpdateCompanionBuilder = SyncQueueCompanion Function({
   Value<int> maxRetries,
   Value<DateTime> createdAt,
   Value<DateTime?> lastAttemptAt,
+  Value<DateTime?> nextRetryAt,
   Value<DateTime?> syncedAt,
   Value<String?> serverId,
   Value<DateTime?> serverTimestamp,
@@ -6922,6 +7514,9 @@ class $$SyncQueueTableFilterComposer
 
   ColumnFilters<DateTime> get lastAttemptAt => $composableBuilder(
       column: $table.lastAttemptAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnFilters(column));
@@ -6991,6 +7586,9 @@ class $$SyncQueueTableOrderingComposer
       column: $table.lastAttemptAt,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
 
@@ -7056,6 +7654,9 @@ class $$SyncQueueTableAnnotationComposer
   GeneratedColumn<DateTime> get lastAttemptAt => $composableBuilder(
       column: $table.lastAttemptAt, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => column);
+
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
 
@@ -7107,6 +7708,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             Value<int> maxRetries = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> lastAttemptAt = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<String?> serverId = const Value.absent(),
             Value<DateTime?> serverTimestamp = const Value.absent(),
@@ -7128,6 +7730,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             maxRetries: maxRetries,
             createdAt: createdAt,
             lastAttemptAt: lastAttemptAt,
+            nextRetryAt: nextRetryAt,
             syncedAt: syncedAt,
             serverId: serverId,
             serverTimestamp: serverTimestamp,
@@ -7149,6 +7752,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             Value<int> maxRetries = const Value.absent(),
             required DateTime createdAt,
             Value<DateTime?> lastAttemptAt = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<String?> serverId = const Value.absent(),
             Value<DateTime?> serverTimestamp = const Value.absent(),
@@ -7170,6 +7774,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             maxRetries: maxRetries,
             createdAt: createdAt,
             lastAttemptAt: lastAttemptAt,
+            nextRetryAt: nextRetryAt,
             syncedAt: syncedAt,
             serverId: serverId,
             serverTimestamp: serverTimestamp,
@@ -7476,6 +8081,8 @@ class $AppDatabaseManager {
       $$BranchPricesTableTableManager(_db, _db.branchPrices);
   $$LocalStockTableTableManager get localStock =>
       $$LocalStockTableTableManager(_db, _db.localStock);
+  $$DailyPurchasesTableTableManager get dailyPurchases =>
+      $$DailyPurchasesTableTableManager(_db, _db.dailyPurchases);
   $$CartItemsTableTableManager get cartItems =>
       $$CartItemsTableTableManager(_db, _db.cartItems);
   $$PendingSalesTableTableManager get pendingSales =>

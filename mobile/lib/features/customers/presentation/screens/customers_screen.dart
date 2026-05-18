@@ -35,7 +35,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       final customers = (query != null && query.isNotEmpty)
           ? await db.searchCustomers(query)
           : await db.getAllCustomers();
-      if (mounted) setState(() { _customers = customers; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _customers = customers;
+          _isLoading = false;
+        });
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -58,29 +62,37 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         children: [
           const Text(
             'Add Customer',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: DesignColors.textPrimary),
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: DesignColors.textPrimary),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: nameCtrl,
-            decoration: const InputDecoration(labelText: 'Customer Name *', prefixIcon: Icon(Icons.person_outlined)),
+            decoration: const InputDecoration(
+                labelText: 'Customer Name *',
+                prefixIcon: Icon(Icons.person_outlined)),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: phoneCtrl,
-            decoration: const InputDecoration(labelText: 'Phone', prefixIcon: Icon(Icons.phone_outlined)),
+            decoration: const InputDecoration(
+                labelText: 'Phone', prefixIcon: Icon(Icons.phone_outlined)),
             keyboardType: TextInputType.phone,
           ),
           const SizedBox(height: 12),
           TextField(
             controller: emailCtrl,
-            decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+            decoration: const InputDecoration(
+                labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
             keyboardType: TextInputType.emailAddress,
           ),
           const SizedBox(height: 12),
           TextField(
             controller: notesCtrl,
-            decoration: const InputDecoration(labelText: 'Notes', prefixIcon: Icon(Icons.notes_rounded)),
+            decoration: const InputDecoration(
+                labelText: 'Notes', prefixIcon: Icon(Icons.notes_rounded)),
             maxLines: 2,
           ),
           const SizedBox(height: 20),
@@ -89,12 +101,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
               final db = getIt<AppDatabase>();
+              final navigator = Navigator.of(context);
               await db.insertOrGetCustomer(
                 DateTime.now().millisecondsSinceEpoch.toString(),
                 nameCtrl.text.trim(),
                 phone: phoneCtrl.text.trim(),
               );
-              if (context.mounted) Navigator.pop(context);
+              navigator.pop();
               _loadCustomers();
             },
           ),
@@ -108,14 +121,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Customers', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.3)),
-        centerTitle: false,
-        backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-        elevation: 0,
-      ),
+      appBar: const BrandedAppBar(title: 'Customers'),
       body: PageContainer(
         child: Column(
           children: [
@@ -133,7 +140,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     prefixIcon: const Icon(Icons.search_rounded, size: 20),
                     border: InputBorder.none,
                     suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _searchController.clear(); _loadCustomers(); })
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              _loadCustomers();
+                            })
                         : null,
                   ),
                   onChanged: (v) {
@@ -146,7 +158,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             // Customer list
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: DesignColors.brand))
                   : _customers.isEmpty
                       ? EmptyState(
                           icon: Icons.people_outlined,
@@ -168,32 +182,56 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 child: GlassCard(
                                   padding: const EdgeInsets.all(12),
                                   borderRadius: 14,
-                                  onTap: () => context.push('/customers/${c['id']}'),
+                                  onTap: () =>
+                                      context.push('/customers/${c['id']}'),
                                   child: Row(
                                     children: [
                                       CircleAvatar(
-                                        backgroundColor: DesignColors.brand.withValues(alpha: 0.15),
+                                        backgroundColor: DesignColors.brand
+                                            .withValues(alpha: 0.15),
                                         child: Text(
-                                          (c['name'] as String? ?? '?')[0].toUpperCase(),
-                                          style: const TextStyle(color: DesignColors.brand, fontWeight: FontWeight.bold),
+                                          (c['name'] as String? ?? '?')[0]
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                              color: DesignColors.brand,
+                                              fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Text(c['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                            Text(c['name'] ?? '',
+                                                style: const TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14)),
                                             if ((c['phone'] ?? '').isNotEmpty)
-                                              Text(c['phone'], style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary)),
+                                              Text(c['phone'],
+                                                  style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: DesignColors
+                                                          .textSecondary)),
                                           ],
                                         ),
                                       ),
                                       Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
                                         children: [
-                                          Text('KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: DesignColors.brand)),
-                                          Text('${c['totalPurchases'] ?? 0} purchases', style: const TextStyle(fontSize: 11, color: DesignColors.textTertiary)),
+                                          Text(
+                                              'KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                  color: DesignColors.brand)),
+                                          Text(
+                                              '${c['totalPurchases'] ?? 0} purchases',
+                                              style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: DesignColors
+                                                      .textTertiary)),
                                         ],
                                       ),
                                     ],

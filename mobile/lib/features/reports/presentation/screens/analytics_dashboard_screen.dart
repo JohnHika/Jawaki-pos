@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
@@ -47,9 +46,12 @@ class _AnalyticsDashboardScreenState
 
           _summary = await database.getDashboardSummary();
           _hourlySales = await database.getHourlySales(startOfDay, endOfDay);
-          _topProducts = await database.getTopProducts(startOfDay, endOfDay, limit: 10);
-          _salesByPayment = await database.getSalesByPaymentMethod(startOfDay, endOfDay);
-          _salesByCategory = await database.getSalesByCategory(startOfDay, endOfDay);
+          _topProducts =
+              await database.getTopProducts(startOfDay, endOfDay, limit: 10);
+          _salesByPayment =
+              await database.getSalesByPaymentMethod(startOfDay, endOfDay);
+          _salesByCategory =
+              await database.getSalesByCategory(startOfDay, endOfDay);
 
         case 1: // This Week
           final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
@@ -57,9 +59,12 @@ class _AnalyticsDashboardScreenState
 
           _summary = await database.getWeeklySummary(startOfWeek, endOfWeek);
           _hourlySales = await database.getDailySales(startOfWeek, endOfWeek);
-          _topProducts = await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
-          _salesByPayment = await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
-          _salesByCategory = await database.getSalesByCategory(startOfWeek, endOfWeek);
+          _topProducts =
+              await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
+          _salesByPayment =
+              await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
+          _salesByCategory =
+              await database.getSalesByCategory(startOfWeek, endOfWeek);
 
         case 2: // This Month
           final startOfMonth = DateTime(now.year, now.month, 1);
@@ -67,9 +72,12 @@ class _AnalyticsDashboardScreenState
 
           _summary = await database.getMonthlySummary(startOfMonth, endOfMonth);
           _hourlySales = await database.getDailySales(startOfMonth, endOfMonth);
-          _topProducts = await database.getTopProducts(startOfMonth, endOfMonth, limit: 10);
-          _salesByPayment = await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
-          _salesByCategory = await database.getSalesByCategory(startOfMonth, endOfMonth);
+          _topProducts = await database.getTopProducts(startOfMonth, endOfMonth,
+              limit: 10);
+          _salesByPayment =
+              await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
+          _salesByCategory =
+              await database.getSalesByCategory(startOfMonth, endOfMonth);
       }
 
       setState(() => _isLoading = false);
@@ -164,7 +172,7 @@ class _AnalyticsDashboardScreenState
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? DesignColors.brand.withValues(alpha:0.12)
+                        ? DesignColors.brand.withValues(alpha: 0.12)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -173,7 +181,8 @@ class _AnalyticsDashboardScreenState
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
                       color: isSelected
                           ? DesignColors.brand
                           : DesignColors.textSecondary,
@@ -259,8 +268,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.brand.withValues(alpha:0.05),
-      borderColor: DesignColors.brand.withValues(alpha:0.12),
+      tint: DesignColors.brand.withValues(alpha: 0.05),
+      borderColor: DesignColors.brand.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -269,10 +278,10 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.15),
+                  color: DesignColors.brand.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.brand.withValues(alpha:0.25),
+                    color: DesignColors.brand.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -302,7 +311,8 @@ class _AnalyticsDashboardScreenState
                   LineChartBarData(
                     spots: [
                       for (int i = 0; i < _hourlySales.length; i++)
-                        FlSpot(i.toDouble(), (_hourlySales[i]['totalAmount'] ?? 0).toDouble()),
+                        FlSpot(i.toDouble(),
+                            (_hourlySales[i]['totalAmount'] ?? 0).toDouble()),
                     ],
                     isCurved: true,
                     gradient: const LinearGradient(
@@ -315,8 +325,8 @@ class _AnalyticsDashboardScreenState
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          DesignColors.brand.withValues(alpha:0.3),
-                          DesignColors.brand.withValues(alpha:0.0),
+                          DesignColors.brand.withValues(alpha: 0.3),
+                          DesignColors.brand.withValues(alpha: 0.0),
                         ],
                       ),
                     ),
@@ -326,9 +336,11 @@ class _AnalyticsDashboardScreenState
                 maxX: (_hourlySales.length - 1).toDouble(),
                 minY: 0,
                 maxY: (_hourlySales.isNotEmpty
-                        ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                        : 1000)
-                    .toDouble() *
+                            ? (_hourlySales
+                                .map((e) => e['totalAmount'])
+                                .reduce((a, b) => a > b ? a : b) as num)
+                            : 1000)
+                        .toDouble() *
                     1.2,
                 titlesData: FlTitlesData(
                   show: true,
@@ -339,7 +351,8 @@ class _AnalyticsDashboardScreenState
                         if (_hourlySales.isEmpty) return const Text('');
                         final index = value.toInt();
                         if (index >= 0 && index < _hourlySales.length) {
-                          final date = DateTime.parse(_hourlySales[index]['date'] ?? '');
+                          final date =
+                              DateTime.parse(_hourlySales[index]['date'] ?? '');
                           final time = _selectedPeriod == 0
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';
@@ -372,13 +385,15 @@ class _AnalyticsDashboardScreenState
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: (_hourlySales.isNotEmpty
-                          ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                          : 1000)
-                      .toDouble() /
+                              ? (_hourlySales
+                                  .map((e) => e['totalAmount'])
+                                  .reduce((a, b) => a > b ? a : b) as num)
+                              : 1000)
+                          .toDouble() /
                       5,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(
-                      color: DesignColors.surfaceBorder.withValues(alpha:0.5),
+                      color: DesignColors.surfaceBorder.withValues(alpha: 0.5),
                       strokeWidth: 1,
                     );
                   },
@@ -397,8 +412,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.teal.withValues(alpha:0.04),
-      borderColor: DesignColors.teal.withValues(alpha:0.1),
+      tint: DesignColors.teal.withValues(alpha: 0.04),
+      borderColor: DesignColors.teal.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -407,10 +422,10 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.teal.withValues(alpha:0.15),
+                  color: DesignColors.teal.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.teal.withValues(alpha:0.25),
+                    color: DesignColors.teal.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -452,11 +467,11 @@ class _AnalyticsDashboardScreenState
                       height: 36,
                       decoration: BoxDecoration(
                         color: index == 0
-                            ? Colors.amber.withValues(alpha:0.2)
+                            ? Colors.amber.withValues(alpha: 0.2)
                             : index == 1
-                                ? Colors.grey.withValues(alpha:0.2)
+                                ? Colors.grey.withValues(alpha: 0.2)
                                 : index == 2
-                                    ? Colors.orange.withValues(alpha:0.2)
+                                    ? Colors.orange.withValues(alpha: 0.2)
                                     : DesignColors.surfaceSubtle,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
@@ -467,7 +482,7 @@ class _AnalyticsDashboardScreenState
                                       : index == 2
                                           ? Colors.orange
                                           : DesignColors.textTertiary)
-                              .withValues(alpha:0.3),
+                              .withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -549,8 +564,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.info.withValues(alpha:0.04),
-      borderColor: DesignColors.info.withValues(alpha:0.1),
+      tint: DesignColors.info.withValues(alpha: 0.04),
+      borderColor: DesignColors.info.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -559,10 +574,10 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha:0.15),
+                  color: DesignColors.info.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.info.withValues(alpha:0.25),
+                    color: DesignColors.info.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -596,7 +611,8 @@ class _AnalyticsDashboardScreenState
               final total = payment['totalAmount'] ?? 0.0;
               final color = _getPaymentMethodColor(method);
               final totalBreakdown = (_salesByPayment.isNotEmpty
-                  ? _salesByPayment.fold<double>(0, (sum, p) => sum + ((p['totalAmount'] ?? 0) as double))
+                  ? _salesByPayment.fold<double>(
+                      0, (sum, p) => sum + ((p['totalAmount'] ?? 0) as double))
                   : 1);
               final percentage = totalBreakdown;
               final percent = (total / percentage * 100).toStringAsFixed(1);
@@ -609,10 +625,10 @@ class _AnalyticsDashboardScreenState
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha:0.15),
+                        color: color.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: color.withValues(alpha:0.3),
+                          color: color.withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -683,8 +699,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.teal.withValues(alpha:0.04),
-      borderColor: DesignColors.teal.withValues(alpha:0.1),
+      tint: DesignColors.teal.withValues(alpha: 0.04),
+      borderColor: DesignColors.teal.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -693,10 +709,10 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.teal.withValues(alpha:0.15),
+                  color: DesignColors.teal.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.teal.withValues(alpha:0.25),
+                    color: DesignColors.teal.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -768,7 +784,11 @@ class _AnalyticsDashboardScreenState
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: (_salesByCategory.isNotEmpty
-                                ? _salesByCategory.fold<double>(0, (sum, c) => sum + ((c['totalAmount'] ?? 0) as double))
+                                ? _salesByCategory.fold<double>(
+                                    0,
+                                    (sum, c) =>
+                                        sum +
+                                        ((c['totalAmount'] ?? 0) as double))
                                 : 1)
                             .toDouble(),
                         valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -790,8 +810,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.info.withValues(alpha:0.04),
-      borderColor: DesignColors.info.withValues(alpha:0.1),
+      tint: DesignColors.info.withValues(alpha: 0.04),
+      borderColor: DesignColors.info.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -800,10 +820,10 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha:0.15),
+                  color: DesignColors.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.accent.withValues(alpha:0.25),
+                    color: DesignColors.accent.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -837,9 +857,13 @@ class _AnalyticsDashboardScreenState
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
                   maxY: (_hourlySales.isNotEmpty
-                          ? _hourlySales.fold<double>(0, (sum, e) => (e['totalAmount'] ?? 0) > sum ? (e['totalAmount'] ?? 0) as double : sum)
-                          : 1000)
-                      .toDouble() *
+                              ? _hourlySales.fold<double>(
+                                  0,
+                                  (sum, e) => (e['totalAmount'] ?? 0) > sum
+                                      ? (e['totalAmount'] ?? 0) as double
+                                      : sum)
+                              : 1000)
+                          .toDouble() *
                       1.2,
                   barTouchData: BarTouchData(
                     enabled: true,
@@ -866,7 +890,8 @@ class _AnalyticsDashboardScreenState
                           if (_hourlySales.isEmpty) return const Text('');
                           final index = value.toInt();
                           if (index >= 0 && index < _hourlySales.length) {
-                            final date = DateTime.parse(_hourlySales[index]['date'] ?? '');
+                            final date = DateTime.parse(
+                                _hourlySales[index]['date'] ?? '');
                             final hour = date.hour;
                             final time = hour >= 12
                                 ? '${hour > 12 ? hour - 12 : 12} PM'
@@ -900,13 +925,16 @@ class _AnalyticsDashboardScreenState
                     show: true,
                     drawVerticalLine: false,
                     horizontalInterval: (_hourlySales.isNotEmpty
-                            ? (_hourlySales.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                            : 1000)
-                        .toDouble() /
+                                ? (_hourlySales
+                                    .map((e) => e['totalAmount'])
+                                    .reduce((a, b) => a > b ? a : b) as num)
+                                : 1000)
+                            .toDouble() /
                         5,
                     getDrawingHorizontalLine: (value) {
                       return FlLine(
-                        color: DesignColors.surfaceBorder.withValues(alpha:0.5),
+                        color:
+                            DesignColors.surfaceBorder.withValues(alpha: 0.5),
                         strokeWidth: 1,
                       );
                     },
@@ -918,9 +946,13 @@ class _AnalyticsDashboardScreenState
                         x: i,
                         barRods: [
                           BarChartRodData(
-                            toY: (_hourlySales[i]['totalAmount'] ?? 0).toDouble(),
+                            toY: (_hourlySales[i]['totalAmount'] ?? 0)
+                                .toDouble(),
                             gradient: const LinearGradient(
-                              colors: [DesignColors.brand, DesignColors.brandLight],
+                              colors: [
+                                DesignColors.brand,
+                                DesignColors.brandLight
+                              ],
                             ),
                             width: 14,
                           ),

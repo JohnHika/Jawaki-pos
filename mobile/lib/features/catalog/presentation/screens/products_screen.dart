@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
-import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
@@ -20,8 +19,7 @@ final _productsProvider = StreamProvider<List<Product>>((ref) {
   return getIt<AppDatabase>().watchAllProducts();
 });
 
-final _selectedCategoryFilterProvider =
-    StateProvider<String?>((ref) => null);
+final _selectedCategoryFilterProvider = StateProvider<String?>((ref) => null);
 final _searchQueryProvider = StateProvider<String>((ref) => '');
 
 class ProductsScreen extends ConsumerWidget {
@@ -36,25 +34,15 @@ class ProductsScreen extends ConsumerWidget {
     final perms = ref.watch(permissionsProvider);
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text(
-          'Product Catalog',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      appBar: BrandedAppBar(
+        title: 'Products',
         actions: [
           if (perms.canEditProducts)
             IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.1),
+                  color: DesignColors.brand.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.category_outlined,
@@ -68,16 +56,13 @@ class ProductsScreen extends ConsumerWidget {
       body: PageContainer(
         child: Column(
           children: [
-            const SizedBox(height: kToolbarHeight + 8),
-
             // Search bar
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: TextField(
                 decoration: InputDecoration(
                   hintText: 'Search products by name or SKU...',
-                  hintStyle:
-                      TextStyle(color: DesignColors.textTertiary),
+                  hintStyle: TextStyle(color: DesignColors.textTertiary),
                   prefixIcon: const Icon(Icons.search_rounded,
                       color: DesignColors.textTertiary),
                   suffixIcon: searchQuery.isNotEmpty
@@ -90,7 +75,7 @@ class ProductsScreen extends ConsumerWidget {
                         )
                       : null,
                   filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha:0.2),
+                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -101,11 +86,11 @@ class ProductsScreen extends ConsumerWidget {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                        color: DesignColors.brand, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 onChanged: (value) =>
                     ref.read(_searchQueryProvider.notifier).state = value,
@@ -123,35 +108,30 @@ class ProductsScreen extends ConsumerWidget {
                   height: 42,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: [
                       Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: _buildChip(
                           label: 'All',
                           selected: selectedCategory == null,
                           onTap: () => ref
-                              .read(_selectedCategoryFilterProvider
-                                  .notifier)
+                              .read(_selectedCategoryFilterProvider.notifier)
                               .state = null,
                         ),
                       ),
                       ...activeCategories.map(
                         (cat) => Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: _buildChip(
                             label: cat.name,
                             selected: selectedCategory == cat.id,
                             onTap: () {
                               ref
-                                  .read(
-                                      _selectedCategoryFilterProvider.notifier)
-                                  .state = selectedCategory == cat.id
-                                  ? null
-                                  : cat.id;
+                                      .read(_selectedCategoryFilterProvider
+                                          .notifier)
+                                      .state =
+                                  selectedCategory == cat.id ? null : cat.id;
                             },
                           ),
                         ),
@@ -169,11 +149,11 @@ class ProductsScreen extends ConsumerWidget {
             // Product count
             productsAsync.when(
               data: (products) {
-                final filtered = _filterProducts(
-                    products, selectedCategory, searchQuery);
+                final filtered =
+                    _filterProducts(products, selectedCategory, searchQuery);
                 return Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -182,7 +162,7 @@ class ProductsScreen extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: DesignColors.brand.withValues(alpha:0.08),
+                              color: DesignColors.brand.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Icon(
@@ -222,8 +202,8 @@ class ProductsScreen extends ConsumerWidget {
             Expanded(
               child: productsAsync.when(
                 data: (products) {
-                  final filtered = _filterProducts(
-                      products, selectedCategory, searchQuery);
+                  final filtered =
+                      _filterProducts(products, selectedCategory, searchQuery);
                   if (filtered.isEmpty) {
                     return EmptyState(
                       icon: Icons.inventory_2_outlined,
@@ -241,23 +221,20 @@ class ProductsScreen extends ConsumerWidget {
                         for (var c in categories) c.id: c.name
                       };
                       return ListView.builder(
-                        padding:
-                            const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
                           final product = filtered[index];
                           return _ProductListTile(
                             product: product,
                             categoryName:
-                                categoryMap[product.categoryId] ??
-                                    'Unknown',
+                                categoryMap[product.categoryId] ?? 'Unknown',
                             onEdit: perms.canEditProducts
-                                ? () => _showAddEditProduct(context,
-                                    ref, product: product)
+                                ? () => _showAddEditProduct(context, ref,
+                                    product: product)
                                 : null,
                             onDelete: perms.canEditProducts
-                                ? () => _confirmDelete(
-                                    context, ref, product)
+                                ? () => _confirmDelete(context, ref, product)
                                 : null,
                           );
                         },
@@ -266,13 +243,12 @@ class ProductsScreen extends ConsumerWidget {
                     loading: () => const Center(
                         child: CircularProgressIndicator(
                             color: DesignColors.brand)),
-                    error: (e, _) =>
-                        Center(child: Text('Error: $e')),
+                    error: (e, _) => Center(child: Text('Error: $e')),
                   );
                 },
                 loading: () => const Center(
-                    child: CircularProgressIndicator(
-                        color: DesignColors.brand)),
+                    child:
+                        CircularProgressIndicator(color: DesignColors.brand)),
                 error: (e, _) => Center(child: Text('Error: $e')),
               ),
             ),
@@ -283,13 +259,13 @@ class ProductsScreen extends ConsumerWidget {
           ? GradientButton(
               label: 'Add Product',
               icon: Icons.add_rounded,
-              onPressed: () =>
-                  _showAddEditProduct(context, ref),
+              onPressed: () => _showAddEditProduct(context, ref),
               height: 48,
               expanded: false,
               borderRadius: 14,
             )
           : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -311,12 +287,14 @@ class ProductsScreen extends ConsumerWidget {
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: selected ? null : DesignColors.surfaceBorder.withValues(alpha:0.2),
+          color: selected
+              ? null
+              : DesignColors.surfaceBorder.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected
                 ? DesignColors.brand
-                : DesignColors.surfaceBorder.withValues(alpha:0.3),
+                : DesignColors.surfaceBorder.withValues(alpha: 0.3),
           ),
         ),
         child: Text(
@@ -324,9 +302,7 @@ class ProductsScreen extends ConsumerWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected
-                ? Colors.white
-                : DesignColors.textSecondary,
+            color: selected ? Colors.white : DesignColors.textSecondary,
           ),
         ),
       ),
@@ -337,8 +313,7 @@ class ProductsScreen extends ConsumerWidget {
       List<Product> products, String? categoryId, String query) {
     var filtered = products.where((p) => p.isActive).toList();
     if (categoryId != null) {
-      filtered =
-          filtered.where((p) => p.categoryId == categoryId).toList();
+      filtered = filtered.where((p) => p.categoryId == categoryId).toList();
     }
     if (query.isNotEmpty) {
       final q = query.toLowerCase();
@@ -352,10 +327,10 @@ class ProductsScreen extends ConsumerWidget {
     return filtered;
   }
 
-  void _showCategoryManagement(
-      BuildContext context, WidgetRef ref) {
+  void _showCategoryManagement(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Categories',
       initialSize: 0.7,
       maxSize: 0.9,
       child: _CategoryManagementSheet(),
@@ -366,11 +341,13 @@ class ProductsScreen extends ConsumerWidget {
       {Product? product}) {
     GlassBottomSheet.show(
       context,
+      title: product == null ? 'Add Product' : 'Edit Product',
       initialSize: 0.85,
       maxSize: 0.95,
+      scrollable: true,
       child: Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: _AddEditProductSheet(product: product),
       ),
     );
@@ -425,8 +402,8 @@ class _ProductListTile extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignColors.brand.withValues(alpha:0.1),
-                    DesignColors.brand.withValues(alpha:0.05),
+                    DesignColors.brand.withValues(alpha: 0.1),
+                    DesignColors.brand.withValues(alpha: 0.05),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -463,7 +440,7 @@ class _ProductListTile extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: DesignColors.brand.withValues(alpha:0.08),
+                          color: DesignColors.brand.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -519,7 +496,7 @@ class _ProductListTile extends StatelessWidget {
                       margin: const EdgeInsets.only(top: 4),
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: DesignColors.error.withValues(alpha:0.08),
+                        color: DesignColors.error.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
@@ -557,7 +534,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: DesignColors.brand.withValues(alpha:0.1),
+                      color: DesignColors.brand.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.category_outlined,
@@ -578,8 +555,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
               GradientButton(
                 label: 'Add',
                 icon: Icons.add_rounded,
-                onPressed: () =>
-                    _showAddCategoryDialog(context),
+                onPressed: () => _showAddCategoryDialog(context),
                 height: 38,
                 expanded: false,
                 borderRadius: 10,
@@ -620,10 +596,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: DesignColors.brand
-                                    .withValues(alpha:0.1),
-                                borderRadius:
-                                    BorderRadius.circular(12),
+                                color:
+                                    DesignColors.brand.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Center(
                                 child: Text(
@@ -639,16 +614,14 @@ class _CategoryManagementSheet extends ConsumerWidget {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     cat.name,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 14,
-                                      color:
-                                          DesignColors.textPrimary,
+                                      color: DesignColors.textPrimary,
                                     ),
                                   ),
                                   if (cat.description != null) ...[
@@ -656,12 +629,10 @@ class _CategoryManagementSheet extends ConsumerWidget {
                                     Text(
                                       cat.description!,
                                       maxLines: 1,
-                                      overflow:
-                                          TextOverflow.ellipsis,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         fontSize: 11,
-                                        color:
-                                            DesignColors.textTertiary,
+                                        color: DesignColors.textTertiary,
                                       ),
                                     ),
                                   ],
@@ -669,16 +640,14 @@ class _CategoryManagementSheet extends ConsumerWidget {
                               ),
                             ),
                             GestureDetector(
-                              onTap: () => _showEditCategoryDialog(
-                                  context, cat),
+                              onTap: () =>
+                                  _showEditCategoryDialog(context, cat),
                               child: Container(
-                                padding:
-                                    const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: DesignColors.info
-                                      .withValues(alpha:0.08),
-                                  borderRadius:
-                                      BorderRadius.circular(8),
+                                  color:
+                                      DesignColors.info.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(
                                   Icons.edit_outlined,
@@ -689,16 +658,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
                             ),
                             const SizedBox(width: 4),
                             GestureDetector(
-                              onTap: () => _confirmDeleteCategory(
-                                  context, cat),
+                              onTap: () => _confirmDeleteCategory(context, cat),
                               child: Container(
-                                padding:
-                                    const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: DesignColors.error
-                                      .withValues(alpha:0.08),
-                                  borderRadius:
-                                      BorderRadius.circular(8),
+                                      .withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(
                                   Icons.delete_outline_rounded,
@@ -715,10 +681,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                 );
               },
               loading: () => const Center(
-                  child: CircularProgressIndicator(
-                      color: DesignColors.brand)),
-              error: (e, _) =>
-                  Center(child: Text('Error: $e')),
+                  child: CircularProgressIndicator(color: DesignColors.brand)),
+              error: (e, _) => Center(child: Text('Error: $e')),
             ),
           ),
         ],
@@ -737,8 +701,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
         ),
         title: const Text('Add Category',
             style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: DesignColors.textPrimary)),
+                fontWeight: FontWeight.w700, color: DesignColors.textPrimary)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -747,21 +710,19 @@ class _CategoryManagementSheet extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'Category Name',
                 hintText: 'e.g. Painkillers',
-                hintStyle:
-                    TextStyle(color: DesignColors.textTertiary),
+                hintStyle: TextStyle(color: DesignColors.textTertiary),
                 labelStyle: const TextStyle(
                   color: DesignColors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.words,
               autofocus: true,
@@ -771,21 +732,19 @@ class _CategoryManagementSheet extends ConsumerWidget {
               controller: descController,
               decoration: InputDecoration(
                 labelText: 'Description (optional)',
-                hintStyle:
-                    TextStyle(color: DesignColors.textTertiary),
+                hintStyle: TextStyle(color: DesignColors.textTertiary),
                 labelStyle: const TextStyle(
                   color: DesignColors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
@@ -803,8 +762,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               final now = DateTime.now();
-              await getIt<AppDatabase>().insertCategory(
-                  CategoriesCompanion.insert(
+              await getIt<AppDatabase>()
+                  .insertCategory(CategoriesCompanion.insert(
                 id: 'cat-${_uuid.v4().substring(0, 8)}',
                 name: nameController.text.trim(),
                 description: Value(descController.text.trim().isEmpty
@@ -822,8 +781,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             child: const Text('Add'),
           ),
@@ -832,12 +790,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
     );
   }
 
-  void _showEditCategoryDialog(
-      BuildContext context, Category cat) {
-    final nameController =
-        TextEditingController(text: cat.name);
-    final descController =
-        TextEditingController(text: cat.description ?? '');
+  void _showEditCategoryDialog(BuildContext context, Category cat) {
+    final nameController = TextEditingController(text: cat.name);
+    final descController = TextEditingController(text: cat.description ?? '');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -846,8 +801,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
         ),
         title: const Text('Edit Category',
             style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: DesignColors.textPrimary)),
+                fontWeight: FontWeight.w700, color: DesignColors.textPrimary)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -856,14 +810,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'Category Name',
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.words,
             ),
@@ -873,14 +826,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
               decoration: InputDecoration(
                 labelText: 'Description',
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
@@ -901,10 +853,9 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   cat.id,
                   CategoriesCompanion(
                     name: Value(nameController.text.trim()),
-                    description: Value(
-                        descController.text.trim().isEmpty
-                            ? null
-                            : descController.text.trim()),
+                    description: Value(descController.text.trim().isEmpty
+                        ? null
+                        : descController.text.trim()),
                     updatedAt: Value(DateTime.now()),
                   ));
               if (context.mounted) Navigator.pop(context);
@@ -914,8 +865,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             child: const Text('Save'),
           ),
@@ -924,8 +874,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
     );
   }
 
-  void _confirmDeleteCategory(
-      BuildContext context, Category cat) async {
+  void _confirmDeleteCategory(BuildContext context, Category cat) async {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Delete Category',
@@ -949,8 +898,7 @@ class _AddEditProductSheet extends ConsumerStatefulWidget {
       _AddEditProductSheetState();
 }
 
-class _AddEditProductSheetState
-    extends ConsumerState<_AddEditProductSheet> {
+class _AddEditProductSheetState extends ConsumerState<_AddEditProductSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _skuController;
@@ -980,10 +928,8 @@ class _AddEditProductSheetState
   @override
   void initState() {
     super.initState();
-    _nameController =
-        TextEditingController(text: widget.product?.name ?? '');
-    _skuController =
-        TextEditingController(text: widget.product?.sku ?? '');
+    _nameController = TextEditingController(text: widget.product?.name ?? '');
+    _skuController = TextEditingController(text: widget.product?.sku ?? '');
     _priceController = TextEditingController(
         text: widget.product?.price.toStringAsFixed(0) ?? '');
     _costPriceController = TextEditingController(
@@ -1021,7 +967,7 @@ class _AddEditProductSheetState
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha:0.1),
+                    color: DesignColors.brand.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -1052,8 +998,7 @@ class _AddEditProductSheetState
               decoration: InputDecoration(
                 labelText: 'Product Name *',
                 hintText: 'e.g. Panadol Extra (10 tablets)',
-                hintStyle:
-                    TextStyle(color: DesignColors.textTertiary),
+                hintStyle: TextStyle(color: DesignColors.textTertiary),
                 labelStyle: const TextStyle(
                   color: DesignColors.textSecondary,
                   fontWeight: FontWeight.w500,
@@ -1062,8 +1007,7 @@ class _AddEditProductSheetState
                 prefixIcon: const Icon(Icons.inventory_2_outlined,
                     color: DesignColors.textTertiary),
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -1074,11 +1018,11 @@ class _AddEditProductSheetState
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                      color: DesignColors.brand, width: 1.5),
+                  borderSide:
+                      const BorderSide(color: DesignColors.brand, width: 1.5),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.words,
               validator: (v) =>
@@ -1092,8 +1036,7 @@ class _AddEditProductSheetState
               decoration: InputDecoration(
                 labelText: 'SKU Code *',
                 hintText: 'e.g. PAN-001',
-                hintStyle:
-                    TextStyle(color: DesignColors.textTertiary),
+                hintStyle: TextStyle(color: DesignColors.textTertiary),
                 labelStyle: const TextStyle(
                   color: DesignColors.textSecondary,
                   fontWeight: FontWeight.w500,
@@ -1102,8 +1045,7 @@ class _AddEditProductSheetState
                 prefixIcon: const Icon(Icons.qr_code_rounded,
                     color: DesignColors.textTertiary),
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -1114,11 +1056,11 @@ class _AddEditProductSheetState
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                      color: DesignColors.brand, width: 1.5),
+                  borderSide:
+                      const BorderSide(color: DesignColors.brand, width: 1.5),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.characters,
               validator: (v) =>
@@ -1129,50 +1071,43 @@ class _AddEditProductSheetState
             // Category dropdown
             categoriesAsync.when(
               data: (categories) {
-                final ac =
-                    categories.where((c) => c.isActive).toList();
+                final ac = categories.where((c) => c.isActive).toList();
                 return Container(
                   decoration: BoxDecoration(
-                    color:
-                        DesignColors.surfaceBorder.withValues(alpha:0.2),
+                    color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedCategoryId,
+                      initialValue: _selectedCategoryId,
                       decoration: const InputDecoration(
                         labelText: 'Category *',
                         labelStyle: TextStyle(
                           color: DesignColors.textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
-                        floatingLabelBehavior:
-                            FloatingLabelBehavior.auto,
-                        prefixIcon: Icon(
-                            Icons.category_outlined,
+                        floatingLabelBehavior: FloatingLabelBehavior.auto,
+                        prefixIcon: Icon(Icons.category_outlined,
                             color: DesignColors.textTertiary),
                         border: InputBorder.none,
                       ),
-                      dropdownColor: Theme.of(context).brightness ==
-                              Brightness.dark
-                          ? DesignColors.darkSurface
-                          : Colors.white,
+                      dropdownColor:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? DesignColors.darkSurface
+                              : Colors.white,
                       items: ac
                           .map((c) => DropdownMenuItem(
                               value: c.id, child: Text(c.name)))
                           .toList(),
-                      onChanged: (v) =>
-                          setState(() => _selectedCategoryId = v),
-                      validator: (v) =>
-                          v == null ? 'Select a category' : null,
+                      onChanged: (v) => setState(() => _selectedCategoryId = v),
+                      validator: (v) => v == null ? 'Select a category' : null,
                     ),
                   ),
                 );
               },
-              loading: () => const LinearProgressIndicator(
-                  color: DesignColors.brand),
+              loading: () =>
+                  const LinearProgressIndicator(color: DesignColors.brand),
               error: (e, _) => Text('Error: $e'),
             ),
             const SizedBox(height: 14),
@@ -1184,19 +1119,17 @@ class _AddEditProductSheetState
                   controller: _priceController,
                   decoration: InputDecoration(
                     labelText: 'Selling Price (KES) *',
-                    hintStyle:
-                        TextStyle(color: DesignColors.textTertiary),
+                    hintStyle: TextStyle(color: DesignColors.textTertiary),
                     labelStyle: const TextStyle(
                       color: DesignColors.textSecondary,
                       fontWeight: FontWeight.w500,
                     ),
-                    floatingLabelBehavior:
-                        FloatingLabelBehavior.auto,
+                    floatingLabelBehavior: FloatingLabelBehavior.auto,
                     prefixIcon: const Icon(Icons.sell_outlined,
                         color: DesignColors.textTertiary),
                     filled: true,
-                    fillColor: DesignColors.surfaceBorder
-                        .withValues(alpha:0.2),
+                    fillColor:
+                        DesignColors.surfaceBorder.withValues(alpha: 0.2),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -1229,19 +1162,17 @@ class _AddEditProductSheetState
                   controller: _costPriceController,
                   decoration: InputDecoration(
                     labelText: 'Cost Price (KES)',
-                    hintStyle:
-                        TextStyle(color: DesignColors.textTertiary),
+                    hintStyle: TextStyle(color: DesignColors.textTertiary),
                     labelStyle: const TextStyle(
                       color: DesignColors.textSecondary,
                       fontWeight: FontWeight.w500,
                     ),
-                    floatingLabelBehavior:
-                        FloatingLabelBehavior.auto,
+                    floatingLabelBehavior: FloatingLabelBehavior.auto,
                     prefixIcon: const Icon(Icons.price_change_outlined,
                         color: DesignColors.textTertiary),
                     filled: true,
-                    fillColor: DesignColors.surfaceBorder
-                        .withValues(alpha:0.2),
+                    fillColor:
+                        DesignColors.surfaceBorder.withValues(alpha: 0.2),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -1267,34 +1198,31 @@ class _AddEditProductSheetState
             // Unit
             Container(
               decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha:0.2),
+                color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: DropdownButtonHideUnderline(
                 child: DropdownButtonFormField<String>(
-                  value: _selectedUnit,
+                  initialValue: _selectedUnit,
                   decoration: const InputDecoration(
                     labelText: 'Unit',
                     labelStyle: TextStyle(
                       color: DesignColors.textSecondary,
                       fontWeight: FontWeight.w500,
                     ),
-                    floatingLabelBehavior:
-                        FloatingLabelBehavior.auto,
+                    floatingLabelBehavior: FloatingLabelBehavior.auto,
                     prefixIcon: Icon(Icons.straighten_rounded,
                         color: DesignColors.textTertiary),
                     border: InputBorder.none,
                   ),
-                  dropdownColor: Theme.of(context).brightness ==
-                          Brightness.dark
+                  dropdownColor: Theme.of(context).brightness == Brightness.dark
                       ? DesignColors.darkSurface
                       : Colors.white,
                   items: _units
                       .map((u) => DropdownMenuItem(
                           value: u,
-                          child: Text(u[0].toUpperCase() +
-                              u.substring(1))))
+                          child: Text(u[0].toUpperCase() + u.substring(1))))
                       .toList(),
                   onChanged: (v) =>
                       setState(() => _selectedUnit = v ?? 'piece'),
@@ -1308,8 +1236,7 @@ class _AddEditProductSheetState
               controller: _descriptionController,
               decoration: InputDecoration(
                 labelText: 'Description (optional)',
-                hintStyle:
-                    TextStyle(color: DesignColors.textTertiary),
+                hintStyle: TextStyle(color: DesignColors.textTertiary),
                 labelStyle: const TextStyle(
                   color: DesignColors.textSecondary,
                   fontWeight: FontWeight.w500,
@@ -1318,8 +1245,7 @@ class _AddEditProductSheetState
                 prefixIcon: const Icon(Icons.description_outlined,
                     color: DesignColors.textTertiary),
                 filled: true,
-                fillColor:
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -1330,11 +1256,11 @@ class _AddEditProductSheetState
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                      color: DesignColors.brand, width: 1.5),
+                  borderSide:
+                      const BorderSide(color: DesignColors.brand, width: 1.5),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
               textCapitalization: TextCapitalization.sentences,
               maxLines: 2,
@@ -1373,10 +1299,9 @@ class _AddEditProductSheetState
                 ? double.parse(_costPriceController.text.trim())
                 : null),
             unit: Value(_selectedUnit),
-            description: Value(
-                _descriptionController.text.trim().isEmpty
-                    ? null
-                    : _descriptionController.text.trim()),
+            description: Value(_descriptionController.text.trim().isEmpty
+                ? null
+                : _descriptionController.text.trim()),
             updatedAt: Value(now),
           ));
     } else {
@@ -1390,10 +1315,9 @@ class _AddEditProductSheetState
             ? double.parse(_costPriceController.text.trim())
             : null),
         unit: Value(_selectedUnit),
-        description: Value(
-            _descriptionController.text.trim().isEmpty
-                ? null
-                : _descriptionController.text.trim()),
+        description: Value(_descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim()),
         createdAt: now,
         updatedAt: now,
       ));

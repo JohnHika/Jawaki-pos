@@ -41,10 +41,10 @@ Future<void> configureDependencies() async {
     getIt.registerSingleton<HapticService>(HapticService());
 
     // ============================================
-    // STEP 2: Database (depends on nothing)
+    // STEP 2: Database (depends on StorageService)
     // ============================================
     debugPrint('[DI] Registering AppDatabase...');
-    final database = AppDatabase();
+    final database = AppDatabase(getIt<StorageService>());
     getIt.registerSingleton<AppDatabase>(database);
     debugPrint('[DI] AppDatabase registered');
 

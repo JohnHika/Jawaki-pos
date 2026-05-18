@@ -21,7 +21,17 @@
       "Bash(Select-Object -First 5 -ExpandProperty FullName)",
       "Bash(C:/src/flutter/bin/flutter build:*)",
       "Bash($env:JAVA_HOME=\"C:\\\\Program Files\\\\Java\\\\jdk-26.0.1\")",
-      "Bash(C:/src/flutter/bin/flutter clean:*)"
+      "Bash(C:/src/flutter/bin/flutter clean:*)",
+      "Bash(flutter devices:*)",
+      "Bash(flutter run:*)",
+      "Bash(setx:*)",
+      "Bash(export JAVA_HOME=\"C:/Program Files/Java/jdk-26.0.1\")",
+      "Bash(xargs grep:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(C:/Android/platform-tools/adb devices:*)",
+      "Bash(C:/Android/platform-tools/adb logcat:*)",
+      "Bash(flutter build:*)",
+      "Bash(C:/Android/platform-tools/adb install:*)"
     ]
   }
 }

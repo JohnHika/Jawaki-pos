@@ -11,7 +11,8 @@ import '../providers/reports_provider.dart';
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
 
-  static final _currencyFmt = NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
+  static final _currencyFmt =
+      NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,7 +40,10 @@ class ReportsScreen extends ConsumerWidget {
             summaryAsync.when(
               data: (summary) => _buildSummaryGrid(context, summary),
               loading: () => _buildSummaryGrid(context, {
-                'transactionCount': 0, 'totalRevenue': 0.0, 'avgTicket': 0.0, 'itemsSold': 0,
+                'transactionCount': 0,
+                'totalRevenue': 0.0,
+                'avgTicket': 0.0,
+                'itemsSold': 0,
               }),
               error: (e, _) => Padding(
                 padding: const EdgeInsets.all(16),
@@ -129,7 +133,8 @@ class ReportsScreen extends ConsumerWidget {
             _GlassCardTile(
               icon: Icons.bar_chart_rounded,
               title: 'Analytics Dashboard',
-              subtitle: 'Comprehensive sales analytics with multiple chart types',
+              subtitle:
+                  'Comprehensive sales analytics with multiple chart types',
               color: DesignColors.brand,
               onTap: () => context.push('/reports/analytics'),
             ),
@@ -143,7 +148,8 @@ class ReportsScreen extends ConsumerWidget {
             _GlassCardTile(
               icon: Icons.payments_rounded,
               title: 'Payment Analytics',
-              subtitle: 'Detailed payment method analysis and transaction trends',
+              subtitle:
+                  'Detailed payment method analysis and transaction trends',
               color: DesignColors.accent,
               onTap: () => context.push('/payment-analytics'),
             ),
@@ -230,9 +236,30 @@ class ReportsScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Sales Report', style: Theme.of(ctx).textTheme.titleLarge),
+                  Text('Sales Report',
+                      style: Theme.of(ctx).textTheme.titleLarge),
                   StatusBadge(label: range.label, color: DesignColors.brand),
                 ],
+              ),
+              const SizedBox(height: 8),
+              // Report navigation tabs
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildReportNavTab(context, 'Sales', true,
+                        () => _showSalesReport(context, ref)),
+                    const SizedBox(width: 4),
+                    _buildReportNavTab(context, 'Customers', false,
+                        () => _showCustomerReport(context, ref)),
+                    const SizedBox(width: 4),
+                    _buildReportNavTab(context, 'Payment Methods', false,
+                        () => _showPaymentMethodsReport(context, ref)),
+                    const SizedBox(width: 4),
+                    _buildReportNavTab(context, 'Cashier', false,
+                        () => _showCashierReport(context, ref)),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -244,22 +271,27 @@ class ReportsScreen extends ConsumerWidget {
                         title: 'No sales in this period',
                       );
                     }
-                    final totalRevenue = sales.fold<double>(0, (a, s) => a + s.total);
+                    final totalRevenue =
+                        sales.fold<double>(0, (a, s) => a + s.total);
                     return Column(
                       children: [
                         GlassCard(
                           padding: const EdgeInsets.all(12),
                           borderRadius: 12,
                           blur: 8,
-                          tint: DesignColors.success.withValues(alpha:0.1),
-                          borderColor: DesignColors.success.withValues(alpha:0.2),
+                          tint: DesignColors.success.withValues(alpha: 0.1),
+                          borderColor:
+                              DesignColors.success.withValues(alpha: 0.2),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text('Total: ${sales.length} sales',
-                                style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600)),
                               Text(_currencyFmt.format(totalRevenue),
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: DesignColors.success)),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: DesignColors.success)),
                             ],
                           ),
                         ),
@@ -271,13 +303,18 @@ class ReportsScreen extends ConsumerWidget {
                               final sale = sales[i];
                               return ListCard(
                                 leading: CircleAvatar(
-                                  backgroundColor: DesignColors.brand.withValues(alpha:0.1),
-                                  child: const Icon(Icons.receipt_rounded, color: DesignColors.brand, size: 18),
+                                  backgroundColor:
+                                      DesignColors.brand.withValues(alpha: 0.1),
+                                  child: const Icon(Icons.receipt_rounded,
+                                      color: DesignColors.brand, size: 18),
                                 ),
                                 title: sale.receiptNumber,
-                                subtitle: '${sale.paymentMethod}  ${DateFormat('d MMM, hh:mm a').format(sale.createdAt)}',
+                                subtitle:
+                                    '${sale.paymentMethod}  ${DateFormat('d MMM, hh:mm a').format(sale.createdAt)}',
                                 trailing: Text(_currencyFmt.format(sale.total),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: DesignColors.textPrimary)),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: DesignColors.textPrimary)),
                               );
                             },
                           ),
@@ -285,7 +322,8 @@ class ReportsScreen extends ConsumerWidget {
                       ],
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
               ),
@@ -314,7 +352,8 @@ class ReportsScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Payment Methods', style: Theme.of(ctx).textTheme.titleLarge),
+                  Text('Payment Methods',
+                      style: Theme.of(ctx).textTheme.titleLarge),
                   StatusBadge(label: range.label, color: DesignColors.teal),
                 ],
               ),
@@ -328,35 +367,46 @@ class ReportsScreen extends ConsumerWidget {
                         title: 'No data for this period',
                       );
                     }
-                    final total = data.fold<double>(0, (a, d) => a + (d['totalAmount'] as double));
+                    final total = data.fold<double>(
+                        0, (a, d) => a + (d['totalAmount'] as double));
                     return ListView.builder(
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
                         final d = data[i];
                         final amount = d['totalAmount'] as double;
                         final pct = total > 0 ? (amount / total * 100) : 0.0;
-                        final color = _paymentColor(d['paymentMethod'] as String);
+                        final color =
+                            _paymentColor(d['paymentMethod'] as String);
                         return GlassCard(
                           padding: const EdgeInsets.all(16),
                           borderRadius: 12,
                           blur: 8,
-                          tint: color.withValues(alpha:0.06),
-                          borderColor: color.withValues(alpha:0.15),
+                          tint: color.withValues(alpha: 0.06),
+                          borderColor: color.withValues(alpha: 0.15),
                           margin: const EdgeInsets.only(bottom: 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Row(children: [
-                                    Icon(_paymentIcon(d['paymentMethod'] as String), color: color, size: 20),
+                                    Icon(
+                                        _paymentIcon(
+                                            d['paymentMethod'] as String),
+                                        color: color,
+                                        size: 20),
                                     const SizedBox(width: 8),
                                     Text(d['paymentMethod'] as String,
-                                      style: const TextStyle(fontWeight: FontWeight.w600, color: DesignColors.textPrimary)),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: DesignColors.textPrimary)),
                                   ]),
                                   Text(_currencyFmt.format(amount),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: DesignColors.textPrimary)),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: DesignColors.textPrimary)),
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -364,21 +414,23 @@ class ReportsScreen extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(4),
                                 child: LinearProgressIndicator(
                                   value: pct / 100,
-                                  backgroundColor: color.withValues(alpha:0.1),
+                                  backgroundColor: color.withValues(alpha: 0.1),
                                   valueColor: AlwaysStoppedAnimation(color),
                                   minHeight: 8,
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text('${d['count']} transactions  ${pct.toStringAsFixed(1)}%',
-                                style: Theme.of(ctx).textTheme.bodySmall),
+                              Text(
+                                  '${d['count']} transactions  ${pct.toStringAsFixed(1)}%',
+                                  style: Theme.of(ctx).textTheme.bodySmall),
                             ],
                           ),
                         );
                       },
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
               ),
@@ -407,7 +459,8 @@ class ReportsScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Cashier Performance', style: Theme.of(ctx).textTheme.titleLarge),
+                  Text('Cashier Performance',
+                      style: Theme.of(ctx).textTheme.titleLarge),
                   StatusBadge(label: range.label, color: DesignColors.accent),
                 ],
               ),
@@ -427,19 +480,25 @@ class ReportsScreen extends ConsumerWidget {
                         final d = data[i];
                         return ListCard(
                           leading: CircleAvatar(
-                            backgroundColor: DesignColors.brand.withValues(alpha:0.1),
+                            backgroundColor:
+                                DesignColors.brand.withValues(alpha: 0.1),
                             child: Text('${i + 1}',
-                              style: const TextStyle(color: DesignColors.brand, fontWeight: FontWeight.bold)),
+                                style: const TextStyle(
+                                    color: DesignColors.brand,
+                                    fontWeight: FontWeight.bold)),
                           ),
                           title: d['cashierId'] as String,
                           subtitle: '${d['count']} transactions',
                           trailing: Text(_currencyFmt.format(d['totalAmount']),
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: DesignColors.success)),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: DesignColors.success)),
                         );
                       },
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
               ),
@@ -468,7 +527,8 @@ class ReportsScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Category Sales', style: Theme.of(ctx).textTheme.titleLarge),
+                  Text('Category Sales',
+                      style: Theme.of(ctx).textTheme.titleLarge),
                   StatusBadge(label: range.label, color: DesignColors.info),
                 ],
               ),
@@ -482,33 +542,47 @@ class ReportsScreen extends ConsumerWidget {
                         title: 'No category data',
                       );
                     }
-                    final total = data.fold<double>(0, (a, d) => a + (d['totalRevenue'] as double));
+                    final total = data.fold<double>(
+                        0, (a, d) => a + (d['totalRevenue'] as double));
                     return ListView.builder(
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
                         final d = data[i];
                         final revenue = d['totalRevenue'] as double;
                         final pct = total > 0 ? (revenue / total * 100) : 0.0;
-                        final colors = [DesignColors.brand, DesignColors.success, DesignColors.info,
-                          DesignColors.warning, DesignColors.teal, DesignColors.error];
+                        final colors = [
+                          DesignColors.brand,
+                          DesignColors.success,
+                          DesignColors.info,
+                          DesignColors.warning,
+                          DesignColors.teal,
+                          DesignColors.error
+                        ];
                         final color = colors[i % colors.length];
                         return GlassCard(
                           padding: const EdgeInsets.all(16),
                           borderRadius: 12,
                           blur: 8,
-                          tint: color.withValues(alpha:0.06),
-                          borderColor: color.withValues(alpha:0.15),
+                          tint: color.withValues(alpha: 0.06),
+                          borderColor: color.withValues(alpha: 0.15),
                           margin: const EdgeInsets.only(bottom: 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Expanded(child: Text(d['categoryName'] as String,
-                                    style: const TextStyle(fontWeight: FontWeight.w600, color: DesignColors.textPrimary))),
+                                  Expanded(
+                                      child: Text(d['categoryName'] as String,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  DesignColors.textPrimary))),
                                   Text(_currencyFmt.format(revenue),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: DesignColors.textPrimary)),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: DesignColors.textPrimary)),
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -516,21 +590,23 @@ class ReportsScreen extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(4),
                                 child: LinearProgressIndicator(
                                   value: total > 0 ? revenue / total : 0,
-                                  backgroundColor: color.withValues(alpha:0.1),
+                                  backgroundColor: color.withValues(alpha: 0.1),
                                   valueColor: AlwaysStoppedAnimation(color),
                                   minHeight: 8,
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text('${d['totalQty']} items  ${pct.toStringAsFixed(1)}%',
-                                style: Theme.of(ctx).textTheme.bodySmall),
+                              Text(
+                                  '${d['totalQty']} items  ${pct.toStringAsFixed(1)}%',
+                                  style: Theme.of(ctx).textTheme.bodySmall),
                             ],
                           ),
                         );
                       },
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
               ),
@@ -559,7 +635,8 @@ class ReportsScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Top Products', style: Theme.of(ctx).textTheme.titleLarge),
+                  Text('Top Products',
+                      style: Theme.of(ctx).textTheme.titleLarge),
                   StatusBadge(label: range.label, color: DesignColors.warning),
                 ],
               ),
@@ -581,21 +658,26 @@ class ReportsScreen extends ConsumerWidget {
                         return ListCard(
                           leading: CircleAvatar(
                             backgroundColor: isTop3
-                                ? DesignColors.warning.withValues(alpha:0.2)
-                                : DesignColors.brand.withValues(alpha:0.1),
+                                ? DesignColors.warning.withValues(alpha: 0.2)
+                                : DesignColors.brand.withValues(alpha: 0.1),
                             child: isTop3
-                                ? const Icon(Icons.emoji_events_rounded, color: DesignColors.warning, size: 20)
-                                : Text('${i + 1}', style: const TextStyle(color: DesignColors.brand)),
+                                ? const Icon(Icons.emoji_events_rounded,
+                                    color: DesignColors.warning, size: 20)
+                                : Text('${i + 1}',
+                                    style: const TextStyle(
+                                        color: DesignColors.brand)),
                           ),
                           title: d['productName'] as String,
                           subtitle: '${d['totalQty']} units sold',
                           trailing: Text(_currencyFmt.format(d['totalRevenue']),
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
                         );
                       },
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
               ),
@@ -620,7 +702,8 @@ class ReportsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 8),
-              Text('Inventory Report', style: Theme.of(ctx).textTheme.titleLarge),
+              Text('Inventory Report',
+                  style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 12),
               Expanded(
                 child: dataAsync.when(
@@ -646,9 +729,13 @@ class ReportsScreen extends ConsumerWidget {
                                 : DesignColors.success;
                         return ListCard(
                           leading: CircleAvatar(
-                            backgroundColor: statusColor.withValues(alpha:0.1),
+                            backgroundColor: statusColor.withValues(alpha: 0.1),
                             child: Icon(
-                              isOut ? Icons.error_outline_rounded : isLow ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                              isOut
+                                  ? Icons.error_outline_rounded
+                                  : isLow
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.check_circle_outline_rounded,
                               color: statusColor,
                               size: 20,
                             ),
@@ -660,19 +747,21 @@ class ReportsScreen extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text('$stock in stock',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: statusColor,
-                                )),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: statusColor,
+                                  )),
                               if (minStock > 0)
-                                Text('Min: $minStock', style: Theme.of(ctx).textTheme.bodySmall),
+                                Text('Min: $minStock',
+                                    style: Theme.of(ctx).textTheme.bodySmall),
                             ],
                           ),
                         );
                       },
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
                 ),
               ),
@@ -697,7 +786,39 @@ class ReportsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 8),
-              Text('Customer Report', style: Theme.of(ctx).textTheme.titleLarge),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Customer Report',
+                      style: Theme.of(ctx).textTheme.titleLarge),
+                  // Add a close button for Customer Report
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    color: DesignColors.textSecondary,
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Report navigation tabs
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildReportNavTab(context, 'Sales', false,
+                        () => _showSalesReport(context, ref)),
+                    const SizedBox(width: 4),
+                    _buildReportNavTab(context, 'Customers', true,
+                        () => _showCustomerReport(context, ref)),
+                    const SizedBox(width: 4),
+                    _buildReportNavTab(context, 'Payment Methods', false,
+                        () => _showPaymentMethodsReport(context, ref)),
+                    const SizedBox(width: 4),
+                    _buildReportNavTab(context, 'Cashier', false,
+                        () => _showCashierReport(context, ref)),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
               Expanded(
                 child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -719,21 +840,28 @@ class ReportsScreen extends ConsumerWidget {
                         final lastPurchase = c['lastPurchaseAt'] as String?;
                         return ListCard(
                           leading: CircleAvatar(
-                            backgroundColor: DesignColors.teal.withValues(alpha:0.1),
+                            backgroundColor:
+                                DesignColors.teal.withValues(alpha: 0.1),
                             child: Text(
-                              (c['name'] as String).substring(0, 1).toUpperCase(),
-                              style: const TextStyle(color: DesignColors.teal, fontWeight: FontWeight.bold),
+                              (c['name'] as String)
+                                  .substring(0, 1)
+                                  .toUpperCase(),
+                              style: const TextStyle(
+                                  color: DesignColors.teal,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ),
                           title: c['name'] as String,
-                          subtitle: '${c['phone'] != null && (c['phone'] as String).isNotEmpty ? '${c['phone']}  ' : ''}$totalPurchases purchases  ${_currencyFmt.format(totalSpent)}',
+                          subtitle:
+                              '${c['phone'] != null && (c['phone'] as String).isNotEmpty ? '${c['phone']}  ' : ''}$totalPurchases purchases  ${_currencyFmt.format(totalSpent)}',
                           trailing: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               if (lastPurchase != null)
                                 Text(
-                                  DateFormat('d MMM').format(DateTime.parse(lastPurchase)),
+                                  DateFormat('d MMM')
+                                      .format(DateTime.parse(lastPurchase)),
                                   style: Theme.of(ctx).textTheme.bodySmall,
                                 ),
                               const SizedBox(height: 2),
@@ -757,9 +885,12 @@ class ReportsScreen extends ConsumerWidget {
     );
   }
 
-  void _showCustomerDetails(BuildContext context, Map<String, dynamic> customer) async {
+  void _showCustomerDetails(
+      BuildContext context, Map<String, dynamic> customer) async {
     final db = getIt<AppDatabase>();
-    final topProducts = await db.getCustomerTopProducts(customer['id'] as String);
+    final topProducts =
+        await db.getCustomerTopProducts(customer['id'] as String);
+    if (!context.mounted) return;
 
     GlassBottomSheet.show(
       context,
@@ -776,10 +907,13 @@ class ReportsScreen extends ConsumerWidget {
               children: [
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: DesignColors.teal.withValues(alpha:0.1),
+                  backgroundColor: DesignColors.teal.withValues(alpha: 0.1),
                   child: Text(
                     (customer['name'] as String).substring(0, 1).toUpperCase(),
-                    style: const TextStyle(color: DesignColors.teal, fontWeight: FontWeight.bold, fontSize: 20),
+                    style: const TextStyle(
+                        color: DesignColors.teal,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -787,9 +921,11 @@ class ReportsScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(customer['name'] as String, style: Theme.of(context).textTheme.titleMedium),
+                      Text(customer['name'] as String,
+                          style: Theme.of(context).textTheme.titleMedium),
                       if ((customer['phone'] as String?)?.isNotEmpty == true)
-                        Text(customer['phone'] as String, style: Theme.of(context).textTheme.bodySmall),
+                        Text(customer['phone'] as String,
+                            style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
@@ -819,18 +955,22 @@ class ReportsScreen extends ConsumerWidget {
             ),
             if (topProducts.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text('Top Products', style: Theme.of(context).textTheme.titleSmall),
+              Text('Top Products',
+                  style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 8),
               ...topProducts.map((p) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: Text(p['productName'] as String, overflow: TextOverflow.ellipsis)),
-                    Text('${p['totalQty']} units', style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-              )),
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                            child: Text(p['productName'] as String,
+                                overflow: TextOverflow.ellipsis)),
+                        Text('${p['totalQty']} units',
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ],
+                    ),
+                  )),
             ],
             const SizedBox(height: 8),
           ],
@@ -840,18 +980,18 @@ class ReportsScreen extends ConsumerWidget {
   }
 
   IconData _paymentIcon(String method) => switch (method.toUpperCase()) {
-    'CASH' => Icons.money_rounded,
-    'MPESA' || 'M-PESA' => Icons.phone_android_rounded,
-    'CARD' || 'CREDIT_CARD' || 'DEBIT_CARD' => Icons.credit_card_rounded,
-    _ => Icons.payment_rounded,
-  };
+        'CASH' => Icons.money_rounded,
+        'MPESA' || 'M-PESA' => Icons.phone_android_rounded,
+        'CARD' || 'CREDIT_CARD' || 'DEBIT_CARD' => Icons.credit_card_rounded,
+        _ => Icons.payment_rounded,
+      };
 
   Color _paymentColor(String method) => switch (method.toUpperCase()) {
-    'CASH' => DesignColors.cash,
-    'MPESA' || 'M-PESA' => DesignColors.mpesa,
-    'CARD' || 'CREDIT_CARD' || 'DEBIT_CARD' => DesignColors.credit,
-    _ => DesignColors.brand,
-  };
+        'CASH' => DesignColors.cash,
+        'MPESA' || 'M-PESA' => DesignColors.mpesa,
+        'CARD' || 'CREDIT_CARD' || 'DEBIT_CARD' => DesignColors.credit,
+        _ => DesignColors.brand,
+      };
 }
 
 // ===== Glass Card Tile =====
@@ -879,15 +1019,15 @@ class _GlassCardTile extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         borderRadius: 16,
         blur: 12,
-        tint: color.withValues(alpha:0.08),
-        borderColor: color.withValues(alpha:0.2),
+        tint: color.withValues(alpha: 0.08),
+        borderColor: color.withValues(alpha: 0.2),
         child: Row(
           children: [
             Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: color.withValues(alpha:0.2),
+                color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 22),
@@ -921,7 +1061,7 @@ class _GlassCardTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withValues(alpha:0.2),
+                color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
@@ -962,7 +1102,7 @@ class _ReportTile extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: color.withValues(alpha:0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color, size: 20),
@@ -985,11 +1125,22 @@ class _DateRangeSelector extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          _buildPeriodChip(context, ref, 'Today', range.label == 'Today', () => ref.read(dateRangeProvider.notifier).setToday()),
+          _buildPeriodChip(context, ref, 'Today', range.label == 'Today',
+              () => ref.read(dateRangeProvider.notifier).setToday()),
           const SizedBox(width: 8),
-          _buildPeriodChip(context, ref, 'This Week', range.label == 'This Week', () => ref.read(dateRangeProvider.notifier).setThisWeek()),
+          _buildPeriodChip(
+              context,
+              ref,
+              'This Week',
+              range.label == 'This Week',
+              () => ref.read(dateRangeProvider.notifier).setThisWeek()),
           const SizedBox(width: 8),
-          _buildPeriodChip(context, ref, 'This Month', range.label == 'This Month', () => ref.read(dateRangeProvider.notifier).setThisMonth()),
+          _buildPeriodChip(
+              context,
+              ref,
+              'This Month',
+              range.label == 'This Month',
+              () => ref.read(dateRangeProvider.notifier).setThisMonth()),
           const SizedBox(width: 8),
           _buildPeriodChip(
             context,
@@ -1011,7 +1162,9 @@ class _DateRangeSelector extends ConsumerWidget {
                 ),
               );
               if (picked != null) {
-                ref.read(dateRangeProvider.notifier).setCustom(picked.start, picked.end);
+                ref
+                    .read(dateRangeProvider.notifier)
+                    .setCustom(picked.start, picked.end);
               }
             },
           ),
@@ -1020,22 +1173,31 @@ class _DateRangeSelector extends ConsumerWidget {
     );
   }
 
-  Widget _buildPeriodChip(BuildContext context, WidgetRef ref, String label, bool selected, VoidCallback onTap) {
+  Widget _buildPeriodChip(BuildContext context, WidgetRef ref, String label,
+      bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: DesignAnimation.fast,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? DesignColors.brand.withValues(alpha:0.12) : Colors.transparent,
+          color: selected
+              ? DesignColors.brand.withValues(alpha: 0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? DesignColors.brand.withValues(alpha:0.3) : DesignColors.surfaceBorder,
+            color: selected
+                ? DesignColors.brand.withValues(alpha: 0.3)
+                : DesignColors.surfaceBorder,
             width: selected ? 1.5 : 1,
           ),
         ),
         child: Text(
-          label.contains('–') ? label.length > 12 ? '${label.substring(0, 12)}...' : label : label,
+          label.contains('–')
+              ? label.length > 12
+                  ? '${label.substring(0, 12)}...'
+                  : label
+              : label,
           style: TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -1045,4 +1207,36 @@ class _DateRangeSelector extends ConsumerWidget {
       ),
     );
   }
+}
+
+// Helper method to build report navigation tabs
+Widget _buildReportNavTab(
+    BuildContext context, String title, bool isActive, VoidCallback onTap) {
+  return GestureDetector(
+    onTap: () {
+      Navigator.pop(context);
+      Future<void>.delayed(Duration.zero, onTap);
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isActive
+            ? DesignColors.brand.withValues(alpha: 0.1)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isActive ? DesignColors.brand : DesignColors.surfaceBorder,
+          width: isActive ? 1.5 : 1,
+        ),
+      ),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+          color: isActive ? DesignColors.brand : DesignColors.textSecondary,
+        ),
+      ),
+    ),
+  );
 }

@@ -92,24 +92,14 @@ class _StockRequestsListScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text(
-          'Stock Requests',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      appBar: BrandedAppBar(
+        title: 'Stock Requests',
         actions: [
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.filter_list_rounded,
@@ -124,12 +114,12 @@ class _StockRequestsListScreenState
       body: PageContainer(
         child: Column(
           children: [
-            const SizedBox(height: kToolbarHeight + 8),
+            const SizedBox(height: 16),
             // Premium Tab Bar
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: TabBar(
@@ -279,7 +269,7 @@ class _StockRequestsListScreenState
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha:0.25),
+                color: DesignColors.surfaceBorder.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -488,9 +478,9 @@ class _StockRequestsListScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha:0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -595,7 +585,7 @@ class _StockRequestsListScreenState
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                      color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(Icons.close, size: 18),
@@ -611,7 +601,7 @@ class _StockRequestsListScreenState
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha:0.1),
+                    color: DesignColors.brand.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.inventory_2_rounded,
@@ -679,7 +669,7 @@ class _StockRequestsListScreenState
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: DesignColors.surfaceBorder.withValues(alpha:0.2),
+                  color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -704,7 +694,7 @@ class _StockRequestsListScreenState
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+            color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, size: 18, color: DesignColors.textSecondary),

@@ -19,8 +19,7 @@ class StockRequestScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<StockRequestScreen> createState() =>
-      _StockRequestScreenState();
+  ConsumerState<StockRequestScreen> createState() => _StockRequestScreenState();
 }
 
 class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
@@ -115,19 +114,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text(
-          'Request Stock',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: const BrandedAppBar(title: 'Request Stock'),
       body: PageContainer(
         withScroll: true,
         child: _showSuccess ? _buildSuccessView() : _buildForm(),
@@ -145,10 +132,10 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: DesignColors.success.withValues(alpha:0.1),
+                color: DesignColors.success.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                    color: DesignColors.success.withValues(alpha:0.2)),
+                    color: DesignColors.success.withValues(alpha: 0.2)),
               ),
               child: const Icon(
                 Icons.check_circle_rounded,
@@ -217,8 +204,8 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: _selectedProductName != null
-                        ? DesignColors.brand.withValues(alpha:0.1)
-                        : DesignColors.surfaceBorder.withValues(alpha:0.3),
+                        ? DesignColors.brand.withValues(alpha: 0.1)
+                        : DesignColors.surfaceBorder.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -283,8 +270,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                 decoration: InputDecoration(
                   labelText: 'Quantity',
                   hintText: 'Enter quantity needed',
-                  hintStyle:
-                      TextStyle(color: DesignColors.textTertiary),
+                  hintStyle: TextStyle(color: DesignColors.textTertiary),
                   labelStyle: const TextStyle(
                     color: DesignColors.textSecondary,
                     fontWeight: FontWeight.w500,
@@ -296,7 +282,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                   filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha:0.15),
+                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -307,11 +293,11 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                        color: DesignColors.brand, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -351,7 +337,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                   ),
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha:0.15),
+                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -362,24 +348,20 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                        color: DesignColors.brand, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 dropdownColor: Theme.of(context).brightness == Brightness.dark
                     ? DesignColors.darkSurface
                     : Colors.white,
                 items: const [
-                  DropdownMenuItem(
-                      value: 'low', child: Text('Low')),
-                  DropdownMenuItem(
-                      value: 'normal', child: Text('Normal')),
-                  DropdownMenuItem(
-                      value: 'high', child: Text('High')),
-                  DropdownMenuItem(
-                      value: 'urgent', child: Text('Urgent')),
+                  DropdownMenuItem(value: 'low', child: Text('Low')),
+                  DropdownMenuItem(value: 'normal', child: Text('Normal')),
+                  DropdownMenuItem(value: 'high', child: Text('High')),
+                  DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
                 ],
                 onChanged: (value) {
                   if (value != null) {
@@ -405,15 +387,14 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                 decoration: InputDecoration(
                   labelText: 'Reason (Optional)',
                   hintText: 'Why do you need this stock?',
-                  hintStyle:
-                      TextStyle(color: DesignColors.textTertiary),
+                  hintStyle: TextStyle(color: DesignColors.textTertiary),
                   labelStyle: const TextStyle(
                     color: DesignColors.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha:0.15),
+                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -424,11 +405,11 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                        color: DesignColors.brand, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,
@@ -452,7 +433,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: DesignColors.info.withValues(alpha:0.1),
+                          color: DesignColors.info.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(Icons.image_rounded,
@@ -470,8 +451,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                       const Spacer(),
                       if (_images.isNotEmpty)
                         TextButton(
-                          onPressed: () =>
-                              setState(() => _images.clear()),
+                          onPressed: () => setState(() => _images.clear()),
                           child: const Text(
                             'Clear',
                             style: TextStyle(
@@ -546,20 +526,18 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content:
-                                  Text('Image upload coming soon')),
+                              content: Text('Image upload coming soon')),
                         );
                       },
                       icon: const Icon(Icons.add_a_photo_rounded),
                       label: const Text('Add Photo'),
                       style: OutlinedButton.styleFrom(
-                        minimumSize:
-                            const Size(double.infinity, 48),
+                        minimumSize: const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        side: const BorderSide(
-                            color: DesignColors.surfaceBorder),
+                        side:
+                            const BorderSide(color: DesignColors.surfaceBorder),
                         foregroundColor: DesignColors.textSecondary,
                       ),
                     ),

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:shelf/shelf.dart' as shelf;
 import 'auth_token.dart';
 
@@ -21,7 +20,8 @@ shelf.Middleware corsMiddleware() {
 Map<String, String> _corsHeaders() => {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device-ID',
+      'Access-Control-Allow-Headers':
+          'Content-Type, Authorization, X-Device-ID',
       'Access-Control-Max-Age': '86400',
     };
 
@@ -85,15 +85,18 @@ shelf.Middleware authMiddleware({
       final token = AuthToken.extractBearer(authHeader);
 
       if (token == null) {
-        return shelf.Response(401,
-          body: jsonEncode({'error': 'Missing or invalid Authorization header'}),
+        return shelf.Response(
+          401,
+          body:
+              jsonEncode({'error': 'Missing or invalid Authorization header'}),
           headers: {'content-type': 'application/json'},
         );
       }
 
       final payload = AuthToken.validate(token);
       if (payload == null) {
-        return shelf.Response(401,
+        return shelf.Response(
+          401,
           body: jsonEncode({'error': 'Invalid or expired token'}),
           headers: {'content-type': 'application/json'},
         );
@@ -126,7 +129,8 @@ shelf.Middleware errorHandler() {
         print('[Server Error] $e');
         print(stack);
         return shelf.Response.internalServerError(
-          body: jsonEncode({'error': 'Internal server error', 'message': e.toString()}),
+          body: jsonEncode(
+              {'error': 'Internal server error', 'message': e.toString()}),
           headers: {'content-type': 'application/json'},
         );
       }

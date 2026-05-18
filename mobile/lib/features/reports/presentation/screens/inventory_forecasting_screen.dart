@@ -1,9 +1,6 @@
-import 'dart:math' show Random;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
@@ -72,7 +69,6 @@ class _InventoryForecastingScreenState
     // Use actual low-stock data from the database as forecast
     final forecast = <Map<String, dynamic>>[];
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     final now = DateTime.now();
 
     // Use real stock data to populate forecast
@@ -86,7 +82,8 @@ class _InventoryForecastingScreenState
         // Base demand estimated from historical data (average items sold per day from inventory)
         final avgStock = inventoryData.isEmpty
             ? 100
-            : inventoryData.fold<int>(0, (sum, item) => sum + (item['stock'] as int? ?? 0)) ~/
+            : inventoryData.fold<int>(
+                    0, (sum, item) => sum + (item['stock'] as int? ?? 0)) ~/
                 (inventoryData.length * 3).clamp(1, 100);
         final lowStockCount = lowStockItems.length;
 
@@ -167,7 +164,10 @@ class _InventoryForecastingScreenState
     final lowStockCount = _lowStockItems.length;
     final fastMovingCount = _fastMovingItems.length;
     final slowMovingCount = _slowMovingItems.length;
-    final totalReorderRisk = (lowStockCount / (lowStockCount + fastMovingCount + slowMovingCount + 1) * 100).round();
+    final totalReorderRisk = (lowStockCount /
+            (lowStockCount + fastMovingCount + slowMovingCount + 1) *
+            100)
+        .round();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -197,8 +197,8 @@ class _InventoryForecastingScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.brand.withValues(alpha:0.05),
-      borderColor: DesignColors.brand.withValues(alpha:0.12),
+      tint: DesignColors.brand.withValues(alpha: 0.05),
+      borderColor: DesignColors.brand.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -207,10 +207,10 @@ class _InventoryForecastingScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.15),
+                  color: DesignColors.brand.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.brand.withValues(alpha:0.25),
+                    color: DesignColors.brand.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -240,7 +240,10 @@ class _InventoryForecastingScreenState
                   LineChartBarData(
                     spots: [
                       for (int i = 0; i < _forecastData.length; i++)
-                        FlSpot(i.toDouble(), (_forecastData[i]['forecastedDemand'] ?? 0).toDouble()),
+                        FlSpot(
+                            i.toDouble(),
+                            (_forecastData[i]['forecastedDemand'] ?? 0)
+                                .toDouble()),
                     ],
                     isCurved: true,
                     gradient: const LinearGradient(
@@ -253,8 +256,8 @@ class _InventoryForecastingScreenState
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          DesignColors.brand.withValues(alpha:0.3),
-                          DesignColors.brand.withValues(alpha:0.0),
+                          DesignColors.brand.withValues(alpha: 0.3),
+                          DesignColors.brand.withValues(alpha: 0.0),
                         ],
                       ),
                     ),
@@ -317,7 +320,7 @@ class _InventoryForecastingScreenState
                   horizontalInterval: 50,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(
-                      color: DesignColors.surfaceBorder.withValues(alpha:0.5),
+                      color: DesignColors.surfaceBorder.withValues(alpha: 0.5),
                       strokeWidth: 1,
                     );
                   },
@@ -336,8 +339,8 @@ class _InventoryForecastingScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.warning.withValues(alpha:0.05),
-      borderColor: DesignColors.warning.withValues(alpha:0.12),
+      tint: DesignColors.warning.withValues(alpha: 0.05),
+      borderColor: DesignColors.warning.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -346,10 +349,10 @@ class _InventoryForecastingScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.warning.withValues(alpha:0.15),
+                  color: DesignColors.warning.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.warning.withValues(alpha:0.25),
+                    color: DesignColors.warning.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -406,11 +409,14 @@ class _InventoryForecastingScreenState
                       height: 44,
                       decoration: BoxDecoration(
                         color: isOut
-                            ? DesignColors.error.withValues(alpha:0.15)
-                            : DesignColors.warning.withValues(alpha:0.15),
+                            ? DesignColors.error.withValues(alpha: 0.15)
+                            : DesignColors.warning.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: (isOut ? DesignColors.error : DesignColors.warning).withValues(alpha:0.3),
+                          color: (isOut
+                                  ? DesignColors.error
+                                  : DesignColors.warning)
+                              .withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -419,7 +425,8 @@ class _InventoryForecastingScreenState
                           isOut
                               ? Icons.error_outline_rounded
                               : Icons.inventory_2_outlined,
-                          color: isOut ? DesignColors.error : DesignColors.warning,
+                          color:
+                              isOut ? DesignColors.error : DesignColors.warning,
                           size: 24,
                         ),
                       ),
@@ -458,7 +465,9 @@ class _InventoryForecastingScreenState
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: isOut ? DesignColors.error : DesignColors.warning,
+                            color: isOut
+                                ? DesignColors.error
+                                : DesignColors.warning,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -501,8 +510,8 @@ class _InventoryForecastingScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.success.withValues(alpha:0.05),
-      borderColor: DesignColors.success.withValues(alpha:0.12),
+      tint: DesignColors.success.withValues(alpha: 0.05),
+      borderColor: DesignColors.success.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -511,10 +520,10 @@ class _InventoryForecastingScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.success.withValues(alpha:0.15),
+                  color: DesignColors.success.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.success.withValues(alpha:0.25),
+                    color: DesignColors.success.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -556,7 +565,7 @@ class _InventoryForecastingScreenState
                       height: 36,
                       decoration: BoxDecoration(
                         color: index == 0
-                            ? Colors.amber.withValues(alpha:0.2)
+                            ? Colors.amber.withValues(alpha: 0.2)
                             : DesignColors.surfaceSubtle,
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -564,7 +573,9 @@ class _InventoryForecastingScreenState
                         child: Text(
                           '#${index + 1}',
                           style: TextStyle(
-                            color: index == 0 ? Colors.amber[700] : DesignColors.textSecondary,
+                            color: index == 0
+                                ? Colors.amber[700]
+                                : DesignColors.textSecondary,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
@@ -615,8 +626,8 @@ class _InventoryForecastingScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.accent.withValues(alpha:0.05),
-      borderColor: DesignColors.accent.withValues(alpha:0.12),
+      tint: DesignColors.accent.withValues(alpha: 0.05),
+      borderColor: DesignColors.accent.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -625,10 +636,10 @@ class _InventoryForecastingScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha:0.15),
+                  color: DesignColors.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.accent.withValues(alpha:0.25),
+                    color: DesignColors.accent.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),

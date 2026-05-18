@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'package:drift/drift.dart' hide Column;
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart' show Router;
 import '../../../database/app_database.dart';
-import '../middleware.dart';
 
 /// Report routes for phone server mode.
 class ReportRoutes {
@@ -68,26 +66,37 @@ class ReportRoutes {
     final sales = await _db.getSalesByDateRange(from, to);
     final totalRevenue = sales.fold<double>(0, (sum, s) => sum + s.total);
 
-    // Cost of goods sold from inventory report
-    final inventory = await _db.getInventoryReport();
-    final totalCost = inventory.fold<double>(0, (sum, item) {
-      final costPrice = (item['costPrice'] as num?)?.toDouble() ?? 0;
-      final stock = (item['stock'] as num?)?.toInt() ?? 0;
-      return sum + (costPrice * stock);
-    });
+    // NEW: Simplified profit calculation using today's purchases
+    final todaysPurchases = await _db.getTodaysTotalPurchases(branchId);
+    final totalCost = todaysPurchases; // Use actual purchases for the day
 
-    // Expenses (use a rough estimate for now)
-    final totalExpenses = totalRevenue * 0.3; // 30% estimated overhead
+    // NEW: User-adjustable profit calculation
+    // Users can manually adjust purchases to match their accounting
+    final manualAdjustments = await _db.getTodaysPurchases(branchId);
+    final hasManualAdjustments = manualAdjustments.any((p) => p.isManual);
+
+    // If user has made manual adjustments, use adjusted amount
+    final adjustedCost = hasManualAdjustments
+        ? manualAdjustments.fold(0.0, (sum, p) => sum + p.amount)
+        : todaysPurchases;
+
+    // NEW: Simple profit = Sales - Cost of Goods Purchased Today
+    // No complex overhead estimates - clean and simple
+    final netProfit = totalRevenue - adjustedCost;
 
     return shelf.Response.ok(
       jsonEncode({
         'date': date,
         'branchId': branchId,
         'revenue': totalRevenue,
-        'costOfGoods': totalCost,
-        'expenses': totalExpenses,
-        'grossProfit': totalRevenue - totalCost,
-        'netProfit': totalRevenue - totalCost - totalExpenses,
+        'costOfGoodsPurchasedToday': totalCost,
+        'hasManualAdjustments': hasManualAdjustments,
+        'adjustedCostOfGoods': adjustedCost,
+        'simpleProfit': netProfit, // Sales - Cost of Goods Purchased
+        'profitMargin': totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
+        // Additional insights for user
+        'stockInvestmentToday': totalCost,
+        'returnOnInvestment': totalCost > 0 ? (netProfit / totalCost) * 100 : 0,
       }),
       headers: {'content-type': 'application/json'},
     );

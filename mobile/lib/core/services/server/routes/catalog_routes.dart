@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'package:drift/drift.dart' hide Column;
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart' show Router;
 import '../../../database/app_database.dart';
-import '../middleware.dart';
 
 /// Catalog routes for phone server mode.
 class CatalogRoutes {

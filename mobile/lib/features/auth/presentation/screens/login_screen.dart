@@ -69,8 +69,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _checkBiometric() async {
+    debugPrint('[LoginScreen] Checking biometric availability...');
     final available =
         await ref.read(authControllerProvider.notifier).isBiometricAvailable();
+    debugPrint('[LoginScreen] Biometric available: $available');
     if (mounted) setState(() => _biometricAvailable = available);
   }
 
@@ -88,10 +90,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _handleBiometricLogin() async {
+    debugPrint('[LoginScreen] Attempting biometric login...');
     final result =
         await ref.read(authControllerProvider.notifier).loginWithBiometrics();
+    debugPrint('[LoginScreen] Biometric login result: $result');
+
     if (result && mounted) {
+      debugPrint(
+          '[LoginScreen] Biometric login successful, navigating to home');
       context.go('/');
+    } else {
+      debugPrint('[LoginScreen] Biometric login failed');
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Biometric authentication failed. Please try again or use email login.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
     }
   }
 
@@ -171,9 +188,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         child: _buildLogoSection(isSmallScreen),
                       ),
                       SizedBox(
-                        height: isSmallScreen
-                            ? DesignSpacing.md
-                            : DesignSpacing.xl,
+                        height:
+                            isSmallScreen ? DesignSpacing.md : DesignSpacing.xl,
                       ),
 
                       // Premium form card with slide/fade
@@ -241,10 +257,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ],
             ),
-            child: Icon(
-              Icons.storefront_rounded,
-              size: isSmallScreen ? 36 : 44,
-              color: Colors.white,
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/levisa_adventures_logo.png',
+                fit: BoxFit.cover,
+                semanticLabel: 'Levisa Adventures logo',
+              ),
             ),
           ),
         ),
@@ -325,7 +343,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 return null;
               },
             ),
-            SizedBox(height: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg),
+            SizedBox(
+                height: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg),
 
             // Password field
             _buildPremiumTextField(
@@ -406,7 +425,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // Forgot password link
                 GestureDetector(
                   onTap: () {
-                    showGlassSnackBar(context, 'Contact administrator to reset password',
+                    showGlassSnackBar(
+                      context,
+                      'Contact administrator to reset password',
                       icon: Icons.lock_reset_rounded,
                       color: DesignColors.info,
                     );
@@ -484,8 +505,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
                 Padding(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: DesignSpacing.md),
+                  padding: EdgeInsets.symmetric(horizontal: DesignSpacing.md),
                   child: Text(
                     'or',
                     style: TextStyle(
@@ -522,7 +542,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     child: _buildAltLoginButton(
                       icon: Icons.fingerprint_rounded,
                       label: 'Biometric',
-                      onTap: authState.isLoading ? () {} : () => _handleBiometricLogin(),
+                      onTap: authState.isLoading
+                          ? () {}
+                          : () => _handleBiometricLogin(),
                     ),
                   ),
               ],
@@ -709,7 +731,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 Icon(
                   running ? Icons.dns : Icons.dns_outlined,
                   size: 18,
-                  color: running ? DesignColors.success : Colors.white.withValues(alpha: 0.5),
+                  color: running
+                      ? DesignColors.success
+                      : Colors.white.withValues(alpha: 0.5),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -717,7 +741,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: running ? DesignColors.success : Colors.white.withValues(alpha: 0.6),
+                    color: running
+                        ? DesignColors.success
+                        : Colors.white.withValues(alpha: 0.6),
                   ),
                 ),
               ],

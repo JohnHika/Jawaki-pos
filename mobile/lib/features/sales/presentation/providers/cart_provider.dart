@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:levisa_adventures_pos/core/di/injection.dart';
+import 'package:levisa_adventures_pos/core/database/app_database.dart';
 
 const _uuid = Uuid();
 
@@ -167,7 +169,58 @@ final parkedSalesProvider =
 // ════════ CART NOTIFIER ════════
 
 class CartNotifier extends StateNotifier<CartState> {
+  final AppDatabase _database = getIt<AppDatabase>();
+
   CartNotifier() : super(const CartState());
+
+  // Stock validation method
+  Future<Map<String, dynamic>> _validateStockAvailability(String productId, int quantity) async {
+    try {
+      final stock = await _database.getStockForProduct(productId);
+
+      if (stock == null) {
+        return {
+          'available': false,
+          'message': 'Product not found in inventory',
+          'currentStock': 0,
+          'required': quantity
+        };
+      }
+
+      if (stock.quantity <= 0) {
+        return {
+          'available': false,
+          'message': 'Product is out of stock',
+          'currentStock': stock.quantity,
+          'required': quantity
+        };
+      }
+
+      if (stock.quantity < quantity) {
+        return {
+          'available': false,
+          'message': 'Insufficient stock available',
+          'currentStock': stock.quantity,
+          'required': quantity,
+          'availableQuantity': stock.quantity
+        };
+      }
+
+      return {
+        'available': true,
+        'message': 'Stock available',
+        'currentStock': stock.quantity,
+        'required': quantity
+      };
+    } catch (e) {
+      return {
+        'available': false,
+        'message': 'Error checking stock: $e',
+        'currentStock': 0,
+        'required': quantity
+      };
+    }
+  }
 
   void addItem({
     required String productId,
@@ -177,7 +230,16 @@ class CartNotifier extends StateNotifier<CartState> {
     int quantity = 1,
     double discount = 0,
     String? notes,
-  }) {
+  }) async {
+    // Check stock availability with warning only (as requested)
+    final stockCheck = await _validateStockAvailability(productId, quantity);
+
+    if (!stockCheck['available']) {
+      // Show warning but allow adding to cart
+      print('WARNING: ${stockCheck['message']}');
+      print('Product: $productName, Available: ${stockCheck['currentStock']}, Requested: $quantity');
+    }
+
     final existingIndex =
         state.items.indexWhere((i) => i.productId == productId);
 
@@ -203,10 +265,19 @@ class CartNotifier extends StateNotifier<CartState> {
     }
   }
 
-  void updateQuantity(String productId, int quantity) {
+  void updateQuantity(String productId, int quantity) async {
     if (quantity <= 0) {
       removeItem(productId);
       return;
+    }
+
+    // Check stock availability with warning only (as requested)
+    final stockCheck = await _validateStockAvailability(productId, quantity);
+
+    if (!stockCheck['available']) {
+      // Show warning but allow updating quantity
+      print('WARNING: ${stockCheck['message']}');
+      print('Product: ${state.items.firstWhere((i) => i.productId == productId).productName}, Available: ${stockCheck['currentStock']}, Requested: $quantity');
     }
 
     final updatedItems = state.items.map((item) {
@@ -258,6 +329,26 @@ class CartNotifier extends StateNotifier<CartState> {
 
   void clear() {
     state = const CartState();
+  }
+
+  // Validate stock for entire cart
+  Future<List<Map<String, dynamic>>> validateCartStock() async {
+    final results = <Map<String, dynamic>>[];
+
+    for (final item in state.items) {
+      final stockCheck = await _validateStockAvailability(item.productId, item.quantity);
+      results.add({
+        'productId': item.productId,
+        'productName': item.productName,
+        'sku': item.sku,
+        'requestedQuantity': item.quantity,
+        'available': stockCheck['available'],
+        'message': stockCheck['message'],
+        'currentStock': stockCheck['currentStock'],
+      });
+    }
+
+    return results;
   }
 
   List<Map<String, dynamic>> getItemsForApi() {

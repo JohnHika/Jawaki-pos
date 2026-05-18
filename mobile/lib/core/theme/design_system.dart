@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 
 /// ═══════════════════════════════════════════════════════════════
 /// LEVISA ADVENTURES — PREMIUM DESIGN SYSTEM
@@ -8,61 +7,63 @@ import 'dart:math' as math;
 
 // ─── Premium Color Palette ─────────────────────────────────────
 class DesignColors {
-  // Brand — Deep Indigo → Vibrant Purple spectrum
-  static const Color brand = Color(0xFF4F46E5);
-  static const Color brandLight = Color(0xFF818CF8);
-  static const Color brandDark = Color(0xFF3730A3);
-  static const Color brandSubtle = Color(0xFFEEF2FF);
+  // Brand - Levisa forest green with warm travel accents.
+  static const Color brand = Color(0xFF1F7A4D);
+  static const Color brandLight = Color(0xFF4CAF7B);
+  static const Color brandDark = Color(0xFF0B3D2E);
+  static const Color brandSubtle = Color(0xFFEAF6EF);
 
   // Accent — Warm Amber/Gold for highlights
-  static const Color accent = Color(0xFFF59E0B);
-  static const Color accentLight = Color(0xFFFCD34D);
-  static const Color accentSubtle = Color(0xFFFFFBF0);
+  static const Color accent = Color(0xFFD99A2B);
+  static const Color accentLight = Color(0xFFF2C45B);
+  static const Color accentSubtle = Color(0xFFFFF6DD);
 
   // Secondary — Teal for positive actions
-  static const Color teal = Color(0xFF0D9488);
-  static const Color tealLight = Color(0xFF5EEAD4);
-  static const Color tealSubtle = Color(0xFFF0FDFA);
+  static const Color teal = Color(0xFF148C88);
+  static const Color tealLight = Color(0xFF63C6BE);
+  static const Color tealSubtle = Color(0xFFE6F7F5);
+  static const Color terracotta = Color(0xFFC65F3A);
+  static const Color terracottaSubtle = Color(0xFFFFECE5);
 
-  // Surface tones — Clean, airy
+  // Surface tones - warm, clean, and less clinical.
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFF8FAFC);
-  static const Color surfaceSubtle = Color(0xFFF1F5F9);
-  static const Color surfaceBorder = Color(0xFFE2E8F0);
-  static const Color surfaceBorderLight = Color(0xFFF1F5F9);
+  static const Color surfaceMuted = Color(0xFFF7F6F1);
+  static const Color surfaceSubtle = Color(0xFFF0EFE7);
+  static const Color surfaceBorder = Color(0xFFE1DED2);
+  static const Color surfaceBorderLight = Color(0xFFF0EFE7);
 
   // Text — Excellent hierarchy
-  static const Color textPrimary = Color(0xFF0F172A);
-  static const Color textSecondary = Color(0xFF475569);
-  static const Color textTertiary = Color(0xFF94A3B8);
+  static const Color textPrimary = Color(0xFF14231C);
+  static const Color textSecondary = Color(0xFF4E5D55);
+  static const Color textTertiary = Color(0xFF8E9891);
   static const Color textInverse = Color(0xFFFFFFFF);
   static const Color textOnBrand = Color(0xFFFFFFFF);
 
   // Status — Vibrant but not harsh
-  static const Color success = Color(0xFF10B981);
-  static const Color successSubtle = Color(0xFFD1FAE5);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color warningSubtle = Color(0xFFFEF3C7);
-  static const Color error = Color(0xFFEF4444);
-  static const Color errorSubtle = Color(0xFFFEE2E2);
-  static const Color info = Color(0xFF3B82F6);
-  static const Color infoSubtle = Color(0xFFDBEAFE);
+  static const Color success = Color(0xFF198754);
+  static const Color successSubtle = Color(0xFFDFF3E8);
+  static const Color warning = Color(0xFFD99A2B);
+  static const Color warningSubtle = Color(0xFFFFF0C2);
+  static const Color error = Color(0xFFD94435);
+  static const Color errorSubtle = Color(0xFFFFE3DF);
+  static const Color info = Color(0xFF2F80A7);
+  static const Color infoSubtle = Color(0xFFE2F1F7);
 
   // Payment method colors
   static const Color mpesa = Color(0xFF4CAF50);
   static const Color pesapal = Color(0xFF2196F3);
-  static const Color touristtap = Color(0xFF9C27B0);
+  static const Color touristtap = Color(0xFFC65F3A);
   static const Color cash = Color(0xFF607D8B);
   static const Color credit = Color(0xFFF97316);
 
   // Dark mode
-  static const Color darkBg = Color(0xFF0B1120);
-  static const Color darkSurface = Color(0xFF131C31);
-  static const Color darkSurfaceElevated = Color(0xFF1A2744);
-  static const Color darkBorder = Color(0xFF1E3A5F);
-  static const Color darkTextPrimary = Color(0xFFF1F5F9);
-  static const Color darkTextSecondary = Color(0xFF94A3B8);
-  static const Color darkTextTertiary = Color(0xFF64748B);
+  static const Color darkBg = Color(0xFF08140F);
+  static const Color darkSurface = Color(0xFF10221A);
+  static const Color darkSurfaceElevated = Color(0xFF173126);
+  static const Color darkBorder = Color(0xFF254A3A);
+  static const Color darkTextPrimary = Color(0xFFF4F7F2);
+  static const Color darkTextSecondary = Color(0xFFBBC8BE);
+  static const Color darkTextTertiary = Color(0xFF7E9288);
 
   // Glass (using hex alpha = 0x2E for 18%, 0x40 for 25%, 0x14 for 8%)
   static const Color glassWhite = Color(0x2EFFFFFF);
@@ -71,7 +72,155 @@ class DesignColors {
   static const Color glassDarkBorder = Color(0x14FFFFFF);
 }
 
+class DesignGradients {
+  static const LinearGradient brand = LinearGradient(
+    colors: [DesignColors.brandDark, DesignColors.brand, DesignColors.accent],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient surface = LinearGradient(
+    colors: [Color(0xFFFAF9F4), Color(0xFFEAF6EF)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  static const LinearGradient darkSurface = LinearGradient(
+    colors: [DesignColors.darkBg, DesignColors.darkSurface],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+}
+
 // ─── Spacing & Sizing Scale ────────────────────────────────────
+class LevisaLogoTitle extends StatelessWidget {
+  final double logoSize;
+  final bool showText;
+
+  const LevisaLogoTitle({
+    super.key,
+    this.logoSize = 34,
+    this.showText = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: logoSize,
+          height: logoSize,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+            border: Border.all(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: Image.asset(
+              'assets/images/levisa_adventures_logo.png',
+              fit: BoxFit.cover,
+              semanticLabel: 'Levisa Adventures logo',
+            ),
+          ),
+        ),
+        if (showText) ...[
+          const SizedBox(width: 10),
+          Text(
+            'Levisa Adventures',
+            style: TextStyle(
+              color: isDark
+                  ? DesignColors.darkTextPrimary
+                  : DesignColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String title;
+  final List<Widget>? actions;
+  final Widget? leading;
+  final bool showLogo;
+
+  const BrandedAppBar({
+    super.key,
+    required this.title,
+    this.actions,
+    this.leading,
+    this.showLogo = true,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(62);
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AppBar(
+      automaticallyImplyLeading: leading == null,
+      leading: leading,
+      centerTitle: false,
+      titleSpacing: leading == null ? 16 : 0,
+      toolbarHeight: preferredSize.height,
+      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+      foregroundColor:
+          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showLogo) ...[
+            const LevisaLogoTitle(logoSize: 32),
+            const SizedBox(width: 10),
+          ],
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: actions,
+      shape: Border(
+        bottom: BorderSide(
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          width: 0.75,
+        ),
+      ),
+    );
+  }
+}
+
 class DesignSpacing {
   static const double xs = 4;
   static const double sm = 8;
@@ -139,9 +288,9 @@ class ShimmerWidget extends StatefulWidget {
     required double size,
     this.baseColor,
     this.highlightColor,
-  }) : width = size,
-       height = size,
-       borderRadius = size / 2;
+  })  : width = size,
+        height = size,
+        borderRadius = size / 2;
 
   @override
   State<ShimmerWidget> createState() => _ShimmerWidgetState();
@@ -209,7 +358,8 @@ class ProductCardShimmer extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        side: BorderSide(color: DesignColors.surfaceBorder.withValues(alpha:0.5)),
+        side: BorderSide(
+            color: DesignColors.surfaceBorder.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +372,10 @@ class ProductCardShimmer extends StatelessWidget {
                     const BorderRadius.vertical(top: Radius.circular(14)),
                 color: Colors.transparent,
               ),
-              child: const ShimmerWidget(width: double.infinity, height: double.infinity, borderRadius: 14),
+              child: const ShimmerWidget(
+                  width: double.infinity,
+                  height: double.infinity,
+                  borderRadius: 14),
             ),
           ),
           Expanded(
@@ -279,8 +432,8 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final effectiveTint = tint ??
-        (isDark ? DesignColors.glassDark : DesignColors.glassWhite);
+    final effectiveTint =
+        tint ?? (isDark ? DesignColors.glassDark : DesignColors.glassWhite);
     final effectiveBorder = borderColor ??
         (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder);
 
@@ -295,12 +448,14 @@ class GlassCard extends StatelessWidget {
         boxShadow: boxShadow ??
             [
               BoxShadow(
-                color: (isDark ? Colors.black : Colors.black).withValues(alpha: isDark ? 0.3 : 0.06),
+                color: (isDark ? Colors.black : Colors.black)
+                    .withValues(alpha: isDark ? 0.3 : 0.06),
                 blurRadius: blur,
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: (isDark ? Colors.black : Colors.black).withValues(alpha: isDark ? 0.2 : 0.03),
+                color: (isDark ? Colors.black : Colors.black)
+                    .withValues(alpha: isDark ? 0.2 : 0.03),
                 blurRadius: blur * 0.5,
                 offset: const Offset(0, 2),
               ),
@@ -404,7 +559,7 @@ class _GradientButtonState extends State<GradientButton>
   @override
   Widget build(BuildContext context) {
     final gradient = widget.gradient ??
-        [DesignColors.brand, DesignColors.brandDark];
+        [DesignColors.brandDark, DesignColors.brand, DesignColors.accent];
 
     final btn = AnimatedContainer(
       duration: DesignAnimation.fast,
@@ -419,12 +574,12 @@ class _GradientButtonState extends State<GradientButton>
         ),
         boxShadow: [
           BoxShadow(
-            color: gradient.first.withValues(alpha:_isPressed ? 0.2 : 0.4),
+            color: gradient.first.withValues(alpha: _isPressed ? 0.2 : 0.4),
             blurRadius: _isPressed ? 8 : 16,
             offset: const Offset(0, 4),
           ),
           BoxShadow(
-            color: gradient.first.withValues(alpha:_isPressed ? 0.1 : 0.2),
+            color: gradient.first.withValues(alpha: _isPressed ? 0.1 : 0.2),
             blurRadius: _isPressed ? 4 : 8,
             offset: const Offset(0, 8),
           ),
@@ -439,8 +594,7 @@ class _GradientButtonState extends State<GradientButton>
           onTapUp: widget.onPressed != null && !widget.isLoading
               ? (_) => setState(() => _isPressed = false)
               : null,
-          onTapCancel:
-              () => setState(() => _isPressed = false),
+          onTapCancel: () => setState(() => _isPressed = false),
           onTap: widget.isLoading ? null : widget.onPressed,
           borderRadius: BorderRadius.circular(widget.borderRadius),
           child: Center(
@@ -515,7 +669,8 @@ class _LoadingDotsState extends State<_LoadingDots>
           builder: (context, child) {
             final delay = index * 0.15;
             final value = ((_controller.value - delay) % 1.0).clamp(0.0, 1.0);
-            final scale = 0.4 + 0.6 * (1.0 - (value * 4 - 2).abs().clamp(0.0, 1.0));
+            final scale =
+                0.4 + 0.6 * (1.0 - (value * 4 - 2).abs().clamp(0.0, 1.0));
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3),
               child: Transform.scale(
@@ -569,9 +724,24 @@ class MetricCard extends StatelessWidget {
     return GlassCard(
       padding: const EdgeInsets.all(16),
       borderRadius: 16,
-      blur: 12,
-      tint: color.withValues(alpha:0.08),
-      borderColor: color.withValues(alpha:0.15),
+      blur: 8,
+      tint: color.withValues(alpha: 0.12),
+      borderColor: color.withValues(alpha: 0.28),
+      gradient: LinearGradient(
+        colors: [
+          color.withValues(alpha: 0.15),
+          color.withValues(alpha: 0.05),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: color.withValues(alpha: 0.12),
+          blurRadius: 16,
+          offset: const Offset(0, 8),
+        ),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -580,7 +750,7 @@ class MetricCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha:0.15),
+                  color: color.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, color: color, size: 18),
@@ -591,7 +761,7 @@ class MetricCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: trendColor.withValues(alpha:0.12),
+                    color: trendColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -638,10 +808,7 @@ class MetricCard extends StatelessWidget {
             title,
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.color,
+              color: Theme.of(context).textTheme.bodySmall?.color,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -677,9 +844,9 @@ class StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha:0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -694,7 +861,7 @@ class StatusBadge extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: color.withValues(alpha:0.5),
+                    color: color.withValues(alpha: 0.5),
                     blurRadius: 4,
                     spreadRadius: 1,
                   ),
@@ -746,7 +913,7 @@ class SectionHeader extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.1),
+                color: DesignColors.brandSubtle,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: DesignColors.brand, size: 18),
@@ -819,11 +986,11 @@ class EmptyState extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: color.withValues(alpha:0.08),
+                color: color.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: color.withValues(alpha:0.12)),
+                border: Border.all(color: color.withValues(alpha: 0.12)),
               ),
-              child: Icon(icon, size: 48, color: color.withValues(alpha:0.5)),
+              child: Icon(icon, size: 48, color: color.withValues(alpha: 0.5)),
             ),
             const SizedBox(height: 20),
             Text(
@@ -885,8 +1052,8 @@ class PageTransition extends StatelessWidget {
 
         var tween =
             Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-        var fadeTween = Tween<double>(begin: 0.0, end: 1.0)
-            .chain(CurveTween(curve: curve));
+        var fadeTween =
+            Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: curve));
 
         return SlideTransition(
           position: animation.drive(tween),
@@ -928,10 +1095,14 @@ class PageContainer extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = backgroundColor ??
         (isDark ? DesignColors.darkBg : DesignColors.surfaceMuted);
+    final gradient =
+        isDark ? DesignGradients.darkSurface : DesignGradients.surface;
 
     if (withScroll) {
       return Container(
-        color: bg,
+        color: backgroundColor != null ? bg : null,
+        decoration:
+            BoxDecoration(gradient: backgroundColor == null ? gradient : null),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
@@ -943,7 +1114,9 @@ class PageContainer extends StatelessWidget {
     }
 
     return Container(
-      color: bg,
+      color: backgroundColor != null ? bg : null,
+      decoration:
+          BoxDecoration(gradient: backgroundColor == null ? gradient : null),
       padding: padding,
       child: child,
     );
@@ -1081,15 +1254,15 @@ class QuickActionTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       borderRadius: 14,
       blur: 10,
-      tint: color.withValues(alpha:0.06),
-      borderColor: color.withValues(alpha:0.12),
+      tint: color.withValues(alpha: 0.06),
+      borderColor: color.withValues(alpha: 0.12),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withValues(alpha:0.15),
+              color: color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 24),
@@ -1171,12 +1344,13 @@ class PaymentChip extends StatelessWidget {
         duration: DesignAnimation.fast,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? _color.withValues(alpha:0.15)
-              : Colors.transparent,
+          color:
+              isSelected ? _color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? _color.withValues(alpha:0.4) : DesignColors.surfaceBorder,
+            color: isSelected
+                ? _color.withValues(alpha: 0.4)
+                : DesignColors.surfaceBorder,
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -1223,7 +1397,6 @@ class ListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = accentColor ?? DesignColors.brand;
     return GlassCard(
       onTap: onTap,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1304,7 +1477,7 @@ class LabelDivider extends StatelessWidget {
                 gradient: LinearGradient(
                   colors: [
                     DesignColors.surfaceBorder,
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                    DesignColors.surfaceBorder.withValues(alpha: 0.2),
                   ],
                 ),
               ),
@@ -1328,7 +1501,7 @@ class LabelDivider extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignColors.surfaceBorder.withValues(alpha:0.2),
+                    DesignColors.surfaceBorder.withValues(alpha: 0.2),
                     DesignColors.surfaceBorder,
                   ],
                 ),
@@ -1358,17 +1531,17 @@ Future<bool> showConfirmDialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),
-      backgroundColor:
-          Theme.of(ctx).brightness == Brightness.dark
-              ? DesignColors.darkSurface
-              : Colors.white,
+      backgroundColor: Theme.of(ctx).brightness == Brightness.dark
+          ? DesignColors.darkSurface
+          : Colors.white,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: (confirmColor ?? DesignColors.error).withValues(alpha:0.1),
+              color:
+                  (confirmColor ?? DesignColors.error).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
@@ -1503,54 +1676,85 @@ class GlassBottomSheet {
     required Widget child,
     double initialSize = 0.5,
     double maxSize = 0.9,
+    String title = 'Details',
+    bool scrollable = false,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha:isDark ? 0.5 : 0.1),
-              blurRadius: 30,
-              offset: const Offset(0, -8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
+      builder: (ctx) => SafeArea(
+        child: Container(
+          height: MediaQuery.sizeOf(ctx).height * maxSize.clamp(0.85, 0.98),
+          decoration: BoxDecoration(
+            color: isDark ? DesignColors.darkSurface : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.1),
+                blurRadius: 30,
+                offset: const Offset(0, -8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: 'Back',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(
+                height: 1,
                 color: isDark
-                    ? DesignColors.darkTextTertiary
-                    : DesignColors.textTertiary,
-                borderRadius: BorderRadius.circular(2),
+                    ? DesignColors.darkBorder
+                    : DesignColors.surfaceBorder,
               ),
-            ),
-            Flexible(
-              child: DraggableScrollableSheet(
-                initialChildSize: initialSize,
-                minChildSize: 0.3,
-                maxChildSize: maxSize,
-                expand: false,
-                builder: (context, scrollController) {
-                  return SingleChildScrollView(
-                    controller: scrollController,
-                    child: child,
-                  );
-                },
+              Expanded(
+                child: DraggableScrollableSheet(
+                  initialChildSize: initialSize.clamp(0.85, 1.0),
+                  minChildSize: 0.75,
+                  maxChildSize: 1.0,
+                  expand: false,
+                  builder: (context, scrollController) {
+                    if (scrollable) {
+                      return SingleChildScrollView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: child,
+                      );
+                    }
+                    return PrimaryScrollController(
+                      controller: scrollController,
+                      child: child,
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

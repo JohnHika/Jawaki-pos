@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -9,14 +8,10 @@ import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/payment_provider.dart';
 
-const _uuid = Uuid();
-
 enum PaymentMethod {
   cash,
   mpesa,
-  pesapal,
-  touristtap,
-  credit,
+  manual,
 }
 
 class PaymentScreen extends ConsumerStatefulWidget {
@@ -29,14 +24,10 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod? _selectedMethod;
   final _phoneController = TextEditingController();
-  final _creditNotesController = TextEditingController();
-  final _customerNameController = TextEditingController();
 
   @override
   void dispose() {
     _phoneController.dispose();
-    _creditNotesController.dispose();
-    _customerNameController.dispose();
     super.dispose();
   }
 
@@ -76,7 +67,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           ),
         ),
         centerTitle: false,
-        backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+        backgroundColor:
+            isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -91,12 +83,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               padding: const EdgeInsets.all(20),
               borderRadius: 20,
               blur: 8,
-              tint: DesignColors.brand.withValues(alpha:0.08),
-              borderColor: DesignColors.brand.withValues(alpha:0.15),
+              tint: DesignColors.brand.withValues(alpha: 0.08),
+              borderColor: DesignColors.brand.withValues(alpha: 0.15),
               gradient: LinearGradient(
                 colors: [
-                  DesignColors.brand.withValues(alpha:0.1),
-                  DesignColors.brandDark.withValues(alpha:0.05),
+                  DesignColors.brand.withValues(alpha: 0.1),
+                  DesignColors.brandDark.withValues(alpha: 0.05),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -137,10 +129,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: DesignColors.teal.withValues(alpha:0.12),
+                        color: DesignColors.teal.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: DesignColors.teal.withValues(alpha:0.25)),
+                            color: DesignColors.teal.withValues(alpha: 0.25)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -189,40 +181,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               subtitle: 'Pay via M-Pesa STK Push',
               color: DesignColors.mpesa,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
-              onTap: () => setState(() => _selectedMethod = PaymentMethod.mpesa),
+              onTap: () =>
+                  setState(() => _selectedMethod = PaymentMethod.mpesa),
             ),
             const SizedBox(height: 10),
 
-            // PesaPal
+            // Manual
             _PaymentMethodTile(
-              icon: Icons.payments_rounded,
-              title: 'PesaPal',
-              subtitle: 'Card, Mobile Money, Bank',
-              color: DesignColors.pesapal,
-              isSelected: _selectedMethod == PaymentMethod.pesapal,
-              onTap: () => setState(() => _selectedMethod = PaymentMethod.pesapal),
-            ),
-            const SizedBox(height: 10),
-
-            // TouristTap
-            _PaymentMethodTile(
-              icon: Icons.nfc_rounded,
-              title: 'TouristTap',
-              subtitle: 'NFC / Contactless Payment',
-              color: DesignColors.touristtap,
-              isSelected: _selectedMethod == PaymentMethod.touristtap,
-              onTap: () => setState(() => _selectedMethod = PaymentMethod.touristtap),
-            ),
-            const SizedBox(height: 10),
-
-            // Credit (Pay Later)
-            _PaymentMethodTile(
-              icon: Icons.credit_card_rounded,
-              title: 'Credit',
-              subtitle: 'Pay later / Credit sale',
-              color: DesignColors.credit,
-              isSelected: _selectedMethod == PaymentMethod.credit,
-              onTap: () => setState(() => _selectedMethod = PaymentMethod.credit),
+              icon: Icons.edit_note_rounded,
+              title: 'Manual',
+              subtitle: 'Record payment already received',
+              color: DesignColors.accent,
+              isSelected: _selectedMethod == PaymentMethod.manual,
+              onTap: () =>
+                  setState(() => _selectedMethod = PaymentMethod.manual),
             ),
 
             // Phone number input for M-Pesa
@@ -250,87 +222,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               ),
             ],
 
-            // Customer details for Credit payment
-            if (_selectedMethod == PaymentMethod.credit) ...[
-              const SizedBox(height: 24),
-              LabelDivider(label: 'CREDIT DETAILS'),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _customerNameController,
-                keyboardType: TextInputType.name,
-                decoration: InputDecoration(
-                  hintText: 'Customer Name',
-                  labelText: 'Customer Name *',
-                  prefixIcon: const Icon(Icons.person_outline_rounded, size: 20),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceMuted,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _creditNotesController,
-                keyboardType: TextInputType.multiline,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Payment terms, due date, etc.',
-                  labelText: 'Credit Notes',
-                  prefixIcon: const Icon(Icons.note_outlined, size: 20),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceMuted,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha:0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: DesignColors.info.withValues(alpha:0.15)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded,
-                        size: 18, color: DesignColors.info),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Credit sales require customer name. Payment will be collected later.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? DesignColors.darkTextSecondary
-                              : DesignColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
             // Error message
             if (paymentState.error != null) ...[
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: DesignColors.error.withValues(alpha:0.1),
+                  color: DesignColors.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                      color: DesignColors.error.withValues(alpha:0.2)),
+                      color: DesignColors.error.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
@@ -358,10 +259,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           child: GradientButton(
             label: _getButtonText(),
             icon: Icons.payment_rounded,
-            onPressed:
-                _selectedMethod == null || paymentState.isProcessing
-                    ? null
-                    : _processPayment,
+            onPressed: _selectedMethod == null || paymentState.isProcessing
+                ? null
+                : _processPayment,
             isLoading: paymentState.isProcessing,
             height: 56,
             borderRadius: 16,
@@ -378,12 +278,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'Confirm Cash Payment';
       case PaymentMethod.mpesa:
         return 'Send M-Pesa Request';
-      case PaymentMethod.pesapal:
-        return 'Pay with PesaPal';
-      case PaymentMethod.touristtap:
-        return 'Initiate NFC Payment';
-      case PaymentMethod.credit:
-        return 'Create Credit Sale';
+      case PaymentMethod.manual:
+        return 'Confirm Manual Payment';
       case null:
         return 'Select Payment Method';
     }
@@ -420,64 +316,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           items: cart.items,
         );
         break;
-      case PaymentMethod.pesapal:
-        result = await paymentNotifier.processPesaPalPayment(
+      case PaymentMethod.manual:
+        result = await paymentNotifier.processManualPayment(
           amount: cart.total,
           items: cart.items,
-        );
-        break;
-      case PaymentMethod.touristtap:
-        result = await paymentNotifier.processTouristTapPayment(
-          amount: cart.total,
-          items: cart.items,
-        );
-        break;
-      case PaymentMethod.credit:
-        if (_customerNameController.text.isEmpty) {
-          showGlassSnackBar(
-            context,
-            'Please enter customer name for credit sale',
-            icon: Icons.warning_amber_rounded,
-            color: DesignColors.warning,
-          );
-          return;
-        }
-
-        final customerName = _customerNameController.text.trim();
-        final customerId = await getIt<AppDatabase>().insertOrGetCustomer(
-          'cust-${_uuid.v4()}',
-          customerName,
-        );
-
-        String? creditNotes = _creditNotesController.text.trim();
-        if (creditNotes!.isEmpty) {
-          creditNotes = null;
-        }
-
-        result = await paymentNotifier.processCreditPayment(
-          amount: cart.total,
-          items: cart.items,
-          customerId: customerId,
-          customerName: customerName,
-          notes: creditNotes,
         );
         break;
     }
 
     if (result != null && mounted) {
-      final customerId = cart.customerId ??
-          (_selectedMethod == PaymentMethod.credit
-              ? await getIt<AppDatabase>().insertOrGetCustomer(
-                  'cust-${_uuid.v4()}',
-                  _customerNameController.text.trim(),
-                )
-              : null);
+      final customerId = cart.customerId;
 
       if (customerId != null) {
         await getIt<AppDatabase>()
             .recordCustomerPurchase(customerId, cart.total);
       }
 
+      if (!mounted) return;
       ref.read(cartProvider.notifier).clear();
       context.go('/receipt/$result');
     }
@@ -511,15 +366,15 @@ class _PaymentMethodTile extends StatelessWidget {
       borderRadius: 14,
       blur: isSelected ? 12 : 4,
       tint: isSelected
-          ? color.withValues(alpha:0.08)
+          ? color.withValues(alpha: 0.08)
           : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
       borderColor: isSelected
-          ? color.withValues(alpha:0.4)
+          ? color.withValues(alpha: 0.4)
           : (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder),
       boxShadow: isSelected
           ? [
               BoxShadow(
-                color: color.withValues(alpha:0.15),
+                color: color.withValues(alpha: 0.15),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -531,9 +386,9 @@ class _PaymentMethodTile extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: color.withValues(alpha:0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withValues(alpha:0.2)),
+              border: Border.all(color: color.withValues(alpha: 0.2)),
             ),
             child: Icon(icon, color: color, size: 22),
           ),
@@ -575,7 +430,7 @@ class _PaymentMethodTile extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: color.withValues(alpha:0.4),
+                    color: color.withValues(alpha: 0.4),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),

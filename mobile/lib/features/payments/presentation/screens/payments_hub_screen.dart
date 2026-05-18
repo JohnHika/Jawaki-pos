@@ -56,10 +56,10 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   double get _todaysTotal =>
       _todaysSales.fold<double>(0.0, (sum, s) => sum + s.total);
 
-  int get _creditSalesCount {
+  int get _manualPaymentsCount {
     for (final entry in _paymentMethodBreakdown) {
       final method = (entry['paymentMethod'] as String).toLowerCase();
-      if (method == 'credit') {
+      if (method == 'manual') {
         return entry['count'] as int;
       }
     }
@@ -69,8 +69,8 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payments'),
+      appBar: BrandedAppBar(
+        title: 'Payments',
         actions: [
           IconButton(
             icon: const Icon(Icons.receipt_long_rounded),
@@ -87,7 +87,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
             // Header
             SectionHeader(
               title: 'Payment Management',
-              subtitle: 'Manage manual payments, credit sales, and bulk transactions',
+              subtitle: 'Manage cash, M-Pesa, manual payments, and receipts',
               icon: Icons.payments_rounded,
             ),
             const SizedBox(height: 8),
@@ -115,13 +115,13 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                 Expanded(
                   child: QuickActionTile(
                     icon: Icons.schedule_rounded,
-                    label: 'Hold Queue',
-                    subtitle: 'Pay Later',
+                    label: 'M-Pesa',
+                    subtitle: 'STK payments',
                     color: DesignColors.warning,
                     onTap: () {
                       showGlassSnackBar(
                         context,
-                        'Credit sales are tracked in the reports section',
+                        'Use M-Pesa from the POS payment screen',
                         icon: Icons.info_outline_rounded,
                         color: DesignColors.info,
                       );
@@ -178,11 +178,8 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
               runSpacing: 8,
               children: const [
                 PaymentChip(method: 'Cash', isSelected: true),
-                PaymentChip(method: 'Mpesa'),
-                PaymentChip(method: 'Card'),
-                PaymentChip(method: 'PesaPal'),
-                PaymentChip(method: 'TouristTap'),
-                PaymentChip(method: 'Credit'),
+                PaymentChip(method: 'M-Pesa'),
+                PaymentChip(method: 'Manual'),
               ],
             ),
 
@@ -209,7 +206,8 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                           color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.analytics_rounded, color: Colors.white, size: 24),
+                        child: const Icon(Icons.analytics_rounded,
+                            color: Colors.white, size: 24),
                       ),
                       const SizedBox(width: 12),
                       const Text(
@@ -228,13 +226,15 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     children: [
                       _buildGlassStatItem(
                         label: "Today's Sales",
-                        value: _isLoading ? '...' : 'KES ${_todaysTotal.toStringAsFixed(0)}',
+                        value: _isLoading
+                            ? '...'
+                            : 'KES ${_todaysTotal.toStringAsFixed(0)}',
                         icon: Icons.point_of_sale_rounded,
                       ),
                       _buildGlassStatItem(
-                        label: 'Credit Sales',
-                        value: _isLoading ? '...' : '$_creditSalesCount',
-                        icon: Icons.credit_card_rounded,
+                        label: 'Manual Payments',
+                        value: _isLoading ? '...' : '$_manualPaymentsCount',
+                        icon: Icons.edit_note_rounded,
                       ),
                     ],
                   ),
@@ -259,7 +259,8 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                       color: DesignColors.info.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 24),
+                    child: const Icon(Icons.info_outline_rounded,
+                        color: DesignColors.info, size: 24),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -275,7 +276,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Complete payment management with manual approvals, credit tracking, and bulk processing',
+                          'Payment management for cash, M-Pesa, manual entries, and receipt lookup',
                           style: TextStyle(
                             fontSize: 12,
                             color: DesignColors.textSecondary,

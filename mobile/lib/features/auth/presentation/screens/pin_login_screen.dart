@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:levisa_adventures_pos/core/theme/design_system.dart';
-import 'package:levisa_adventures_pos/core/theme/app_theme.dart';
 import 'package:levisa_adventures_pos/features/auth/presentation/providers/auth_provider.dart';
 
 class PinLoginScreen extends ConsumerStatefulWidget {
@@ -19,7 +18,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
 
   late AnimationController _fadeAnimation;
   late Animation<double> _fadeAnimationValue;
-  late Animation<Offset> _slideAnimation;
   late AnimationController _pulseController;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -68,20 +66,12 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       if (mounted) {
         setState(() {
           _showError = true;
-          _errorMessage =
-              ref.read(authControllerProvider).error ?? 'Invalid PIN. Try again.';
+          _errorMessage = ref.read(authControllerProvider).error ??
+              'Invalid PIN. Try again.';
           _pin = '';
         });
         _shakeController.forward(from: 0);
       }
-    }
-  }
-
-  Future<void> _handleBiometricLogin() async {
-    final result =
-        await ref.read(authControllerProvider.notifier).loginWithBiometrics();
-    if (result && mounted) {
-      context.go('/');
     }
   }
 
@@ -98,14 +88,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       parent: _fadeAnimation,
       curve: DesignAnimation.defaultCurve,
     );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _fadeAnimation,
-      curve: DesignAnimation.smooth,
-    ));
 
     _pulseController = AnimationController(
       vsync: this,
@@ -291,10 +273,12 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 ),
               ],
             ),
-            child: Icon(
-              Icons.lock_rounded,
-              size: isSmallScreen ? 26 : 32,
-              color: Colors.white,
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/levisa_adventures_logo.png',
+                fit: BoxFit.cover,
+                semanticLabel: 'Levisa Adventures logo',
+              ),
             ),
           ),
         ),
@@ -321,12 +305,24 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   Widget _buildPinDotsSection(bool isSmallScreen) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final outerMargin = isSmallScreen ? DesignSpacing.sm : DesignSpacing.lg;
+    final horizontalPadding =
+        isSmallScreen ? DesignSpacing.md : DesignSpacing.lg;
+    final dotGap = isSmallScreen ? 4.0 : 6.0;
+    final availableWidth =
+        screenWidth - 40 - (outerMargin * 2) - (horizontalPadding * 2);
+    final dotSize =
+        ((availableWidth - (dotGap * (_pinLength - 1))) / _pinLength)
+            .clamp(38.0, isSmallScreen ? 48.0 : 56.0)
+            .toDouble();
+
     return GlassCard(
       padding: EdgeInsets.symmetric(
-        horizontal: DesignSpacing.xxl,
-        vertical: isSmallScreen ? DesignSpacing.lg : DesignSpacing.xl,
+        horizontal: horizontalPadding,
+        vertical: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg,
       ),
-      margin: EdgeInsets.symmetric(horizontal: DesignSpacing.xxl),
+      margin: EdgeInsets.symmetric(horizontal: outerMargin),
       blur: 20,
       tint: Colors.white.withValues(alpha: 0.06),
       borderColor: _showError
@@ -338,7 +334,8 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         builder: (context, child) {
           return Transform.translate(
             offset: Offset(
-              _shakeAnimation.value * 16 *
+              _shakeAnimation.value *
+                  16 *
                   (_shakeAnimation.value < 0.5 ? 1 : -1),
               0,
             ),
@@ -352,12 +349,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             final isCurrentlyEntering = index == _pin.length;
 
             return Container(
-              margin: EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
+              margin: EdgeInsets.only(
+                right: index == _pinLength - 1 ? 0 : dotGap,
+              ),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
-                width: isSmallScreen ? 48 : 56,
-                height: isSmallScreen ? 48 : 56,
+                width: dotSize,
+                height: dotSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isFilled
@@ -376,8 +375,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                   boxShadow: isFilled
                       ? [
                           BoxShadow(
-                            color:
-                                DesignColors.accent.withValues(alpha: 0.3),
+                            color: DesignColors.accent.withValues(alpha: 0.3),
                             blurRadius: 12,
                             spreadRadius: 1,
                           ),
@@ -396,8 +394,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                             height: 8,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: DesignColors.accent
-                                  .withValues(alpha: 0.6),
+                              color: DesignColors.accent.withValues(alpha: 0.6),
                             ),
                           )
                         : null,
@@ -612,29 +609,4 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       ],
     );
   }
-}
-
-// Subtle background grid pattern painter
-class _PinBackgroundPatternPainter extends CustomPainter {
-  final Color color;
-
-  _PinBackgroundPatternPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-
-    const spacing = 40.0;
-    for (double x = 0; x < size.width; x += spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

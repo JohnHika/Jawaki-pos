@@ -27,7 +27,8 @@ class SyncRoutes {
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
 
-    final events = (body['events'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final events =
+        (body['events'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final results = <Map<String, dynamic>>[];
 
     for (final event in events) {
@@ -35,8 +36,6 @@ class SyncRoutes {
         final eventId = event['eventId'] as String? ?? _uuid();
         final eventType = event['eventType'] as String? ?? '';
         final payload = event['payload'] as Map<String, dynamic>? ?? {};
-        final deviceId = event['deviceId'] as String? ?? '';
-
         // Process based on event type
         switch (eventType) {
           case 'SALE_CREATED':
@@ -77,7 +76,9 @@ class SyncRoutes {
   Future<shelf.Response> _handlePull(shelf.Request request) async {
     final body = getRequestBody(request);
     final since = body?['since'] as String?;
-    final sinceDate = since != null ? DateTime.tryParse(since) : DateTime.now().subtract(const Duration(days: 7));
+    final sinceDate = since != null
+        ? DateTime.tryParse(since)
+        : DateTime.now().subtract(const Duration(days: 7));
 
     // Return a list of events that happened since the given timestamp
     // For now, we return product/category updates from the sync_queue
@@ -85,9 +86,11 @@ class SyncRoutes {
 
     if (sinceDate != null) {
       try {
-        final result = await _db.customSelect(
-          'SELECT * FROM sync_queue WHERE created_at > ${Sql.str(sinceDate.toIso8601String())} AND status = \'synced\' ORDER BY created_at ASC LIMIT 100',
-        ).get();
+        final result = await _db
+            .customSelect(
+              'SELECT * FROM sync_queue WHERE created_at > ${Sql.str(sinceDate.toIso8601String())} AND status = \'synced\' ORDER BY created_at ASC LIMIT 100',
+            )
+            .get();
 
         for (final row in result) {
           events.add({
@@ -114,7 +117,8 @@ class SyncRoutes {
   /// POST /api/v1/sync/heartbeat — client phone pings to say "I'm alive"
   Future<shelf.Response> _handleHeartbeat(shelf.Request request) async {
     return shelf.Response.ok(
-      jsonEncode({'message': 'alive', 'serverTime': DateTime.now().toIso8601String()}),
+      jsonEncode(
+          {'message': 'alive', 'serverTime': DateTime.now().toIso8601String()}),
       headers: {'content-type': 'application/json'},
     );
   }
@@ -124,7 +128,9 @@ class SyncRoutes {
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
 
-    final conflicts = (body['conflicts'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final conflicts =
+        (body['conflicts'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+            [];
     final results = <Map<String, dynamic>>[];
 
     for (final conflict in conflicts) {
@@ -146,12 +152,14 @@ class SyncRoutes {
     try {
       final failed = await _db.getFailedSyncQueue();
       return shelf.Response.ok(
-        jsonEncode(failed.map((f) => {
-          'id': f.id,
-          'eventType': f.eventType,
-          'errorMessage': f.errorMessage,
-          'retryCount': f.retryCount,
-        }).toList()),
+        jsonEncode(failed
+            .map((f) => {
+                  'id': f.id,
+                  'eventType': f.eventType,
+                  'errorMessage': f.errorMessage,
+                  'retryCount': f.retryCount,
+                })
+            .toList()),
         headers: {'content-type': 'application/json'},
       );
     } catch (_) {

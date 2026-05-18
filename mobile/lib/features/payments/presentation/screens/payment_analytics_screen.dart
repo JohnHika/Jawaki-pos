@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
@@ -44,27 +43,36 @@ class _PaymentAnalyticsScreenState
           final startOfDay = DateTime(now.year, now.month, now.day);
           final endOfDay = startOfDay.add(const Duration(days: 1));
 
-          _paymentSummary = await database.getPaymentSummary(startOfDay, endOfDay);
-          _paymentMethodBreakdown = await database.getSalesByPaymentMethod(startOfDay, endOfDay);
-          _transactionTrends = await database.getHourlySales(startOfDay, endOfDay);
+          _paymentSummary =
+              await database.getPaymentSummary(startOfDay, endOfDay);
+          _paymentMethodBreakdown =
+              await database.getSalesByPaymentMethod(startOfDay, endOfDay);
+          _transactionTrends =
+              await database.getHourlySales(startOfDay, endOfDay);
           _peakHours = await database.getPeakHours(startOfDay, endOfDay);
 
         case 1: // This Week
           final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
           final endOfWeek = startOfWeek.add(const Duration(days: 7));
 
-          _paymentSummary = await database.getPaymentSummary(startOfWeek, endOfWeek);
-          _paymentMethodBreakdown = await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
-          _transactionTrends = await database.getDailySales(startOfWeek, endOfWeek);
+          _paymentSummary =
+              await database.getPaymentSummary(startOfWeek, endOfWeek);
+          _paymentMethodBreakdown =
+              await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
+          _transactionTrends =
+              await database.getDailySales(startOfWeek, endOfWeek);
           _peakHours = await database.getPeakHours(startOfWeek, endOfWeek);
 
         case 2: // This Month
           final startOfMonth = DateTime(now.year, now.month, 1);
           final endOfMonth = DateTime(now.year, now.month + 1, 0);
 
-          _paymentSummary = await database.getPaymentSummary(startOfMonth, endOfMonth);
-          _paymentMethodBreakdown = await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
-          _transactionTrends = await database.getDailySales(startOfMonth, endOfMonth);
+          _paymentSummary =
+              await database.getPaymentSummary(startOfMonth, endOfMonth);
+          _paymentMethodBreakdown =
+              await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
+          _transactionTrends =
+              await database.getDailySales(startOfMonth, endOfMonth);
           _peakHours = await database.getPeakHours(startOfMonth, endOfMonth);
       }
 
@@ -149,7 +157,7 @@ class _PaymentAnalyticsScreenState
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? DesignColors.brand.withValues(alpha:0.12)
+                        ? DesignColors.brand.withValues(alpha: 0.12)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -158,7 +166,8 @@ class _PaymentAnalyticsScreenState
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
                       color: isSelected
                           ? DesignColors.brand
                           : DesignColors.textSecondary,
@@ -243,8 +252,8 @@ class _PaymentAnalyticsScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.info.withValues(alpha:0.05),
-      borderColor: DesignColors.info.withValues(alpha:0.12),
+      tint: DesignColors.info.withValues(alpha: 0.05),
+      borderColor: DesignColors.info.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -253,10 +262,10 @@ class _PaymentAnalyticsScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha:0.15),
+                  color: DesignColors.info.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.info.withValues(alpha:0.25),
+                    color: DesignColors.info.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -332,7 +341,12 @@ class _PaymentAnalyticsScreenState
                             borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
                               value: (_paymentMethodBreakdown.isNotEmpty
-                                      ? _paymentMethodBreakdown.fold<double>(0, (sum, p) => sum + ((p['totalAmount'] ?? 0) as double))
+                                      ? _paymentMethodBreakdown.fold<double>(
+                                          0,
+                                          (sum, p) =>
+                                              sum +
+                                              ((p['totalAmount'] ?? 0)
+                                                  as double))
                                       : 1)
                                   .toDouble(),
                               valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -366,8 +380,8 @@ class _PaymentAnalyticsScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.brand.withValues(alpha:0.05),
-      borderColor: DesignColors.brand.withValues(alpha:0.12),
+      tint: DesignColors.brand.withValues(alpha: 0.05),
+      borderColor: DesignColors.brand.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -376,10 +390,10 @@ class _PaymentAnalyticsScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.15),
+                  color: DesignColors.brand.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.brand.withValues(alpha:0.25),
+                    color: DesignColors.brand.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -409,7 +423,10 @@ class _PaymentAnalyticsScreenState
                   LineChartBarData(
                     spots: [
                       for (int i = 0; i < _transactionTrends.length; i++)
-                        FlSpot(i.toDouble(), (_transactionTrends[i]['totalAmount'] ?? 0).toDouble()),
+                        FlSpot(
+                            i.toDouble(),
+                            (_transactionTrends[i]['totalAmount'] ?? 0)
+                                .toDouble()),
                     ],
                     isCurved: true,
                     gradient: const LinearGradient(
@@ -422,8 +439,8 @@ class _PaymentAnalyticsScreenState
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          DesignColors.brand.withValues(alpha:0.3),
-                          DesignColors.brand.withValues(alpha:0.0),
+                          DesignColors.brand.withValues(alpha: 0.3),
+                          DesignColors.brand.withValues(alpha: 0.0),
                         ],
                       ),
                     ),
@@ -433,9 +450,11 @@ class _PaymentAnalyticsScreenState
                 maxX: (_transactionTrends.length - 1).toDouble(),
                 minY: 0,
                 maxY: (_transactionTrends.isNotEmpty
-                        ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as num)
-                        : 1000)
-                    .toDouble() *
+                            ? (_transactionTrends
+                                .map((e) => e['totalAmount'])
+                                .reduce((a, b) => a > b ? a : b) as num)
+                            : 1000)
+                        .toDouble() *
                     1.2,
                 titlesData: FlTitlesData(
                   show: true,
@@ -446,7 +465,8 @@ class _PaymentAnalyticsScreenState
                         if (_transactionTrends.isEmpty) return const Text('');
                         final index = value.toInt();
                         if (index >= 0 && index < _transactionTrends.length) {
-                          final date = DateTime.parse(_transactionTrends[index]['date'] ?? '');
+                          final date = DateTime.parse(
+                              _transactionTrends[index]['date'] ?? '');
                           final time = _selectedPeriod == 0
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';
@@ -493,13 +513,15 @@ class _PaymentAnalyticsScreenState
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: (_transactionTrends.isNotEmpty
-                          ? (_transactionTrends.map((e) => e['totalAmount']).reduce((a, b) => a > b ? a : b) as int)
-                          : 1000)
-                      .toDouble() /
+                              ? (_transactionTrends
+                                  .map((e) => e['totalAmount'])
+                                  .reduce((a, b) => a > b ? a : b) as int)
+                              : 1000)
+                          .toDouble() /
                       5,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(
-                      color: DesignColors.surfaceBorder.withValues(alpha:0.5),
+                      color: DesignColors.surfaceBorder.withValues(alpha: 0.5),
                       strokeWidth: 1,
                     );
                   },
@@ -518,8 +540,8 @@ class _PaymentAnalyticsScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.accent.withValues(alpha:0.05),
-      borderColor: DesignColors.accent.withValues(alpha:0.12),
+      tint: DesignColors.accent.withValues(alpha: 0.05),
+      borderColor: DesignColors.accent.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -528,10 +550,10 @@ class _PaymentAnalyticsScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha:0.15),
+                  color: DesignColors.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.accent.withValues(alpha:0.25),
+                    color: DesignColors.accent.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
@@ -573,10 +595,10 @@ class _PaymentAnalyticsScreenState
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha:0.15),
+                        color: color.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: color.withValues(alpha:0.3),
+                          color: color.withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),

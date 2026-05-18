@@ -7,7 +7,8 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 
-final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
+final _dashboardSummaryProvider =
+    StreamProvider<Map<String, dynamic>>((ref) async* {
   final db = getIt<AppDatabase>();
   await for (final _ in db.watchTodaysSales()) {
     yield await db.getDashboardSummary();
@@ -31,12 +32,9 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
+      appBar: BrandedAppBar(
+        title: 'Dashboard',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -66,15 +64,15 @@ class DashboardScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(20),
                 borderRadius: 16,
                 blur: 12,
-                tint: DesignColors.brand.withValues(alpha:0.06),
-                borderColor: DesignColors.brand.withValues(alpha:0.1),
+                tint: DesignColors.brand.withValues(alpha: 0.06),
+                borderColor: DesignColors.brand.withValues(alpha: 0.1),
                 margin: const EdgeInsets.only(bottom: 20),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha:0.12),
+                        color: DesignColors.brand.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(
@@ -122,7 +120,7 @@ class DashboardScreen extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: DesignColors.brand.withValues(alpha:0.3),
+                            color: DesignColors.brand.withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -199,7 +197,8 @@ class DashboardScreen extends ConsumerWidget {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: DesignColors.brand.withValues(alpha:0.1),
+                                color:
+                                    DesignColors.brand.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -266,8 +265,7 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSummaryGrid(
-      BuildContext context, Map<String, dynamic> summary) {
+  Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> summary) {
     return Column(
       children: [
         Row(
@@ -326,7 +324,8 @@ class DashboardScreen extends ConsumerWidget {
     return 'Evening';
   }
 
-  Future<void> _shareDashboardReport(BuildContext context, WidgetRef ref) async {
+  Future<void> _shareDashboardReport(
+      BuildContext context, WidgetRef ref) async {
     final db = getIt<AppDatabase>();
     final summary = await db.getDashboardSummary();
     final report = '''
