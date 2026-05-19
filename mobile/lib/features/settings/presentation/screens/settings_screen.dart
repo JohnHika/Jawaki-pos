@@ -16,6 +16,7 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/local_server_service.dart';
+import '../../../../core/services/update_check_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -226,6 +227,12 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Help & Support',
             subtitle: 'Get help with the app',
             onTap: () => _showHelpSupport(context),
+          ),
+          _SettingsTile(
+            icon: Icons.system_update,
+            title: 'Check for Updates',
+            subtitle: 'See if a newer version is available',
+            onTap: () => _checkForUpdates(context),
           ),
           _SettingsTile(
             icon: Icons.info,
@@ -1237,6 +1244,46 @@ class SettingsScreen extends ConsumerWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  // ===== UPDATE CHECK =====
+  void _checkForUpdates(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        title: Text('Checking for Updates'),
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 16),
+            Text('Checking the latest release...'),
+          ],
+        ),
+      ),
+    );
+
+    getIt<UpdateCheckService>().checkForUpdates(
+      context: context,
+      force: true, // Force check since user manually initiated it
+    ).then((wasUpdateShown) {
+      // If no update was found, close the loading dialog and show a message
+      if (context.mounted) {
+        Navigator.of(context).pop(); // close the loading dialog
+        if (!wasUpdateShown) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You\'re on the latest version! ✅'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    });
   }
 
   // ===== BACKEND SERVER SETTINGS (Client Mode) =====

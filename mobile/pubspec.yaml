@@ -85,6 +85,12 @@ dependencies:
   # Crypto (for token generation)
   crypto: ^3.0.3
 
+  # HTTP Client (for update checks & API calls)
+  http: ^1.2.1
+
+  # URL Launcher (for opening update links)
+  url_launcher: ^6.2.5
+
   # Charts & Graphs
   fl_chart: ^0.65.0
 
@@ -94,6 +100,7 @@ dependencies:
   # Supplier receipt capture and on-device OCR
   image_picker: ^1.1.2
   google_mlkit_text_recognition: ^0.14.0
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

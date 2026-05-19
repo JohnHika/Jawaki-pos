@@ -11,10 +11,10 @@ import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/local_server_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/update_check_service.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
-  // Handle Flutter framework errors
   FlutterError.onError = (FlutterErrorDetails details) {
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
     debugPrint('║ FLUTTER ERROR (Uncaught)                                  ║');
@@ -25,12 +25,8 @@ void _setupFlutterErrorHandling() {
     debugPrint('Stack trace:');
     debugPrint('${details.stack}');
     debugPrint('═══════════════════════════════════════════════════════════');
-
-    // In production, you would send this to your crash reporting service
-    // e.g., Firebase Crashlytics, Sentry, etc.
   };
 
-  // Handle platform-level errors (isolates, etc.)
   ui.PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
     debugPrint('║ PLATFORM ERROR (Isolate/Platform)                         ║');
@@ -39,35 +35,25 @@ void _setupFlutterErrorHandling() {
     debugPrint('Stack trace:');
     debugPrint('$stack');
     debugPrint('═══════════════════════════════════════════════════════════');
-
-    // In production, send to crash reporting service
-    // FirebaseCrashlytics.instance.recordError(error, stack);
-
-    // Return true to indicate we handled it (prevents app crash)
     return true;
   };
 }
 
 void main() async {
-  // Setup error handling BEFORE anything else
   _setupFlutterErrorHandling();
-
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // Lock orientation to portrait
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
     debugPrint('[main] Screen orientation locked to portrait');
 
-    // Initialize dependency injection (CRITICAL - must succeed)
     debugPrint('[main] Initializing dependency injection...');
     await configureDependencies();
     debugPrint('[main] Dependency injection initialized successfully');
 
-    // Initialize connectivity monitoring (CRITICAL for offline-first app)
     debugPrint('[main] Initializing connectivity service...');
     await getIt<ConnectivityService>().initialize();
     debugPrint('[main] Connectivity service initialized');
@@ -78,13 +64,11 @@ void main() async {
     );
     debugPrint('[main] Local server auto-start armed');
 
-    // Initialize background sync worker (OPTIONAL - can fail without crashing)
     debugPrint('[main] Initializing background sync (non-blocking)...');
     try {
       await BackgroundSyncService.initialize();
       debugPrint('[main] Background sync initialized successfully');
     } catch (e, stackTrace) {
-      // Background sync is OPTIONAL - app can work without it
       debugPrint('[main] Background sync init failed (non-critical): $e');
       debugPrint('[main] Stack trace: $stackTrace');
     }
@@ -97,7 +81,6 @@ void main() async {
       ),
     );
   } catch (e, stackTrace) {
-    // CRITICAL initialization failed - log everything and try to run app anyway
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
     debugPrint('║ CRITICAL INITIALIZATION ERROR                             ║');
     debugPrint('╚═══════════════════════════════════════════════════════════╝');
@@ -106,8 +89,6 @@ void main() async {
     debugPrint('$stackTrace');
     debugPrint('═══════════════════════════════════════════════════════════');
 
-    // Try to run the app anyway - some features may not work
-    // but the app should still be usable
     runApp(
       const ProviderScope(
         child: POSApp(),
@@ -116,11 +97,34 @@ void main() async {
   }
 }
 
-class POSApp extends ConsumerWidget {
+class POSApp extends ConsumerStatefulWidget {
   const POSApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<POSApp> createState() => _POSAppState();
+}
+
+class _POSAppState extends ConsumerState<POSApp> {
+  bool _checkedForUpdates = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Auto-check for updates once after the first frame — the user sees
+    // a dialog immediately if a newer GitHub Release exists.
+    if (!_checkedForUpdates) {
+      _checkedForUpdates = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        getIt<UpdateCheckService>().checkForUpdates(
+          context: context,
+          force: false, // don't force; uses cache interval
+        );
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
 

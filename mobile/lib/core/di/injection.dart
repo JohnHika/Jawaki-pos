@@ -11,6 +11,7 @@ import '../services/sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/haptic_service.dart';
 import '../services/local_server_service.dart';
+import '../services/update_check_service.dart';
 
 final getIt = GetIt.instance;
 
@@ -101,6 +102,13 @@ Future<void> configureDependencies() async {
     final localServerService = LocalServerService();
     getIt.registerSingleton<LocalServerService>(localServerService);
     debugPrint('[DI] LocalServerService registered');
+
+    // ============================================
+    // STEP 8: Update Check Service (GitHub Releases)
+    // ============================================
+    debugPrint('[DI] Registering UpdateCheckService...');
+    getIt.registerSingleton<UpdateCheckService>(UpdateCheckService());
+    debugPrint('[DI] UpdateCheckService registered');
 
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {
