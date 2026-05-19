@@ -105,10 +105,10 @@ class ProductsScreen extends ConsumerWidget {
                     .toList()
                   ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
                 return SizedBox(
-                  height: 42,
+                  height: 48,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                     children: [
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -140,8 +140,8 @@ class ProductsScreen extends ConsumerWidget {
                   ),
                 );
               },
-              loading: () => const SizedBox(height: 42),
-              error: (e, _) => const SizedBox(height: 42),
+              loading: () => const SizedBox(height: 48),
+              error: (e, _) => const SizedBox(height: 48),
             ),
 
             const SizedBox(height: 4),
@@ -331,8 +331,8 @@ class ProductsScreen extends ConsumerWidget {
     GlassBottomSheet.show(
       context,
       title: 'Categories',
-      initialSize: 0.7,
-      maxSize: 0.9,
+      initialSize: 0.62,
+      maxSize: 0.72,
       child: _CategoryManagementSheet(),
     );
   }
@@ -522,48 +522,26 @@ class _CategoryManagementSheet extends ConsumerWidget {
     final categoriesAsync = ref.watch(_categoriesProvider);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: DesignColors.brand.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.category_outlined,
-                        color: DesignColors.brand, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Categories',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: DesignColors.textPrimary,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ],
-              ),
-              GradientButton(
+          Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              width: 112,
+              child: GradientButton(
                 label: 'Add',
                 icon: Icons.add_rounded,
                 onPressed: () => _showAddCategoryDialog(context),
-                height: 38,
+                height: 36,
                 expanded: false,
                 borderRadius: 10,
                 gradient: [DesignColors.brand, DesignColors.brandDark],
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           const Divider(color: DesignColors.surfaceBorder, height: 1),
           const SizedBox(height: 8),
           Expanded(

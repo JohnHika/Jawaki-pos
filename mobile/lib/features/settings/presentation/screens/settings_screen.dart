@@ -648,13 +648,13 @@ class SettingsScreen extends ConsumerWidget {
               leading:
                   const Icon(Icons.email_outlined, color: DesignColors.brand),
               title: const Text('Email Support'),
-              subtitle: const Text('support@levisa.com'),
+              subtitle: const Text('johnkimani576@gmail.com'),
             ),
             ListTile(
               leading:
                   const Icon(Icons.phone_outlined, color: DesignColors.brand),
               title: const Text('Phone Support'),
-              subtitle: const Text('Contact your system administrator'),
+              subtitle: const Text('0742126582'),
               onTap: () {},
             ),
             const Divider(),
@@ -785,6 +785,8 @@ class SettingsScreen extends ConsumerWidget {
       builder: (context) => AboutDialog(
         applicationName: 'Levisa Adventures POS',
         applicationVersion: '1.0.0 (Build 1)',
+        applicationLegalese:
+            'Licensed for Levisa Adventures. Licence documents: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
         applicationIcon: Container(
           width: 48,
           height: 48,
@@ -798,9 +800,14 @@ class SettingsScreen extends ConsumerWidget {
           Text(
               'A complete point-of-sale system for managing sales, inventory, and business operations.'),
           SizedBox(height: 12),
-          Text('Built with Flutter',
+          Text('Built by Arche Axon Intelligence',
               style:
                   TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
+          SizedBox(height: 8),
+          SelectableText(
+            'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
+            style: TextStyle(color: DesignColors.textSecondary, fontSize: 12),
+          ),
           Text('© 2026 Levisa Adventures',
               style:
                   TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
@@ -870,15 +877,19 @@ class SettingsScreen extends ConsumerWidget {
                     Consumer(
                       builder: (context, ref, _) {
                         final user = ref.watch(currentUserProvider) ?? {};
+                        final role = AppRole.fromString(
+                            user['role'] as String? ?? 'CASHIER');
                         return _UserTile(
                           name: user['name'] as String? ?? 'User',
                           email: user['email'] as String? ?? '',
-                          role: AppRole.fromString(
-                              user['role'] as String? ?? 'CASHIER'),
+                          role: role,
                           isCurrentUser: true,
                         );
                       },
                     ),
+                    const SizedBox(height: 12),
+                    _RoleAccessSummary(),
+                    const SizedBox(height: 12),
                     // Placeholder for additional users
                     Card(
                       child: ListTile(
@@ -1531,66 +1542,75 @@ class _NotificationSettingsSheetState
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-              child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: DesignColors.surfaceBorder,
-                      borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Text('Notifications', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 20),
-          SwitchListTile(
-            title: const Text('Sales Alerts'),
-            subtitle: const Text('Get notified for completed sales'),
-            secondary: const Icon(Icons.point_of_sale),
-            value: _notifySales,
-            onChanged: (v) => setState(() => _notifySales = v),
-          ),
-          SwitchListTile(
-            title: const Text('Inventory Alerts'),
-            subtitle: const Text('Low stock and reorder reminders'),
-            secondary: const Icon(Icons.inventory),
-            value: _notifyInventory,
-            onChanged: (v) => setState(() => _notifyInventory = v),
-          ),
-          SwitchListTile(
-            title: const Text('Sync Alerts'),
-            subtitle: const Text('Notify when sync completes or fails'),
-            secondary: const Icon(Icons.sync),
-            value: _notifySync,
-            onChanged: (v) => setState(() => _notifySync = v),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool(_SettingsKeys.notifySales, _notifySales);
-                await prefs.setBool(
-                    _SettingsKeys.notifyInventory, _notifyInventory);
-                await prefs.setBool(_SettingsKeys.notifySync, _notifySync);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Notification settings saved')),
-                  );
-                }
-              },
-              child: const Text('Save'),
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          24 + MediaQuery.of(context).padding.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: DesignColors.surfaceBorder,
+                        borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            Text('Notifications',
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 20),
+            SwitchListTile(
+              title: const Text('Sales Alerts'),
+              subtitle: const Text('Get notified for completed sales'),
+              secondary: const Icon(Icons.point_of_sale),
+              value: _notifySales,
+              onChanged: (v) => setState(() => _notifySales = v),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+            SwitchListTile(
+              title: const Text('Inventory Alerts'),
+              subtitle: const Text('Low stock and reorder reminders'),
+              secondary: const Icon(Icons.inventory),
+              value: _notifyInventory,
+              onChanged: (v) => setState(() => _notifyInventory = v),
+            ),
+            SwitchListTile(
+              title: const Text('Sync Alerts'),
+              subtitle: const Text('Notify when sync completes or fails'),
+              secondary: const Icon(Icons.sync),
+              value: _notifySync,
+              onChanged: (v) => setState(() => _notifySync = v),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool(_SettingsKeys.notifySales, _notifySales);
+                  await prefs.setBool(
+                      _SettingsKeys.notifyInventory, _notifyInventory);
+                  await prefs.setBool(_SettingsKeys.notifySync, _notifySync);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Notification settings saved')),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -1891,6 +1911,84 @@ class _UserTile extends StatelessWidget {
                 icon: const Icon(Icons.more_vert),
                 onPressed: () {},
               ),
+      ),
+    );
+  }
+}
+
+class _RoleAccessSummary extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    const roles = [
+      ('Seller', 'POS, own sales, and basic settings'),
+      ('Stock Keeper', 'Seller access plus inventory and product viewing'),
+      (
+        'Store Manager',
+        'Product editing, reports, discounts, sync, and printer settings'
+      ),
+      (
+        'Admin',
+        'All access including users, branches, finance, audit, and exports'
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: DesignColors.brand.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.admin_panel_settings_rounded,
+                      color: DesignColors.brand, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Role access levels',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...roles.map(
+              (role) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.check_circle_rounded,
+                        size: 16, color: DesignColors.success),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: Theme.of(context).textTheme.bodySmall,
+                          children: [
+                            TextSpan(
+                              text: '${role.$1}: ',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            TextSpan(text: role.$2),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

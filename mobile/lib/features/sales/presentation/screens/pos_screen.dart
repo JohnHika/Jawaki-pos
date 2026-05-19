@@ -248,9 +248,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     }
 
     GlassBottomSheet.show(context,
+        scrollable: true,
         child: StatefulBuilder(
           builder: (ctx, setSheet) => Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              0,
+              20,
+              20 + MediaQuery.of(ctx).padding.bottom,
+            ),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -297,11 +303,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       builder: (_, snap) {
                         final customers = snap.data ?? [];
                         if (customers.isEmpty) return const SizedBox.shrink();
-                        return SizedBox(
-                          height: customers.length * 56.0,
+                        return ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 224),
                           child: ListView.builder(
                             shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
+                            physics: const ClampingScrollPhysics(),
+                            primary: false,
                             itemCount: customers.length,
                             itemBuilder: (_, i) => ListTile(
                               dense: true,

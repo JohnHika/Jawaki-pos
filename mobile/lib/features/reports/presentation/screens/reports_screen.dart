@@ -19,8 +19,8 @@ class ReportsScreen extends ConsumerWidget {
     final summaryAsync = ref.watch(dashboardSummaryProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reports'),
+      appBar: BrandedAppBar(
+        title: 'Reports',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -174,7 +174,6 @@ class ReportsScreen extends ConsumerWidget {
                   value: _currencyFmt.format(s['totalRevenue'] ?? 0),
                   icon: Icons.trending_up_rounded,
                   color: DesignColors.success,
-                  trend: '+12%',
                 ),
               ),
               const SizedBox(width: 12),
@@ -184,7 +183,6 @@ class ReportsScreen extends ConsumerWidget {
                   value: '${s['transactionCount'] ?? 0}',
                   icon: Icons.receipt_long_rounded,
                   color: DesignColors.brand,
-                  trend: '+8%',
                 ),
               ),
             ],
@@ -198,7 +196,6 @@ class ReportsScreen extends ConsumerWidget {
                   value: _currencyFmt.format(s['avgTicket'] ?? 0),
                   icon: Icons.shopping_cart_rounded,
                   color: DesignColors.info,
-                  trend: '+5%',
                 ),
               ),
               const SizedBox(width: 12),
@@ -208,7 +205,6 @@ class ReportsScreen extends ConsumerWidget {
                   value: '${s['itemsSold'] ?? 0}',
                   icon: Icons.inventory_2_rounded,
                   color: DesignColors.teal,
-                  trend: '+15%',
                 ),
               ),
             ],
@@ -222,13 +218,14 @@ class ReportsScreen extends ConsumerWidget {
   void _showSalesReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Sales Report',
       initialSize: 0.8,
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final salesAsync = ref.watch(salesListProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -253,7 +250,7 @@ class ReportsScreen extends ConsumerWidget {
                     _buildReportNavTab(context, 'Customers', false,
                         () => _showCustomerReport(context, ref)),
                     const SizedBox(width: 4),
-                    _buildReportNavTab(context, 'Payment Methods', false,
+                    _buildReportNavTab(context, 'Payments', false,
                         () => _showPaymentMethodsReport(context, ref)),
                     const SizedBox(width: 4),
                     _buildReportNavTab(context, 'Cashier', false,
@@ -338,13 +335,14 @@ class ReportsScreen extends ConsumerWidget {
   void _showPaymentMethodsReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Payment Methods',
       initialSize: 0.6,
       maxSize: 0.9,
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(paymentMethodProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -445,13 +443,14 @@ class ReportsScreen extends ConsumerWidget {
   void _showCashierReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Cashier Performance',
       initialSize: 0.6,
       maxSize: 0.9,
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(cashierPerformanceProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -513,13 +512,14 @@ class ReportsScreen extends ConsumerWidget {
   void _showCategorySalesReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Category Sales',
       initialSize: 0.7,
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(categorySalesProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -621,13 +621,14 @@ class ReportsScreen extends ConsumerWidget {
   void _showTopProductsReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Top Products',
       initialSize: 0.7,
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(topProductsProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -692,12 +693,13 @@ class ReportsScreen extends ConsumerWidget {
   void _showInventoryReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Inventory Report',
       initialSize: 0.8,
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(inventoryReportProvider);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -776,12 +778,13 @@ class ReportsScreen extends ConsumerWidget {
   void _showCustomerReport(BuildContext context, WidgetRef ref) {
     GlassBottomSheet.show(
       context,
+      title: 'Customer Report',
       initialSize: 0.8,
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final db = getIt<AppDatabase>();
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -811,7 +814,7 @@ class ReportsScreen extends ConsumerWidget {
                     _buildReportNavTab(context, 'Customers', true,
                         () => _showCustomerReport(context, ref)),
                     const SizedBox(width: 4),
-                    _buildReportNavTab(context, 'Payment Methods', false,
+                    _buildReportNavTab(context, 'Payments', false,
                         () => _showPaymentMethodsReport(context, ref)),
                     const SizedBox(width: 4),
                     _buildReportNavTab(context, 'Cashier', false,
@@ -894,6 +897,7 @@ class ReportsScreen extends ConsumerWidget {
 
     GlassBottomSheet.show(
       context,
+      title: 'Customer Details',
       initialSize: 0.5,
       maxSize: 0.7,
       child: Padding(
@@ -1218,7 +1222,7 @@ Widget _buildReportNavTab(
       Future<void>.delayed(Duration.zero, onTap);
     },
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: isActive
             ? DesignColors.brand.withValues(alpha: 0.1)

@@ -90,8 +90,8 @@ class _AnalyticsDashboardScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Analytics'),
+      appBar: BrandedAppBar(
+        title: 'Analytics',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -215,8 +215,6 @@ class _AnalyticsDashboardScreenState
                   value: 'KSh ${revenue.toStringAsFixed(0)}',
                   icon: Icons.attach_money_rounded,
                   color: DesignColors.success,
-                  trend: '+12.5%',
-                  trendValue: 12.5,
                 ),
               ),
               const SizedBox(width: 12),
@@ -226,8 +224,6 @@ class _AnalyticsDashboardScreenState
                   value: transactions.toString(),
                   icon: Icons.receipt_long_rounded,
                   color: DesignColors.brand,
-                  trend: '+8.2%',
-                  trendValue: 8.2,
                 ),
               ),
             ],
@@ -241,8 +237,6 @@ class _AnalyticsDashboardScreenState
                   value: 'KSh ${avgTicket.toStringAsFixed(0)}',
                   icon: Icons.trending_up_rounded,
                   color: DesignColors.accent,
-                  trend: '+5.3%',
-                  trendValue: 5.3,
                 ),
               ),
               const SizedBox(width: 12),
@@ -252,8 +246,6 @@ class _AnalyticsDashboardScreenState
                   value: itemsSold.toString(),
                   icon: Icons.shopping_bag_rounded,
                   color: DesignColors.info,
-                  trend: '+15.7%',
-                  trendValue: 15.7,
                 ),
               ),
             ],

@@ -40,10 +40,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _summary = await database.getDashboardSummary();
 
       // Load top products
-      _topProducts = await database.getTopProducts(startOfDay, endOfDay, limit: 5);
+      _topProducts =
+          await database.getTopProducts(startOfDay, endOfDay, limit: 5);
 
       // Load payment methods
-      _salesByPayment = await database.getSalesByPaymentMethod(startOfDay, endOfDay);
+      _salesByPayment =
+          await database.getSalesByPaymentMethod(startOfDay, endOfDay);
 
       // Load low stock
       _lowStockItems = await database.getLowStockProducts(threshold: 10);
@@ -59,10 +61,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DesignColors.surfaceMuted,
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      appBar: BrandedAppBar(
+        title: 'Dashboard',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -127,7 +127,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: DesignColors.brand.withValues(alpha:0.3),
+            color: DesignColors.brand.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -138,7 +138,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -163,7 +163,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Text(
                 'Today\'s Performance',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 13,
                 ),
               ),
@@ -184,40 +184,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: _buildMetricCard(
+            Expanded(
+                child: _buildMetricCard(
               title: 'Revenue',
               value: 'KSh ${revenue.toStringAsFixed(0)}',
               icon: Icons.attach_money_rounded,
               color: DesignColors.success,
-              trend: '+12.5%',
             )),
             const SizedBox(width: 12),
-            Expanded(child: _buildMetricCard(
+            Expanded(
+                child: _buildMetricCard(
               title: 'Transactions',
               value: transactions.toString(),
               icon: Icons.receipt_long_rounded,
               color: DesignColors.brand,
-              trend: '+8.2%',
             )),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _buildMetricCard(
+            Expanded(
+                child: _buildMetricCard(
               title: 'Avg Ticket',
               value: 'KSh ${avgTicket.toStringAsFixed(0)}',
               icon: Icons.trending_up_rounded,
               color: DesignColors.accent,
-              trend: '+5.3%',
             )),
             const SizedBox(width: 12),
-            Expanded(child: _buildMetricCard(
+            Expanded(
+                child: _buildMetricCard(
               title: 'Items Sold',
               value: itemsSold.toString(),
               icon: Icons.shopping_bag_rounded,
               color: DesignColors.info,
-              trend: '+15.7%',
             )),
           ],
         ),
@@ -237,10 +237,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DesignColors.surfaceBorder.withValues(alpha:0.5)),
+        border: Border.all(
+            color: DesignColors.surfaceBorder.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -254,7 +255,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha:0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -262,9 +263,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               const Spacer(),
               if (trend != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: DesignColors.success.withValues(alpha:0.1),
+                    color: DesignColors.success.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -306,10 +308,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: DesignColors.surfaceBorder.withValues(alpha:0.5)),
+        border: Border.all(
+            color: DesignColors.surfaceBorder.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -323,7 +326,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.1),
+                  color: DesignColors.brand.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -405,20 +408,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   horizontalInterval: 2500,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(
-                      color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                      color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
                       strokeWidth: 1,
                     );
                   },
                 ),
                 borderData: FlBorderData(show: false),
                 barGroups: [
-                  BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 4500, gradient: _brandGradient(), width: 12)]),
-                  BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 6200, gradient: _brandGradient(), width: 12)]),
-                  BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 5800, gradient: _brandGradient(), width: 12)]),
-                  BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: 7300, gradient: _brandGradient(), width: 12)]),
-                  BarChartGroupData(x: 4, barRods: [BarChartRodData(toY: 8900, gradient: _successGradient(), width: 12)]),
-                  BarChartGroupData(x: 5, barRods: [BarChartRodData(toY: 3200, gradient: _brandGradient(), width: 12)]),
-                  BarChartGroupData(x: 6, barRods: [BarChartRodData(toY: 2100, gradient: _brandGradient(), width: 12)]),
+                  BarChartGroupData(x: 0, barRods: [
+                    BarChartRodData(
+                        toY: 4500, gradient: _brandGradient(), width: 12)
+                  ]),
+                  BarChartGroupData(x: 1, barRods: [
+                    BarChartRodData(
+                        toY: 6200, gradient: _brandGradient(), width: 12)
+                  ]),
+                  BarChartGroupData(x: 2, barRods: [
+                    BarChartRodData(
+                        toY: 5800, gradient: _brandGradient(), width: 12)
+                  ]),
+                  BarChartGroupData(x: 3, barRods: [
+                    BarChartRodData(
+                        toY: 7300, gradient: _brandGradient(), width: 12)
+                  ]),
+                  BarChartGroupData(x: 4, barRods: [
+                    BarChartRodData(
+                        toY: 8900, gradient: _successGradient(), width: 12)
+                  ]),
+                  BarChartGroupData(x: 5, barRods: [
+                    BarChartRodData(
+                        toY: 3200, gradient: _brandGradient(), width: 12)
+                  ]),
+                  BarChartGroupData(x: 6, barRods: [
+                    BarChartRodData(
+                        toY: 2100, gradient: _brandGradient(), width: 12)
+                  ]),
                 ],
               ),
             ),
@@ -434,10 +458,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DesignColors.surfaceBorder.withValues(alpha:0.5)),
+        border: Border.all(
+            color: DesignColors.surfaceBorder.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -451,7 +476,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha:0.1),
+                  color: DesignColors.accent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -495,11 +520,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       height: 32,
                       decoration: BoxDecoration(
                         color: index == 0
-                            ? Colors.amber.withValues(alpha:0.2)
+                            ? Colors.amber.withValues(alpha: 0.2)
                             : index == 1
-                                ? Colors.grey.withValues(alpha:0.2)
+                                ? Colors.grey.withValues(alpha: 0.2)
                                 : index == 2
-                                    ? Colors.orange.withValues(alpha:0.2)
+                                    ? Colors.orange.withValues(alpha: 0.2)
                                     : DesignColors.surfaceSubtle,
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -569,10 +594,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DesignColors.surfaceBorder.withValues(alpha:0.5)),
+        border: Border.all(
+            color: DesignColors.surfaceBorder.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -586,7 +612,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha:0.1),
+                  color: DesignColors.info.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -632,7 +658,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha:0.15),
+                        color: color.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -742,10 +768,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DesignColors.warning.withValues(alpha:0.3)),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: 0.3)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -759,7 +785,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: DesignColors.warning.withValues(alpha:0.15),
+                  color: DesignColors.warning.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -779,7 +805,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: DesignColors.warning,
                   borderRadius: BorderRadius.circular(12),
@@ -807,8 +834,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     height: 40,
                     decoration: BoxDecoration(
                       color: quantity == 0
-                          ? DesignColors.error.withValues(alpha:0.15)
-                          : DesignColors.warning.withValues(alpha:0.15),
+                          ? DesignColors.error.withValues(alpha: 0.15)
+                          : DesignColors.warning.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
@@ -848,11 +875,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: quantity == 0
-                          ? DesignColors.error.withValues(alpha:0.15)
-                          : DesignColors.warning.withValues(alpha:0.15),
+                          ? DesignColors.error.withValues(alpha: 0.15)
+                          : DesignColors.warning.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -860,7 +888,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: quantity == 0 ? DesignColors.error : DesignColors.warning,
+                        color: quantity == 0
+                            ? DesignColors.error
+                            : DesignColors.warning,
                       ),
                     ),
                   ),

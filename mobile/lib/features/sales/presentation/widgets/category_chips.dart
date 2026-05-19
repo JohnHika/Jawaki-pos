@@ -13,11 +13,11 @@ class CategoryChips extends ConsumerWidget {
     final selectedId = ref.watch(selectedCategoryProvider);
 
     return SizedBox(
-      height: 44,
+      height: 48,
       child: categoriesAsync.when(
         data: (categories) => ListView.builder(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           itemCount: categories.length + 1,
           itemBuilder: (context, index) {
             if (index == 0) {
@@ -45,7 +45,7 @@ class CategoryChips extends ConsumerWidget {
         ),
         loading: () => ListView.builder(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           itemCount: 5,
           itemBuilder: (context, index) => const _CategoryChipSkeleton(),
         ),
@@ -88,14 +88,12 @@ class _CategoryChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected
-                  ? chipColor.withValues(alpha:0.15)
-                  : (isDark
-                      ? DesignColors.glassDark
-                      : DesignColors.glassWhite),
+                  ? chipColor.withValues(alpha: 0.15)
+                  : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
               border: Border.all(
                 color: isSelected
-                    ? chipColor.withValues(alpha:0.4)
+                    ? chipColor.withValues(alpha: 0.4)
                     : (isDark
                         ? DesignColors.glassDarkBorder
                         : DesignColors.surfaceBorder),
@@ -104,7 +102,7 @@ class _CategoryChip extends StatelessWidget {
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        color: chipColor.withValues(alpha:0.25),
+                        color: chipColor.withValues(alpha: 0.25),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),

@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
@@ -34,12 +37,64 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
   bool _isLoading = false;
   List<String> _images = [];
   bool _showSuccess = false;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _selectedProductId = widget.productId;
     _selectedProductName = widget.productName;
+  }
+
+  Future<void> _addPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    final image = await _imagePicker.pickImage(
+      source: source,
+      imageQuality: 80,
+      maxWidth: 1600,
+    );
+
+    if (image == null || !mounted) return;
+    setState(() => _images.add(image.path));
+  }
+
+  Widget _buildRequestImage(String image) {
+    final isRemote =
+        image.startsWith('http://') || image.startsWith('https://');
+    final ImageProvider provider;
+    if (isRemote) {
+      provider = NetworkImage(image);
+    } else {
+      provider = FileImage(File(image));
+    }
+
+    return Image(
+      image: provider,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => const Icon(Icons.error),
+    );
   }
 
   @override
@@ -490,12 +545,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
-                                child: Image.network(
-                                  image,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
-                                      const Icon(Icons.error),
-                                ),
+                                child: _buildRequestImage(image),
                               ),
                             ),
                             Positioned(
@@ -521,26 +571,21 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                       }).toList(),
                     ),
 
-                  if (_images.isEmpty)
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Image upload coming soon')),
-                        );
-                      },
-                      icon: const Icon(Icons.add_a_photo_rounded),
-                      label: const Text('Add Photo'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side:
-                            const BorderSide(color: DesignColors.surfaceBorder),
-                        foregroundColor: DesignColors.textSecondary,
+                  if (_images.isNotEmpty) const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _addPhoto,
+                    icon: const Icon(Icons.add_a_photo_rounded),
+                    label: Text(
+                        _images.isEmpty ? 'Add Photo' : 'Add Another Photo'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
+                      side: const BorderSide(color: DesignColors.surfaceBorder),
+                      foregroundColor: DesignColors.textSecondary,
                     ),
+                  ),
                 ],
               ),
             ),

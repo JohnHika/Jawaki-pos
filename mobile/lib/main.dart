@@ -9,6 +9,8 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
+import 'core/services/local_server_service.dart';
+import 'core/services/storage_service.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -70,6 +72,12 @@ void main() async {
     await getIt<ConnectivityService>().initialize();
     debugPrint('[main] Connectivity service initialized');
 
+    getIt<LocalServerService>().enableAutoStart(
+      connectivity: getIt<ConnectivityService>(),
+      storage: getIt<StorageService>(),
+    );
+    debugPrint('[main] Local server auto-start armed');
+
     // Initialize background sync worker (OPTIONAL - can fail without crashing)
     debugPrint('[main] Initializing background sync (non-blocking)...');
     try {
@@ -128,7 +136,8 @@ class POSApp extends ConsumerWidget {
       routerConfig: router,
       builder: (context, child) {
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+          data:
+              MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
           child: child!,
         );
       },

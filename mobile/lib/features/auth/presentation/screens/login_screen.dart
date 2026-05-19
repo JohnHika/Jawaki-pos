@@ -309,7 +309,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           children: [
             // Card header
             Text(
-              'Welcome Back!',
+              'Welcome back to Levisa Adventures',
               style: TextStyle(
                 fontSize: isSmallScreen ? 20 : 24,
                 fontWeight: FontWeight.w700,
@@ -318,7 +318,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              'Sign in to continue to your dashboard',
+              'Sign in to continue to Levisa Adventures POS',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.white.withValues(alpha: 0.6),

@@ -80,6 +80,15 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final safePadding = MediaQuery.paddingOf(context);
+    final availableHeight = MediaQuery.sizeOf(context).height -
+        viewInsets.bottom -
+        safePadding.top -
+        safePadding.bottom -
+        24;
+
     final content = Column(
       children: [
         // Header
@@ -90,7 +99,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.1),
+                  color: DesignColors.brand.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -100,13 +109,15 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Select Product',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
-                    color: DesignColors.textPrimary,
+                    color: isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary,
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -116,10 +127,16 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+                    color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.close, size: 18),
+                  child: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                  ),
                 ),
               ),
             ],
@@ -131,7 +148,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: TextField(
             controller: _searchController,
-            autofocus: true,
+            autofocus: false,
             decoration: InputDecoration(
               hintText: 'Search by name or SKU...',
               hintStyle: TextStyle(color: DesignColors.textTertiary),
@@ -145,7 +162,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                     )
                   : null,
               filled: true,
-              fillColor: DesignColors.surfaceBorder.withValues(alpha:0.2),
+              fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
@@ -174,9 +191,11 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
               children: [
                 Text(
                   '${_filteredProducts.length} product${_filteredProducts.length != 1 ? 's' : ''} found',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: DesignColors.textTertiary,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textTertiary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -212,30 +231,27 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                       iconColor: DesignColors.textTertiary,
                     )
                   : ListView.builder(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _filteredProducts.length,
                       itemBuilder: (context, index) {
                         final product = _filteredProducts[index];
-                        final isSelected =
-                            product.id == _selectedProductId;
+                        final isSelected = product.id == _selectedProductId;
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: GlassCard(
                             onTap: () {
-                              setState(
-                                  () => _selectedProductId = product.id);
+                              setState(() => _selectedProductId = product.id);
                             },
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 8),
                             borderRadius: 12,
                             blur: 8,
                             tint: isSelected
-                                ? DesignColors.brand.withValues(alpha:0.08)
+                                ? DesignColors.brand.withValues(alpha: 0.08)
                                 : Colors.transparent,
                             borderColor: isSelected
-                                ? DesignColors.brand.withValues(alpha:0.3)
+                                ? DesignColors.brand.withValues(alpha: 0.3)
                                 : DesignColors.surfaceBorder,
                             child: Row(
                               children: [
@@ -244,9 +260,8 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                   height: 48,
                                   decoration: BoxDecoration(
                                     color: DesignColors.brand
-                                        .withValues(alpha:0.1),
-                                    borderRadius:
-                                        BorderRadius.circular(12),
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Center(
                                     child: Text(
@@ -272,8 +287,9 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                               ? FontWeight.w700
                                               : FontWeight.w600,
                                           fontSize: 14,
-                                          color:
-                                              DesignColors.textPrimary,
+                                          color: isDark
+                                              ? DesignColors.darkTextPrimary
+                                              : DesignColors.textPrimary,
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -281,28 +297,26 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                         children: [
                                           Text(
                                             'SKU: ${product.sku}',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 11,
-                                              color:
-                                                  DesignColors.textTertiary,
+                                              color: isDark
+                                                  ? DesignColors
+                                                      .darkTextSecondary
+                                                  : DesignColors.textTertiary,
                                             ),
                                           ),
                                           const SizedBox(width: 8),
                                           Container(
-                                            padding:
-                                                const EdgeInsets.symmetric(
+                                            padding: const EdgeInsets.symmetric(
                                               horizontal: 6,
                                               vertical: 1,
                                             ),
                                             decoration: BoxDecoration(
                                               color: product.isActive
-                                                  ? DesignColors
-                                                      .successSubtle
-                                                  : DesignColors
-                                                      .surfaceBorder,
+                                                  ? DesignColors.successSubtle
+                                                  : DesignColors.surfaceBorder,
                                               borderRadius:
-                                                  BorderRadius.circular(
-                                                      4),
+                                                  BorderRadius.circular(4),
                                             ),
                                             child: Text(
                                               product.isActive
@@ -311,12 +325,9 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                               style: TextStyle(
                                                 fontSize: 9,
                                                 color: product.isActive
-                                                    ? DesignColors
-                                                        .success
-                                                    : DesignColors
-                                                        .textTertiary,
-                                                fontWeight:
-                                                    FontWeight.w600,
+                                                    ? DesignColors.success
+                                                    : DesignColors.textTertiary,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                           ),
@@ -361,8 +372,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(
-                          color: DesignColors.surfaceBorder),
+                      side: const BorderSide(color: DesignColors.surfaceBorder),
                     ),
                     side: const BorderSide(color: DesignColors.surfaceBorder),
                     foregroundColor: DesignColors.textSecondary,
@@ -398,16 +408,23 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
     );
 
     return Dialog(
+      insetPadding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? DesignColors.darkSurface
-          : Colors.white,
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.92,
-        height: MediaQuery.of(context).size.height * 0.75,
-        child: content,
+      backgroundColor: isDark ? DesignColors.darkSurface : Colors.white,
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 560,
+            maxHeight: availableHeight.clamp(280.0, 720.0),
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: content,
+          ),
+        ),
       ),
     );
   }

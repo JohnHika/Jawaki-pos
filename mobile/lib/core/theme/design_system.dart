@@ -1684,76 +1684,70 @@ class GlassBottomSheet {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => SafeArea(
-        child: Container(
-          height: MediaQuery.sizeOf(ctx).height * maxSize.clamp(0.85, 0.98),
-          decoration: BoxDecoration(
-            color: isDark ? DesignColors.darkSurface : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.1),
-                blurRadius: 30,
-                offset: const Offset(0, -8),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      tooltip: 'Back',
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
+      builder: (ctx) => AnimatedPadding(
+        duration: DesignAnimation.fast,
+        curve: DesignAnimation.smooth,
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SafeArea(
+          child: Container(
+            height: MediaQuery.sizeOf(ctx).height *
+                maxSize.clamp(initialSize.clamp(0.45, 0.98), 0.98),
+            decoration: BoxDecoration(
+              color: isDark ? DesignColors.darkSurface : Colors.white,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.1),
+                  blurRadius: 30,
+                  offset: const Offset(0, -8),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isDark
+                                ? DesignColors.darkTextPrimary
+                                : DesignColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Divider(
-                height: 1,
-                color: isDark
-                    ? DesignColors.darkBorder
-                    : DesignColors.surfaceBorder,
-              ),
-              Expanded(
-                child: DraggableScrollableSheet(
-                  initialChildSize: initialSize.clamp(0.85, 1.0),
-                  minChildSize: 0.75,
-                  maxChildSize: 1.0,
-                  expand: false,
-                  builder: (context, scrollController) {
-                    if (scrollable) {
-                      return SingleChildScrollView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: child,
-                      );
-                    }
-                    return PrimaryScrollController(
-                      controller: scrollController,
-                      child: child,
-                    );
-                  },
+                Divider(
+                  height: 1,
+                  color: isDark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder,
                 ),
-              ),
-            ],
+                Expanded(
+                  child: scrollable
+                      ? SingleChildScrollView(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: child,
+                        )
+                      : child,
+                ),
+              ],
+            ),
           ),
         ),
       ),

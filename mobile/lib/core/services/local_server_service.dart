@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -9,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../di/injection.dart';
 import '../network/api_client.dart';
+import 'connectivity_service.dart';
 import 'server/middleware.dart';
 import 'server/routes/auth_routes.dart';
 import 'server/routes/catalog_routes.dart';
@@ -19,6 +21,7 @@ import 'server/routes/report_routes.dart';
 import 'server/routes/image_routes.dart';
 import 'server/routes/payment_routes.dart';
 import 'server/sql_helper.dart';
+import 'storage_service.dart';
 
 /// Phone Server Mode — runs an HTTP server inside the Flutter app.
 ///
@@ -34,13 +37,36 @@ import 'server/sql_helper.dart';
 /// ```
 class LocalServerService {
   HttpServer? _server;
+  StreamSubscription<ConnectionStatus>? _autoStartSubscription;
   bool _isRunning = false;
   int _port = 3000;
   List<Map<String, dynamic>> _connectedClients = [];
 
   bool get isRunning => _isRunning;
   int get port => _port;
-  List<Map<String, dynamic>> get connectedClients => List.unmodifiable(_connectedClients);
+  List<Map<String, dynamic>> get connectedClients =>
+      List.unmodifiable(_connectedClients);
+
+  void enableAutoStart({
+    required ConnectivityService connectivity,
+    required StorageService storage,
+  }) {
+    _autoStartSubscription?.cancel();
+    _autoStartSubscription = connectivity.statusStream.listen((status) {
+      _startIfPreferredNetworkIsAvailable(connectivity, storage);
+    });
+    _startIfPreferredNetworkIsAvailable(connectivity, storage);
+  }
+
+  Future<void> _startIfPreferredNetworkIsAvailable(
+    ConnectivityService connectivity,
+    StorageService storage,
+  ) async {
+    if (_isRunning || !storage.isServerModeEnabled()) return;
+    if (connectivity.isOnline && connectivity.isWifi) {
+      await start(port: storage.getServerPort());
+    }
+  }
 
   /// Get the local IP addresses of this device.
   static Future<List<String>> getLocalIpAddresses() async {
@@ -190,9 +216,11 @@ class LocalServerService {
       );
 
       // Check if any users exist
-      final count = await db.customSelect(
-        'SELECT COUNT(*) as c FROM server_users',
-      ).get();
+      final count = await db
+          .customSelect(
+            'SELECT COUNT(*) as c FROM server_users',
+          )
+          .get();
       if (count.first.read<int>('c') > 0) return; // Already seeded
 
       // Create default admin
@@ -209,7 +237,8 @@ class LocalServerService {
         '${Sql.str('ADMIN')}, ${Sql.str('local')}, ${Sql.str('branch-main')}, '
         '1, ${Sql.str(now)}, ${Sql.str(now)})',
       );
-      debugPrint('[LocalServer] ✅ Default admin user created: admin@levisa.com / admin123 / PIN: 0000');
+      debugPrint(
+          '[LocalServer] ✅ Default admin user created: admin@levisa.com / admin123 / PIN: 0000');
     } catch (e) {
       debugPrint('[LocalServer] ⚠️  Could not seed admin user: $e');
     }

@@ -87,7 +87,7 @@ class DashboardScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Good ${_getGreeting()}!',
+                            'Good ${_getGreeting()}, Levisa Adventures!',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -276,8 +276,6 @@ class DashboardScreen extends ConsumerWidget {
                 value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
                 icon: Icons.trending_up_rounded,
                 color: DesignColors.teal,
-                trend: '+12%',
-                trendValue: 12,
               ),
             ),
             const SizedBox(width: 12),

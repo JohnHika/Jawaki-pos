@@ -9,20 +9,24 @@ enum ConnectionStatus {
 
 class ConnectivityService {
   final Connectivity _connectivity = Connectivity();
-  final StreamController<ConnectionStatus> _statusController = 
+  final StreamController<ConnectionStatus> _statusController =
       StreamController<ConnectionStatus>.broadcast();
-      
+
   ConnectionStatus _currentStatus = ConnectionStatus.offline;
-  StreamSubscription<ConnectivityResult>? _subscription;
-  
+  ConnectivityResult _currentConnectivity = ConnectivityResult.none;
+  StreamSubscription<dynamic>? _subscription;
+
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
   ConnectionStatus get currentStatus => _currentStatus;
+  ConnectivityResult get currentConnectivity => _currentConnectivity;
   bool get isOnline => _currentStatus == ConnectionStatus.online;
   bool get isOffline => _currentStatus == ConnectionStatus.offline;
-  
+  bool get isWifi => _currentConnectivity == ConnectivityResult.wifi;
+
   Future<void> initialize() async {
     await _checkConnectivity();
-    _subscription = _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
+    _subscription =
+        _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
   }
 
   Future<void> _checkConnectivity() async {
@@ -32,12 +36,15 @@ class ConnectivityService {
   Future<ConnectionStatus> checkCurrentStatus() async {
     final result = await _connectivity.checkConnectivity();
     final connectivityResult = _normalizeConnectivityResult(result);
+    _currentConnectivity = connectivityResult;
     _setStatus(_mapStatus(connectivityResult));
     return _currentStatus;
   }
-  
-  void _onConnectivityChanged(ConnectivityResult result) {
-    _setStatus(_mapStatus(result));
+
+  void _onConnectivityChanged(dynamic result) {
+    final connectivityResult = _normalizeConnectivityResult(result);
+    _currentConnectivity = connectivityResult;
+    _setStatus(_mapStatus(connectivityResult));
   }
 
   ConnectivityResult _normalizeConnectivityResult(Object? result) {
@@ -53,11 +60,9 @@ class ConnectivityService {
   }
 
   ConnectionStatus _mapStatus(ConnectivityResult result) {
-    final hasConnection = 
-      result == ConnectivityResult.mobile || 
-      result == ConnectivityResult.wifi ||
-      result == ConnectivityResult.ethernet
-    ;
+    final hasConnection = result == ConnectivityResult.mobile ||
+        result == ConnectivityResult.wifi ||
+        result == ConnectivityResult.ethernet;
 
     return hasConnection ? ConnectionStatus.online : ConnectionStatus.offline;
   }
@@ -68,7 +73,7 @@ class ConnectivityService {
       _statusController.add(_currentStatus);
     }
   }
-  
+
   void dispose() {
     _subscription?.cancel();
     _statusController.close();

@@ -19,6 +19,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   List<PendingSale> _sales = [];
   bool _isLoading = true;
   String? _error;
+  int? _rangeDays = 30;
 
   @override
   void initState() {
@@ -30,8 +31,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   Future<void> _loadSales() async {
     try {
       final now = DateTime.now();
-      // Show sales from the last 30 days
-      final from = now.subtract(const Duration(days: 30));
+      final from = _rangeDays == null
+          ? DateTime(2000)
+          : now.subtract(Duration(days: _rangeDays!));
       final sales = await _db.getSalesByDateRange(from, now);
       if (mounted) {
         setState(() {
@@ -111,20 +113,14 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list_rounded),
-            onPressed: () {
-              showGlassSnackBar(
-                context,
-                'Filter options coming soon',
-                icon: Icons.info_outline_rounded,
-                color: DesignColors.info,
-              );
-            },
+            onPressed: () => _showFilterSheet(context),
             tooltip: 'Filter receipts',
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
+          ? const Center(
+              child: CircularProgressIndicator(color: DesignColors.brand))
           : _error != null
               ? EmptyState(
                   icon: Icons.error_outline_rounded,
@@ -133,7 +129,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                   actionLabel: 'Retry',
                   iconColor: DesignColors.error,
                   onAction: () {
-                    setState(() { _isLoading = true; });
+                    setState(() {
+                      _isLoading = true;
+                    });
                     _loadSales();
                   },
                 )
@@ -144,7 +142,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                       subtitle: 'Completed sales will appear here',
                       actionLabel: 'Refresh',
                       onAction: () {
-                        setState(() { _isLoading = true; });
+                        setState(() {
+                          _isLoading = true;
+                        });
                         _loadSales();
                       },
                     )
@@ -158,16 +158,70 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                           children: [
                             SectionHeader(
                               title: 'Recent Receipts',
-                              subtitle: '${_sales.length} receipt${_sales.length != 1 ? 's' : ''} in the last 30 days',
+                              subtitle:
+                                  '${_sales.length} receipt${_sales.length != 1 ? 's' : ''} ${_rangeLabel.toLowerCase()}',
                               icon: Icons.receipt_long_rounded,
                             ),
                             const SizedBox(height: 8),
-                            ..._sales.map((sale) => _buildReceiptCard(sale, isDark)),
+                            ..._sales
+                                .map((sale) => _buildReceiptCard(sale, isDark)),
                             const SizedBox(height: 24),
                           ],
                         ),
                       ),
                     ),
+    );
+  }
+
+  String get _rangeLabel {
+    if (_rangeDays == null) return 'All time';
+    if (_rangeDays == 7) return 'Last 7 days';
+    if (_rangeDays == 30) return 'Last 30 days';
+    if (_rangeDays == 90) return 'Last 90 days';
+    return 'Last $_rangeDays days';
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    final options = <String, int?>{
+      'Last 7 days': 7,
+      'Last 30 days': 30,
+      'Last 90 days': 90,
+      'All time': null,
+    };
+
+    GlassBottomSheet.show(
+      context,
+      title: 'Filter receipts',
+      initialSize: 0.35,
+      maxSize: 0.6,
+      scrollable: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options.entries.map((entry) {
+            final selected = entry.value == _rangeDays;
+            return ListTile(
+              leading: Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color:
+                    selected ? DesignColors.brand : DesignColors.textTertiary,
+              ),
+              title: Text(entry.key),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _rangeDays = entry.value;
+                  _isLoading = true;
+                });
+                _loadSales();
+              },
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
