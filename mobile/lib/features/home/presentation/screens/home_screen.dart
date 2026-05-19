@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/auth/app_roles.dart';
@@ -10,7 +10,6 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final Widget child;
-
   const HomeScreen({super.key, required this.child});
 
   @override
@@ -19,131 +18,148 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
-  static const int maxVisibleTabs = 5;
 
-  /// Build the nav items list based on the user's role permissions.
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
-
-    // Dashboard — store manager+ (first item)
     if (perms.canSeeDashboard) {
       items.add(_NavItem(
-        icon: Icons.dashboard_outlined,
-        activeIcon: Icons.dashboard,
-        label: 'Dashboard',
-        path: '/dashboard',
-      ));
+          icon: Icons.dashboard_outlined,
+          activeIcon: Icons.dashboard_rounded,
+          label: 'Dashboard',
+          path: '/dashboard'));
     }
-
-    // POS — everyone
     items.add(_NavItem(
-      icon: Icons.point_of_sale_outlined,
-      activeIcon: Icons.point_of_sale,
-      label: 'POS',
-      path: '/',
-    ));
-
-    // Products — stock keeper+
+        icon: Icons.point_of_sale_outlined,
+        activeIcon: Icons.point_of_sale_rounded,
+        label: 'POS',
+        path: '/'));
+    items.add(_NavItem(
+        icon: Icons.people_outlined,
+        activeIcon: Icons.people_rounded,
+        label: 'Customers',
+        path: '/customers'));
     if (perms.canSeeProducts) {
       items.add(_NavItem(
-        icon: Icons.inventory_2_outlined,
-        activeIcon: Icons.inventory_2,
-        label: 'Products',
-        path: '/products',
-      ));
+          icon: Icons.inventory_2_outlined,
+          activeIcon: Icons.inventory_2_rounded,
+          label: 'Products',
+          path: '/products'));
     }
-
-    // Inventory — stock keeper+
     if (perms.canSeeInventory) {
       items.add(_NavItem(
-        icon: Icons.warehouse_outlined,
-        activeIcon: Icons.warehouse,
-        label: 'Inventory',
-        path: '/inventory',
-      ));
+          icon: Icons.warehouse_outlined,
+          activeIcon: Icons.warehouse_rounded,
+          label: 'Inventory',
+          path: '/inventory'));
     }
-
-    // Reports — store manager+
     if (perms.canSeeReports) {
       items.add(_NavItem(
-        icon: Icons.bar_chart_outlined,
-        activeIcon: Icons.bar_chart,
-        label: 'Reports',
-        path: '/reports',
-      ));
+          icon: Icons.analytics_outlined,
+          activeIcon: Icons.analytics_rounded,
+          label: 'Reports',
+          path: '/reports'));
     }
-
-    // Settings — everyone
     items.add(_NavItem(
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings,
-      label: 'Settings',
-      path: '/settings',
-    ));
-
+        icon: Icons.payments_outlined,
+        activeIcon: Icons.payments_rounded,
+        label: 'Payments',
+        path: '/payments'));
+    items.add(_NavItem(
+        icon: Icons.settings_outlined,
+        activeIcon: Icons.settings_rounded,
+        label: 'Settings',
+        path: '/settings'));
+    // Finance
+    if (perms.canSeeReports) {
+      items.add(_NavItem(
+          icon: Icons.account_balance_wallet_outlined,
+          activeIcon: Icons.account_balance_wallet_rounded,
+          label: 'Finance',
+          path: '/finance'));
+    }
     return items;
   }
 
-  void _showMoreSheet(List<_NavItem> moreItems) {
+  void _showMoreSheet(List<_NavItem> moreItems, int startIndex) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+        padding:
+            EdgeInsets.only(bottom: bottomPadding > 0 ? bottomPadding + 8 : 16),
+        decoration: BoxDecoration(
+          color: isDark ? DesignColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+              blurRadius: 28,
+              offset: const Offset(0, -10),
+            ),
+          ],
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle bar
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[400],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
+                  borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'More',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Divider(),
-            ...moreItems.map((item) => ListTile(
-                  leading: Container(
+              child: Row(children: [
+                Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      gradient: DesignGradients.brand,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(item.icon, color: AppColors.primary),
-                  ),
-                  title: Text(item.label),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.go(item.path);
-                    // Find index of this item in full nav list for proper highlighting
-                    final allItems = _buildNavItems(ref.read(permissionsProvider));
-                    final itemIndex = allItems.indexWhere((i) => i.path == item.path);
-                    if (itemIndex != -1) {
-                      setState(() {
-                        _currentIndex = itemIndex;
-                      });
-                    }
-                  },
-                )),
-            const SizedBox(height: 8),
+                    child: const Icon(Icons.apps_rounded,
+                        color: Colors.white, size: 20)),
+                const SizedBox(width: 10),
+                Text('More Options',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            ...moreItems.asMap().entries.map((entry) {
+              final item = entry.value;
+              return ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: DesignColors.brandSubtle,
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Icon(item.icon, color: DesignColors.brand, size: 20),
+                ),
+                title: Text(item.label,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _currentIndex = startIndex + entry.key);
+                  context.go(item.path);
+                },
+              );
+            }),
           ],
         ),
       ),
@@ -155,15 +171,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final connectivity = getIt<ConnectivityService>();
     final perms = ref.watch(permissionsProvider);
     final allNavItems = _buildNavItems(perms);
+    const maxVisible = 4;
+    final hasMore = allNavItems.length > maxVisible;
+    final visibleNavItems =
+        hasMore ? allNavItems.take(maxVisible).toList() : allNavItems;
+    final moreItems =
+        hasMore ? allNavItems.skip(maxVisible).toList() : <_NavItem>[];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // If more than maxVisibleTabs, show first (maxVisibleTabs - 1) + "More"
-    final hasMore = allNavItems.length > maxVisibleTabs;
-    final visibleNavItems = hasMore
-        ? allNavItems.take(maxVisibleTabs - 1).toList()
-        : allNavItems;
-    final moreItems = hasMore
-        ? allNavItems.skip(maxVisibleTabs - 1).toList()
-        : <_NavItem>[];
+    // Ensure current index is valid
+    if (_currentIndex >= allNavItems.length) {
+      _currentIndex = 0;
+    }
 
     return Scaffold(
       body: Column(
@@ -174,93 +193,94 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             initialData: connectivity.currentStatus,
             builder: (context, snapshot) {
               final isOffline = snapshot.data == ConnectionStatus.offline;
-
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                height: isOffline ? 32 : 0,
-                color: AppColors.warning,
-                child: isOffline
-                    ? const Center(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.cloud_off,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Offline Mode - Changes will sync when online',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : null,
+              if (!isOffline) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                padding: EdgeInsets.only(
+                    top: MediaQuery.of(context).padding.top, bottom: 8),
+                decoration: BoxDecoration(
+                  color: DesignColors.warning.withValues(alpha: 0.12),
+                  border: Border(
+                      bottom: BorderSide(
+                          color: DesignColors.warning.withValues(alpha: 0.2))),
+                ),
+                child:
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                          color: DesignColors.warning, shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
+                  const Text('Offline Mode',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: DesignColors.warning)),
+                  const SizedBox(width: 8),
+                  Text('Sales will sync',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: DesignColors.warning.withValues(alpha: 0.7))),
+                ]),
               );
             },
           ),
-
-          // Main Content
           Expanded(child: widget.child),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? DesignColors.darkSurface.withValues(alpha: 0.96)
+                : Colors.white.withValues(alpha: 0.98),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+              width: 0.75,
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Container(
+            height: 68,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             child: Row(
               children: [
-                // Visible nav items
                 ...visibleNavItems.asMap().entries.map((entry) {
-                  final index = entry.key;
+                  final idx = entry.key;
                   final item = entry.value;
-                  final safeIndex = _currentIndex.clamp(0, allNavItems.length - 1);
-                  final isSelected = safeIndex == index;
-
+                  final isSelected = _currentIndex == idx;
                   return Expanded(
-                    child: _NavItemWidget(
-                      item: item,
-                      isSelected: isSelected,
-                      onTap: () {
-                        setState(() {
-                          _currentIndex = index;
-                        });
-                        context.go(item.path);
-                      },
-                    ),
-                  );
+                      child: _NavItemWidget(
+                          item: item,
+                          isSelected: isSelected,
+                          onTap: () {
+                            setState(() => _currentIndex = idx);
+                            context.go(item.path);
+                          },
+                          isDark: isDark));
                 }),
-
-                // "More" button if needed
                 if (hasMore)
                   Expanded(
-                    child: _NavItemWidget(
-                      item: _NavItem(
+                      child: _NavItemWidget(
+                    item: _NavItem(
                         icon: Icons.apps_outlined,
-                        activeIcon: Icons.apps,
+                        activeIcon: Icons.apps_rounded,
                         label: 'More',
-                        path: '/more',
-                      ),
-                      isSelected: _currentIndex >= maxVisibleTabs - 1,
-                      onTap: () => _showMoreSheet(moreItems),
-                    ),
-                  ),
+                        path: ''),
+                    isSelected: _currentIndex >= maxVisible,
+                    onTap: () => _showMoreSheet(moreItems, maxVisible),
+                    isDark: isDark,
+                  )),
               ],
             ),
           ),
@@ -275,66 +295,64 @@ class _NavItem {
   final IconData activeIcon;
   final String label;
   final String path;
-
-  _NavItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.path,
-  });
+  _NavItem(
+      {required this.icon,
+      required this.activeIcon,
+      required this.label,
+      required this.path});
 }
 
 class _NavItemWidget extends StatelessWidget {
   final _NavItem item;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isDark;
 
-  const _NavItemWidget({
-    required this.item,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const _NavItemWidget(
+      {required this.item,
+      required this.isSelected,
+      required this.onTap,
+      required this.isDark});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primaryColor = theme.colorScheme.primary;
-    final inactiveColor = theme.textTheme.bodySmall?.color ?? AppColors.textTertiary;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(
-          horizontal: MediaQuery.of(context).size.width < 380 ? 8 : 12,
-          vertical: 6,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? primaryColor.withOpacity(0.1) 
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    final inactiveColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: DesignAnimation.fast,
+          curve: DesignAnimation.smooth,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? DesignColors.brand.withValues(alpha: isDark ? 0.22 : 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(
               isSelected ? item.activeIcon : item.icon,
-              color: isSelected ? primaryColor : inactiveColor,
-              size: MediaQuery.of(context).size.width < 380 ? 20 : 22,
+              color: isSelected ? DesignColors.brand : inactiveColor,
+              size: 23,
             ),
-            const SizedBox(height: 2),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: MediaQuery.of(context).size.width < 380 ? 9 : 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? primaryColor : inactiveColor,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+            const SizedBox(height: 3),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(item.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? DesignColors.brand : inactiveColor,
+                  )),
             ),
-          ],
+          ]),
         ),
       ),
     );

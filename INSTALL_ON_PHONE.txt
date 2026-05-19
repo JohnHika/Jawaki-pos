@@ -1,0 +1,85 @@
+========================================
+LEVISA POS - MANUAL INSTALLATION
+========================================
+
+The latest APK has been copied to:
+C:\Users\Public\LevisaPOS_Latest.apk
+
+HOW TO INSTALL ON YOUR PHONE:
+========================================
+
+METHOD 1: USB Transfer (Recommended)
+----------------------------------------
+1. Connect your phone to computer via USB
+2. On phone, select "File Transfer" or "MTP" mode
+3. On computer, open File Explorer
+4. Find your phone in "This PC"
+5. Copy: C:\Users\Public\LevisaPOS_Latest.apk
+6. Paste to your phone's "Download" folder
+7. On phone, open "Files" or "My Files" app
+8. Go to Downloads
+9. Tap "LevisaPOS_Latest.apk"
+10. Tap "Install"
+11. Allow "Install from unknown sources" if prompted
+12. Wait for installation
+13. Tap "Open" to launch
+
+METHOD 2: Share via Quick Share/Nearby
+----------------------------------------
+1. On computer, open File Explorer
+2. Go to: C:\Users\Public\
+3. Right-click "LevisaPOS_Latest.apk"
+4. Select "Share" or "Nearby Share"
+5. Select your phone
+6. Accept on phone
+7. Open downloaded file and install
+
+METHOD 3: Email/Cloud Upload
+----------------------------------------
+1. Upload LevisaPOS_Latest.apk to:
+   - Google Drive
+   - OneDrive
+   - Or email to yourself
+2. On phone, download the file
+3. Open and install
+
+METHOD 4: ADB (If Authorized)
+----------------------------------------
+If phone shows as "unauthorized":
+1. On phone: Settings → Developer Options
+2. Tap "Revoke USB debugging authorizations"
+3. Disconnect and reconnect USB
+4. When popup appears, tap "Allow"
+5. Then run: auto-build-install.bat
+
+========================================
+WHAT'S NEW IN THIS VERSION:
+========================================
+✅ Beautiful new Sales Dashboard with charts
+✅ Low stock alerts with visual indicators
+✅ Customer debt/credit tracking system
+✅ Loyalty points infrastructure
+✅ Barcode scanner screen (camera-based)
+✅ Haptic feedback service
+✅ Modern glassmorphism UI design
+✅ Dark mode ready
+
+LOGIN CREDENTIALS:
+========================================
+Email: johnkimani576@gmail.com
+Password: admin123
+
+OR PIN: 0000
+
+========================================
+TROUBLESHOOTING:
+========================================
+If "Blocked by Play Protect":
+- Tap "More info" or "Details"
+- Tap "Install anyway"
+
+If "Unknown sources" blocked:
+- Settings → Apps → Special Access → Install unknown apps
+- Enable for your file manager or browser
+
+========================================

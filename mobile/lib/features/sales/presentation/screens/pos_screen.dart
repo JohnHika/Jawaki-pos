@@ -5,7 +5,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
 import '../widgets/category_chips.dart';
@@ -27,486 +28,448 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final parkedSales = ref.watch(parkedSalesProvider);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final connectivity = getIt<ConnectivityService>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.point_of_sale, size: 22),
-            const SizedBox(width: 8),
-            const Text('POS'),
-            if (cart.customerName != null) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.secondary.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    cart.customerName!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.secondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+      appBar: BrandedAppBar(
+        title: 'POS',
         actions: [
-          // Customer button
-          IconButton(
-            icon: Icon(
-              cart.customerName != null ? Icons.person : Icons.person_add_alt_1,
-              color: cart.customerName != null ? AppColors.secondary : null,
-            ),
-            tooltip: 'Customer',
-            onPressed: () => _showCustomerDialog(context),
-          ),
-
-          // Parked sales badge
-          if (parkedSales.isNotEmpty)
-            Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.pause_circle_outline),
-                  tooltip: 'Parked Sales',
-                  onPressed: () => _showParkedSalesSheet(context),
-                ),
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: AppColors.warning,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                    child: Text(
-                      '${parkedSales.length}',
-                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-          // Favorites toggle
-          IconButton(
-            icon: Icon(
-              _showFavorites ? Icons.favorite : Icons.favorite_border,
-              color: _showFavorites ? AppColors.error : null,
-            ),
-            onPressed: () {
-              setState(() {
-                _showFavorites = !_showFavorites;
-                if (_showFavorites) {
-                  ref.read(selectedCategoryProvider.notifier).state = null;
-                }
-              });
-            },
-          ),
-
-          // Cart with badge
+          _topAction(Icons.person_add_alt_1_rounded, 'Customer',
+              () => _showCustomerDialog(context), isDark),
+          _topAction(
+              _showFavorites
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              'Favorites', () {
+            setState(() {
+              _showFavorites = !_showFavorites;
+              if (_showFavorites) {
+                ref.read(selectedCategoryProvider.notifier).state = null;
+              }
+            });
+          }, isDark, active: _showFavorites),
           Stack(
             children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_cart_outlined),
-                onPressed: () => context.push('/cart'),
-              ),
+              _topAction(Icons.shopping_cart_outlined, 'Cart',
+                  () => context.push('/cart'), isDark),
               if (cart.itemCount > 0)
                 Positioned(
-                  right: 4,
-                  top: 4,
+                  right: 2,
+                  top: 0,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
+                    padding: const EdgeInsets.all(2),
+                    constraints:
+                        const BoxConstraints(minWidth: 15, minHeight: 15),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [DesignColors.brand, DesignColors.brandDark],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       shape: BoxShape.circle,
                     ),
-                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                     child: Text(
-                      cart.itemCount.toString(),
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      '${cart.itemCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
                 ),
             ],
           ),
+          const SizedBox(width: 4),
         ],
       ),
-      // Park Sale FAB – visible when cart isn't empty
-      floatingActionButton: cart.items.isNotEmpty
-          ? FloatingActionButton.small(
-              heroTag: 'parkSale',
-              backgroundColor: AppColors.warning,
-              onPressed: () => _parkCurrentSale(context),
-              tooltip: 'Park Sale',
-              child: const Icon(Icons.pause, color: Colors.white),
-            )
-          : null,
       body: Column(
         children: [
-          // Search Bar
+          // ── Compact Top Bar ──
+          StreamBuilder<ConnectionStatus>(
+            stream: connectivity.statusStream,
+            initialData: connectivity.currentStatus,
+            builder: (context, snap) {
+              final isOffline = snap.data == ConnectionStatus.offline;
+              if (isOffline) {
+                return Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top, bottom: 6),
+                  decoration: BoxDecoration(
+                    color: DesignColors.warning.withValues(alpha: 0.12),
+                    border: Border(
+                        bottom: BorderSide(
+                            color:
+                                DesignColors.warning.withValues(alpha: 0.2))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: DesignColors.warning,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                                color:
+                                    DesignColors.warning.withValues(alpha: 0.6),
+                                blurRadius: 4)
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Offline Mode — sales will sync when reconnected',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: DesignColors.warning),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          // ── Main top bar (simplified) ──
+          if (cart.customerName != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: DesignColors.teal.withValues(alpha: 0.08),
+              child: Text(
+                cart.customerName!,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: DesignColors.teal,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          // ── Body ──
           const SearchBarWidget(),
-
-          // Category Chips
           if (!_showFavorites) const CategoryChips(),
-
-          // Products Grid
           Expanded(
             child: _showFavorites
                 ? Consumer(
                     builder: (context, ref, child) {
                       final favorites = ref.watch(favoriteProductsProvider);
                       return favorites.when(
-                        data: (products) {
-                          if (products.isEmpty) {
-                            return Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.favorite_border, size: 48, color: theme.disabledColor),
-                                  const SizedBox(height: 8),
-                                  Text('No favorite products yet',
-                                      style: TextStyle(color: theme.disabledColor)),
-                                ],
-                              ),
-                            );
-                          }
-                          return const ProductGrid();
-                        },
-                        loading: () => const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Center(child: Text('Error: $e')),
+                        data: (products) => products.isEmpty
+                            ? const EmptyState(
+                                icon: Icons.favorite_border_rounded,
+                                title: 'No favorites',
+                                subtitle: 'Tap heart on products to add')
+                            : const ProductGrid(),
+                        loading: () => const Center(
+                            child: CircularProgressIndicator(
+                                color: DesignColors.brand)),
+                        error: (e, _) => EmptyState(
+                            icon: Icons.error_outline_rounded,
+                            title: 'Error',
+                            subtitle: e.toString(),
+                            iconColor: DesignColors.error),
                       );
                     },
                   )
                 : const ProductGrid(),
           ),
-
-          // Cart Summary Bar
           if (cart.itemCount > 0) const CartSummaryBar(),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (parkedSales.isNotEmpty)
+            FloatingActionButton.small(
+              heroTag: 'viewParked',
+              backgroundColor: DesignColors.warning,
+              onPressed: () => _showParkedSalesSheet(context),
+              tooltip: 'Parked (${parkedSales.length})',
+              child: Text('${parkedSales.length}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+            ),
+          if (parkedSales.isNotEmpty) const SizedBox(height: 8),
+          if (cart.items.isNotEmpty)
+            FloatingActionButton.small(
+              heroTag: 'parkSale',
+              backgroundColor: const Color(0xFF64748B),
+              onPressed: () => _parkCurrentSale(context),
+              tooltip: 'Park Sale',
+              child: const Icon(Icons.pause_rounded, color: Colors.white),
+            ),
         ],
       ),
     );
   }
 
-  // ════════ Customer Dialog ════════
-
-  void _showCustomerDialog(BuildContext context) {
-    final ctrl = TextEditingController(
-      text: ref.read(cartProvider).customerName ?? '',
-    );
-    final db = getIt<AppDatabase>();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            left: 20, right: 20, top: 16,
+  Widget _topAction(
+      IconData icon, String tooltip, VoidCallback onTap, bool isDark,
+      {bool active = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: active
+                ? DesignColors.error.withValues(alpha: 0.1)
+                : DesignColors.brand.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: StatefulBuilder(
-            builder: (context, setSheetState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Handle bar
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  Text('Customer', style: Theme.of(ctx).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-
-                  TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: InputDecoration(
-                      labelText: 'Customer Name',
-                      hintText: 'e.g. John Doe',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          ctrl.clear();
-                          setSheetState(() {});
-                        },
-                      ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onChanged: (_) => setSheetState(() {}),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Recent / matching customers
-                  if (ctrl.text.trim().length >= 2)
-                    FutureBuilder<List<Map<String, dynamic>>>(
-                      future: db.searchCustomers(ctrl.text.trim()),
-                      builder: (context, snap) {
-                        final customers = snap.data ?? [];
-                        if (customers.isEmpty) return const SizedBox.shrink();
-                        return ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 160),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: customers.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
-                            itemBuilder: (_, i) {
-                              final c = customers[i];
-                              return ListTile(
-                                dense: true,
-                                leading: CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: AppColors.secondary.withOpacity(0.12),
-                                  child: Text(
-                                    (c['name'] as String).substring(0, 1).toUpperCase(),
-                                    style: const TextStyle(
-                                      color: AppColors.secondary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                title: Text(c['name'] as String),
-                                subtitle: Text(
-                                  '${c['totalPurchases']} purchases · KES ${(c['totalSpent'] as double).toStringAsFixed(0)}',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                onTap: () {
-                                  ref.read(cartProvider.notifier).setCustomer(
-                                    c['id'] as String,
-                                    customerName: c['name'] as String,
-                                  );
-                                  Navigator.pop(ctx);
-                                },
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            ref.read(cartProvider.notifier).setCustomer(null, customerName: null);
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text('Remove'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: ctrl.text.trim().isEmpty
-                              ? null
-                              : () async {
-                                  final name = ctrl.text.trim();
-                                  final id = await db.insertOrGetCustomer(
-                                    const Uuid().v4(),
-                                    name,
-                                  );
-                                  ref.read(cartProvider.notifier).setCustomer(id, customerName: name);
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                },
-                          child: const Text('Set Customer'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  // ════════ Park Sale ════════
-
-  void _parkCurrentSale(BuildContext context) {
-    final cart = ref.read(cartProvider);
-    if (cart.items.isEmpty) return;
-
-    ref.read(parkedSalesProvider.notifier).park(cart);
-    ref.read(cartProvider.notifier).clear();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Sale parked${cart.customerName != null ? ' for ${cart.customerName}' : ''}'),
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'VIEW',
-          onPressed: () => _showParkedSalesSheet(context),
+          child: Icon(icon,
+              color: active ? DesignColors.error : DesignColors.textSecondary,
+              size: 20),
         ),
       ),
     );
   }
 
-  // ════════ Parked Sales Sheet ════════
+  void _showCustomerDialog(BuildContext context) {
+    final cart = ref.read(cartProvider);
+    final nameCtrl = TextEditingController(text: cart.customerName ?? '');
+    final phoneCtrl = TextEditingController();
+    final db = getIt<AppDatabase>();
+    if (cart.customerId != null) {
+      db.getCustomer(cart.customerId!).then((c) {
+        if (c != null) phoneCtrl.text = c['phone'] as String? ?? '';
+      });
+    }
 
-  void _showParkedSalesSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final parked = ref.watch(parkedSalesProvider);
-            return DraggableScrollableSheet(
-              initialChildSize: 0.5,
-              minChildSize: 0.3,
-              maxChildSize: 0.85,
-              expand: false,
-              builder: (context, scrollCtrl) {
-                return Column(
-                  children: [
-                    // Handle
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12, bottom: 4),
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[400],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.pause_circle_filled, color: AppColors.warning),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Parked Sales (${parked.length})',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(),
-                    Expanded(
-                      child: parked.isEmpty
-                          ? const Center(child: Text('No parked sales'))
-                          : ListView.separated(
-                              controller: scrollCtrl,
-                              padding: const EdgeInsets.all(16),
-                              itemCount: parked.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 8),
-                              itemBuilder: (_, i) {
-                                final sale = parked[i];
-                                final elapsed = DateTime.now()
-                                    .difference(sale.parkedAt);
-                                final timeStr = elapsed.inMinutes < 60
-                                    ? '${elapsed.inMinutes}m ago'
-                                    : '${elapsed.inHours}h ago';
-
-                                return Card(
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor:
-                                          AppColors.warning.withOpacity(0.15),
-                                      child: Text(
-                                        '${sale.cart.itemCount}',
-                                        style: const TextStyle(
-                                          color: AppColors.warning,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      sale.label,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                    subtitle: Text(
-                                      'KES ${sale.cart.total.toStringAsFixed(0)} · $timeStr',
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // Resume
-                                        IconButton(
-                                          icon: const Icon(Icons.play_arrow,
-                                              color: AppColors.secondary),
-                                          tooltip: 'Resume',
-                                          onPressed: () {
-                                            final currentCart = ref.read(cartProvider);
-                                            if (currentCart.items.isNotEmpty) {
-                                              ref.read(parkedSalesProvider.notifier)
-                                                  .park(currentCart);
-                                            }
-                                            final resumed = ref
-                                                .read(parkedSalesProvider.notifier)
-                                                .resume(sale.id);
-                                            if (resumed != null) {
-                                              ref.read(cartProvider.notifier)
-                                                  .restoreFrom(resumed);
-                                            }
-                                            Navigator.pop(ctx);
-                                          },
-                                        ),
-                                        // Delete
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline,
-                                              color: AppColors.error),
-                                          tooltip: 'Discard',
-                                          onPressed: () {
-                                            ref.read(parkedSalesProvider.notifier)
-                                                .remove(sale.id);
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
+    GlassBottomSheet.show(context,
+        scrollable: true,
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              0,
+              20,
+              20 + MediaQuery.of(ctx).padding.bottom,
+            ),
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Text('Customer',
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  const Text('Set or search for a customer',
+                      style: TextStyle(
+                          fontSize: 13, color: DesignColors.textSecondary)),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                        labelText: 'Name',
+                        prefixIcon:
+                            const Icon(Icons.person_outline_rounded, size: 20),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                        filled: true),
+                    onChanged: (_) => setSheet(() {}),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                        labelText: 'Phone',
+                        prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                        filled: true),
+                    onChanged: (_) => setSheet(() {}),
+                  ),
+                  if (nameCtrl.text.trim().length >= 2)
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: db.searchCustomers(nameCtrl.text.trim()),
+                      builder: (_, snap) {
+                        final customers = snap.data ?? [];
+                        if (customers.isEmpty) return const SizedBox.shrink();
+                        return ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 224),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const ClampingScrollPhysics(),
+                            primary: false,
+                            itemCount: customers.length,
+                            itemBuilder: (_, i) => ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                  child: Text(
+                                      (customers[i]['name'] as String)[0]
+                                          .toUpperCase())),
+                              title: Text(customers[i]['name'] as String),
+                              subtitle: Text(
+                                  '${customers[i]['totalPurchases']} purchases'),
+                              onTap: () {
+                                ref.read(cartProvider.notifier).setCustomer(
+                                    customers[i]['id'] as String,
+                                    customerName:
+                                        customers[i]['name'] as String);
+                                Navigator.pop(ctx);
                               },
                             ),
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                );
-              },
-            );
-          },
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    Expanded(
+                        child: OutlinedButton(
+                            onPressed: () {
+                              ref
+                                  .read(cartProvider.notifier)
+                                  .setCustomer(null, customerName: null);
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Remove'))),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        flex: 2,
+                        child: GradientButton(
+                            label: 'Set',
+                            onPressed: nameCtrl.text.isEmpty
+                                ? null
+                                : () async {
+                                    final id = await db.insertOrGetCustomer(
+                                        const Uuid().v4(), nameCtrl.text.trim(),
+                                        phone: phoneCtrl.text.trim());
+                                    ref.read(cartProvider.notifier).setCustomer(
+                                        id,
+                                        customerName: nameCtrl.text.trim());
+                                    if (context.mounted) Navigator.pop(context);
+                                  },
+                            height: 44,
+                            borderRadius: 12)),
+                  ]),
+                ]),
+          ),
+        ));
+  }
+
+  void _parkCurrentSale(BuildContext context) {
+    final cart = ref.read(cartProvider);
+    if (cart.items.isEmpty) return;
+    ref.read(parkedSalesProvider.notifier).park(cart);
+    ref.read(cartProvider.notifier).clear();
+    showGlassSnackBar(context, 'Sale parked',
+        icon: Icons.pause_circle_filled_rounded, color: DesignColors.warning);
+  }
+
+  void _showParkedSalesSheet(BuildContext context) {
+    GlassBottomSheet.show(context, initialSize: 0.55, maxSize: 0.85,
+        child: Consumer(
+      builder: (ctx, ref, _) {
+        final parked = ref.watch(parkedSalesProvider);
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 8, 20, 16 + MediaQuery.of(ctx).padding.bottom),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: DesignColors.warning.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.pause_circle_filled_rounded,
+                          color: DesignColors.warning, size: 22)),
+                  const SizedBox(width: 10),
+                  Text('Parked (${parked.length})',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary)),
+                ]),
+                if (parked.isEmpty)
+                  const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                          child: Text('No parked sales',
+                              style:
+                                  TextStyle(color: DesignColors.textTertiary))))
+                else
+                  ...parked.map((s) {
+                    final elapsed = DateTime.now().difference(s.parkedAt);
+                    return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: ListCard(
+                          leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                  color: DesignColors.warning
+                                      .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10)),
+                              child: Center(
+                                  child: Text('${s.cart.itemCount}',
+                                      style: const TextStyle(
+                                          color: DesignColors.warning,
+                                          fontWeight: FontWeight.bold)))),
+                          title: s.label,
+                          subtitle:
+                              'KES ${s.cart.total.toStringAsFixed(0)} \u00b7 ${elapsed.inMinutes}m ago',
+                          trailing:
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(
+                                icon: const Icon(Icons.play_arrow_rounded,
+                                    color: DesignColors.teal),
+                                onPressed: () {
+                                  final current = ref.read(cartProvider);
+                                  if (current.items.isNotEmpty)
+                                    ref
+                                        .read(parkedSalesProvider.notifier)
+                                        .park(current);
+                                  final resumed = ref
+                                      .read(parkedSalesProvider.notifier)
+                                      .resume(s.id);
+                                  if (resumed != null)
+                                    ref
+                                        .read(cartProvider.notifier)
+                                        .restoreFrom(resumed);
+                                  Navigator.pop(ctx);
+                                }),
+                            IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded,
+                                    color: DesignColors.error),
+                                onPressed: () => ref
+                                    .read(parkedSalesProvider.notifier)
+                                    .remove(s.id)),
+                          ]),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            ref.read(cartProvider.notifier).restoreFrom(s.cart);
+                            ref.read(parkedSalesProvider.notifier).remove(s.id);
+                          },
+                        ));
+                  }),
+              ]),
         );
       },
-    );
+    ));
   }
 }

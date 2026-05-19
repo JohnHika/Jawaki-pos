@@ -3,8 +3,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
-  late final FlutterSecureStorage _secureStorage;
-  late final SharedPreferences _prefs;
+  FlutterSecureStorage? _secureStorage;
+  SharedPreferences? _prefs;
+
+  bool _initialized = false;
   
   // Storage keys
   static const String keyAccessToken = 'access_token';
@@ -18,6 +20,8 @@ class StorageService {
   static const String keyFavoriteProducts = 'favorite_products';
   
   Future<void> initialize() async {
+    if (_initialized) return;
+
     _secureStorage = const FlutterSecureStorage(
       aOptions: AndroidOptions(
         encryptedSharedPreferences: true,
@@ -27,94 +31,120 @@ class StorageService {
       ),
     );
     _prefs = await SharedPreferences.getInstance();
+    _initialized = true;
   }
   
   // Secure Storage Methods (for sensitive data)
-  
+
+  void _checkInitialized() {
+    if (!_initialized || _secureStorage == null) {
+      throw Exception('StorageService not initialized. Call initialize() first.');
+    }
+  }
+
   Future<void> saveAccessToken(String token) async {
-    await _secureStorage.write(key: keyAccessToken, value: token);
+    _checkInitialized();
+    await _secureStorage!.write(key: keyAccessToken, value: token);
   }
-  
+
   Future<String?> getAccessToken() async {
-    return await _secureStorage.read(key: keyAccessToken);
+    _checkInitialized();
+    return await _secureStorage!.read(key: keyAccessToken);
   }
-  
+
   Future<void> saveRefreshToken(String token) async {
-    await _secureStorage.write(key: keyRefreshToken, value: token);
+    _checkInitialized();
+    await _secureStorage!.write(key: keyRefreshToken, value: token);
   }
-  
+
   Future<String?> getRefreshToken() async {
-    return await _secureStorage.read(key: keyRefreshToken);
+    _checkInitialized();
+    return await _secureStorage!.read(key: keyRefreshToken);
   }
-  
+
   Future<void> savePinHash(String hash) async {
-    await _secureStorage.write(key: keyPinHash, value: hash);
+    _checkInitialized();
+    await _secureStorage!.write(key: keyPinHash, value: hash);
   }
-  
+
   Future<String?> getPinHash() async {
-    return await _secureStorage.read(key: keyPinHash);
+    _checkInitialized();
+    return await _secureStorage!.read(key: keyPinHash);
   }
-  
+
   Future<void> clearSecureStorage() async {
-    await _secureStorage.delete(key: keyAccessToken);
-    await _secureStorage.delete(key: keyRefreshToken);
-    await _secureStorage.delete(key: keyPinHash);
+    _checkInitialized();
+    await _secureStorage!.delete(key: keyAccessToken);
+    await _secureStorage!.delete(key: keyRefreshToken);
+    await _secureStorage!.delete(key: keyPinHash);
   }
   
   // Shared Preferences Methods (for non-sensitive data)
-  
+
   Future<void> saveUser(Map<String, dynamic> user) async {
-    await _prefs.setString(keyUser, jsonEncode(user));
+    _checkInitialized();
+    await _prefs!.setString(keyUser, jsonEncode(user));
   }
-  
+
   Map<String, dynamic>? getUser() {
-    final userJson = _prefs.getString(keyUser);
+    if (!_initialized || _prefs == null) return null;
+    final userJson = _prefs!.getString(keyUser);
     if (userJson == null) return null;
     return jsonDecode(userJson) as Map<String, dynamic>;
   }
-  
+
   Future<void> saveDeviceId(String deviceId) async {
-    await _prefs.setString(keyDeviceId, deviceId);
+    _checkInitialized();
+    await _prefs!.setString(keyDeviceId, deviceId);
   }
-  
+
   String? getDeviceId() {
-    return _prefs.getString(keyDeviceId);
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(keyDeviceId);
   }
-  
+
   Future<void> saveBranchId(String branchId) async {
-    await _prefs.setString(keyBranchId, branchId);
+    _checkInitialized();
+    await _prefs!.setString(keyBranchId, branchId);
   }
-  
+
   String? getBranchId() {
-    return _prefs.getString(keyBranchId);
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(keyBranchId);
   }
-  
+
   Future<void> saveTenantId(String tenantId) async {
-    await _prefs.setString(keyTenantId, tenantId);
+    _checkInitialized();
+    await _prefs!.setString(keyTenantId, tenantId);
   }
-  
+
   String? getTenantId() {
-    return _prefs.getString(keyTenantId);
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(keyTenantId);
   }
-  
+
   Future<void> saveLastSyncAt(DateTime dateTime) async {
-    await _prefs.setString(keyLastSyncAt, dateTime.toIso8601String());
+    _checkInitialized();
+    await _prefs!.setString(keyLastSyncAt, dateTime.toIso8601String());
   }
-  
+
   DateTime? getLastSyncAt() {
-    final dateStr = _prefs.getString(keyLastSyncAt);
+    if (!_initialized || _prefs == null) return null;
+    final dateStr = _prefs!.getString(keyLastSyncAt);
     if (dateStr == null) return null;
     return DateTime.parse(dateStr);
   }
-  
+
   Future<void> saveFavoriteProducts(List<String> productIds) async {
-    await _prefs.setStringList(keyFavoriteProducts, productIds);
+    _checkInitialized();
+    await _prefs!.setStringList(keyFavoriteProducts, productIds);
   }
-  
+
   List<String> getFavoriteProducts() {
-    return _prefs.getStringList(keyFavoriteProducts) ?? [];
+    if (!_initialized || _prefs == null) return [];
+    return _prefs!.getStringList(keyFavoriteProducts) ?? [];
   }
-  
+
   Future<void> addFavoriteProduct(String productId) async {
     final favorites = getFavoriteProducts();
     if (!favorites.contains(productId)) {
@@ -122,27 +152,71 @@ class StorageService {
       await saveFavoriteProducts(favorites);
     }
   }
-  
+
   Future<void> removeFavoriteProduct(String productId) async {
     final favorites = getFavoriteProducts();
     favorites.remove(productId);
     await saveFavoriteProducts(favorites);
   }
-  
+
   bool isFavoriteProduct(String productId) {
     return getFavoriteProducts().contains(productId);
   }
-  
+
+  // Server mode keys
+  static const String keyServerModeEnabled = 'server_mode_enabled';
+  static const String keyServerPort = 'server_port';
+  static const String keyBackendServerIp = 'backend_server_ip';
+  static const String keyBackendServerPort = 'backend_server_port';
+
+  bool isServerModeEnabled() {
+    return _prefs?.getBool(keyServerModeEnabled) ?? false;
+  }
+
+  Future<void> setServerModeEnabled(bool enabled) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyServerModeEnabled, enabled);
+  }
+
+  int getServerPort() {
+    return _prefs?.getInt(keyServerPort) ?? 3000;
+  }
+
+  Future<void> setServerPort(int port) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyServerPort, port);
+  }
+
+  String? getBackendServerIp() {
+    return _prefs?.getString(keyBackendServerIp);
+  }
+
+  Future<void> setBackendServerIp(String ip) async {
+    _checkInitialized();
+    await _prefs!.setString(keyBackendServerIp, ip);
+  }
+
+  int getBackendServerPort() {
+    return _prefs?.getInt(keyBackendServerPort) ?? 3000;
+  }
+
+  Future<void> setBackendServerPort(int port) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyBackendServerPort, port);
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await clearSecureStorage();
-    await _prefs.clear();
+    _checkInitialized();
+    await _prefs!.clear();
   }
-  
+
   // Clear session data (keep device registration)
   Future<void> clearSession() async {
     await clearSecureStorage();
-    await _prefs.remove(keyUser);
-    await _prefs.remove(keyLastSyncAt);
+    _checkInitialized();
+    await _prefs!.remove(keyUser);
+    await _prefs!.remove(keyLastSyncAt);
   }
 }

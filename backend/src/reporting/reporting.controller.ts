@@ -23,6 +23,7 @@ import {
   InventoryReportDto,
   StockMovementSummaryDto,
   DashboardSummaryDto,
+  DailyProfitAndLossDto,
 } from './dto/reporting.dto';
 
 @ApiTags('Reporting')
@@ -142,5 +143,28 @@ export class ReportingController {
     @Query() filter: ReportFilterDto,
   ): Promise<StockMovementSummaryDto> {
     return this.reportingService.getStockMovementSummary(user.tenantId, filter);
+  }
+
+  @Get('profit-loss/:branchId/:date')
+  @Roles('MANAGER', 'ADMIN')
+  @ApiOperation({ summary: 'Get daily profit and loss report with expense integration' })
+  @ApiResponse({ status: 200, type: DailyProfitAndLossDto })
+  async getDailyProfitAndLoss(
+    @Param('branchId') branchId: string,
+    @Param('date') date: string,
+    @CurrentUser() user: any,
+  ): Promise<DailyProfitAndLossDto> {
+    return this.reportingService.getDailyProfitAndLoss(branchId, date, user.tenantId);
+  }
+
+  @Get('profit-loss')
+  @Roles('MANAGER', 'ADMIN')
+  @ApiOperation({ summary: 'Get profit and loss trend over a date range' })
+  @ApiResponse({ status: 200, type: [DailyProfitAndLossDto] })
+  async getProfitAndLossRange(
+    @CurrentUser() user: any,
+    @Query() filter: ReportFilterDto,
+  ): Promise<DailyProfitAndLossDto[]> {
+    return this.reportingService.getProfitAndLossRange(user.tenantId, filter);
   }
 }

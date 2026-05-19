@@ -52,6 +52,8 @@ model Branch {
   stockMovements StockMovement[]
   priceOverrides BranchPriceOverride[]
   stockRequests  StockRequest[]
+  expenses    Expense[]
+  manualPaymentRequests ManualPaymentRequest[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -110,6 +112,10 @@ model User {
   auditLogs     AuditLog[]
   stockRequestsCreated  StockRequest[] @relation("RequestedByUser")
   stockRequestsResolved StockRequest[] @relation("ResolvedByUser")
+  expensesCreated       Expense[]
+  expensesApproved      Expense[] @relation("ExpenseApprovedBy")
+  manualPaymentsCreated ManualPaymentRequest[] @relation("ManualPaymentRequestedBy")
+  manualPaymentsApproved ManualPaymentRequest[] @relation("ManualPaymentApprovedBy")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -433,6 +439,7 @@ model Sale {
   items           SaleItem[]
   payments        Payment[]
   refunds         Refund[]
+  manualPaymentRequest ManualPaymentRequest?
 
   @@index([branchId, createdAt])
   @@index([receiptNumber])
@@ -569,6 +576,116 @@ model TouristTapTransaction {
   updatedAt         DateTime @updatedAt
 
   @@map("touristtap_transactions")
+}
+
+// ==================== MANUAL PAYMENT REQUESTS ====================
+
+enum ManualPaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model ManualPaymentRequest {
+  id              String              @id @default(uuid())
+  requestNumber   String              @unique
+  saleId          String?             @unique // Optional: link to existing sale (one-to-one)
+  branchId        String
+  requestedById   String
+  approvedById    String?
+  paymentMethod   String              // Manual payment method (cash, mpesa, etc.)
+  amount          Decimal             @db.Decimal(10, 2)
+  reason          String
+  status          ManualPaymentStatus @default(PENDING)
+  notes           String?
+  rejectionReason String?
+  approvedAt      DateTime?
+  completedAt     DateTime?
+  metadata        Json                @default("{}")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  branch          Branch              @relation(fields: [branchId], references: [id])
+  requestedBy     User                @relation("ManualPaymentRequestedBy", fields: [requestedById], references: [id])
+  approvedBy      User?               @relation("ManualPaymentApprovedBy", fields: [approvedById], references: [id])
+  sale            Sale?               @relation(fields: [saleId], references: [id])
+
+  @@index([branchId, status])
+  @@index([status, createdAt])
+  @@index([requestedById])
+  @@map("manual_payment_requests")
+}
+
+// ==================== EXPENSES ====================
+
+enum ExpenseCategory {
+  UTILITIES
+  RENT
+  SALARIES
+  INVENTORY
+  MARKETING
+  MAINTENANCE
+  TRANSPORT
+  SUPPLIES
+  INSURANCE
+  TAXES
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+model Expense {
+  id              String        @id @default(uuid())
+  expenseNumber   String        @unique
+  category        ExpenseCategory
+  branchId        String
+  supplier        String
+  reference       String?       // Invoice or receipt number
+  description     String
+  amount          Decimal       @db.Decimal(10, 2)
+  status          ExpenseStatus @default(PENDING)
+  date            DateTime
+  paymentMethod   String?
+  notes           String?
+  receiptImages   String[]      @default([])
+  createdById     String
+  approvedById    String?
+  approvedAt      DateTime?
+  offlineId       String?       @unique
+  metadata        Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  branch          Branch        @relation(fields: [branchId], references: [id])
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  approvedBy      User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  items           ExpenseItem[]
+
+  @@index([branchId, date])
+  @@index([category, status])
+  @@index([status, createdAt])
+  @@map("expenses")
+}
+
+model ExpenseItem {
+  id            String   @id @default(uuid())
+  expenseId     String
+  description   String
+  quantity      Decimal  @db.Decimal(10, 2)
+  unitPrice     Decimal  @db.Decimal(10, 2)
+  total         Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+
+  expense       Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+  @@map("expense_items")
 }
 
 // ==================== REFUNDS ====================

@@ -2,8 +2,16 @@ import 'package:dio/dio.dart';
 
 class ApiClient {
   final Dio _dio;
-  
+
   ApiClient(this._dio);
+
+  /// Update the base URL at runtime (used when switching to a phone server).
+  void setBaseUrl(String url) {
+    _dio.options.baseUrl = url;
+  }
+
+  /// Get the current base URL.
+  String get baseUrl => _dio.options.baseUrl;
   
   // Auth endpoints
   Future<Map<String, dynamic>> login({
@@ -240,6 +248,11 @@ class ApiClient {
       if (period != null) 'period': period,
       if (branchId != null) 'branchId': branchId,
     });
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> getDailyProfitLoss(String branchId, String date) async {
+    final response = await _dio.get('/reports/profit-loss/$branchId/$date');
     return response.data;
   }
 }

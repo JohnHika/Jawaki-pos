@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 
 class CartSummaryBar extends ConsumerWidget {
@@ -13,61 +13,107 @@ class CartSummaryBar extends ConsumerWidget {
     final cartState = ref.watch(cartProvider);
     if (cartState.items.isEmpty) return const SizedBox.shrink();
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      margin: EdgeInsets.zero,
+      borderRadius: 0,
+      blur: 20,
+      tint: isDark
+          ? DesignColors.darkSurfaceElevated.withValues(alpha:0.95)
+          : Colors.white.withValues(alpha:0.95),
+      borderColor: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha:isDark ? 0.4 : 0.08),
+          blurRadius: 16,
+          offset: const Offset(0, -4),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha:isDark ? 0.2 : 0.04),
+          blurRadius: 32,
+          offset: const Offset(0, -8),
+        ),
+      ],
       child: SafeArea(
         top: false,
         child: Row(
           children: [
-            // Cart Icon with Badge
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.shopping_cart,
-                    color: AppColors.primary,
-                  ),
-                ),
-                Positioned(
-                  top: -4,
-                  right: -4,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '${cartState.itemCount}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+            // Cart Icon with Badge (Pulse Animation)
+            PulseAnimation(
+              active: cartState.itemCount > 0,
+              scale: 1.08,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          DesignColors.brand.withValues(alpha:0.15),
+                          DesignColors.brandLight.withValues(alpha:0.08),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: DesignColors.brand.withValues(alpha:0.2),
                       ),
                     ),
+                    child: const Icon(
+                      Icons.shopping_cart_rounded,
+                      color: DesignColors.brand,
+                      size: 22,
+                    ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: TweenAnimationBuilder<int>(
+                      duration: DesignAnimation.fast,
+                      tween: IntTween(
+                        begin: 0,
+                        end: cartState.itemCount,
+                      ),
+                      builder: (context, value, child) {
+                        return Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [DesignColors.brand, DesignColors.brandDark],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: DesignColors.brand.withValues(alpha:0.4),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          constraints:
+                              const BoxConstraints(minWidth: 20, minHeight: 20),
+                          child: Text(
+                            '$value',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(width: 12),
 
@@ -78,17 +124,30 @@ class CartSummaryBar extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (cartState.customerName != null)
-                    Text(
-                      cartState.customerName!,
-                      style: TextStyle(
-                        color: AppColors.secondary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.person_rounded,
+                            size: 12, color: DesignColors.teal),
+                        const SizedBox(width: 4),
+                        Text(
+                          cartState.customerName!,
+                          style: const TextStyle(
+                            color: DesignColors.teal,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
+                  const SizedBox(height: 2),
                   Text(
                     '${cartState.itemCount} item${cartState.itemCount > 1 ? 's' : ''}',
-                    style: TextStyle(color: theme.disabledColor, fontSize: 12),
+                    style: TextStyle(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   FittedBox(
@@ -96,8 +155,13 @@ class CartSummaryBar extends ConsumerWidget {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'KES ${cartState.total.toStringAsFixed(0)}',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
+                        letterSpacing: -0.3,
                       ),
                       maxLines: 1,
                     ),
@@ -107,13 +171,13 @@ class CartSummaryBar extends ConsumerWidget {
             ),
 
             // View Cart Button
-            FilledButton(
+            GradientButton(
+              label: 'View Cart',
+              icon: Icons.arrow_forward_rounded,
               onPressed: () => context.push('/cart'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('View Cart'),
+              height: 44,
+              borderRadius: 12,
+              gradient: const [DesignColors.brand, DesignColors.brandDark],
             ),
           ],
         ),
@@ -130,17 +194,16 @@ class MiniCartPreview extends ConsumerWidget {
     final cartState = ref.watch(cartProvider);
     if (cartState.items.isEmpty) return const SizedBox.shrink();
 
-    final theme = Theme.of(context);
     final recentItems = cartState.items.take(3).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    return GlassCard(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor),
-      ),
+      borderRadius: 14,
+      blur: 10,
+      tint: isDark ? DesignColors.glassDark : DesignColors.glassWhite,
+      borderColor: isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -152,14 +215,14 @@ class MiniCartPreview extends ConsumerWidget {
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
+                        color: DesignColors.brand.withValues(alpha:0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Center(
                         child: Text(
                           '${item.quantity}',
                           style: const TextStyle(
-                            color: AppColors.primary,
+                            color: DesignColors.brand,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -169,11 +232,14 @@ class MiniCartPreview extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(item.productName,
-                          overflow: TextOverflow.ellipsis),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w500)),
                     ),
                     Text(
                       'KES ${item.total.toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: DesignColors.textPrimary),
                     ),
                   ],
                 ),
@@ -181,7 +247,11 @@ class MiniCartPreview extends ConsumerWidget {
           if (cartState.items.length > 3)
             Text(
               '+${cartState.items.length - 3} more items',
-              style: TextStyle(color: theme.disabledColor, fontSize: 12),
+              style: TextStyle(
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
+                  fontSize: 12),
             ),
         ],
       ),

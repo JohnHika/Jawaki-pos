@@ -67,6 +67,16 @@ export class SalesController {
     return this.salesService.getDailySummary(branchId, date, req.user.tenantId);
   }
 
+  @Get('credit')
+  @ApiOperation({ summary: 'Get credit sales with outstanding balances' })
+  @ApiResponse({ status: 200, description: 'Credit sales with outstanding balances' })
+  async getCreditSales(
+    @Request() req: any,
+    @Query() query: SalesQueryDto,
+  ) {
+    return this.salesService.getCreditSalesWithOutstandingBalance(req.user.tenantId, query);
+  }
+
   @Get('receipt/:receiptNumber')
   @ApiOperation({ summary: 'Get sale by receipt number' })
   @ApiResponse({ status: 200, description: 'Sale details', type: SaleResponseDto })

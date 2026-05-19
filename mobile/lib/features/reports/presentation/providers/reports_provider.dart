@@ -59,7 +59,7 @@ final dateRangeProvider = StateNotifierProvider<DateRangeNotifier, DateRangeStat
   (ref) => DateRangeNotifier(),
 );
 
-// ── Dashboard summary (real-time) ──
+// -- Dashboard summary (real-time) --
 final dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
   final db = getIt<AppDatabase>();
   await for (final _ in db.watchTodaysSales()) {
@@ -67,37 +67,37 @@ final dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) asyn
   }
 });
 
-// ── Sales list for date range ──
+// -- Sales list for date range --
 final salesListProvider = FutureProvider<List<PendingSale>>((ref) {
   final range = ref.watch(dateRangeProvider);
   return getIt<AppDatabase>().getSalesByDateRange(range.from, range.to);
 });
 
-// ── Payment method breakdown ──
+// -- Payment method breakdown --
 final paymentMethodProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
   final range = ref.watch(dateRangeProvider);
   return getIt<AppDatabase>().getSalesByPaymentMethod(range.from, range.to);
 });
 
-// ── Cashier performance ──
+// -- Cashier performance --
 final cashierPerformanceProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
   final range = ref.watch(dateRangeProvider);
   return getIt<AppDatabase>().getSalesByCashier(range.from, range.to);
 });
 
-// ── Category sales ──
+// -- Category sales --
 final categorySalesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
   final range = ref.watch(dateRangeProvider);
   return getIt<AppDatabase>().getSalesByCategory(range.from, range.to);
 });
 
-// ── Top products ──
+// -- Top products --
 final topProductsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
   final range = ref.watch(dateRangeProvider);
   return getIt<AppDatabase>().getTopProducts(range.from, range.to);
 });
 
-// ── Inventory report ──
+// -- Inventory report --
 final inventoryReportProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
   return getIt<AppDatabase>().getInventoryReport();
 });

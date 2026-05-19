@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:workmanager/workmanager.dart';
-import 'package:drift/drift.dart' hide JsonKey;
 import 'package:dio/dio.dart';
 
 import '../database/app_database.dart';
 import '../network/api_client.dart';
+import '../services/storage_service.dart';
 import 'connectivity_service.dart';
 
 class SyncQueueProcessResult {
@@ -87,7 +87,9 @@ class BackgroundSyncService {
 
   /// Process the sync queue (called by workmanager callback)
   static Future<bool> processSyncQueue() async {
-    final database = AppDatabase();
+    // Create isolated instances for background work (runs in isolate)
+    final storageService = StorageService();
+    final database = AppDatabase(storageService);
     final connectivityService = ConnectivityService();
 
     try {
@@ -130,8 +132,12 @@ class BackgroundSyncService {
       print('[BackgroundSync] Fatal error: $e');
       return false;
     } finally {
-      connectivityService.dispose();
-      await database.close();
+      try {
+        connectivityService.dispose();
+      } catch (_) {}
+      try {
+        await database.close();
+      } catch (_) {}
     }
   }
 
@@ -175,8 +181,7 @@ class BackgroundSyncService {
           );
           failureCount++;
         } else if (firstResult['success'] == true) {
-          final serverId =
-              firstResult['serverId']?.toString() ??
+          final serverId = firstResult['serverId']?.toString() ??
               firstResult['eventId']?.toString() ??
               item.recordId;
           final serverTimestamp = DateTime.tryParse(
@@ -191,7 +196,8 @@ class BackgroundSyncService {
           );
           await _markRelatedLocalDataAsSynced(database, item);
           successCount++;
-          print('[BackgroundSync] ✓ Synced: ${item.entityTable}/${item.action}');
+          print(
+              '[BackgroundSync] ✓ Synced: ${item.entityTable}/${item.action}');
         } else {
           final errorMessage =
               firstResult['error']?.toString() ?? 'Unknown server error';
@@ -343,7 +349,8 @@ class BackgroundSyncService {
 
   /// Get sync queue statistics
   static Future<Map<String, int>> getSyncStats() async {
-    final database = AppDatabase();
+    final storageService = StorageService();
+    final database = AppDatabase(storageService);
 
     try {
       return await database.getSyncQueueStats();
@@ -354,7 +361,8 @@ class BackgroundSyncService {
 
   /// Retry all failed items
   static Future<void> retryFailedItems() async {
-    final database = AppDatabase();
+    final storageService = StorageService();
+    final database = AppDatabase(storageService);
 
     try {
       final failedItems = await database.getFailedSyncQueue();
@@ -380,7 +388,8 @@ void callbackDispatcher() {
         case BackgroundSyncService.syncTaskName:
         case 'sync-immediate':
           final success = await BackgroundSyncService.processSyncQueue();
-          print('[BackgroundSync] Task completed: ${success ? 'SUCCESS' : 'PARTIAL'}');
+          print(
+              '[BackgroundSync] Task completed: ${success ? 'SUCCESS' : 'PARTIAL'}');
           return success;
 
         default:

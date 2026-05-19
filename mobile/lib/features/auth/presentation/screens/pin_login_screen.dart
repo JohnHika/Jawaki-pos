@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/di/injection.dart';
-import '../../../../core/services/auth_service.dart';
-import '../providers/auth_provider.dart';
+import 'package:levisa_adventures_pos/core/theme/design_system.dart';
+import 'package:levisa_adventures_pos/features/auth/presentation/providers/auth_provider.dart';
 
 class PinLoginScreen extends ConsumerStatefulWidget {
   const PinLoginScreen({super.key});
@@ -14,19 +11,32 @@ class PinLoginScreen extends ConsumerStatefulWidget {
   ConsumerState<PinLoginScreen> createState() => _PinLoginScreenState();
 }
 
-class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
+class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
+    with TickerProviderStateMixin {
   String _pin = '';
   static const int _pinLength = 4;
 
+  late AnimationController _fadeAnimation;
+  late Animation<double> _fadeAnimationValue;
+  late AnimationController _pulseController;
+  late AnimationController _shakeController;
+  late Animation<double> _shakeAnimation;
+  late AnimationController _scaleController;
+  late Animation<double> _scaleAnimation;
+
+  bool _showError = false;
+  String _errorMessage = '';
+
   void _onNumberPressed(String number) {
-    if (_pin.length < _pinLength) {
-      setState(() {
-        _pin += number;
-      });
-      
-      if (_pin.length == _pinLength) {
-        _handlePinLogin();
-      }
+    if (_pin.length >= _pinLength) return;
+
+    setState(() {
+      _pin += number;
+      _showError = false;
+    });
+
+    if (_pin.length == _pinLength) {
+      _handlePinLogin();
     }
   }
 
@@ -34,6 +44,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
     if (_pin.isNotEmpty) {
       setState(() {
         _pin = _pin.substring(0, _pin.length - 1);
+        _showError = false;
       });
     }
   }
@@ -41,241 +52,433 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
   void _onClearPressed() {
     setState(() {
       _pin = '';
+      _showError = false;
     });
   }
 
   Future<void> _handlePinLogin() async {
-    final result = await ref.read(authControllerProvider.notifier).loginWithPin(_pin);
-    
+    final result =
+        await ref.read(authControllerProvider.notifier).loginWithPin(_pin);
+
     if (result && mounted) {
       context.go('/');
     } else {
-      setState(() {
-        _pin = '';
-      });
+      if (mounted) {
+        setState(() {
+          _showError = true;
+          _errorMessage = ref.read(authControllerProvider).error ??
+              'Invalid PIN. Try again.';
+          _pin = '';
+        });
+        _shakeController.forward(from: 0);
+      }
     }
   }
 
-  Future<void> _handleBiometricLogin() async {
-    final result = await ref.read(authControllerProvider.notifier).loginWithBiometrics();
-    if (result && mounted) {
-      context.go('/');
-    }
+  @override
+  void initState() {
+    super.initState();
+
+    _fadeAnimation = AnimationController(
+      duration: DesignAnimation.normal,
+      vsync: this,
+    );
+
+    _fadeAnimationValue = CurvedAnimation(
+      parent: _fadeAnimation,
+      curve: DesignAnimation.defaultCurve,
+    );
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
+    );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
+    );
+
+    _fadeAnimation.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeAnimation.dispose();
+    _pulseController.dispose();
+    _shakeController.dispose();
+    _scaleController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
+    final size = MediaQuery.of(context).size;
+    final isSmallScreen = size.height < 800;
+    final buttonSize = isSmallScreen ? 54.0 : 64.0;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            const Spacer(),
-            
-            // Brand Logo
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.storefront,
-                size: 44,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // Brand Name
-            Text(
-              'JAWAKI ADVENTURES',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            // Title
-            Text(
-              'Enter PIN',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter your 4-digit PIN to continue',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 32),
-            
-            // PIN Dots
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_pinLength, (index) {
-                final isFilled = index < _pin.length;
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: isFilled ? AppColors.primary : Colors.transparent,
-                    border: Border.all(
-                      color: isFilled ? AppColors.primary : AppColors.border,
-                      width: 2,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                );
-              }),
-            ),
-            
-            // Error Message
-            if (authState.error != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                authState.error!,
-                style: const TextStyle(
-                  color: AppColors.error,
-                  fontSize: 14,
-                ),
-              ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              DesignColors.brandDark,
+              DesignColors.brand,
+              DesignColors.teal,
             ],
-            
-            // Loading indicator
-            if (authState.isLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 16),
-                child: CircularProgressIndicator(),
-              ),
-            
-            // Dev hint for testing - TODO: Remove before production
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: AppColors.warning),
-                  SizedBox(width: 8),
-                  Text(
-                    'Demo PIN: 0000',
-                    style: TextStyle(
-                      color: AppColors.warning,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: isSmallScreen ? 4 : 12,
+              bottom: bottomPad + 8,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header bar (compact)
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => context.pop(),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        child: Icon(Icons.arrow_back_rounded,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 18),
+                      ),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+
+                SizedBox(height: isSmallScreen ? 8 : 24),
+
+                // Logo
+                FadeTransition(
+                  opacity: _fadeAnimationValue,
+                  child: _buildLogoSection(isSmallScreen),
+                ),
+
+                SizedBox(height: isSmallScreen ? 12 : 28),
+
+                // PIN dots
+                FadeTransition(
+                  opacity: _fadeAnimationValue,
+                  child: _buildPinDotsSection(isSmallScreen),
+                ),
+
+                SizedBox(height: isSmallScreen ? 8 : 16),
+
+                // Error
+                if (_showError)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _buildErrorBanner(),
+                  ),
+
+                // Loading
+                if (authState.isLoading)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
-                ],
-              ),
+
+                SizedBox(height: isSmallScreen ? 8 : 20),
+
+                // Number pad
+                FadeTransition(
+                  opacity: _fadeAnimationValue,
+                  child: _buildNumberPad(isSmallScreen, buttonSize),
+                ),
+
+                SizedBox(height: isSmallScreen ? 8 : 16),
+
+                // Bottom links
+                FadeTransition(
+                  opacity: _fadeAnimationValue,
+                  child: _buildBottomOptions(authState),
+                ),
+              ],
             ),
-            
-            const Spacer(),
-            
-            // Number Pad
-            _buildNumberPad(),
-            
-            const SizedBox(height: 24),
-            
-            // Switch to email login
-            TextButton(
-              onPressed: () => context.pop(),
-              child: const Text('Use email instead'),
-            ),
-            
-            // Biometric login button
-            FutureBuilder<bool>(
-              future: getIt<AuthService>().isBiometricAvailable(),
-              builder: (context, snapshot) {
-                if (snapshot.data != true) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: IconButton(
-                    onPressed: _handleBiometricLogin,
-                    icon: const Icon(Icons.fingerprint, size: 40),
-                    tooltip: 'Login with fingerprint or face',
-                    style: IconButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildNumberPad() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final padHorizontal = screenWidth < 380 ? 24.0 : 48.0;
+  Widget _buildLogoSection(bool isSmallScreen) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            final scale = 1.0 + (_pulseController.value * 0.05);
+            return Transform.scale(scale: scale, child: child);
+          },
+          child: Container(
+            width: isSmallScreen ? 56 : 68,
+            height: isSmallScreen ? 56 : 68,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withValues(alpha: 0.2),
+                  Colors.white.withValues(alpha: 0.08),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/levisa_adventures_logo.png',
+                fit: BoxFit.cover,
+                semanticLabel: 'Levisa Adventures logo',
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: DesignSpacing.md),
+        Text(
+          'Enter PIN',
+          style: TextStyle(
+            fontSize: isSmallScreen ? 20 : 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Enter your 4-digit PIN to continue',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.white.withValues(alpha: 0.6),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPinDotsSection(bool isSmallScreen) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final outerMargin = isSmallScreen ? DesignSpacing.sm : DesignSpacing.lg;
+    final horizontalPadding =
+        isSmallScreen ? DesignSpacing.md : DesignSpacing.lg;
+    final dotGap = isSmallScreen ? 4.0 : 6.0;
+    final availableWidth =
+        screenWidth - 40 - (outerMargin * 2) - (horizontalPadding * 2);
+    final dotSize =
+        ((availableWidth - (dotGap * (_pinLength - 1))) / _pinLength)
+            .clamp(38.0, isSmallScreen ? 48.0 : 56.0)
+            .toDouble();
+
+    return GlassCard(
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg,
+      ),
+      margin: EdgeInsets.symmetric(horizontal: outerMargin),
+      blur: 20,
+      tint: Colors.white.withValues(alpha: 0.06),
+      borderColor: _showError
+          ? DesignColors.error.withValues(alpha: 0.4)
+          : Colors.white.withValues(alpha: 0.1),
+      borderRadius: DesignSpacing.radiusXl,
+      child: AnimatedBuilder(
+        animation: _shakeAnimation,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(
+              _shakeAnimation.value *
+                  16 *
+                  (_shakeAnimation.value < 0.5 ? 1 : -1),
+              0,
+            ),
+            child: child,
+          );
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(_pinLength, (index) {
+            final isFilled = index < _pin.length;
+            final isCurrentlyEntering = index == _pin.length;
+
+            return Container(
+              margin: EdgeInsets.only(
+                right: index == _pinLength - 1 ? 0 : dotGap,
+              ),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                width: dotSize,
+                height: dotSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isFilled
+                      ? DesignColors.accent
+                      : isCurrentlyEntering
+                          ? Colors.white.withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.06),
+                  border: Border.all(
+                    color: isFilled
+                        ? DesignColors.accent
+                        : isCurrentlyEntering
+                            ? DesignColors.accent.withValues(alpha: 0.5)
+                            : Colors.white.withValues(alpha: 0.15),
+                    width: isCurrentlyEntering ? 2.0 : 1.5,
+                  ),
+                  boxShadow: isFilled
+                      ? [
+                          BoxShadow(
+                            color: DesignColors.accent.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: isFilled
+                    ? Icon(
+                        Icons.circle_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      )
+                    : isCurrentlyEntering
+                        ? Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: DesignColors.accent.withValues(alpha: 0.6),
+                            ),
+                          )
+                        : null,
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: padHorizontal),
-      child: Column(
+      padding: EdgeInsets.symmetric(
+        horizontal: DesignSpacing.md,
+        vertical: DesignSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: DesignColors.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(
+          color: DesignColors.error.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNumberButton('1'),
-              _buildNumberButton('2'),
-              _buildNumberButton('3'),
-            ],
+          Icon(
+            Icons.error_outline_rounded,
+            color: DesignColors.error.withValues(alpha: 0.9),
+            size: 18,
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNumberButton('4'),
-              _buildNumberButton('5'),
-              _buildNumberButton('6'),
-            ],
+          SizedBox(width: DesignSpacing.sm),
+          Flexible(
+            child: Text(
+              _errorMessage.isNotEmpty
+                  ? _errorMessage
+                  : 'Invalid PIN. Try again.',
+              style: TextStyle(
+                color: DesignColors.error.withValues(alpha: 0.9),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNumberPad(bool isSmallScreen, double buttonSize) {
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Row 1: 1 2 3
+          _buildNumberPadRow(isSmallScreen, buttonSize, ['1', '2', '3']),
+          SizedBox(height: DesignSpacing.md),
+
+          // Row 2: 4 5 6
+          _buildNumberPadRow(isSmallScreen, buttonSize, ['4', '5', '6']),
+          SizedBox(height: DesignSpacing.md),
+
+          // Row 3: 7 8 9
+          _buildNumberPadRow(isSmallScreen, buttonSize, ['7', '8', '9']),
+          SizedBox(height: DesignSpacing.md),
+
+          // Row 4: clear 0 backspace
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNumberButton('7'),
-              _buildNumberButton('8'),
-              _buildNumberButton('9'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildActionButton(
-                icon: Icons.close,
-                onPressed: _onClearPressed,
+                icon: Icons.clear_all_rounded,
+                onTap: _onClearPressed,
+                size: buttonSize,
               ),
-              _buildNumberButton('0'),
+              SizedBox(width: DesignSpacing.md),
+              _buildNumberButton('0', isSmallScreen, buttonSize),
+              SizedBox(width: DesignSpacing.md),
               _buildActionButton(
                 icon: Icons.backspace_outlined,
-                onPressed: _onBackspacePressed,
+                onTap: _onBackspacePressed,
+                size: buttonSize,
               ),
             ],
           ),
@@ -284,30 +487,61 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
     );
   }
 
-  Widget _buildNumberButton(String number) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final btnSize = screenWidth < 380 ? 60.0 : 72.0;
-    final fontSize = screenWidth < 380 ? 24.0 : 28.0;
-    return SizedBox(
-      width: btnSize,
-      height: btnSize,
-      child: ElevatedButton(
-        onPressed: ref.watch(authControllerProvider).isLoading 
-            ? null 
-            : () => _onNumberPressed(number),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.surfaceVariant,
-          foregroundColor: AppColors.textPrimary,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(btnSize / 2),
+  Widget _buildNumberPadRow(
+    bool isSmallScreen,
+    double buttonSize,
+    List<String> digits,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: digits
+          .map((digit) => Padding(
+                padding: EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
+                child: _buildNumberButton(digit, isSmallScreen, buttonSize),
+              ))
+          .toList(),
+    );
+  }
+
+  Widget _buildNumberButton(
+    String digit,
+    bool isSmallScreen,
+    double size,
+  ) {
+    final isLoading = ref.watch(authControllerProvider).isLoading;
+    final fontSize = isSmallScreen ? 22.0 : 26.0;
+
+    return GestureDetector(
+      onTap: isLoading ? null : () => _onNumberPressed(digit),
+      onTapDown: isLoading ? null : (_) => _scaleController.forward(),
+      onTapUp: isLoading ? null : (_) => _scaleController.reverse(),
+      onTapCancel: () => _scaleController.reverse(),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.08),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.15),
+            width: 1.5,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: Text(
-          number,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: FontWeight.w500,
+        child: Center(
+          child: Text(
+            digit,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
         ),
       ),
@@ -316,21 +550,63 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
 
   Widget _buildActionButton({
     required IconData icon,
-    required VoidCallback onPressed,
+    required VoidCallback onTap,
+    required double size,
   }) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final btnSize = screenWidth < 380 ? 60.0 : 72.0;
-    return SizedBox(
-      width: btnSize,
-      height: btnSize,
-      child: IconButton(
-        onPressed: ref.watch(authControllerProvider).isLoading ? null : onPressed,
-        icon: Icon(icon, size: 28),
-        style: IconButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          foregroundColor: AppColors.textSecondary,
+    final isLoading = ref.watch(authControllerProvider).isLoading;
+
+    return GestureDetector(
+      onTap: isLoading ? null : onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.05),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            icon,
+            color: Colors.white.withValues(alpha: 0.6),
+            size: size * 0.35,
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBottomOptions(AuthState authState) {
+    return Column(
+      children: [
+        // Back to email login
+        GestureDetector(
+          onTap: () => context.pop(),
+          child: Text(
+            'Use email instead',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: DesignColors.accent.withValues(alpha: 0.8),
+              decoration: TextDecoration.underline,
+              decorationColor: DesignColors.accent.withValues(alpha: 0.3),
+            ),
+          ),
+        ),
+        SizedBox(height: DesignSpacing.sm),
+
+        // Version
+        Text(
+          'Levisa Adventures POS v2.0',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.white.withValues(alpha: 0.25),
+          ),
+        ),
+      ],
     );
   }
 }

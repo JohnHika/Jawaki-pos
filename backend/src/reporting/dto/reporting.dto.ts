@@ -286,3 +286,64 @@ export class DashboardSummaryDto {
   @ApiProperty({ type: InventoryReportDto })
   inventory: InventoryReportDto;
 }
+
+export class DailyProfitAndLossDto {
+  @ApiProperty()
+  date: string;
+
+  @ApiProperty()
+  branchId: string;
+
+  @ApiProperty()
+  branchName: string;
+
+  // Revenue
+  @ApiProperty()
+  grossSales: number;
+
+  @ApiProperty()
+  totalDiscounts: number;
+
+  @ApiProperty()
+  totalTax: number;
+
+  @ApiProperty()
+  netSales: number;
+
+  @ApiProperty()
+  refundedAmount: number;
+
+  @ApiProperty()
+  netRevenue: number;
+
+  // Cost of Goods Sold
+  @ApiProperty()
+  costOfGoodsSold: number;
+
+  @ApiProperty()
+  grossProfit: number;
+
+  @ApiProperty({ description: 'Gross profit margin percentage' })
+  grossProfitMargin: number;
+
+  // Expenses
+  @ApiProperty()
+  totalExpenses: number;
+
+  @ApiProperty()
+  expensesByCategory: Record<string, number>;
+
+  // Net Profit
+  @ApiProperty()
+  netProfit: number;
+
+  @ApiProperty({ description: 'Net profit margin percentage' })
+  netProfitMargin: number;
+
+  // Summary
+  @ApiProperty()
+  transactionCount: number;
+
+  @ApiProperty()
+  averageTransactionValue: number;
+}

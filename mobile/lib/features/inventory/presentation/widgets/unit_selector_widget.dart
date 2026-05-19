@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/design_system.dart';
 
 /// Unit configuration model
 class UnitConfig {
@@ -50,7 +51,7 @@ class UnitOption {
   });
 }
 
-/// Unit Selector Widget - Allows selecting from available units
+/// Unit Selector Widget - Premium toggle/tab design
 class UnitSelectorWidget extends StatelessWidget {
   final UnitConfig unitConfig;
   final String selectedUnit;
@@ -70,12 +71,38 @@ class UnitSelectorWidget extends StatelessWidget {
     final units = unitConfig.availableUnits;
 
     if (units.length == 1) {
-      // Only base unit available, show as text
-      return Text(
-        unitConfig.baseUnit,
-        style: TextStyle(
-          fontSize: 16,
-          color: Theme.of(context).hintColor,
+      // Only base unit available, show as premium badge
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              DesignColors.brand.withValues(alpha:0.1),
+              DesignColors.brand.withValues(alpha:0.05),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: DesignColors.brand.withValues(alpha:0.15),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.straighten_rounded,
+                size: 16, color: DesignColors.brand),
+            const SizedBox(width: 6),
+            Text(
+              unitConfig.baseUnit,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: DesignColors.brand,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -83,38 +110,71 @@ class UnitSelectorWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Unit selector chips
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: units.map((unit) {
-            final isSelected = selectedUnit == unit.name;
-
-            return ChoiceChip(
-              label: Text(unit.name),
-              selected: isSelected,
-              onSelected: (selected) {
-                if (selected) {
-                  onUnitChanged(unit.name);
-                }
-              },
-            );
-          }).toList(),
+        // Premium segmented control style unit selector
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: units.map((unit) {
+              final isSelected = selectedUnit == unit.name;
+              return Expanded(
+                child: AnimatedContainer(
+                  duration: DesignAnimation.fast,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? const LinearGradient(
+                            colors: [
+                              DesignColors.brand,
+                              DesignColors.brandDark,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: GestureDetector(
+                    onTap: () => onUnitChanged(unit.name),
+                    child: Text(
+                      unit.name,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: isSelected
+                            ? Colors.white
+                            : DesignColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
         ),
 
         // Conversion info
-        if (showConversionInfo && selectedUnit != unitConfig.baseUnit) ...[
-          const SizedBox(height: 8),
-          _buildConversionInfo(context),
+        if (showConversionInfo &&
+            selectedUnit != unitConfig.baseUnit) ...[
+          const SizedBox(height: 10),
+          _buildConversionInfo(),
         ],
       ],
     );
   }
 
-  Widget _buildConversionInfo(BuildContext context) {
+  Widget _buildConversionInfo() {
     final selectedUnitOption = unitConfig.availableUnits.firstWhere(
       (unit) => unit.name == selectedUnit,
-      orElse: () => UnitOption(name: selectedUnit, conversionFactor: 1.0),
+      orElse: () =>
+          UnitOption(name: selectedUnit, conversionFactor: 1.0),
     );
 
     if (selectedUnitOption.conversionFactor == 1.0) {
@@ -122,30 +182,38 @@ class UnitSelectorWidget extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        gradient: LinearGradient(
+          colors: [
+            DesignColors.brand.withValues(alpha:0.08),
+            DesignColors.brand.withValues(alpha:0.03),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Theme.of(context).primaryColor.withOpacity(0.3),
+          color: DesignColors.brand.withValues(alpha:0.15),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.info_outline,
+          const Icon(
+            Icons.info_outline_rounded,
             size: 16,
-            color: Theme.of(context).primaryColor,
+            color: DesignColors.brand,
           ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               '1 $selectedUnit = ${selectedUnitOption.conversionFactor} ${unitConfig.baseUnit}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).primaryColor,
-                fontWeight: FontWeight.w500,
+              style: const TextStyle(
+                fontSize: 13,
+                color: DesignColors.brand,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -155,10 +223,11 @@ class UnitSelectorWidget extends StatelessWidget {
   }
 }
 
-/// Unit Conversion Calculator Widget
+/// Unit Conversion Calculator Widget - Premium
 class UnitConversionCalculator extends StatefulWidget {
   final UnitConfig unitConfig;
-  final Function(double baseQuantity, String unit, double inputQuantity) onCalculated;
+  final Function(
+      double baseQuantity, String unit, double inputQuantity) onCalculated;
 
   const UnitConversionCalculator({
     super.key,
@@ -167,10 +236,12 @@ class UnitConversionCalculator extends StatefulWidget {
   });
 
   @override
-  State<UnitConversionCalculator> createState() => _UnitConversionCalculatorState();
+  State<UnitConversionCalculator> createState() =>
+      _UnitConversionCalculatorState();
 }
 
-class _UnitConversionCalculatorState extends State<UnitConversionCalculator> {
+class _UnitConversionCalculatorState
+    extends State<UnitConversionCalculator> {
   late String _selectedUnit;
   final _quantityController = TextEditingController();
   double? _convertedQuantity;
@@ -197,7 +268,8 @@ class _UnitConversionCalculatorState extends State<UnitConversionCalculator> {
 
     final unitOption = widget.unitConfig.availableUnits.firstWhere(
       (unit) => unit.name == _selectedUnit,
-      orElse: () => UnitOption(name: _selectedUnit, conversionFactor: 1.0),
+      orElse: () =>
+          UnitOption(name: _selectedUnit, conversionFactor: 1.0),
     );
 
     final baseQty = input * unitOption.conversionFactor;
@@ -209,160 +281,216 @@ class _UnitConversionCalculatorState extends State<UnitConversionCalculator> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.calculate, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Unit Conversion',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Quantity Input
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _quantityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Quantity',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Unit Selector Dropdown
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedUnit,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    ),
-                    items: widget.unitConfig.availableUnits.map((unit) {
-                      return DropdownMenuItem(
-                        value: unit.name,
-                        child: Text(unit.name),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedUnit = value);
-                        _calculateConversion();
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            // Conversion Result
-            if (_convertedQuantity != null && _selectedUnit != widget.unitConfig.baseUnit) ...[
-              const SizedBox(height: 16),
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 14,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
               Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Theme.of(context).primaryColor.withOpacity(0.1),
-                      Theme.of(context).primaryColor.withOpacity(0.05),
+                  color: DesignColors.brand.withValues(alpha:0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.calculate_rounded,
+                    size: 18, color: DesignColors.brand),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Unit Conversion',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: DesignColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Quantity Input with premium unit selector
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextFormField(
+                  controller: _quantityController,
+                  decoration: InputDecoration(
+                    labelText: 'Quantity',
+                    hintStyle:
+                        TextStyle(color: DesignColors.textTertiary),
+                    labelStyle: const TextStyle(
+                      color: DesignColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    floatingLabelBehavior:
+                        FloatingLabelBehavior.auto,
+                    filled: true,
+                    fillColor:
+                        DesignColors.surfaceBorder.withValues(alpha:0.15),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                          color: DesignColors.brand, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color:
+                        DesignColors.surfaceBorder.withValues(alpha:0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedUnit,
+                      isExpanded: true,
+                      dropdownColor: Theme.of(context).brightness ==
+                              Brightness.dark
+                          ? DesignColors.darkSurface
+                          : Colors.white,
+                      style: const TextStyle(
+                        color: DesignColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                      items: widget.unitConfig.availableUnits
+                          .map((unit) {
+                        return DropdownMenuItem(
+                          value: unit.name,
+                          child: Text(unit.name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(
+                              () => _selectedUnit = value);
+                          _calculateConversion();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Conversion Result
+          if (_convertedQuantity != null &&
+              _selectedUnit != widget.unitConfig.baseUnit) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    DesignColors.brand.withValues(alpha:0.08),
+                    DesignColors.brand.withValues(alpha:0.03),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: DesignColors.brand.withValues(alpha:0.2),
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.arrow_downward_rounded,
+                        color: DesignColors.brand,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Converts to',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: DesignColors.brand,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Theme.of(context).primaryColor.withOpacity(0.3),
-                    width: 2,
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_convertedQuantity!.toStringAsFixed(_convertedQuantity! % 1 == 0 ? 0 : 2)} ${widget.unitConfig.baseUnit}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: DesignColors.brand,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.arrow_downward,
-                          color: Theme.of(context).primaryColor,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Converts to',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_convertedQuantity!.toStringAsFixed(_convertedQuantity! % 1 == 0 ? 0 : 2)} ${widget.unitConfig.baseUnit}',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-            ],
-
-            // Example conversions
-            if (widget.unitConfig.availableUnits.length > 1) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Quick Reference:',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...widget.unitConfig.availableUnits
-                  .where((u) => u.conversionFactor != 1.0)
-                  .map((unit) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.arrow_right,
-                              size: 16,
-                              color: Colors.grey.shade500,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '1 ${unit.name} = ${unit.conversionFactor} ${widget.unitConfig.baseUnit}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
-            ],
+            ),
           ],
-        ),
+
+          // Quick reference
+          if (widget.unitConfig.availableUnits.length > 1) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Quick Reference',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: DesignColors.textTertiary,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...widget.unitConfig.availableUnits
+                .where((u) => u.conversionFactor != 1.0)
+                .map((unit) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.arrow_right_rounded,
+                            size: 18,
+                            color: DesignColors.textTertiary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '1 ${unit.name} = ${unit.conversionFactor} ${widget.unitConfig.baseUnit}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: DesignColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+          ],
+        ],
       ),
     );
   }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 
 class CartItemTile extends ConsumerWidget {
@@ -17,7 +17,7 @@ class CartItemTile extends ConsumerWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        color: AppColors.error,
+        color: DesignColors.error,
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       confirmDismiss: (direction) async {
@@ -33,7 +33,7 @@ class CartItemTile extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Remove', style: TextStyle(color: AppColors.error)),
+                child: const Text('Remove', style: TextStyle(color: DesignColors.error)),
               ),
             ],
           ),
@@ -58,8 +58,8 @@ class CartItemTile extends ConsumerWidget {
               height: 56,
               decoration: BoxDecoration(
                 color: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkSurfaceVariant
-                    : AppColors.surfaceVariant,
+                    ? DesignColors.darkSurfaceElevated
+                    : DesignColors.surfaceSubtle,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -94,13 +94,13 @@ class CartItemTile extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.1),
+                        color: DesignColors.success.withValues(alpha:0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         '-${item.discount.toStringAsFixed(0)}%',
                         style: const TextStyle(
-                          color: AppColors.success,
+                          color: DesignColors.success,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
@@ -120,7 +120,7 @@ class CartItemTile extends ConsumerWidget {
                   'KES ${item.total.toStringAsFixed(0)}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: DesignColors.brand,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -144,7 +144,7 @@ class _QuantityControls extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurfaceVariant : AppColors.surfaceVariant,
+        color: isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -232,14 +232,14 @@ class CartItemCompact extends ConsumerWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
+              color: DesignColors.brand.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Center(
               child: Text(
                 '${item.quantity}x',
                 style: const TextStyle(
-                  color: AppColors.primary,
+                  color: DesignColors.brand,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
