@@ -12,6 +12,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { SyncModule } from './sync/sync.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { AiModule } from './ai/ai.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -44,6 +45,7 @@ import { AppController } from './app.controller';
     SyncModule,
     ReportingModule,
     ExpensesModule,
+    AiModule,
   ],
   controllers: [AppController],
 })

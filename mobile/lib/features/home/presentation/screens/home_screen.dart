@@ -33,6 +33,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         activeIcon: Icons.point_of_sale_rounded,
         label: 'POS',
         path: '/'));
+    // AI Assistant — available to all users
+    items.add(_NavItem(
+        icon: Icons.auto_awesome_outlined,
+        activeIcon: Icons.auto_awesome_rounded,
+        label: 'AI',
+        path: '/ai'));
     items.add(_NavItem(
         icon: Icons.people_outlined,
         activeIcon: Icons.people_rounded,

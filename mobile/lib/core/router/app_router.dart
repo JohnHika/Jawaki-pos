@@ -26,6 +26,7 @@ import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
 import '../../features/finance/presentation/screens/finance_screen.dart';
+import '../../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../services/auth_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
@@ -232,6 +233,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance',
             name: 'finance',
             builder: (context, state) => const FinanceScreen(),
+          ),
+
+          // AI Chat Screen
+          GoRoute(
+            path: '/ai',
+            name: 'ai',
+            builder: (context, state) => const AiChatScreen(),
           ),
         ],
       ),
