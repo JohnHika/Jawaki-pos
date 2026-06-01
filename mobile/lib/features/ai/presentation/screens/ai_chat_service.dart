@@ -58,7 +58,7 @@ class AiChatService {
       final result = await billing.getStatus(branchId);
       final status = result['status'] ?? '';
       final daysLeft = result['daysLeft'] ?? 0;
-      
+
       if (status == 'TRIAL') return true;
       if (status == 'ACTIVE' && daysLeft > 0) return true;
       return false;
