@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { UploadsService } from '../uploads/uploads.service';
 import {
   CreateCategoryDto,
   UpdateCategoryDto,
@@ -19,13 +20,15 @@ export class CatalogService {
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
+    private uploadsService: UploadsService,
   ) {}
 
   // ==================== CATEGORY OPERATIONS ====================
 
   async createCategory(tenantId: string, dto: CreateCategoryDto) {
+    const slug = dto.slug || this.slugify(dto.name);
     const existing = await this.prisma.category.findFirst({
-      where: { tenantId, slug: dto.slug },
+      where: { tenantId, slug },
     });
 
     if (existing) {
@@ -36,6 +39,7 @@ export class CatalogService {
       data: {
         tenantId,
         ...dto,
+        slug,
       },
     });
 
@@ -99,6 +103,26 @@ export class CatalogService {
       throw new NotFoundException('Category not found');
     }
 
+    if (dto.slug && dto.slug !== category.slug) {
+      const existing = await this.prisma.category.findFirst({
+        where: {
+          tenantId,
+          slug: dto.slug,
+          id: { not: categoryId },
+        },
+      });
+
+      if (existing) {
+        throw new ConflictException('Category with this slug already exists');
+      }
+    }
+
+    const nextImage = (dto as any).image;
+    // Clean up old Cloudinary image if image URL is being replaced or cleared.
+    if (nextImage !== undefined && nextImage !== category.image && category.imagePublicId) {
+      this.uploadsService.deleteImage(category.imagePublicId);
+    }
+
     const updated = await this.prisma.category.update({
       where: { id: categoryId },
       data: dto,
@@ -136,8 +160,9 @@ export class CatalogService {
   // ==================== PRODUCT OPERATIONS ====================
 
   async createProduct(tenantId: string, dto: CreateProductDto) {
+    const sku = dto.sku?.trim() || await this.generateUniqueSku(tenantId, dto.name);
     const existing = await this.prisma.product.findFirst({
-      where: { tenantId, sku: dto.sku },
+      where: { tenantId, sku },
     });
 
     if (existing) {
@@ -150,6 +175,7 @@ export class CatalogService {
       data: {
         tenantId,
         ...productData,
+        sku,
         categories: categoryIds
           ? {
               create: categoryIds.map((categoryId) => ({ categoryId })),
@@ -265,6 +291,26 @@ export class CatalogService {
 
     if (!product) {
       throw new NotFoundException('Product not found');
+    }
+
+    if (dto.sku && dto.sku !== product.sku) {
+      const existing = await this.prisma.product.findFirst({
+        where: {
+          tenantId,
+          sku: dto.sku,
+          id: { not: productId },
+        },
+      });
+
+      if (existing) {
+        throw new ConflictException('Product with this SKU already exists');
+      }
+    }
+
+    const nextImage = (dto as any).image;
+    // Clean up old Cloudinary image if image URL is being replaced or cleared.
+    if (nextImage !== undefined && nextImage !== product.image && product.imagePublicId) {
+      this.uploadsService.deleteImage(product.imagePublicId);
     }
 
     const { categoryIds, ...updateData } = dto;
@@ -563,6 +609,7 @@ export class CatalogService {
     categories.forEach((cat) => {
       map.set(cat.id, {
         ...cat,
+        imageUrl: cat.image,          // mobile catalog_provider expects 'imageUrl'
         productCount: cat._count.products,
         _count: undefined,
         children: [],
@@ -583,6 +630,7 @@ export class CatalogService {
 
   private formatProduct(product: any, branchId?: string) {
     const categories = product.categories?.map((pc: any) => pc.category) || [];
+    const categoryIds = categories.map((category: any) => category.id);
     
     // Determine current price
     let currentPrice = Number(product.basePrice);
@@ -609,7 +657,12 @@ export class CatalogService {
       name: product.name,
       description: product.description,
       image: product.image,
+      imageUrl: product.image,
+      imagePublicId: product.imagePublicId,
+      categoryId: categoryIds[0],
+      categoryIds,
       basePrice: Number(product.basePrice),
+      price: currentPrice,
       costPrice: product.costPrice ? Number(product.costPrice) : undefined,
       taxRate: Number(product.taxRate),
       unit: product.unit,
@@ -620,10 +673,48 @@ export class CatalogService {
       isFavorite: product.isFavorite,
       sortOrder: product.sortOrder,
       metadata: product.metadata,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
       categories,
       currentPrice,
       currentStock,
     };
+  }
+
+  private slugify(value: string): string {
+    const slug = value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 100)
+      .replace(/-+$/g, '');
+
+    return slug || 'category';
+  }
+
+  private async generateUniqueSku(tenantId: string, name: string): Promise<string> {
+    const base = name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '')
+      .slice(0, 8) || 'ITEM';
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const suffix = `${Date.now()}`.slice(-4);
+      const variant = attempt === 0 ? suffix : `${suffix}${attempt}`;
+      const sku = `${base}-${variant}`;
+
+      const existing = await this.prisma.product.findFirst({
+        where: { tenantId, sku },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        return sku;
+      }
+    }
+
+    return `${base}-${Math.floor(1000 + Math.random() * 9000)}`;
   }
 
   private async invalidateCategoryCache(tenantId: string) {

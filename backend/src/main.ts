@@ -61,7 +61,6 @@ async function bootstrap() {
     .addTag('catalog', 'Products and categories')
     .addTag('sales', 'Sales and receipts')
     .addTag('inventory', 'Stock management')
-    .addTag('payments', 'Payment processing')
     .addTag('sync', 'Device synchronization')
     .build();
 

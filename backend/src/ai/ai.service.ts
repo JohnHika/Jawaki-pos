@@ -107,14 +107,14 @@ export class AiService {
     } else if (lastMessage.includes('price') || lastMessage.includes('profit')) {
       reply = `💰 **Pricing & Profit**\n\n• Aim for **30-50% markup** on most products\n• Review pricing monthly based on supplier costs\n• Bundle slow-moving items with popular ones\n• Track profit margins per product category\n\n> 💡 *With AI, I can suggest optimal pricing for every product based on demand!*`;
     } else {
-      reply = `👋 Hi! I'm **Levisa AI** — your POS business assistant.\n\nI can help you with:\n• 📊 **Sales analysis** — "What sold best today?"\n• 📦 **Inventory tips** — "Which items are running low?"\n• 👥 **Customer insights** — "Who are my top customers?"\n• 💰 **Pricing advice** — "How should I price this product?"\n\n> 💡 *Connect your NVIDIA API key for full AI power with real-time data analysis!*\n\n*This is a demo response. Live AI is available once the API key is configured.*`;
+      reply = `👋 Hi! I'm **POS AI** — your POS business assistant.\n\nI can help you with:\n• 📊 **Sales analysis** — "What sold best today?"\n• 📦 **Inventory tips** — "Which items are running low?"\n• 👥 **Customer insights** — "Who are my top customers?"\n• 💰 **Pricing advice** — "How should I price this product?"\n\n> 💡 *Connect your NVIDIA API key for full AI power with real-time data analysis!*\n\n*This is a demo response. Live AI is available once the API key is configured.*`;
     }
 
     return { reply, model: 'mock (no API key configured)' };
   }
 
   private buildSystemPrompt(context?: string, includeData?: boolean): string {
-    const base = `You are Levisa AI, an intelligent business assistant for a POS (Point of Sale) system used by retail stores in Kenya.
+    const base = `You are POS AI, an intelligent business assistant for a POS (Point of Sale) system used by retail stores in Kenya.
 
 Your role:
 - Help store owners analyze sales, inventory, and customer data

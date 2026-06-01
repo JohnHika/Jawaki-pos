@@ -8,11 +8,12 @@ import { BranchesModule } from './branches/branches.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { SalesModule } from './sales/sales.module';
 import { InventoryModule } from './inventory/inventory.module';
-import { PaymentsModule } from './payments/payments.module';
 import { SyncModule } from './sync/sync.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { AiModule } from './ai/ai.module';
+import { AiBillingModule } from './ai-billing/ai-billing.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -41,11 +42,12 @@ import { AppController } from './app.controller';
     CatalogModule,
     SalesModule,
     InventoryModule,
-    PaymentsModule,
     SyncModule,
     ReportingModule,
     ExpensesModule,
     AiModule,
+    AiBillingModule,
+    UploadsModule,
   ],
   controllers: [AppController],
 })

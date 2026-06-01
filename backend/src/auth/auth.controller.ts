@@ -5,6 +5,7 @@ import {
   Body,
   UseGuards,
   Request,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -18,11 +19,13 @@ import { AuthService } from './auth.service';
 import {
   LoginDto,
   PinLoginDto,
+  RegisterCompanyDto,
   RegisterDto,
   RefreshTokenDto,
   ChangePasswordDto,
   SetPinDto,
   AuthResponseDto,
+  CompanyInfoResponseDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
@@ -43,12 +46,38 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Post('register-company')
+  @ApiOperation({ summary: 'Create a new company, first shop, and owner admin' })
+  @ApiResponse({ status: 201, description: 'Company registered', type: AuthResponseDto })
+  @ApiResponse({ status: 409, description: 'Company already exists' })
+  async registerCompany(@Body() dto: RegisterCompanyDto): Promise<AuthResponseDto> {
+    return this.authService.registerCompany(dto);
+  }
+
+  @Get('company-info')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get company name and logo by tenant slug (public)' })
+  @ApiResponse({ status: 200, description: 'Company info', type: CompanyInfoResponseDto })
+  @ApiResponse({ status: 404, description: 'Company not found' })
+  async getCompanyInfo(@Query('slug') slug: string): Promise<CompanyInfoResponseDto> {
+    return this.authService.getCompanyInfo(slug);
+  }
+
   @Post('login/pin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Quick login with PIN (for POS terminals)' })
   @ApiResponse({ status: 200, description: 'Login successful', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid PIN' })
   async loginWithPin(@Body() pinLoginDto: PinLoginDto): Promise<AuthResponseDto> {
+    return this.authService.loginWithPin(pinLoginDto);
+  }
+
+  @Post('pin-login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Quick login with PIN (legacy path alias)' })
+  @ApiResponse({ status: 200, description: 'Login successful', type: AuthResponseDto })
+  @ApiResponse({ status: 401, description: 'Invalid PIN' })
+  async loginWithPinLegacy(@Body() pinLoginDto: PinLoginDto): Promise<AuthResponseDto> {
     return this.authService.loginWithPin(pinLoginDto);
   }
 
@@ -113,5 +142,15 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User profile' })
   async getProfile(@Request() req: any) {
     return this.authService.getProfile(req.user.sub);
+  }
+
+  @Get('users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get users for the current company only' })
+  @ApiResponse({ status: 200, description: 'Company users' })
+  async getTenantUsers(@Request() req: any) {
+    return this.authService.getTenantUsers(req.user.tenantId);
   }
 }

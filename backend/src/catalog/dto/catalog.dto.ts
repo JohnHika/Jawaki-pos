@@ -24,12 +24,13 @@ export class CreateCategoryDto {
   @Matches(/^[a-zA-Z0-9\s&'-]+$/, { message: 'Category name contains invalid characters' })
   name: string;
 
-  @ApiProperty({ example: 'beverages' })
+  @ApiPropertyOptional({ example: 'beverages', description: 'Optional custom slug. Auto-generated from the name when omitted.' })
+  @IsOptional()
   @IsString()
   @MinLength(2, { message: 'Slug must be at least 2 characters' })
   @MaxLength(100, { message: 'Slug must not exceed 100 characters' })
   @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, { message: 'Slug must be lowercase alphanumeric with hyphens' })
-  slug: string;
+  slug?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -43,6 +44,12 @@ export class CreateCategoryDto {
   @MaxLength(500, { message: 'Image URL must not exceed 500 characters' })
   @Matches(/^https?:\/\/.+/i, { message: 'Image must be a valid URL' })
   image?: string;
+
+  @ApiPropertyOptional({ description: 'Cloudinary public ID for the image' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  imagePublicId?: string;
 
   @ApiPropertyOptional({ description: 'Parent category ID for subcategories' })
   @IsOptional()
@@ -67,12 +74,13 @@ export class UpdateCategoryDto extends PartialType(CreateCategoryDto) {
 
 // Product DTOs
 export class CreateProductDto {
-  @ApiProperty({ example: 'SKU001' })
+  @ApiPropertyOptional({ example: 'SKU001', description: 'Optional SKU. Auto-generated when omitted.' })
+  @IsOptional()
   @IsString()
   @MinLength(3, { message: 'SKU must be at least 3 characters' })
   @MaxLength(50, { message: 'SKU must not exceed 50 characters' })
   @Matches(/^[a-zA-Z0-9_-]+$/, { message: 'SKU can only contain letters, numbers, hyphens, and underscores' })
-  sku: string;
+  sku?: string;
 
   @ApiProperty({ example: 'Coca Cola 500ml' })
   @IsString()
@@ -92,6 +100,12 @@ export class CreateProductDto {
   @MaxLength(500, { message: 'Image URL must not exceed 500 characters' })
   @Matches(/^https?:\/\/.+/i, { message: 'Image must be a valid URL' })
   image?: string;
+
+  @ApiPropertyOptional({ description: 'Cloudinary public ID for the image' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  imagePublicId?: string;
 
   @ApiProperty({ example: 150.0 })
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Price must have up to 2 decimal places' })
@@ -256,6 +270,9 @@ export class CategoryResponseDto {
   @ApiProperty()
   image?: string;
 
+  @ApiPropertyOptional({ description: 'Client-friendly image alias' })
+  imageUrl?: string;
+
   @ApiProperty()
   parentId?: string;
 
@@ -270,14 +287,20 @@ export class CategoryResponseDto {
 
   @ApiProperty()
   children?: CategoryResponseDto[];
+
+  @ApiPropertyOptional()
+  createdAt?: Date;
+
+  @ApiPropertyOptional()
+  updatedAt?: Date;
 }
 
 export class ProductResponseDto {
   @ApiProperty()
   id: string;
 
-  @ApiProperty()
-  sku: string;
+  @ApiPropertyOptional()
+  sku?: string;
 
   @ApiProperty()
   name: string;
@@ -285,11 +308,26 @@ export class ProductResponseDto {
   @ApiProperty()
   description?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   image?: string;
+
+  @ApiPropertyOptional({ description: 'Client-friendly image alias' })
+  imageUrl?: string;
+
+  @ApiPropertyOptional()
+  imagePublicId?: string;
+
+  @ApiPropertyOptional({ description: 'Primary category ID for POS client compatibility' })
+  categoryId?: string;
+
+  @ApiPropertyOptional({ description: 'All assigned category IDs' })
+  categoryIds?: string[];
 
   @ApiProperty()
   basePrice: number;
+
+  @ApiProperty({ description: 'Client-friendly current selling price alias' })
+  price: number;
 
   @ApiProperty()
   costPrice?: number;
@@ -323,6 +361,18 @@ export class ProductResponseDto {
 
   @ApiProperty({ description: 'Current stock at requested branch' })
   currentStock?: number;
+
+  @ApiPropertyOptional()
+  sortOrder?: number;
+
+  @ApiPropertyOptional()
+  metadata?: Record<string, any>;
+
+  @ApiPropertyOptional()
+  createdAt?: Date;
+
+  @ApiPropertyOptional()
+  updatedAt?: Date;
 }
 
 export class PaginatedProductsDto {
