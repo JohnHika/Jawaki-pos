@@ -145,6 +145,9 @@ export class AuthService {
         data: {
           name: dto.companyName,
           slug,
+          logo: dto.logo,
+          logoPublicId: dto.logoPublicId,
+          settings: dto.settings || {},
         },
       });
 
@@ -168,6 +171,7 @@ export class AuthService {
           lastName: dto.admin.lastName,
           phone: dto.admin.phone,
           role: UserRole.ADMIN,
+          lastLoginAt: new Date(),
           branches: {
             create: {
               branchId: branch.id,
@@ -184,7 +188,7 @@ export class AuthService {
       });
     });
 
-    return this.generateTokens(user, user.branches[0]?.branchId);
+    return this.generateTokens(user, user.branches[0]?.branchId, dto.deviceId);
   }
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {

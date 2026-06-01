@@ -9,6 +9,7 @@ import {
   Matches,
   IsUUID,
   IsArray,
+  IsObject,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -218,6 +219,29 @@ export class RegisterCompanyDto {
     message: 'Company slug must be lowercase alphanumeric with hyphens',
   })
   companySlug?: string;
+
+  @ApiPropertyOptional({ description: 'Company logo URL, usually returned by Cloudinary after upload' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: 'Logo URL must not exceed 500 characters' })
+  @Matches(/^https?:\/\/.+/i, { message: 'Logo must be a valid URL' })
+  logo?: string;
+
+  @ApiPropertyOptional({ description: 'Cloudinary public ID for the company logo' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Logo public ID must not exceed 255 characters' })
+  logoPublicId?: string;
+
+  @ApiPropertyOptional({ description: 'Initial company settings' })
+  @IsOptional()
+  @IsObject()
+  settings?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Device UUID for immediately binding the first session' })
+  @IsOptional()
+  @IsUUID('4', { message: 'Device ID must be a valid UUID' })
+  deviceId?: string;
 
   @ApiProperty({ type: RegisterCompanyBranchDto })
   @ValidateNested()
