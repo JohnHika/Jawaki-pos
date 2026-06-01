@@ -790,10 +790,10 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AboutDialog(
-        applicationName: 'Levisa Adventures POS',
+        applicationName: 'Point of Sale',
         applicationVersion: '1.0.0 (Build 1)',
         applicationLegalese:
-            'Licensed for Levisa Adventures. Licence documents: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
+            'Licensed for your company workspace. Contact your administrator for licence documents.',
         applicationIcon: Container(
           width: 48,
           height: 48,
@@ -815,7 +815,7 @@ class SettingsScreen extends ConsumerWidget {
             'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
             style: TextStyle(color: DesignColors.textSecondary, fontSize: 12),
           ),
-          Text('© 2026 Levisa Adventures',
+          Text('© 2026 POS Platform',
               style:
                   TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
         ],
@@ -1362,7 +1362,9 @@ class SettingsScreen extends ConsumerWidget {
 
                   // Update the API client base URL
                   final apiClient = getIt<ApiClient>();
-                  apiClient.setBaseUrl('http://$ip:$port/api/v1');
+                  final baseUrl = 'http://$ip:$port/api/v1';
+                  await storage.setServerBaseUrl(baseUrl);
+                  apiClient.setBaseUrl(baseUrl);
 
                   if (!context.mounted || !ctx.mounted) return;
                   Navigator.pop(ctx);
@@ -1407,7 +1409,9 @@ class SettingsScreen extends ConsumerWidget {
                   await storage.setBackendServerPort(3000);
                   // Reset to built-in URL
                   final apiClient = getIt<ApiClient>();
-                  apiClient.setBaseUrl('http://192.168.100.47:3000/api/v1');
+                  const defaultUrl = 'https://arche-axon-pos-api.onrender.com/api/v1';
+                  await storage.setServerBaseUrl(defaultUrl);
+                  apiClient.setBaseUrl(defaultUrl);
                   if (!context.mounted || !ctx.mounted) return;
                   Navigator.pop(ctx);
                   _showSnack(context,

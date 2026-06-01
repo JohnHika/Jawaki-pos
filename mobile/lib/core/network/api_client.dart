@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 class ApiClient {
   final Dio _dio;
@@ -17,11 +18,13 @@ class ApiClient {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? tenantSlug,
     String? deviceId,
   }) async {
     final response = await _dio.post('/auth/login', data: {
       'email': email,
       'password': password,
+      if (tenantSlug != null) 'tenantSlug': tenantSlug,
       if (deviceId != null) 'deviceId': deviceId,
     });
     return response.data;
@@ -30,10 +33,12 @@ class ApiClient {
   Future<Map<String, dynamic>> loginWithPin({
     required String pin,
     required String deviceId,
+    String? branchId,
   }) async {
-    final response = await _dio.post('/auth/pin-login', data: {
+    final response = await _dio.post('/auth/login/pin', data: {
       'pin': pin,
       'deviceId': deviceId,
+      if (branchId != null) 'branchId': branchId,
     });
     return response.data;
   }
@@ -48,11 +53,115 @@ class ApiClient {
   Future<void> logout() async {
     await _dio.post('/auth/logout');
   }
-  
+
+  /// Register a new company with admin user and branch.
+  /// Used during first-time setup flow.
+  Future<Map<String, dynamic>> registerCompany({
+    required String companyName,
+    required String adminEmail,
+    required String adminPassword,
+    required String adminFirstName,
+    required String adminLastName,
+    required String branchName,
+    required String branchCode,
+    String? branchAddress,
+    String? branchPhone,
+    String? deviceId,
+  }) async {
+    final response = await _dio.post('/auth/register-company', data: {
+      'companyName': companyName,
+      if (deviceId != null) 'deviceId': deviceId,
+      'admin': {
+        'email': adminEmail,
+        'password': adminPassword,
+        'firstName': adminFirstName,
+        'lastName': adminLastName,
+      },
+      'branch': {
+        'name': branchName,
+        'code': branchCode,
+        if (branchAddress != null) 'address': branchAddress,
+        if (branchPhone != null) 'phone': branchPhone,
+      },
+    });
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> updateCurrentTenant({
+    String? name,
+    String? logo,
+    String? logoPublicId,
+  }) async {
+    final response = await _dio.patch('/branches/tenants/current', data: {
+      if (name != null) 'name': name,
+      if (logo != null) 'logo': logo,
+      if (logoPublicId != null) 'logoPublicId': logoPublicId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getProfile() async {
+    final response = await _dio.get('/auth/profile');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Fetch company name and logo by tenant slug (public, no auth required).
+  /// Returns null if slug is empty or company not found.
+  Future<Map<String, dynamic>?> getCompanyInfo(String slug) async {
+    if (slug.isEmpty) return null;
+    try {
+      final response = await _dio.get(
+        '/auth/company-info',
+        queryParameters: {'slug': slug},
+      );
+      return response.data as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Catalog endpoints
   Future<List<dynamic>> getCategories() async {
     final response = await _dio.get('/catalog/categories');
     return response.data;
+  }
+
+  Future<Map<String, dynamic>> createCategory({
+    required String name,
+    String? description,
+    String? image,
+    String? imagePublicId,
+  }) async {
+    final response = await _dio.post('/catalog/categories', data: {
+      'name': name,
+      if (description != null) 'description': description,
+      if (image != null) 'image': image,
+      if (imagePublicId != null) 'imagePublicId': imagePublicId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateCategory(
+    String id, {
+    String? name,
+    String? description,
+    String? image,
+    String? imagePublicId,
+    bool clearImage = false,
+  }) async {
+    final response = await _dio.patch('/catalog/categories/$id', data: {
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (clearImage) 'image': null,
+      if (clearImage) 'imagePublicId': null,
+      if (!clearImage && image != null) 'image': image,
+      if (!clearImage && imagePublicId != null) 'imagePublicId': imagePublicId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteCategory(String id) async {
+    await _dio.delete('/catalog/categories/$id');
   }
   
   Future<List<dynamic>> getProducts({
@@ -68,6 +177,56 @@ class ApiClient {
       if (limit != null) 'limit': limit,
     });
     return response.data['items'];
+  }
+
+  Future<Map<String, dynamic>> createProduct({
+    required String name,
+    required double basePrice,
+    required List<String> categoryIds,
+    String? description,
+    String? image,
+    String? imagePublicId,
+    String? unit,
+  }) async {
+    final response = await _dio.post('/catalog/products', data: {
+      'name': name,
+      'basePrice': basePrice,
+      'categoryIds': categoryIds,
+      if (description != null) 'description': description,
+      if (image != null) 'image': image,
+      if (imagePublicId != null) 'imagePublicId': imagePublicId,
+      if (unit != null) 'unit': unit,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateProduct(
+    String id, {
+    String? name,
+    double? basePrice,
+    List<String>? categoryIds,
+    String? description,
+    String? image,
+    String? imagePublicId,
+    String? unit,
+    bool clearImage = false,
+  }) async {
+    final response = await _dio.patch('/catalog/products/$id', data: {
+      if (name != null) 'name': name,
+      if (basePrice != null) 'basePrice': basePrice,
+      if (categoryIds != null) 'categoryIds': categoryIds,
+      if (description != null) 'description': description,
+      if (unit != null) 'unit': unit,
+      if (clearImage) 'image': null,
+      if (clearImage) 'imagePublicId': null,
+      if (!clearImage && image != null) 'image': image,
+      if (!clearImage && imagePublicId != null) 'imagePublicId': imagePublicId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteProduct(String id) async {
+    await _dio.delete('/catalog/products/$id');
   }
   
   Future<Map<String, dynamic>> getProduct(String id) async {
@@ -254,5 +413,36 @@ class ApiClient {
   Future<Map<String, dynamic>> getDailyProfitLoss(String branchId, String date) async {
     final response = await _dio.get('/reports/profit-loss/$branchId/$date');
     return response.data;
+  }
+
+  /// Upload an image file to Cloudinary via the backend.
+  /// [type] must be one of: 'logo', 'category', 'product'
+  /// Returns { url, publicId, width, height, format, bytes }
+  Future<Map<String, dynamic>> uploadImage({
+    required String filePath,
+    required String fileName,
+    required String type,
+  }) async {
+    final contentType = _imageContentType(fileName);
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: contentType,
+      ),
+    });
+    final response = await _dio.post(
+      '/uploads/image',
+      queryParameters: {'type': type},
+      data: formData,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  MediaType _imageContentType(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    return MediaType('image', 'jpeg');
   }
 }
