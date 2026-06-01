@@ -11,7 +11,7 @@ services:
     region: oregon
     branch: update-feature
     healthCheckPath: /health
-    buildCommand: cd backend && npm ci && npx prisma generate && npm run build
+    buildCommand: cd backend && npm ci --include=dev && npx prisma generate && npm run build
     preDeployCommand: cd backend && npx prisma migrate deploy
     startCommand: cd backend && npm run start:prod
     envVars:
