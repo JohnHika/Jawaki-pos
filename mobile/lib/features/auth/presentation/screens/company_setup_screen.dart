@@ -166,16 +166,20 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
         }
       }
 
-      // Show success message
       if (mounted) {
-        showGlassSnackBar(
-          context,
-          'Company created successfully!',
-          icon: Icons.check_circle_rounded,
-          color: DesignColors.success,
+        final user = response['user'] as Map<String, dynamic>?;
+        final companyCode = (user?['tenantSlug'] as String?) ??
+            _slugify(_companyNameController.text.trim());
+        final companyName =
+            (user?['tenant'] as Map<String, dynamic>?)?['name'] as String? ??
+                _companyNameController.text.trim();
+
+        await _showCompanyCreatedDialog(
+          companyName: companyName,
+          companyCode: companyCode,
         );
 
-        // Navigate straight into the POS app with the active session.
+        if (!mounted) return;
         context.go('/');
       }
     } catch (e) {
@@ -334,8 +338,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                               if (value == null || value.trim().isEmpty) {
                                 return 'Email is required';
                               }
-                              final emailRegex = RegExp(
-                                  r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
+                              final emailRegex =
+                                  RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
                               if (!emailRegex.hasMatch(value.trim())) {
                                 return 'Enter a valid email address';
                               }
@@ -491,7 +495,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                               padding: const EdgeInsets.all(12),
                               margin: const EdgeInsets.only(bottom: 16),
                               decoration: BoxDecoration(
-                                color: DesignColors.error.withValues(alpha: 0.1),
+                                color:
+                                    DesignColors.error.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color:
@@ -556,6 +561,145 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _showCompanyCreatedDialog({
+    required String companyName,
+    required String companyCode,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? DesignColors.darkSurface : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: DesignColors.success.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  color: DesignColors.success,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Company Ready',
+                  style: TextStyle(
+                    color: isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                companyName,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Use this company code when logging in on this phone or another staff device.',
+                style: TextStyle(
+                  color: isDark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: DesignColors.brand.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: DesignColors.brand.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        companyCode,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
+                          color: DesignColors.brand,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Copy company code',
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: companyCode),
+                        );
+                        if (!mounted) return;
+                        showGlassSnackBar(
+                          context,
+                          'Company code copied. Save it somewhere safe.',
+                          icon: Icons.copy_rounded,
+                          color: DesignColors.success,
+                        );
+                      },
+                      icon: const Icon(Icons.copy_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Please save this code. Staff will need it together with their email and password.',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('I Saved It'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _slugify(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
   }
 
   Widget _buildHeader(bool isDark) {
