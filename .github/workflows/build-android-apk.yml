@@ -131,9 +131,6 @@ jobs:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
-          RELEASE_NOTES_INPUT: ${{ github.event.inputs.release_notes }}
-          FORCE_UPDATE_INPUT: ${{ github.event.inputs.force_update }}
-          MIN_SUPPORTED_VERSION_INPUT: ${{ github.event.inputs.min_supported_version }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
@@ -153,21 +150,29 @@ jobs:
               except json.JSONDecodeError:
                   existing = {}
 
+          workflow_inputs = {}
+          event_path = os.environ.get('GITHUB_EVENT_PATH')
+          if event_path:
+            try:
+              workflow_inputs = json.loads(Path(event_path).read_text(encoding='utf-8')).get('inputs') or {}
+            except (OSError, json.JSONDecodeError, TypeError):
+              workflow_inputs = {}
+
           full_version = os.environ['FULL_VERSION']
           release_path = os.environ['RELEASE_PATH'].strip('/')
           base_url = os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')
 
-          min_supported_version = os.environ.get('MIN_SUPPORTED_VERSION_INPUT', '').strip()
+          min_supported_version = str(workflow_inputs.get('min_supported_version') or '').strip()
           if not min_supported_version:
               min_supported_version = str(existing.get('minSupportedVersion') or '0.0.0')
 
-          release_notes = os.environ.get('RELEASE_NOTES_INPUT', '').strip()
+          release_notes = str(workflow_inputs.get('release_notes') or '').strip()
           if not release_notes:
               short_sha = os.environ.get('GITHUB_SHA', '')[:7]
               branch = os.environ.get('GITHUB_REF_NAME', 'unknown')
               release_notes = f'Automated Android build from {short_sha} on {branch}.'
 
-          force_update = os.environ.get('FORCE_UPDATE_INPUT', '').strip().lower() == 'true'
+          force_update = str(workflow_inputs.get('force_update') or '').strip().lower() == 'true'
 
           manifest = {
               'platform': 'android',
