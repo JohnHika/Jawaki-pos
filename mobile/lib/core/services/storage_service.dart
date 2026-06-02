@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class StorageService {
   FlutterSecureStorage? _secureStorage;
   SharedPreferences? _prefs;
+  static const Uuid _uuid = Uuid();
 
   bool _initialized = false;
   
@@ -15,6 +17,7 @@ class StorageService {
   static const String keyDeviceId = 'device_id';
   static const String keyBranchId = 'branch_id';
   static const String keyTenantId = 'tenant_id';
+  static const String keyTenantSlug = 'tenant_slug';
   static const String keyLastSyncAt = 'last_sync_at';
   static const String keyPinHash = 'pin_hash';
   static const String keyFavoriteProducts = 'favorite_products';
@@ -103,6 +106,19 @@ class StorageService {
     return _prefs!.getString(keyDeviceId);
   }
 
+  Future<String> ensureDeviceId() async {
+    _checkInitialized();
+
+    final existingDeviceId = _prefs!.getString(keyDeviceId);
+    if (existingDeviceId != null && existingDeviceId.isNotEmpty) {
+      return existingDeviceId;
+    }
+
+    final generatedDeviceId = _uuid.v4();
+    await _prefs!.setString(keyDeviceId, generatedDeviceId);
+    return generatedDeviceId;
+  }
+
   Future<void> saveBranchId(String branchId) async {
     _checkInitialized();
     await _prefs!.setString(keyBranchId, branchId);
@@ -121,6 +137,16 @@ class StorageService {
   String? getTenantId() {
     if (!_initialized || _prefs == null) return null;
     return _prefs!.getString(keyTenantId);
+  }
+
+  Future<void> saveTenantSlug(String tenantSlug) async {
+    _checkInitialized();
+    await _prefs!.setString(keyTenantSlug, tenantSlug);
+  }
+
+  String? getTenantSlug() {
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(keyTenantSlug);
   }
 
   Future<void> saveLastSyncAt(DateTime dateTime) async {
@@ -168,6 +194,7 @@ class StorageService {
   static const String keyServerPort = 'server_port';
   static const String keyBackendServerIp = 'backend_server_ip';
   static const String keyBackendServerPort = 'backend_server_port';
+  static const String keyServerBaseUrl = 'server_base_url';
 
   bool isServerModeEnabled() {
     return _prefs?.getBool(keyServerModeEnabled) ?? false;
@@ -205,6 +232,15 @@ class StorageService {
     await _prefs!.setInt(keyBackendServerPort, port);
   }
 
+  String? getServerBaseUrl() {
+    return _prefs?.getString(keyServerBaseUrl);
+  }
+
+  Future<void> setServerBaseUrl(String url) async {
+    _checkInitialized();
+    await _prefs!.setString(keyServerBaseUrl, url);
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await clearSecureStorage();
@@ -217,6 +253,9 @@ class StorageService {
     await clearSecureStorage();
     _checkInitialized();
     await _prefs!.remove(keyUser);
+    await _prefs!.remove(keyBranchId);
+    await _prefs!.remove(keyTenantId);
+    await _prefs!.remove(keyTenantSlug);
     await _prefs!.remove(keyLastSyncAt);
   }
 }

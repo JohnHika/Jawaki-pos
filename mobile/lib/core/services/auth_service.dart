@@ -77,20 +77,31 @@ class AuthService {
     String? tenantSlug,
     String? deviceId,
   }) async {
+    final resolvedDeviceId =
+        (deviceId != null && deviceId.isNotEmpty)
+            ? deviceId
+            : await _storage.ensureDeviceId();
+
+    if (_storage.getDeviceId() != resolvedDeviceId) {
+      await _storage.saveDeviceId(resolvedDeviceId);
+    }
+
     final response = await _apiClient.login(
       email: email,
       password: password,
       tenantSlug: tenantSlug,
-      deviceId: deviceId ?? _storage.getDeviceId(),
+      deviceId: resolvedDeviceId,
     );
 
     await _handleAuthResponse(response);
   }
 
   Future<void> loginWithPin(String pin) async {
+    final resolvedDeviceId = await _storage.ensureDeviceId();
+
     final response = await _apiClient.loginWithPin(
       pin: pin,
-      deviceId: _storage.getDeviceId()!,
+      deviceId: resolvedDeviceId,
       branchId: _storage.getBranchId(),
     );
 

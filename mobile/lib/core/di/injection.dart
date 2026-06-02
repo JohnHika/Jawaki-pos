@@ -33,6 +33,7 @@ Future<void> configureDependencies() async {
     // Initialize storage FIRST (required by all other services)
     debugPrint('[DI] Initializing StorageService...');
     await storageService.initialize();
+    await storageService.ensureDeviceId();
     debugPrint('[DI] StorageService initialized');
 
     debugPrint('[DI] Registering ConnectivityService...');
@@ -121,10 +122,12 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] LocalServerService registered');
 
     // ============================================
-    // STEP 8: Update Check Service (GitHub Releases)
+    // STEP 8: Update Check Service (backend manifest)
     // ============================================
     debugPrint('[DI] Registering UpdateCheckService...');
-    getIt.registerSingleton<UpdateCheckService>(UpdateCheckService());
+    getIt.registerSingleton<UpdateCheckService>(
+      UpdateCheckService(apiClient: getIt<ApiClient>()),
+    );
     debugPrint('[DI] UpdateCheckService registered');
 
     // ============================================
