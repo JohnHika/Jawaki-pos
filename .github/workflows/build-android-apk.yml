@@ -21,6 +21,10 @@ on:
         required: false
         type: string
 
+env:
+  CF_R2_BUCKET: pos-updates
+  R2_PUBLIC_BASE_URL: https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev
+
 concurrency:
   group: android-update-${{ github.ref }}
   cancel-in-progress: true
@@ -93,8 +97,8 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_R2_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
           CF_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          CF_R2_BUCKET: ${{ vars.CF_R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
         run: |
           missing=()
           [[ -z "$CF_ACCOUNT_ID" ]] && missing+=("CF_ACCOUNT_ID")
@@ -112,7 +116,7 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         env:
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
         run: |
           mkdir -p dist/update-manifest
           if ! curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
@@ -126,7 +130,7 @@ jobs:
         env:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           RELEASE_NOTES_INPUT: ${{ github.event.inputs.release_notes }}
           FORCE_UPDATE_INPUT: ${{ github.event.inputs.force_update }}
           MIN_SUPPORTED_VERSION_INPUT: ${{ github.event.inputs.min_supported_version }}
@@ -191,7 +195,7 @@ jobs:
           AWS_DEFAULT_REGION: auto
           AWS_EC2_METADATA_DISABLED: true
           R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CF_R2_BUCKET: ${{ vars.CF_R2_BUCKET }}
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
         run: |
           aws s3 cp \
@@ -209,7 +213,7 @@ jobs:
           AWS_DEFAULT_REGION: auto
           AWS_EC2_METADATA_DISABLED: true
           R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CF_R2_BUCKET: ${{ vars.CF_R2_BUCKET }}
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           LATEST_MANIFEST_PATH: ${{ steps.manifest.outputs.latest_manifest_path }}
         run: |
@@ -230,7 +234,7 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         env:
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
         run: |
