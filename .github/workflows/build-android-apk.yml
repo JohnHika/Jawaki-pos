@@ -1,11 +1,33 @@
-name: Build Android APK
+name: Build and Publish Android Update
 
 on:
   push:
-    branches: [ pos-improvements ]
+    branches: [ main, update-feature ]
   pull_request:
-    branches: [ pos-improvements ]
-  workflow_dispatch: # Allow manual trigger
+    branches: [ main, update-feature ]
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Optional release notes for the published update manifest
+        required: false
+        type: string
+      force_update:
+        description: Force users onto this build immediately
+        required: false
+        default: 'false'
+        type: string
+      min_supported_version:
+        description: Optional minimum supported version (for example 1.0.2+2003)
+        required: false
+        type: string
+
+env:
+  CF_R2_BUCKET: pos-updates
+  R2_PUBLIC_BASE_URL: https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev
+
+concurrency:
+  group: android-update-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,33 +44,210 @@ jobs:
           java-version: '17'
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.16.0'
-          channel: 'stable'
+        shell: bash
+        run: |
+          git clone https://github.com/flutter/flutter.git --depth 1 --branch 3.16.0 "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          flutter --version
 
       - name: Get Dependencies
         working-directory: ./mobile
         run: flutter pub get
 
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          content = Path('mobile/pubspec.yaml').read_text(encoding='utf-8')
+          match = re.search(r'^version:\s*([^\s+]+)(?:\+(\S+))?', content, re.MULTILINE)
+          if not match:
+              raise SystemExit('Could not find Flutter version in mobile/pubspec.yaml')
+
+          semantic_version = match.group(1)
+          build_number = match.group(2) or ''
+          full_version = semantic_version if not build_number else f'{semantic_version}+{build_number}'
+          release_path = f'releases/{semantic_version}' if not build_number else f'releases/{semantic_version}/{build_number}'
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'semantic_version={semantic_version}\n')
+              fh.write(f'build_number={build_number}\n')
+              fh.write(f'full_version={full_version}\n')
+              fh.write(f'release_path={release_path}\n')
+          PY
+
       - name: Build APK
         working-directory: ./mobile
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: levisa-adventures-apk
+          name: levisa-adventures-apk-${{ steps.version.outputs.full_version }}
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-        with:
-          tag_name: v${{ github.run_number }}
-          name: Levisa Adventures POS v${{ github.run_number }}
-          files: mobile/build/app/outputs/flutter-apk/app-release.apk
-          generate_release_notes: true
+      - name: Validate publish configuration
+        if: github.event_name != 'pull_request'
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_R2_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          CF_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+        run: |
+          missing=()
+          [[ -z "$CF_ACCOUNT_ID" ]] && missing+=("CF_ACCOUNT_ID")
+          [[ -z "$CF_R2_ACCESS_KEY_ID" ]] && missing+=("CF_R2_ACCESS_KEY_ID")
+          [[ -z "$CF_R2_SECRET_ACCESS_KEY" ]] && missing+=("CF_R2_SECRET_ACCESS_KEY")
+          [[ -z "$CF_R2_BUCKET" ]] && missing+=("CF_R2_BUCKET")
+          [[ -z "$R2_PUBLIC_BASE_URL" ]] && missing+=("R2_PUBLIC_BASE_URL")
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required GitHub secrets/variables: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Download current manifest
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+        run: |
+          mkdir -p dist/update-manifest
+          if ! curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
+            echo "No existing remote manifest found yet; starting fresh."
+          fi
+
+      - name: Build update manifest
+        if: github.event_name != 'pull_request'
+        id: manifest
+        shell: bash
+        env:
+          FULL_VERSION: ${{ steps.version.outputs.full_version }}
+          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          dist_dir = Path('dist/update-manifest')
+          dist_dir.mkdir(parents=True, exist_ok=True)
+          existing_path = dist_dir / 'existing-latest.json'
+          existing = {}
+          if existing_path.exists():
+              try:
+                  existing = json.loads(existing_path.read_text(encoding='utf-8'))
+              except json.JSONDecodeError:
+                  existing = {}
+
+          workflow_inputs = {}
+          event_path = os.environ.get('GITHUB_EVENT_PATH')
+          if event_path:
+            try:
+              workflow_inputs = json.loads(Path(event_path).read_text(encoding='utf-8')).get('inputs') or {}
+            except (OSError, json.JSONDecodeError, TypeError):
+              workflow_inputs = {}
+
+          full_version = os.environ['FULL_VERSION']
+          release_path = os.environ['RELEASE_PATH'].strip('/')
+          base_url = os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')
+
+          min_supported_version = str(workflow_inputs.get('min_supported_version') or '').strip()
+          if not min_supported_version:
+              min_supported_version = str(existing.get('minSupportedVersion') or '0.0.0')
+
+          release_notes = str(workflow_inputs.get('release_notes') or '').strip()
+          if not release_notes:
+              short_sha = os.environ.get('GITHUB_SHA', '')[:7]
+              branch = os.environ.get('GITHUB_REF_NAME', 'unknown')
+              release_notes = f'Automated Android build from {short_sha} on {branch}.'
+
+          force_update = str(workflow_inputs.get('force_update') or '').strip().lower() == 'true'
+
+          manifest = {
+              'platform': 'android',
+              'latestVersion': full_version,
+              'minSupportedVersion': min_supported_version,
+              'forceUpdate': force_update,
+              'apkUrl': f'{base_url}/{release_path}/app-release.apk',
+              'releaseNotes': release_notes,
+              'publishedAt': datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
+          }
+
+          latest_path = dist_dir / 'latest.json'
+          latest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'latest_manifest_path={latest_path.as_posix()}\n')
+          PY
+
+      - name: Publish APK to Cloudflare R2
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: true
+          R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
+          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
+        run: |
+          aws s3 cp \
+            mobile/build/app/outputs/flutter-apk/app-release.apk \
+            "s3://$CF_R2_BUCKET/$RELEASE_PATH/app-release.apk" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/vnd.android.package-archive"
+
+      - name: Publish update manifest to Cloudflare R2
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: true
+          R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
+          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
+          LATEST_MANIFEST_PATH: ${{ steps.manifest.outputs.latest_manifest_path }}
+        run: |
+          aws s3 cp \
+            "$LATEST_MANIFEST_PATH" \
+            "s3://$CF_R2_BUCKET/android/latest.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json" \
+            --cache-control "no-store, max-age=0"
+
+          aws s3 cp \
+            "$LATEST_MANIFEST_PATH" \
+            "s3://$CF_R2_BUCKET/$RELEASE_PATH/latest.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json"
+
+      - name: Write publish summary
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
+          FULL_VERSION: ${{ steps.version.outputs.full_version }}
+        run: |
+          {
+            echo "## Android update published"
+            echo
+            echo "- Version: \\`$FULL_VERSION\\`"
+            echo "- APK: $R2_PUBLIC_BASE_URL/$RELEASE_PATH/app-release.apk"
+            echo "- Manifest: $R2_PUBLIC_BASE_URL/android/latest.json"
+          } >> "$GITHUB_STEP_SUMMARY"
