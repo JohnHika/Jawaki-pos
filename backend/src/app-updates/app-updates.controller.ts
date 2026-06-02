@@ -15,7 +15,7 @@ export class AppUpdatesController {
       'Public endpoint used by the mobile POS app to determine whether an update is available or required.',
   })
   @ApiResponse({ status: 200, description: 'Android update manifest returned successfully' })
-  getLatestAndroidUpdate() {
+  async getLatestAndroidUpdate() {
     return this.appUpdatesService.getLatestAndroidUpdate();
   }
 

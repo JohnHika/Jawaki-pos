@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_client.dart';
+import 'update_version_utils.dart';
 
 class AppUpdateInfo {
   const AppUpdateInfo({
@@ -128,7 +129,7 @@ class UpdateCheckService extends ChangeNotifier {
     final currentVersion = _currentVersion ?? await _resolveCurrentVersion();
     if (!context.mounted) return;
 
-    _showOptionalUpdateDialog(
+    await _showOptionalUpdateDialog(
       context: context,
       currentVersion: currentVersion,
       update: optionalUpdate,
@@ -264,8 +265,11 @@ class UpdateCheckService extends ChangeNotifier {
 
   Future<String> _resolveCurrentVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    _currentVersion = packageInfo.version;
-    return packageInfo.version;
+    _currentVersion = composeComparableVersion(
+      packageInfo.version,
+      packageInfo.buildNumber,
+    );
+    return _currentVersion!;
   }
 
   Future<bool> _canRequestPackageInstalls() async {
@@ -285,9 +289,9 @@ class UpdateCheckService extends ChangeNotifier {
     _currentVersion = currentVersion;
 
     final hasNewerVersion =
-        _isNewerVersion(update.latestVersion, currentVersion);
+      isNewerAppVersion(update.latestVersion, currentVersion);
     final belowMinimum =
-        _isNewerVersion(update.minSupportedVersion, currentVersion);
+      isNewerAppVersion(update.minSupportedVersion, currentVersion);
     final isRequired = hasNewerVersion && (belowMinimum || update.forceUpdate);
 
     _requiredUpdate = isRequired ? update : null;
@@ -321,46 +325,12 @@ class UpdateCheckService extends ChangeNotifier {
     final normalizedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
     return origin.resolve(normalizedPath).toString();
   }
-
-  bool _isNewerVersion(String latest, String current) {
-    try {
-      final latestParts = latest
-          .replaceFirst(RegExp(r'^v'), '')
-          .split('.')
-          .map(int.parse)
-          .toList();
-      final currentParts = current
-          .replaceFirst(RegExp(r'^v'), '')
-          .split('.')
-          .map(int.parse)
-          .toList();
-
-      while (latestParts.length < 3) {
-        latestParts.add(0);
-      }
-      while (currentParts.length < 3) {
-        currentParts.add(0);
-      }
-
-      for (int index = 0; index < latestParts.length; index += 1) {
-        if (latestParts[index] > currentParts[index]) return true;
-        if (latestParts[index] < currentParts[index]) return false;
-      }
-      return false;
-    } catch (error) {
-      if (!kReleaseMode) {
-        debugPrint('[UpdateCheck] Version parse error: $error');
-      }
-      return latest.compareTo(current) > 0;
-    }
-  }
-
-  void _showOptionalUpdateDialog({
+  Future<void> _showOptionalUpdateDialog({
     required BuildContext context,
     required String currentVersion,
     required AppUpdateInfo update,
-  }) {
-    showDialog(
+  }) async {
+    await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Row(
