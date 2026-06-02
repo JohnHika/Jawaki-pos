@@ -14,8 +14,8 @@ on:
       force_update:
         description: Force users onto this build immediately
         required: false
-        default: false
-        type: boolean
+        default: 'false'
+        type: string
       min_supported_version:
         description: Optional minimum supported version (for example 1.0.2+2003)
         required: false
@@ -127,9 +127,9 @@ jobs:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
-          RELEASE_NOTES_INPUT: ${{ inputs.release_notes || '' }}
-          FORCE_UPDATE_INPUT: ${{ inputs.force_update || 'false' }}
-          MIN_SUPPORTED_VERSION_INPUT: ${{ inputs.min_supported_version || '' }}
+          RELEASE_NOTES_INPUT: ${{ github.event.inputs.release_notes }}
+          FORCE_UPDATE_INPUT: ${{ github.event.inputs.force_update }}
+          MIN_SUPPORTED_VERSION_INPUT: ${{ github.event.inputs.min_supported_version }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
