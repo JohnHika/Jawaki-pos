@@ -12,6 +12,7 @@ import 'core/services/connectivity_service.dart';
 import 'core/services/local_server_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
+import 'core/widgets/forced_update_gate.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -107,16 +108,30 @@ class POSApp extends ConsumerStatefulWidget {
 class _POSAppState extends ConsumerState<POSApp> {
   bool _checkedForUpdates = false;
 
+  late final _POSAppLifecycleObserver _lifecycleObserver;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleObserver = _POSAppLifecycleObserver();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Auto-check for updates once after the first frame — the user sees
-    // a dialog immediately if a newer GitHub Release exists.
+    // Auto-check for updates once after the first frame so the app can
+    // enforce backend-managed remote updates immediately when required.
     if (!_checkedForUpdates) {
       _checkedForUpdates = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         getIt<UpdateCheckService>().checkForUpdates(
-          context: context,
           force: false, // don't force; uses cache interval
         );
       });
@@ -127,24 +142,46 @@ class _POSAppState extends ConsumerState<POSApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final themeColors = ref.watch(themeColorsProvider);
 
     return MaterialApp.router(
-      title: 'Levisa Adventures POS',
+      title: 'POS System',
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: false,
       checkerboardRasterCacheImages: false,
       checkerboardOffscreenLayers: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: AppTheme.dynamicLight(themeColors.primary, themeColors.secondary),
+      darkTheme: AppTheme.dynamicDark(themeColors.primary, themeColors.secondary),
       themeMode: themeMode,
       routerConfig: router,
       builder: (context, child) {
-        return MediaQuery(
-          data:
-              MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
-          child: child!,
+        final updateService = getIt<UpdateCheckService>();
+        return AnimatedBuilder(
+          animation: updateService,
+          builder: (context, _) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.noScaling),
+            child: Stack(
+              children: [
+                child!,
+                if (updateService.isForceUpdateRequired)
+                  Positioned.fill(
+                    child: ForcedUpdateGate(updateService: updateService),
+                  ),
+              ],
+            ),
+          ),
         );
       },
     );
+  }
+}
+
+class _POSAppLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      getIt<UpdateCheckService>().checkForUpdates(force: true);
+    }
   }
 }

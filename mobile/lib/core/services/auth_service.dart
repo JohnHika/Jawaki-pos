@@ -56,23 +56,31 @@ class AuthService {
   String? get branchId => _storage.getBranchId();
   String? get deviceId => _storage.getDeviceId();
   String? get tenantId => _storage.getTenantId();
+  String? get tenantSlug => _storage.getTenantSlug();
   String? get userRole => _currentUser?['role'];
 
   Future<void> _initializeAuth() async {
-    // Always require fresh login on app start — clear any stored session
     _accessToken = await _storage.getAccessToken();
     _currentUser = _storage.getUser();
+
+    if (_accessToken?.isNotEmpty == true && _currentUser != null) {
+      _updateStatus(AuthStatus.authenticated);
+      return;
+    }
+
     _updateStatus(AuthStatus.unauthenticated);
   }
 
   Future<void> login({
     required String email,
     required String password,
+    String? tenantSlug,
     String? deviceId,
   }) async {
     final response = await _apiClient.login(
       email: email,
       password: password,
+      tenantSlug: tenantSlug,
       deviceId: deviceId ?? _storage.getDeviceId(),
     );
 
@@ -83,9 +91,10 @@ class AuthService {
     final response = await _apiClient.loginWithPin(
       pin: pin,
       deviceId: _storage.getDeviceId()!,
+      branchId: _storage.getBranchId(),
     );
 
-    await _handleAuthResponse(response);
+    await _applyAuthResponse(response);
   }
 
   Future<void> refreshTokens() async {
@@ -104,9 +113,14 @@ class AuthService {
     }
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool allDevices = false}) async {
+    final refreshToken = allDevices ? null : await _storage.getRefreshToken();
+
     try {
-      await _apiClient.logout();
+      await _apiClient.logout(
+        refreshToken: refreshToken,
+        allDevices: allDevices,
+      );
     } catch (_) {
       // Ignore logout API errors
     }
@@ -118,6 +132,37 @@ class AuthService {
   }
 
   Future<void> _handleAuthResponse(Map<String, dynamic> response) async {
+    await _applyAuthResponse(response);
+  }
+
+  Future<void> applyAuthResponse(Map<String, dynamic> response) async {
+    await _applyAuthResponse(response);
+  }
+
+  Future<void> updateTenantSession(Map<String, dynamic> tenantData) async {
+    if (_currentUser == null) return;
+
+    final currentTenant = _currentUser!['tenant'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(_currentUser!['tenant'])
+        : <String, dynamic>{};
+
+    _currentUser = {
+      ..._currentUser!,
+      'tenant': {
+        ...currentTenant,
+        ...tenantData,
+      },
+    };
+
+    await _storage.saveUser(_currentUser!);
+
+    final updatedTenantSlug = tenantData['slug'] as String?;
+    if (updatedTenantSlug != null && updatedTenantSlug.isNotEmpty) {
+      await _storage.saveTenantSlug(updatedTenantSlug);
+    }
+  }
+
+  Future<void> _applyAuthResponse(Map<String, dynamic> response) async {
     _accessToken = response['accessToken'];
     Map<String, dynamic> userData = Map<String, dynamic>.from(response['user']);
 
@@ -152,6 +197,9 @@ class AuthService {
     }
     if (_currentUser!['tenantId'] != null) {
       await _storage.saveTenantId(_currentUser!['tenantId']);
+    }
+    if (_currentUser!['tenantSlug'] != null) {
+      await _storage.saveTenantSlug(_currentUser!['tenantSlug']);
     }
 
     _updateStatus(AuthStatus.authenticated);
@@ -217,7 +265,7 @@ class AuthService {
       debugPrint('[AuthService] Starting biometric authentication...');
 
       final didAuthenticate = await _localAuth.authenticate(
-        localizedReason: 'Sign in to Levisa Adventures POS',
+          localizedReason: 'Sign in to your POS workspace',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: false, // Allow PIN/pattern fallback

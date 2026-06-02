@@ -22,6 +22,7 @@ import {
   RegisterCompanyDto,
   RegisterDto,
   RefreshTokenDto,
+  LogoutDto,
   ChangePasswordDto,
   SetPinDto,
   AuthResponseDto,
@@ -107,8 +108,8 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Logout and invalidate tokens' })
   @ApiResponse({ status: 204, description: 'Logged out successfully' })
-  async logout(@Request() req: any, @Body() body: { refreshToken?: string }): Promise<void> {
-    await this.authService.logout(req.user.sub, body.refreshToken);
+  async logout(@Request() req: any, @Body() logoutDto: LogoutDto): Promise<void> {
+    await this.authService.logout(req.user.sub, logoutDto);
   }
 
   @Post('change-password')

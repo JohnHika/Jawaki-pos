@@ -14,6 +14,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { AiModule } from './ai/ai.module';
 import { AiBillingModule } from './ai-billing/ai-billing.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { AppUpdatesModule } from './app-updates/app-updates.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -48,6 +49,7 @@ import { AppController } from './app.controller';
     AiModule,
     AiBillingModule,
     UploadsModule,
+    AppUpdatesModule,
   ],
   controllers: [AppController],
 })

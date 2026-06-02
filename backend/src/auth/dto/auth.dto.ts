@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsOptional,
@@ -260,6 +261,23 @@ export class RefreshTokenDto {
   @MinLength(50, { message: 'Invalid refresh token format' })
   @MaxLength(256, { message: 'Refresh token is too long' })
   refreshToken: string;
+}
+
+export class LogoutDto {
+  @ApiPropertyOptional({ description: 'Current device refresh token for session-scoped logout' })
+  @IsOptional()
+  @IsString()
+  @MinLength(50, { message: 'Invalid refresh token format' })
+  @MaxLength(256, { message: 'Refresh token is too long' })
+  refreshToken?: string;
+
+  @ApiPropertyOptional({
+    description: 'When true, revoke all active sessions for the user',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  allDevices?: boolean;
 }
 
 export class ChangePasswordDto {

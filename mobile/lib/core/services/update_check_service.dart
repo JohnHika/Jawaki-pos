@@ -1,130 +1,339 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Service that checks GitHub Releases for new versions of the app.
-/// 
-/// When a new GitHub Release is published with a higher version tag,
-/// users see an update dialog when opening the app or from Settings.
-class UpdateCheckService {
-  UpdateCheckService._internal();
-  static final UpdateCheckService _instance = UpdateCheckService._internal();
-  factory UpdateCheckService() => _instance;
+import '../network/api_client.dart';
 
-  static const String _githubOwner = 'JohnHika';
-  static const String _githubRepo = 'Jawaki-pos';
+class AppUpdateInfo {
+  const AppUpdateInfo({
+    required this.latestVersion,
+    required this.minSupportedVersion,
+    required this.forceUpdate,
+    required this.apkUrl,
+    required this.releaseNotes,
+    this.publishedAt,
+  });
 
-  Uri get _apiUri => Uri.parse(
-      'https://api.github.com/repos/$_githubOwner/$_githubRepo/releases/latest');
+  factory AppUpdateInfo.fromJson(Map<String, dynamic> json) {
+    return AppUpdateInfo(
+      latestVersion: (json['latestVersion'] ?? '').toString(),
+      minSupportedVersion: (json['minSupportedVersion'] ?? '').toString(),
+      forceUpdate: json['forceUpdate'] == true,
+      apkUrl: (json['apkUrl'] ?? '').toString(),
+      releaseNotes: (json['releaseNotes'] ?? '').toString(),
+      publishedAt: json['publishedAt'] == null ||
+              json['publishedAt'].toString().trim().isEmpty
+          ? null
+          : DateTime.tryParse(json['publishedAt'].toString()),
+    );
+  }
+
+  final String latestVersion;
+  final String minSupportedVersion;
+  final bool forceUpdate;
+  final String apkUrl;
+  final String releaseNotes;
+  final DateTime? publishedAt;
+}
+
+class UpdateCheckService extends ChangeNotifier {
+  UpdateCheckService({required ApiClient apiClient}) : _apiClient = apiClient;
+
+  static const MethodChannel _installerChannel =
+      MethodChannel('pos_mobile/installer');
+  static const Duration _checkInterval = Duration(hours: 6);
+
+  final ApiClient _apiClient;
 
   DateTime? _lastCheckTime;
-  static const Duration _checkInterval = Duration(hours: 6);
   bool _isChecking = false;
+  bool _isDownloading = false;
+  bool _isInstalling = false;
+  bool _requiresInstallerPermission = false;
+  double? _downloadProgress;
+  String? _errorMessage;
+  String? _currentVersion;
+  String? _downloadedApkPath;
+  AppUpdateInfo? _cachedUpdate;
+  AppUpdateInfo? _requiredUpdate;
+  AppUpdateInfo? _optionalUpdate;
 
-  /// Latest version info cached after successful check.
-  /// Used so we can show it from settings without re-fetching.
-  String? _cachedLatestVersion;
-  String? _cachedReleaseNotes;
-  String? _cachedReleaseUrl;
+  bool get hasOptionalUpdateAvailable => _optionalUpdate != null;
+  bool get isForceUpdateRequired => _requiredUpdate != null;
+  bool get isDownloading => _isDownloading;
+  bool get isInstalling => _isInstalling;
+  bool get requiresInstallerPermission => _requiresInstallerPermission;
+  double? get downloadProgress => _downloadProgress;
+  String? get errorMessage => _errorMessage;
+  String? get currentVersion => _currentVersion;
+  String? get downloadedApkPath => _downloadedApkPath;
+  AppUpdateInfo? get requiredUpdate => _requiredUpdate;
+  AppUpdateInfo? get optionalUpdate => _optionalUpdate;
 
-  /// Checks GitHub Releases for a newer version.
-  /// 
-  /// [context] — required to show the update dialog.
-  /// [force] — if true, ignores the cache interval and checks immediately.
-  /// Returns true if an update dialog was shown.
   Future<bool> checkForUpdates({
-    BuildContext? context,
     bool force = false,
   }) async {
-    if (_isChecking) return false;
+    if (_isChecking) return isForceUpdateRequired || hasOptionalUpdateAvailable;
 
-    if (!force) {
-      final now = DateTime.now();
-      if (_lastCheckTime != null &&
-          now.difference(_lastCheckTime!) < _checkInterval) {
-        // Still within cache window — use cached data if we have context
-        if (context != null && _cachedLatestVersion != null) {
-          final packageInfo = await PackageInfo.fromPlatform();
-          _showUpdateDialog(
-            context: context,
-            currentVersion: packageInfo.version,
-            latestVersion: _cachedLatestVersion!,
-            releaseNotes: _cachedReleaseNotes,
-            releaseUrl: _cachedReleaseUrl,
-          );
-          return true;
-        }
-        return false;
-      }
+    final now = DateTime.now();
+    if (!force &&
+        _cachedUpdate != null &&
+        _lastCheckTime != null &&
+        now.difference(_lastCheckTime!) < _checkInterval) {
+      final currentVersion = await _resolveCurrentVersion();
+      _applyManifest(_cachedUpdate!, currentVersion);
+      return isForceUpdateRequired || hasOptionalUpdateAvailable;
     }
 
     _isChecking = true;
     try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version;
-
-      final response = await http
-          .get(_apiUri, headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'Levisa-POS-UpdateChecker',
-          })
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final latestTag = data['tag_name'] as String?;
-        final releaseNotes = data['body'] as String?;
-        final releaseUrl = data['html_url'] as String?;
-
-        if (latestTag != null && _isNewerVersion(latestTag, currentVersion)) {
-          // Cache the info
-          _cachedLatestVersion = latestTag;
-          _cachedReleaseNotes = releaseNotes;
-          _cachedReleaseUrl = releaseUrl;
-
-          if (context != null) {
-            _showUpdateDialog(
-              context: context,
-              currentVersion: currentVersion,
-              latestVersion: latestTag,
-              releaseNotes: releaseNotes,
-              releaseUrl: releaseUrl,
-            );
-          }
-          return true;
-        }
-      } else if (response.statusCode == 403) {
-        if (!kReleaseMode) {
-          debugPrint(
-              '[UpdateCheck] GitHub API rate-limited (403). Try adding a token for private repos.');
-        }
-      } else {
-        if (!kReleaseMode) {
-          debugPrint('[UpdateCheck] Unexpected status: ${response.statusCode}');
-        }
-      }
-    } catch (e) {
+      final currentVersion = await _resolveCurrentVersion();
+      final manifest =
+          AppUpdateInfo.fromJson(await _apiClient.getLatestAndroidUpdate());
+      _cachedUpdate = manifest;
+      _applyManifest(manifest, currentVersion);
+      return isForceUpdateRequired || hasOptionalUpdateAvailable;
+    } catch (error) {
       if (!kReleaseMode) {
-        debugPrint('[UpdateCheck] Error: $e');
+        debugPrint('[UpdateCheck] Error: $error');
+      }
+
+      if (_requiredUpdate != null) {
+        _errorMessage =
+            'Could not refresh update status. Check your internet connection and try again.';
+        notifyListeners();
+        return true;
       }
     } finally {
       _isChecking = false;
-      _lastCheckTime = DateTime.now();
+      _lastCheckTime = now;
     }
+
     return false;
+  }
+
+  Future<void> showCachedOptionalUpdateDialog(BuildContext context) async {
+    final optionalUpdate = _optionalUpdate;
+    if (optionalUpdate == null) return;
+
+    final currentVersion = _currentVersion ?? await _resolveCurrentVersion();
+    if (!context.mounted) return;
+
+    _showOptionalUpdateDialog(
+      context: context,
+      currentVersion: currentVersion,
+      update: optionalUpdate,
+    );
+  }
+
+  Future<void> downloadAndInstallRequiredUpdate() async {
+    await _downloadAndInstall(_requiredUpdate);
+  }
+
+  Future<void> openInstallerPermissionSettings() async {
+    if (!_isAndroid) return;
+
+    try {
+      await _installerChannel.invokeMethod('openUnknownSourcesSettings');
+    } catch (error) {
+      _errorMessage =
+          'Could not open Android install settings automatically. Please enable “Install unknown apps” for this POS app in Settings.';
+      notifyListeners();
+      if (!kReleaseMode) {
+        debugPrint('[UpdateCheck] Failed to open installer settings: $error');
+      }
+    }
+  }
+
+  Future<void> openDownloadFallback() async {
+    final update = _requiredUpdate ?? _optionalUpdate;
+    if (update == null || update.apkUrl.trim().isEmpty) {
+      _errorMessage = 'No fallback download link is configured for this update.';
+      notifyListeners();
+      return;
+    }
+
+    final resolvedUrl = _resolveDownloadUrl(update.apkUrl);
+    final uri = Uri.tryParse(resolvedUrl);
+    if (uri == null) {
+      _errorMessage = 'The configured update download link is invalid.';
+      notifyListeners();
+      return;
+    }
+
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _errorMessage = 'Could not open the fallback download link.';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _downloadAndInstall(AppUpdateInfo? update) async {
+    if (update == null) return;
+    if (update.apkUrl.trim().isEmpty) {
+      _errorMessage = 'No APK download URL is configured for this update.';
+      notifyListeners();
+      return;
+    }
+
+    final canInstall = await _canRequestPackageInstalls();
+    if (!canInstall) {
+      _requiresInstallerPermission = true;
+      _errorMessage =
+          'Android needs one-time permission to install updates from this POS app.';
+      notifyListeners();
+      return;
+    }
+
+    _requiresInstallerPermission = false;
+    _errorMessage = null;
+    _downloadProgress = 0;
+    _isDownloading = true;
+    notifyListeners();
+
+    try {
+      final file = await _downloadApk(update);
+      _downloadedApkPath = file.path;
+      _isDownloading = false;
+      _isInstalling = true;
+      notifyListeners();
+
+      final result = await OpenFilex.open(
+        file.path,
+        type: 'application/vnd.android.package-archive',
+      );
+
+      _isInstalling = false;
+      _downloadProgress = null;
+
+      if (result.type != ResultType.done) {
+        final message = result.message;
+        _errorMessage = message.isNotEmpty
+            ? message
+            : 'Android installer could not be opened automatically. Use the fallback download link if needed.';
+      }
+      notifyListeners();
+    } catch (error) {
+      _isDownloading = false;
+      _isInstalling = false;
+      _downloadProgress = null;
+      _errorMessage = 'Update download failed: $error';
+      notifyListeners();
+
+      if (!kReleaseMode) {
+        debugPrint('[UpdateCheck] Download/install error: $error');
+      }
+    }
+  }
+
+  Future<File> _downloadApk(AppUpdateInfo update) async {
+    final tempDir = await getTemporaryDirectory();
+    final safeVersion =
+        update.latestVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final filePath = p.join(tempDir.path, 'pos-update-$safeVersion.apk');
+    final resolvedUrl = _resolveDownloadUrl(update.apkUrl);
+
+    final downloader = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 5),
+      ),
+    );
+
+    await downloader.download(
+      resolvedUrl,
+      filePath,
+      deleteOnError: true,
+      onReceiveProgress: (received, total) {
+        if (total <= 0) return;
+        _downloadProgress = received / total;
+        notifyListeners();
+      },
+    );
+
+    return File(filePath);
+  }
+
+  Future<String> _resolveCurrentVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    _currentVersion = packageInfo.version;
+    return packageInfo.version;
+  }
+
+  Future<bool> _canRequestPackageInstalls() async {
+    if (!_isAndroid) return true;
+
+    try {
+      final result = await _installerChannel
+          .invokeMethod<bool>('canRequestPackageInstalls');
+      return result ?? false;
+    } catch (_) {
+      // Fall back optimistically; installer launch will surface a better error.
+      return true;
+    }
+  }
+
+  void _applyManifest(AppUpdateInfo update, String currentVersion) {
+    _currentVersion = currentVersion;
+
+    final hasNewerVersion =
+        _isNewerVersion(update.latestVersion, currentVersion);
+    final belowMinimum =
+        _isNewerVersion(update.minSupportedVersion, currentVersion);
+    final isRequired = hasNewerVersion && (belowMinimum || update.forceUpdate);
+
+    _requiredUpdate = isRequired ? update : null;
+    _optionalUpdate = hasNewerVersion && !isRequired ? update : null;
+
+    if (_requiredUpdate == null) {
+      _requiresInstallerPermission = false;
+      _isDownloading = false;
+      _isInstalling = false;
+      _downloadProgress = null;
+      _errorMessage = null;
+      _downloadedApkPath = null;
+    }
+
+    notifyListeners();
+  }
+
+  String _resolveDownloadUrl(String rawUrl) {
+    final parsed = Uri.tryParse(rawUrl.trim());
+    if (parsed != null && parsed.hasScheme) {
+      return parsed.toString();
+    }
+
+    final baseUri = Uri.parse(_apiClient.baseUrl);
+    final origin = Uri(
+      scheme: baseUri.scheme,
+      host: baseUri.host,
+      port: baseUri.hasPort ? baseUri.port : null,
+    );
+
+    final normalizedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+    return origin.resolve(normalizedPath).toString();
   }
 
   bool _isNewerVersion(String latest, String current) {
     try {
-      final latestParts =
-          latest.replaceFirst(RegExp(r'^v'), '').split('.').map(int.parse).toList();
-      final currentParts =
-          current.replaceFirst(RegExp(r'^v'), '').split('.').map(int.parse).toList();
+      final latestParts = latest
+          .replaceFirst(RegExp(r'^v'), '')
+          .split('.')
+          .map(int.parse)
+          .toList();
+      final currentParts = current
+          .replaceFirst(RegExp(r'^v'), '')
+          .split('.')
+          .map(int.parse)
+          .toList();
 
       while (latestParts.length < 3) {
         latestParts.add(0);
@@ -133,47 +342,30 @@ class UpdateCheckService {
         currentParts.add(0);
       }
 
-      for (int i = 0; i < latestParts.length; i++) {
-        if (latestParts[i] > currentParts[i]) return true;
-        if (latestParts[i] < currentParts[i]) return false;
+      for (int index = 0; index < latestParts.length; index += 1) {
+        if (latestParts[index] > currentParts[index]) return true;
+        if (latestParts[index] < currentParts[index]) return false;
       }
       return false;
-    } catch (e) {
+    } catch (error) {
       if (!kReleaseMode) {
-        debugPrint('[UpdateCheck] Version parse error: $e');
+        debugPrint('[UpdateCheck] Version parse error: $error');
       }
       return latest.compareTo(current) > 0;
     }
   }
 
-  /// Shows the update dialog.
-  void showUpdateDialogFromCache(BuildContext context) async {
-    if (_cachedLatestVersion != null) {
-      final packageInfo = await PackageInfo.fromPlatform();
-      _showUpdateDialog(
-        context: context,
-        currentVersion: packageInfo.version,
-        latestVersion: _cachedLatestVersion!,
-        releaseNotes: _cachedReleaseNotes,
-        releaseUrl: _cachedReleaseUrl,
-      );
-    }
-  }
-
-  void _showUpdateDialog({
+  void _showOptionalUpdateDialog({
     required BuildContext context,
     required String currentVersion,
-    required String latestVersion,
-    String? releaseNotes,
-    String? releaseUrl,
+    required AppUpdateInfo update,
   }) {
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.system_update, color: Colors.green),
+            Icon(Icons.system_update_alt_rounded, color: Colors.green),
             SizedBox(width: 8),
             Text('Update Available'),
           ],
@@ -183,19 +375,21 @@ class UpdateCheckService {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'A new version of Levisa Adventures POS is available!',
-              ),
+              const Text('A newer POS version is available for this device.'),
               const SizedBox(height: 12),
               _versionRow('Current', currentVersion, isOld: true),
-              _versionRow('Latest', latestVersion, isOld: false),
-              if (releaseNotes != null && releaseNotes.isNotEmpty) ...[
+              _versionRow('Latest', update.latestVersion, isOld: false),
+              if (update.releaseNotes.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('What\'s New:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'What\'s New:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
-                Text(releaseNotes,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                  update.releaseNotes,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
             ],
           ),
@@ -209,21 +403,9 @@ class UpdateCheckService {
             icon: const Icon(Icons.download),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              final url = releaseUrl ??
-                  'https://github.com/$_githubOwner/$_githubRepo/releases/latest';
-              if (await canLaunchUrl(Uri.parse(url))) {
-                await launchUrl(Uri.parse(url),
-                    mode: LaunchMode.externalApplication);
-              } else {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Could not open update page')),
-                  );
-                }
-              }
+              await _downloadAndInstall(update);
             },
-            label: const Text('Update Now'),
+            label: const Text('Download Update'),
           ),
         ],
       ),
@@ -247,4 +429,6 @@ class UpdateCheckService {
       ),
     );
   }
+
+  bool get _isAndroid => !kIsWeb && Platform.isAndroid;
 }

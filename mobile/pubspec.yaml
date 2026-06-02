@@ -1,7 +1,7 @@
 name: levisa_adventures_pos
 description: Levisa Adventures - Professional POS System for Retail & Adventures
 publish_to: 'none'
-version: 1.0.1+2002
+version: 1.0.2+2003
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -90,6 +90,7 @@ dependencies:
 
   # URL Launcher (for opening update links)
   url_launcher: ^6.2.5
+  open_filex: ^4.7.0
 
   # Charts & Graphs
   fl_chart: ^0.65.0

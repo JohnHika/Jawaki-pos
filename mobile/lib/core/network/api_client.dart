@@ -50,8 +50,14 @@ class ApiClient {
     return response.data;
   }
   
-  Future<void> logout() async {
-    await _dio.post('/auth/logout');
+  Future<void> logout({
+    String? refreshToken,
+    bool allDevices = false,
+  }) async {
+    await _dio.post('/auth/logout', data: {
+      if (refreshToken != null) 'refreshToken': refreshToken,
+      if (allDevices) 'allDevices': true,
+    });
   }
 
   /// Register a new company with admin user and branch.
@@ -118,6 +124,11 @@ class ApiClient {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<Map<String, dynamic>> getLatestAndroidUpdate() async {
+    final response = await _dio.get('/app-updates/android/latest');
+    return response.data as Map<String, dynamic>;
   }
 
   // Catalog endpoints
