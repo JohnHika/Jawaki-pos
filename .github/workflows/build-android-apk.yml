@@ -2,9 +2,9 @@ name: Build and Publish Android Update
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, update-feature ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, update-feature ]
   workflow_dispatch:
     inputs:
       release_notes:
