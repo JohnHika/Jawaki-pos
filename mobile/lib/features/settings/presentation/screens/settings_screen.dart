@@ -599,13 +599,21 @@ class SettingsScreen extends ConsumerWidget {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => _SecuritySettingsSheet(
-        biometricEnabled: biometricEnabled,
-        biometricAvailable: biometricAvailable,
-        autoLockMinutes: autoLockMinutes,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 1.0,
+        minChildSize: 0.45,
+        builder: (_, scrollController) => _SecuritySettingsSheet(
+          biometricEnabled: biometricEnabled,
+          biometricAvailable: biometricAvailable,
+          autoLockMinutes: autoLockMinutes,
+          scrollController: scrollController,
+        ),
       ),
     );
   }
@@ -1534,11 +1542,13 @@ class _SecuritySettingsSheet extends StatefulWidget {
   final bool biometricEnabled;
   final bool biometricAvailable;
   final int autoLockMinutes;
+  final ScrollController scrollController;
 
   const _SecuritySettingsSheet({
     required this.biometricEnabled,
     required this.biometricAvailable,
     required this.autoLockMinutes,
+    required this.scrollController,
   });
 
   @override
@@ -1571,21 +1581,28 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-              child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Theme.of(context).dividerColor,
-                      borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Text('Security', style: Theme.of(context).textTheme.titleLarge),
+    return SingleChildScrollView(
+      controller: widget.scrollController,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Theme.of(context).dividerColor,
+                        borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            Text('Security', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 20),
           SwitchListTile(
             title: const Text('Biometric Login'),
@@ -1667,7 +1684,8 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
           const SizedBox(height: 8),
         ],
       ),
-    );
+    ),
+  );
   }
 }
 
