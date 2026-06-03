@@ -346,6 +346,17 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> replaceCategories(List<CategoriesCompanion> items) async {
+    await transaction(() async {
+      await delete(categories).go();
+      if (items.isNotEmpty) {
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(categories, items);
+        });
+      }
+    });
+  }
+
   // Products
   Future<List<Product>> getAllProducts() => select(products).get();
 
@@ -365,6 +376,17 @@ class AppDatabase extends _$AppDatabase {
   Future<void> insertProducts(List<ProductsCompanion> items) async {
     await batch((batch) {
       batch.insertAllOnConflictUpdate(products, items);
+    });
+  }
+
+  Future<void> replaceProducts(List<ProductsCompanion> items) async {
+    await transaction(() async {
+      await delete(products).go();
+      if (items.isNotEmpty) {
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(products, items);
+        });
+      }
     });
   }
 

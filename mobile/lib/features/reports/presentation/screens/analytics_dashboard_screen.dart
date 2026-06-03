@@ -404,8 +404,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.teal.withValues(alpha: 0.04),
-      borderColor: DesignColors.teal.withValues(alpha: 0.1),
+      tint: Colors.teal.withValues(alpha: 0.04),
+      borderColor: Colors.teal.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -414,16 +414,16 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.teal.withValues(alpha: 0.15),
+                  color: Colors.teal.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.teal.withValues(alpha: 0.25),
+                    color: Colors.teal.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.star_rounded,
-                  color: DesignColors.teal,
+                  color: Colors.teal,
                   size: 22,
                 ),
               ),
@@ -691,8 +691,8 @@ class _AnalyticsDashboardScreenState
       padding: const EdgeInsets.all(20),
       borderRadius: 16,
       blur: 12,
-      tint: DesignColors.teal.withValues(alpha: 0.04),
-      borderColor: DesignColors.teal.withValues(alpha: 0.1),
+      tint: Colors.teal.withValues(alpha: 0.04),
+      borderColor: Colors.teal.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -701,16 +701,16 @@ class _AnalyticsDashboardScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: DesignColors.teal.withValues(alpha: 0.15),
+                  color: Colors.teal.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: DesignColors.teal.withValues(alpha: 0.25),
+                    color: Colors.teal.withValues(alpha: 0.25),
                     width: 1,
                   ),
                 ),
                 child: const Icon(
                   Icons.category_rounded,
-                  color: DesignColors.teal,
+                  color: Colors.teal,
                   size: 22,
                 ),
               ),
@@ -1006,7 +1006,7 @@ class _AnalyticsDashboardScreenState
       case 'electronics':
         return DesignColors.info;
       case 'clothing':
-        return DesignColors.teal;
+        return Colors.teal;
       case 'food':
         return DesignColors.success;
       case 'services':

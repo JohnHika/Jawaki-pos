@@ -22,6 +22,23 @@ class POSScreen extends ConsumerStatefulWidget {
 }
 
 class _POSScreenState extends ConsumerState<POSScreen> {
+  static String _getUserFriendlyErrorMessage(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+
+    if (errorString.contains('network') || errorString.contains('socket') || errorString.contains('connection')) {
+      return 'Please check your internet connection and try again';
+    } else if (errorString.contains('timeout')) {
+      return 'Request timed out. Please try again.';
+    } else if (errorString.contains('format') || errorString.contains('parse')) {
+      return 'Data format error. We\'re working to fix this.';
+    } else if (errorString.contains('auth') || errorString.contains('permission') || errorString.contains('unauthorized')) {
+      return 'Authentication required. Please log in again.';
+    } else if (error is Exception) {
+      return 'An unexpected error occurred. Please try again.';
+    }
+
+    return 'Unable to complete request. Please try again.';
+  }
   bool _showFavorites = false;
 
   @override
@@ -142,16 +159,72 @@ class _POSScreenState extends ConsumerState<POSScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: DesignColors.teal.withValues(alpha: 0.08),
+              color: Colors.teal.withValues(alpha: 0.08),
               child: Text(
                 cart.customerName!,
                 style: const TextStyle(
                   fontSize: 11,
-                  color: DesignColors.teal,
+                  color: Colors.teal,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'POS Terminal',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: DesignColors.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        _showFavorites
+                            ? 'Favorite products only'
+                            : 'Sales, cart, and checkout operations',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: DesignColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (cart.itemCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.teal.withValues(alpha: 0.24)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shopping_bag_rounded, size: 14, color: Colors.teal),
+                        SizedBox(width: 6),
+                        Text(
+                          '${cart.itemCount} Cart',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.teal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
           // ── Body ──
           const SearchBarWidget(),
           if (!_showFavorites) const CategoryChips(),
@@ -172,9 +245,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 color: DesignColors.brand)),
                         error: (e, _) => EmptyState(
                             icon: Icons.error_outline_rounded,
-                            title: 'Error',
-                            subtitle: e.toString(),
-                            iconColor: DesignColors.error),
+                            title: 'Error loading favorites',
+                            subtitle: _getUserFriendlyErrorMessage(e),
+                            iconColor: DesignColors.error,
+                            actionLabel: 'Retry',
+                            onAction: () => ref.refresh(favoriteProductsProvider),
+                        ),
                       );
                     },
                   )
@@ -437,7 +513,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                               Row(mainAxisSize: MainAxisSize.min, children: [
                             IconButton(
                                 icon: const Icon(Icons.play_arrow_rounded,
-                                    color: DesignColors.teal),
+                                    color: Colors.teal),
                                 onPressed: () {
                                   final current = ref.read(cartProvider);
                                   if (current.items.isNotEmpty)

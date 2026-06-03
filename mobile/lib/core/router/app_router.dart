@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/pin_login_screen.dart';
+import '../../features/auth/presentation/screens/company_choice_screen.dart';
+import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/sales/presentation/screens/pos_screen.dart';
@@ -27,27 +29,45 @@ import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
 import '../../features/finance/presentation/screens/finance_screen.dart';
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
+import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
+import '../../features/ai-billing/presentation/screens/ai_subscribe_screen.dart';
+import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../services/auth_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
+import '../../features/clients/presentation/screens/client_management_screen.dart';
+import '../../features/clients/presentation/screens/client_detail_screen.dart';
+import '../../features/clients/presentation/screens/multi_client_dashboard_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authService = getIt<AuthService>();
   
   return GoRouter(
-    initialLocation: '/login',
+    initialLocation: '/company-choice',
     debugLogDiagnostics: true,
     refreshListenable: GoRouterRefreshStream(authService.authStatusStream),
     redirect: (context, state) {
       final isLoggedIn = authService.isAuthenticated;
-      final isLoggingIn = state.matchedLocation == '/login' || 
-                          state.matchedLocation == '/pin-login';
+      final path = state.matchedLocation;
       
-      if (!isLoggedIn && !isLoggingIn) {
-        return '/login';
+      // Setup routes (company-choice, company-setup) are always accessible
+      final isSetupRoute = path == '/company-choice' || path == '/company-setup';
+      
+      // Login routes
+      final isLoginRoute = path == '/login' || path == '/pin-login';
+      
+      // If user is not logged in
+      if (!isLoggedIn) {
+        // Allow setup and login routes
+        if (isSetupRoute || isLoginRoute) {
+          return null;
+        }
+        // Redirect all others to company-choice
+        return '/company-choice';
       }
       
-      if (isLoggedIn && isLoggingIn) {
+      // If logged in and on setup/login page, go to main app
+      if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
         return '/';
       }
       
@@ -55,7 +75,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (isLoggedIn) {
         final role = AppRole.fromString(authService.userRole);
         final perms = RolePermissions(role);
-        final path = state.matchedLocation;
         
         // Products & Inventory require stock keeper+
         if ((path == '/products' || path.startsWith('/products/') ||
@@ -71,6 +90,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      // Setup/Onboarding Routes (for fresh installs)
+      GoRoute(
+        path: '/company-choice',
+        name: 'company-choice',
+        builder: (context, state) => const CompanyChoiceScreen(),
+      ),
+      GoRoute(
+        path: '/company-setup',
+        name: 'company-setup',
+        builder: (context, state) => const CompanySetupScreen(),
+      ),
+      
       // Auth Routes
       GoRoute(
         path: '/login',
@@ -240,6 +271,49 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/ai',
             name: 'ai',
             builder: (context, state) => const AiChatScreen(),
+          ),
+
+          // AI Trial Screen
+          GoRoute(
+            path: '/ai/trial',
+            name: 'ai-trial',
+            builder: (context, state) {
+              final branchId = state.extra as String;
+              return AiTrialScreen(
+                branchId: branchId,
+                branchName: '', // Not used anymore
+                onTrialStarted: () => context.go('/ai'),
+              );
+            },
+          ),
+
+          // AI Subscribe Screen
+          GoRoute(
+            path: '/ai/subscribe',
+            name: 'ai-subscribe',
+            builder: (context, state) {
+              final branchId = state.extra as String;
+              return AiSubscribeScreen(
+                branchId: branchId,
+                branchName: '', // Not used anymore
+              );
+            },
+          ),
+
+          // Clients Management Screen (admin/supervisor)
+          GoRoute(
+            path: '/clients',
+            name: 'clients',
+            builder: (context, state) => const ClientManagementScreen(),
+            routes: [
+              GoRoute(
+                path: ':clientId',
+                name: 'client-detail',
+                builder: (context, state) => ClientDetailScreen(
+                  clientId: state.pathParameters['clientId']!,
+                ),
+              ),
+            ],
           ),
         ],
       ),

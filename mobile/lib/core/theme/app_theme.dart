@@ -11,9 +11,9 @@ class AppTheme {
         primary: DesignColors.brand,
         onPrimary: DesignColors.textInverse,
         primaryContainer: DesignColors.brandSubtle,
-        secondary: DesignColors.teal,
+        secondary: Colors.teal,
         onSecondary: DesignColors.textInverse,
-        secondaryContainer: DesignColors.tealSubtle,
+        secondaryContainer: Color(0xFFE0F2F1),
         tertiary: DesignColors.accent,
         surface: DesignColors.surface,
         onSurface: DesignColors.textPrimary,
@@ -304,7 +304,7 @@ class AppTheme {
       colorScheme: const ColorScheme.dark(
         primary: DesignColors.brandLight,
         onPrimary: DesignColors.textPrimary,
-        secondary: DesignColors.tealLight,
+        secondary: Color(0xFFB2DFDB),
         surface: DesignColors.darkSurface,
         onSurface: DesignColors.darkTextPrimary,
         error: DesignColors.error,
@@ -386,6 +386,70 @@ class AppTheme {
         prefixIconColor: DesignColors.darkTextTertiary,
         labelStyle: const TextStyle(color: DesignColors.darkTextSecondary),
         hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
+      ),
+    );
+  }
+
+  /// Build a light theme from user-chosen colors.
+  static ThemeData dynamicLight(Color primary, Color secondary) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      secondary: secondary,
+      brightness: Brightness.light,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: scheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: scheme.onPrimary,
+          minimumSize: const Size(double.infinity, 52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build a dark theme from user-chosen colors.
+  static ThemeData dynamicDark(Color primary, Color secondary) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      secondary: secondary,
+      brightness: Brightness.dark,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: scheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: scheme.onPrimary,
+          minimumSize: const Size(double.infinity, 52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }

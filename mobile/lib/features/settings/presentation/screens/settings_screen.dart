@@ -1267,14 +1267,17 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
 
-    getIt<UpdateCheckService>().checkForUpdates(
-      context: context,
+    final updateService = getIt<UpdateCheckService>();
+
+    updateService.checkForUpdates(
       force: true, // Force check since user manually initiated it
     ).then((wasUpdateShown) {
       // If no update was found, close the loading dialog and show a message
       if (context.mounted) {
         Navigator.of(context).pop(); // close the loading dialog
-        if (!wasUpdateShown) {
+        if (updateService.hasOptionalUpdateAvailable) {
+          updateService.showCachedOptionalUpdateDialog(context);
+        } else if (!wasUpdateShown) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('You\'re on the latest version! ✅'),

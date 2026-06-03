@@ -82,7 +82,10 @@ jobs:
 
       - name: Build APK
         working-directory: ./mobile
-        run: flutter build apk --release
+        run: |
+          # Clear any cached Gradle config with stale Windows paths
+          rm -f ~/.gradle/gradle.properties
+          flutter build apk --release
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

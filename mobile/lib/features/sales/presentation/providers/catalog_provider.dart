@@ -10,6 +10,133 @@ import '../../../../core/services/connectivity_service.dart';
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
+/// Parse timestamp from various formats (ISO string or milliseconds since epoch)
+DateTime _parseTimestamp(dynamic value) {
+  if (value == null) return DateTime.now();
+  
+  // If it's already a DateTime, return it
+  if (value is DateTime) return value;
+  
+  // If it's a number (Unix timestamp in milliseconds)
+  if (value is int || value is double) {
+    return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  }
+  
+  // If it's a string
+  if (value is String) {
+    // Try to parse as ISO string first
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      // If that fails, try parsing as milliseconds since epoch
+      try {
+        // Remove any non-numeric characters before parsing
+        final cleanedValue = value.replaceAll(RegExp(r'[^0-9]'), '');
+        final milliseconds = int.tryParse(cleanedValue);
+        if (milliseconds != null) {
+          return DateTime.fromMillisecondsSinceEpoch(milliseconds);
+        }
+        return DateTime.now();
+      } catch (_) {
+        return DateTime.now();
+      }
+    }
+  }
+  
+  return DateTime.now();
+}
+
+List<Map<String, dynamic>> _flattenCategories(List<dynamic> categories) {
+  final flattened = <Map<String, dynamic>>[];
+
+  void walk(List<dynamic> nodes) {
+    for (final node in nodes) {
+      if (node is! Map) continue;
+      final category = Map<String, dynamic>.from(node);
+      final children = category.remove('children');
+      flattened.add(category);
+      if (children is List) {
+        walk(children);
+      }
+    }
+  }
+
+  walk(categories);
+  return flattened;
+}
+
+CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
+  final id = category['id']?.toString();
+  final name = category['name']?.toString();
+  if (id == null || name == null || id.isEmpty || name.isEmpty) {
+    return null;
+  }
+
+  return CategoriesCompanion.insert(
+    id: id,
+    name: name,
+    description: Value(category['description']?.toString()),
+    parentId: Value(category['parentId']?.toString()),
+    imageUrl: Value((category['imageUrl'] ?? category['image'])?.toString()),
+    sortOrder: Value((category['sortOrder'] as num?)?.toInt() ?? 0),
+    isActive: Value(category['isActive'] as bool? ?? true),
+    createdAt: _parseTimestamp(category['createdAt']),
+    updatedAt: _parseTimestamp(category['updatedAt']),
+  );
+}
+
+ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
+  final id = product['id']?.toString();
+  final name = product['name']?.toString();
+  final sku = product['sku']?.toString();
+  final categoryId = product['categoryId']?.toString();
+  final priceValue = product['price'] ?? product['currentPrice'] ?? product['basePrice'];
+
+  if (id == null || name == null || sku == null || categoryId == null || priceValue == null) {
+    return null;
+  }
+
+  return ProductsCompanion.insert(
+    id: id,
+    sku: sku,
+    name: name,
+    description: Value(product['description']?.toString()),
+    categoryId: categoryId,
+    price: (priceValue as num).toDouble(),
+    costPrice: Value(product['costPrice'] != null ? (product['costPrice'] as num).toDouble() : null),
+    unit: Value(product['unit']?.toString() ?? 'piece'),
+    imageUrl: Value(product['imageUrl']?.toString()),
+    isActive: Value(product['isActive'] as bool? ?? true),
+    trackInventory: Value(product['trackInventory'] as bool? ?? true),
+    createdAt: _parseTimestamp(product['createdAt']),
+    updatedAt: _parseTimestamp(product['updatedAt']),
+  );
+}
+
+Future<void> syncCatalogCacheFromApi() async {
+  final connectivity = getIt<ConnectivityService>();
+  if (!connectivity.isOnline) return;
+
+  final apiClient = getIt<ApiClient>();
+  final database = getIt<AppDatabase>();
+
+  final categoriesResponse = await apiClient.getCategories();
+  final flatCategories = _flattenCategories(categoriesResponse);
+  final categoryItems = flatCategories
+      .map(_categoryToCompanion)
+      .whereType<CategoriesCompanion>()
+      .toList();
+  await database.replaceCategories(categoryItems);
+
+  final productsResponse = await apiClient.getProducts(limit: 500);
+  final productItems = productsResponse
+      .whereType<Map>()
+      .map((item) => _productToCompanion(Map<String, dynamic>.from(item)))
+      .whereType<ProductsCompanion>()
+      .toList();
+  await database.replaceProducts(productItems);
+}
+
 // Filter params
 class FilterParams {
   final String? categoryId;
@@ -32,8 +159,24 @@ class FilterParams {
 // Categories provider
 final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final database = getIt<AppDatabase>();
-  
-  // Always load from local DB first (offline-first)
+  final apiClient = getIt<ApiClient>();
+  final connectivity = getIt<ConnectivityService>();
+  if (connectivity.isOnline) {
+    try {
+      final categories = await apiClient.getCategories();
+      final flatCategories = _flattenCategories(categories);
+      await database.replaceCategories(
+        flatCategories
+            .map(_categoryToCompanion)
+            .whereType<CategoriesCompanion>()
+            .toList(),
+      );
+      return flatCategories.where((c) => c['isActive'] != false).toList();
+    } catch (e) {
+      // API unavailable
+    }
+  }
+
   final localCategories = await database.getAllCategories();
   if (localCategories.isNotEmpty) {
     return localCategories.where((c) => c.isActive).map((c) => {
@@ -47,39 +190,30 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) asyn
     }).toList();
   }
 
-  // Try API only if local is empty
-  final apiClient = getIt<ApiClient>();
-  final connectivity = getIt<ConnectivityService>();
-  if (connectivity.isOnline) {
-    try {
-      final categories = await apiClient.getCategories();
-      await database.insertCategories(
-        categories.map((c) => CategoriesCompanion.insert(
-          id: c['id'],
-          name: c['name'],
-          description: Value(c['description']),
-          parentId: Value(c['parentId']),
-          imageUrl: Value(c['imageUrl']),
-          sortOrder: Value(c['sortOrder'] ?? 0),
-          isActive: Value(c['isActive'] ?? true),
-          createdAt: DateTime.parse(c['createdAt']),
-          updatedAt: DateTime.parse(c['updatedAt']),
-        )).toList(),
-      );
-      return categories.cast<Map<String, dynamic>>();
-    } catch (e) {
-      // API unavailable
-    }
-  }
-
   return [];
 });
 
 // Products provider
 final productsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final database = getIt<AppDatabase>();
-  
-  // Always load from local DB first (offline-first)
+  final apiClient = getIt<ApiClient>();
+  final connectivity = getIt<ConnectivityService>();
+  if (connectivity.isOnline) {
+    try {
+      final products = await apiClient.getProducts(limit: 500);
+      await database.replaceProducts(
+        products
+            .whereType<Map>()
+            .map((item) => _productToCompanion(Map<String, dynamic>.from(item)))
+            .whereType<ProductsCompanion>()
+            .toList(),
+      );
+      return products.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+    } catch (e) {
+      // API unavailable
+    }
+  }
+
   final localProducts = await database.getAllProducts();
   if (localProducts.isNotEmpty) {
     return localProducts.where((p) => p.isActive).map((p) => {
@@ -95,35 +229,6 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async 
       'isActive': p.isActive,
       'trackInventory': p.trackInventory,
     }).toList();
-  }
-
-  // Try API only if local is empty
-  final apiClient = getIt<ApiClient>();
-  final connectivity = getIt<ConnectivityService>();
-  if (connectivity.isOnline) {
-    try {
-      final products = await apiClient.getProducts();
-      await database.insertProducts(
-        products.map((p) => ProductsCompanion.insert(
-          id: p['id'],
-          sku: p['sku'],
-          name: p['name'],
-          description: Value(p['description']),
-          categoryId: p['categoryId'],
-          price: (p['price'] as num).toDouble(),
-          costPrice: Value(p['costPrice'] != null ? (p['costPrice'] as num).toDouble() : null),
-          unit: Value(p['unit'] ?? 'piece'),
-          imageUrl: Value(p['imageUrl']),
-          isActive: Value(p['isActive'] ?? true),
-          trackInventory: Value(p['trackInventory'] ?? true),
-          createdAt: DateTime.parse(p['createdAt']),
-          updatedAt: DateTime.parse(p['updatedAt']),
-        )).toList(),
-      );
-      return products.cast<Map<String, dynamic>>();
-    } catch (e) {
-      // API unavailable
-    }
   }
 
   return [];

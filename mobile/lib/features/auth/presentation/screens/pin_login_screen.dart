@@ -142,7 +142,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             colors: [
               DesignColors.brandDark,
               DesignColors.brand,
-              DesignColors.teal,
+              Colors.teal,
             ],
           ),
         ),
@@ -277,7 +277,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
               child: Image.asset(
                 'assets/images/levisa_adventures_logo.png',
                 fit: BoxFit.cover,
-                semanticLabel: 'Levisa Adventures logo',
+                semanticLabel: 'Company logo',
               ),
             ),
           ),
@@ -600,7 +600,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
 
         // Version
         Text(
-          'Levisa Adventures POS v2.0',
+          'POS Workspace v2.0',
           style: TextStyle(
             fontSize: 11,
             color: Colors.white.withValues(alpha: 0.25),

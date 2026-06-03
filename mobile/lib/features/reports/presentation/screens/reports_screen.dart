@@ -81,7 +81,7 @@ class ReportsScreen extends ConsumerWidget {
               icon: Icons.pie_chart_rounded,
               title: 'Payment Methods',
               subtitle: 'Breakdown of payment methods used',
-              color: DesignColors.teal,
+              color: Colors.teal,
               onTap: () => _showPaymentMethodsReport(context, ref),
             ),
             _ReportTile(
@@ -142,7 +142,7 @@ class ReportsScreen extends ConsumerWidget {
               icon: Icons.trending_up_rounded,
               title: 'Inventory Forecast',
               subtitle: 'Predictive inventory analytics and demand forecasting',
-              color: DesignColors.teal,
+              color: Colors.teal,
               onTap: () => context.push('/reports/inventory-forecast'),
             ),
             _GlassCardTile(
@@ -204,7 +204,7 @@ class ReportsScreen extends ConsumerWidget {
                   title: 'Items Sold',
                   value: '${s['itemsSold'] ?? 0}',
                   icon: Icons.inventory_2_rounded,
-                  color: DesignColors.teal,
+                  color: Colors.teal,
                 ),
               ),
             ],
@@ -352,7 +352,7 @@ class ReportsScreen extends ConsumerWidget {
                 children: [
                   Text('Payment Methods',
                       style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: DesignColors.teal),
+                  StatusBadge(label: range.label, color: Colors.teal),
                 ],
               ),
               const SizedBox(height: 12),
@@ -555,7 +555,7 @@ class ReportsScreen extends ConsumerWidget {
                           DesignColors.success,
                           DesignColors.info,
                           DesignColors.warning,
-                          DesignColors.teal,
+                          Colors.teal,
                           DesignColors.error
                         ];
                         final color = colors[i % colors.length];
@@ -844,13 +844,13 @@ class ReportsScreen extends ConsumerWidget {
                         return ListCard(
                           leading: CircleAvatar(
                             backgroundColor:
-                                DesignColors.teal.withValues(alpha: 0.1),
+                                Colors.teal.withValues(alpha: 0.1),
                             child: Text(
                               (c['name'] as String)
                                   .substring(0, 1)
                                   .toUpperCase(),
                               style: const TextStyle(
-                                  color: DesignColors.teal,
+                                  color: Colors.teal,
                                   fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -911,11 +911,11 @@ class ReportsScreen extends ConsumerWidget {
               children: [
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: DesignColors.teal.withValues(alpha: 0.1),
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
                   child: Text(
                     (customer['name'] as String).substring(0, 1).toUpperCase(),
                     style: const TextStyle(
-                        color: DesignColors.teal,
+                        color: Colors.teal,
                         fontWeight: FontWeight.bold,
                         fontSize: 20),
                   ),
@@ -943,7 +943,7 @@ class ReportsScreen extends ConsumerWidget {
                     title: 'Purchases',
                     value: '${customer['totalPurchases']}',
                     icon: Icons.shopping_bag_rounded,
-                    color: DesignColors.teal,
+                    color: Colors.teal,
                   ),
                 ),
                 const SizedBox(width: 8),

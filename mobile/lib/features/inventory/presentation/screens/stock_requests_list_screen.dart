@@ -439,7 +439,7 @@ class _StockRequestsListScreenState
                   icon: Icons.done_all_rounded,
                   onPressed: () => _fulfillRequest(id),
                   gradient: [
-                    DesignColors.teal,
+                    Colors.teal,
                     const Color(0xFF0F766E),
                   ],
                   height: 44,

@@ -182,7 +182,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         value:
                             _isLoading ? '...' : _formatCurrency(_totalValue),
                         icon: Icons.account_balance_wallet_rounded,
-                        color: DesignColors.teal,
+                        color: Colors.teal,
                       ),
                     ),
                   ],
@@ -849,7 +849,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     icon: Icons.swap_horiz_rounded,
                     height: 50,
                     borderRadius: 14,
-                    gradient: const [DesignColors.info, DesignColors.teal],
+                    gradient: const [DesignColors.info, Colors.teal],
                     onPressed: destinationBranches.isEmpty || products.isEmpty
                         ? null
                         : () => _submitStockTransfer(fromBranchId),

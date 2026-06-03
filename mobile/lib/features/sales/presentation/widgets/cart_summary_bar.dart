@@ -127,12 +127,12 @@ class CartSummaryBar extends ConsumerWidget {
                     Row(
                       children: [
                         Icon(Icons.person_rounded,
-                            size: 12, color: DesignColors.teal),
+                            size: 12, color: Colors.teal),
                         const SizedBox(width: 4),
                         Text(
                           cartState.customerName!,
                           style: const TextStyle(
-                            color: DesignColors.teal,
+                            color: Colors.teal,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),

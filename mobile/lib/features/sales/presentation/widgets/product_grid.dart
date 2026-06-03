@@ -7,6 +7,23 @@ import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
 
 class ProductGrid extends ConsumerWidget {
+  static String _getUserFriendlyErrorMessage(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+
+    if (errorString.contains('network') || errorString.contains('socket') || errorString.contains('connection')) {
+      return 'Please check your internet connection and try again';
+    } else if (errorString.contains('timeout')) {
+      return 'Request timed out. Please try again.';
+    } else if (errorString.contains('format') || errorString.contains('parse')) {
+      return 'Data format error. We\'re working to fix this.';
+    } else if (errorString.contains('auth') || errorString.contains('permission') || errorString.contains('unauthorized')) {
+      return 'Authentication required. Please log in again.';
+    } else if (error is Exception) {
+      return 'An unexpected error occurred. Please try again.';
+    }
+
+    return 'Unable to load products. Please try again.';
+  }
   const ProductGrid({super.key});
 
   @override
@@ -49,7 +66,7 @@ class ProductGrid extends ConsumerWidget {
       error: (error, _) => EmptyState(
         icon: Icons.error_outline_rounded,
         title: 'Failed to load products',
-        subtitle: error.toString(),
+        subtitle: _getUserFriendlyErrorMessage(error),
         actionLabel: 'Retry',
         iconColor: DesignColors.error,
         onAction: () => ref.refresh(productsProvider),
@@ -614,12 +631,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     label: Text('$label ($qty)'),
                     selected: selected,
                     onSelected: (_) => _updateQty(qty),
-                    selectedColor: DesignColors.teal.withValues(alpha:0.15),
+                    selectedColor: Colors.teal.withValues(alpha:0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceMuted,
                     labelStyle: TextStyle(
-                      color: selected ? DesignColors.teal : null,
+                      color: selected ? Colors.teal : null,
                       fontWeight:
                           selected ? FontWeight.bold : FontWeight.normal,
                     ),
@@ -627,7 +644,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       borderRadius: BorderRadius.circular(10),
                       side: BorderSide(
                         color: selected
-                            ? DesignColors.teal.withValues(alpha:0.4)
+                            ? Colors.teal.withValues(alpha:0.4)
                             : (isDark
                                 ? DesignColors.darkBorder
                                 : DesignColors.surfaceBorder),

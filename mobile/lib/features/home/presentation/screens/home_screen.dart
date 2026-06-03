@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
+import 'package:levisa_adventures_pos/core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/connectivity_service.dart';
-import '../../../../core/di/injection.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -38,12 +37,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         icon: Icons.auto_awesome_outlined,
         activeIcon: Icons.auto_awesome_rounded,
         label: 'AI',
-        path: '/ai'));
+        path: '/ai'),);
     items.add(_NavItem(
         icon: Icons.people_outlined,
         activeIcon: Icons.people_rounded,
         label: 'Customers',
         path: '/customers'));
+    // Clients — admin/supervisor only
+    if (perms.canSeeDashboard || perms.role == AppRole.admin) {
+      items.add(_NavItem(
+          icon: Icons.business_outlined,
+          activeIcon: Icons.business_rounded,
+          label: 'Clients',
+          path: '/clients'));
+    }
     if (perms.canSeeProducts) {
       items.add(_NavItem(
           icon: Icons.inventory_2_outlined,
@@ -232,6 +239,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
             },
           ),
+          // Expanded chart is now the primary content
           Expanded(child: widget.child),
         ],
       ),
@@ -242,7 +250,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             color: isDark
                 ? DesignColors.darkSurface.withValues(alpha: 0.96)
                 : Colors.white.withValues(alpha: 0.98),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color:
                   isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,

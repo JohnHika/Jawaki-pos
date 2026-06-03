@@ -60,86 +60,33 @@ class DashboardScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Greeting header
-              GlassCard(
-                padding: const EdgeInsets.all(20),
-                borderRadius: 16,
-                blur: 12,
-                tint: DesignColors.brand.withValues(alpha: 0.06),
-                borderColor: DesignColors.brand.withValues(alpha: 0.1),
-                margin: const EdgeInsets.only(bottom: 20),
-                child: Row(
+              Padding(
+                padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.today_rounded,
-                        color: DesignColors.brand,
-                        size: 28,
+                    Text(
+                      'Good ${_getGreeting()}, Team',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: DesignColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Good ${_getGreeting()}, Levisa Adventures!',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: DesignColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _dateFmt.format(DateTime.now()),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: DesignColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            DesignColors.brand,
-                            DesignColors.brandDark,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: DesignColors.brand.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Text(
-                        'Today',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _dateFmt.format(DateTime.now()),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: DesignColors.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
 
-              // Summary Cards
+              // Summary Cards - Using Wrap+LayoutBuilder to prevent overflow in Column
               summaryAsync.when(
                 data: (summary) => _buildSummaryGrid(context, summary),
                 loading: () => _buildSummaryGrid(context, {
@@ -236,7 +183,7 @@ class DashboardScreen extends ConsumerWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
-                                color: DesignColors.teal,
+                                color: Colors.teal,
                               ),
                             ),
                           ],
@@ -266,20 +213,30 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> summary) {
-    return Column(
-      children: [
-        Row(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate card width to fit 2 per row with proper spacing
+        final cardWidth = (constraints.maxWidth - 12) / 2;
+        
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            Expanded(
+            // Today's Revenue
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: "Today's Revenue",
                 value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
                 icon: Icons.trending_up_rounded,
-                color: DesignColors.teal,
+                color: Colors.teal,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            // Transactions
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: 'Transactions',
                 value: '${summary['transactionCount'] ?? 0}',
@@ -287,12 +244,9 @@ class DashboardScreen extends ConsumerWidget {
                 color: DesignColors.brand,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
+            // Avg. Ticket
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: 'Avg. Ticket',
                 value: _currencyFmt.format(summary['avgTicket'] ?? 0),
@@ -300,8 +254,9 @@ class DashboardScreen extends ConsumerWidget {
                 color: DesignColors.info,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            // Items Sold
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: 'Items Sold',
                 value: '${summary['itemsSold'] ?? 0}',
@@ -310,8 +265,8 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -327,8 +282,8 @@ class DashboardScreen extends ConsumerWidget {
     final db = getIt<AppDatabase>();
     final summary = await db.getDashboardSummary();
     final report = '''
-Levisa Adventures — Daily Summary
-═══════════════════════════════
+  Daily Summary
+  ═════════════
 ${_dateFmt.format(DateTime.now())}
 
 Sales:    ${_currencyFmt.format(summary['totalSales'] ?? 0)}
@@ -337,7 +292,7 @@ Profit:   ${_currencyFmt.format(summary['grossProfit'] ?? 0)}
 Avg Ticket: ${_currencyFmt.format(summary['avgTicket'] ?? 0)}
 Items Sold: ${summary['itemsSold'] ?? 0}
 
-Sent from Levisa Adventures POS
+Sent from your POS workspace
 ''';
     await Share.share(report, subject: 'Daily Sales Report');
   }

@@ -13,6 +13,7 @@ import 'core/services/local_server_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
 import 'core/widgets/forced_update_gate.dart';
+import 'core/widgets/optional_update_prompt_host.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -161,14 +162,17 @@ class _POSAppState extends ConsumerState<POSApp> {
           builder: (context, _) => MediaQuery(
             data: MediaQuery.of(context)
                 .copyWith(textScaler: TextScaler.noScaling),
-            child: Stack(
-              children: [
-                child!,
-                if (updateService.isForceUpdateRequired)
-                  Positioned.fill(
-                    child: ForcedUpdateGate(updateService: updateService),
-                  ),
-              ],
+            child: OptionalUpdatePromptHost(
+              updateService: updateService,
+              child: Stack(
+                children: [
+                  child!,
+                  if (updateService.isForceUpdateRequired)
+                    Positioned.fill(
+                      child: ForcedUpdateGate(updateService: updateService),
+                    ),
+                ],
+              ),
             ),
           ),
         );

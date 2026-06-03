@@ -750,7 +750,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   LinearGradient _successGradient() {
     return const LinearGradient(
-      colors: [DesignColors.teal, DesignColors.tealLight],
+      colors: [Colors.teal, Color(0xFFB2DFDB)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
