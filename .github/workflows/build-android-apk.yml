@@ -48,7 +48,7 @@ jobs:
         run: |
           git clone https://github.com/flutter/flutter.git --depth 1 --branch 3.16.0 "$RUNNER_TEMP/flutter"
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
-          flutter --version
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
 
       - name: Get Dependencies
         working-directory: ./mobile
