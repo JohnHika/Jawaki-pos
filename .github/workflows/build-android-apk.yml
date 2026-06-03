@@ -207,9 +207,12 @@ jobs:
           CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
         run: |
-          aws s3 cp \
-            mobile/build/app/outputs/flutter-apk/app-release.apk \
-            "s3://$CF_R2_BUCKET/$RELEASE_PATH/app-release.apk" \
+          # Use a single PUT request for the APK because multipart uploads to R2
+          # can fail signature validation for larger artifacts in GitHub Actions.
+          aws s3api put-object \
+            --bucket "$CF_R2_BUCKET" \
+            --key "$RELEASE_PATH/app-release.apk" \
+            --body mobile/build/app/outputs/flutter-apk/app-release.apk \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/vnd.android.package-archive"
 
