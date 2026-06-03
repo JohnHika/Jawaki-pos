@@ -63,9 +63,14 @@ Where to get it in Cloudflare:
 
 1. Open Cloudflare.
 2. Go to `R2`.
-3. Open the R2 API token / API keys area.
-4. Create an API token for R2 object storage access if you have not created one yet.
+3. Open the R2 API / S3 credentials area.
+4. Create an **R2 S3 access key pair** if you have not created one yet.
 5. Copy the **Access Key ID**.
+
+Important:
+
+- Use an **R2 S3 access key pair**, not a generic Cloudflare API token.
+- The key pair must belong to the **same Cloudflare account** that owns the `pos-updates` bucket.
 
 Use that as:
 
@@ -75,13 +80,14 @@ Use that as:
 
 Where to get it in Cloudflare:
 
-1. In the same R2 API token creation screen, copy the **Secret Access Key**.
+1. In the same R2 S3 access key creation screen, copy the **Secret Access Key**.
 2. Save it immediately.
 
 Important:
 
 - Cloudflare typically shows the secret only once when the token is created.
 - If you lose it, create a new key pair.
+- Paste it into GitHub without extra spaces or trailing newlines.
 
 Use that as:
 
@@ -134,8 +140,14 @@ Add these repository secrets:
 Quick summary:
 
 - `CF_ACCOUNT_ID` = your Cloudflare account ID
-- `CF_R2_ACCESS_KEY_ID` = R2 API Access Key ID
-- `CF_R2_SECRET_ACCESS_KEY` = R2 API Secret Access Key
+- `CF_R2_ACCESS_KEY_ID` = R2 S3 Access Key ID
+- `CF_R2_SECRET_ACCESS_KEY` = R2 S3 Secret Access Key
+
+If GitHub Actions fails with `SignatureDoesNotMatch`, the usual causes are:
+
+- `CF_ACCOUNT_ID` is from a different Cloudflare account than the bucket
+- `CF_R2_ACCESS_KEY_ID` / `CF_R2_SECRET_ACCESS_KEY` are not an R2 S3 access key pair
+- the secret values were pasted into GitHub with hidden whitespace/newlines
 
 ### 3. GitHub repository variables
 
