@@ -33,6 +33,7 @@ import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_subscribe_screen.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../services/auth_service.dart';
+import '../services/storage_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
 import '../../features/clients/presentation/screens/client_management_screen.dart';
@@ -41,9 +42,26 @@ import '../../features/clients/presentation/screens/multi_client_dashboard_scree
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authService = getIt<AuthService>();
-  
+  final storageService = getIt<StorageService>();
+
+  // Determine the correct start screen without showing a flash of the wrong
+  // screen.  configureDependencies() awaits authService.initialize() before
+  // runApp(), so these flags already reflect the real session state when this
+  // Provider is first evaluated.
+  final String initialLocation;
+  if (authService.isAuthenticated) {
+    // Returning user with a valid token → go straight to the POS screen.
+    initialLocation = '/';
+  } else if (storageService.getTenantSlug()?.isNotEmpty == true) {
+    // Company is already set up; user just needs to log in.
+    initialLocation = '/login';
+  } else {
+    // Fresh install — show the company-choice/setup screen.
+    initialLocation = '/company-choice';
+  }
+
   return GoRouter(
-    initialLocation: '/company-choice',
+    initialLocation: initialLocation,
     debugLogDiagnostics: true,
     refreshListenable: GoRouterRefreshStream(authService.authStatusStream),
     redirect: (context, state) {

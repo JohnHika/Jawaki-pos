@@ -1247,7 +1247,13 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== UPDATE CHECK =====
-  void _checkForUpdates(BuildContext context) {
+  Future<void> _checkForUpdates(BuildContext context) async {
+    // Capture navigator & messenger BEFORE any await so they remain valid
+    // even if this widget is unmounted while the network call is in-flight.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final updateService = getIt<UpdateCheckService>();
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1267,26 +1273,32 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
 
-    final updateService = getIt<UpdateCheckService>();
+    bool wasUpdateShown = false;
+    try {
+      wasUpdateShown = await updateService.checkForUpdates(force: true);
+    } catch (_) {
+      wasUpdateShown = false;
+    } finally {
+      // Always dismiss the loading dialog — even if context was unmounted or an
+      // exception was thrown.  Using the captured NavigatorState is reliable
+      // because it doesn't require context.mounted to be true.
+      try {
+        navigator.pop();
+      } catch (_) {}
+    }
 
-    updateService.checkForUpdates(
-      force: true, // Force check since user manually initiated it
-    ).then((wasUpdateShown) {
-      // If no update was found, close the loading dialog and show a message
-      if (context.mounted) {
-        Navigator.of(context).pop(); // close the loading dialog
-        if (updateService.hasOptionalUpdateAvailable) {
-          updateService.showCachedOptionalUpdateDialog(context);
-        } else if (!wasUpdateShown) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('You\'re on the latest version! ✅'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    });
+    if (!context.mounted) return;
+
+    if (updateService.hasOptionalUpdateAvailable) {
+      updateService.showCachedOptionalUpdateDialog(context);
+    } else if (!wasUpdateShown) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('You\'re on the latest version! ✅'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   // ===== BACKEND SERVER SETTINGS (Client Mode) =====
