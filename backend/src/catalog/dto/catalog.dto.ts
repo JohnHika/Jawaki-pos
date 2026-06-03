@@ -160,6 +160,32 @@ export class CreateProductDto {
   @IsUUID('4', { each: true, message: 'Each category ID must be a valid UUID' })
   categoryIds?: string[];
 
+  @ApiPropertyOptional({ example: 'dozen', description: 'Secondary selling unit' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  secondaryUnit?: string;
+
+  @ApiPropertyOptional({ example: 12, description: 'Quantity of primary units per secondary unit (for stock deduction)' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Type(() => Number)
+  secondaryUnitQty?: number;
+
+  @ApiPropertyOptional({ example: 'box', description: 'Tertiary selling unit' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  tertiaryUnit?: string;
+
+  @ApiPropertyOptional({ example: 24, description: 'Quantity of primary units per tertiary unit (for stock deduction)' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Type(() => Number)
+  tertiaryUnitQty?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsObject()

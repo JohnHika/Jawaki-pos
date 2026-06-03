@@ -6,6 +6,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../ai/presentation/screens/ai_chat_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final Widget child;
@@ -37,7 +38,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         icon: Icons.auto_awesome_outlined,
         activeIcon: Icons.auto_awesome_rounded,
         label: 'AI',
-        path: '/ai'),);
+        isModal: true,
+        path: ''),);
     items.add(_NavItem(
         icon: Icons.people_outlined,
         activeIcon: Icons.people_rounded,
@@ -179,6 +181,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  void _showAiChatSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black54,
+      isScrollControlled: true,
+      isDismissible: true,
+      builder: (context) => const AiChatScreen(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final connectivity = getIt<ConnectivityService>();
@@ -243,60 +255,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(child: widget.child),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark
-                ? DesignColors.darkSurface.withValues(alpha: 0.96)
-                : Colors.white.withValues(alpha: 0.98),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-              width: 0.75,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: isDark
+              ? DesignColors.darkSurface.withValues(alpha: 0.96)
+              : Colors.white.withValues(alpha: 0.98),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(
+            color:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+            width: 0.75,
           ),
-          child: Container(
-            height: 68,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            child: Row(
-              children: [
-                ...visibleNavItems.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final item = entry.value;
-                  final isSelected = _currentIndex == idx;
-                  return Expanded(
-                      child: _NavItemWidget(
-                          item: item,
-                          isSelected: isSelected,
-                          onTap: () {
-                            setState(() => _currentIndex = idx);
-                            context.go(item.path);
-                          },
-                          isDark: isDark));
-                }),
-                if (hasMore)
-                  Expanded(
-                      child: _NavItemWidget(
-                    item: _NavItem(
-                        icon: Icons.apps_outlined,
-                        activeIcon: Icons.apps_rounded,
-                        label: 'More',
-                        path: ''),
-                    isSelected: _currentIndex >= maxVisible,
-                    onTap: () => _showMoreSheet(moreItems, maxVisible),
-                    isDark: isDark,
-                  )),
-              ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+              blurRadius: 24,
+              offset: const Offset(0, -10),
             ),
+          ],
+        ),
+        child: Container(
+          height: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            children: [
+              ...visibleNavItems.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final item = entry.value;
+                final isSelected = _currentIndex == idx;
+                return Expanded(
+                    child: _NavItemWidget(
+                        item: item,
+                        isSelected: isSelected,
+                        onTap: () {
+                          setState(() => _currentIndex = idx);
+                          context.go(item.path);
+                        },
+                        onModalTap: item.isModal
+                            ? () => _showAiChatSheet(context)
+                            : null,
+                        isDark: isDark));
+              }),
+              if (hasMore)
+                Expanded(
+                    child: _NavItemWidget(
+                      item: _NavItem(
+                          icon: Icons.apps_outlined,
+                          activeIcon: Icons.apps_rounded,
+                          label: 'More',
+                          path: '',
+                          isModal: false),
+                      isSelected: _currentIndex >= maxVisible,
+                      onTap: () => _showMoreSheet(moreItems, maxVisible),
+                      isDark: isDark,
+                    )),
+            ],
           ),
         ),
       ),
@@ -308,12 +321,14 @@ class _NavItem {
   final IconData icon;
   final IconData activeIcon;
   final String label;
+  final bool isModal;
   final String path;
   _NavItem(
       {required this.icon,
       required this.activeIcon,
       required this.label,
-      required this.path});
+      required this.path,
+      this.isModal = false});
 }
 
 class _NavItemWidget extends StatelessWidget {
@@ -321,12 +336,14 @@ class _NavItemWidget extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final bool isDark;
+  final Function()? onModalTap;
 
   const _NavItemWidget(
       {required this.item,
       required this.isSelected,
       required this.onTap,
-      required this.isDark});
+      required this.isDark,
+      this.onModalTap});
 
   @override
   Widget build(BuildContext context) {
@@ -337,7 +354,7 @@ class _NavItemWidget extends StatelessWidget {
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: onTap,
+        onTap: item.isModal ? onModalTap : onTap,
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: DesignAnimation.fast,

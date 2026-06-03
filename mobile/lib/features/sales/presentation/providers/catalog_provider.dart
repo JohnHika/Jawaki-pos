@@ -85,6 +85,18 @@ CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
   );
 }
 
+/// Extracts a unit price from the product's metadata JSON.
+/// [tier] is either 'secondary' or 'tertiary'.
+double? _parseMetadataPrice(Map<String, dynamic> product, String tier) {
+  final metadata = product['metadata'];
+  if (metadata is Map) {
+    final key = '${tier}UnitPrice';
+    final val = metadata[key];
+    if (val != null) return (val as num).toDouble();
+  }
+  return null;
+}
+
 ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
   final id = product['id']?.toString();
   final name = product['name']?.toString();
@@ -105,6 +117,12 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
     price: (priceValue as num).toDouble(),
     costPrice: Value(product['costPrice'] != null ? (product['costPrice'] as num).toDouble() : null),
     unit: Value(product['unit']?.toString() ?? 'piece'),
+    secondaryUnit: Value(product['secondaryUnit']?.toString()),
+    secondaryUnitQty: Value(product['secondaryUnitQty'] != null ? (product['secondaryUnitQty'] as num).toDouble() : null),
+    secondaryUnitPrice: Value(_parseMetadataPrice(product, 'secondary')),
+    tertiaryUnit: Value(product['tertiaryUnit']?.toString()),
+    tertiaryUnitQty: Value(product['tertiaryUnitQty'] != null ? (product['tertiaryUnitQty'] as num).toDouble() : null),
+    tertiaryUnitPrice: Value(_parseMetadataPrice(product, 'tertiary')),
     imageUrl: Value(product['imageUrl']?.toString()),
     isActive: Value(product['isActive'] as bool? ?? true),
     trackInventory: Value(product['trackInventory'] as bool? ?? true),

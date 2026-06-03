@@ -33,8 +33,10 @@ class Products extends Table {
   TextColumn get unit => text().withDefault(const Constant('piece'))();
   TextColumn get secondaryUnit => text().nullable()();
   RealColumn get secondaryUnitQty => real().nullable()();
+  RealColumn get secondaryUnitPrice => real().nullable()();
   TextColumn get tertiaryUnit => text().nullable()();
   RealColumn get tertiaryUnitQty => real().nullable()();
+  RealColumn get tertiaryUnitPrice => real().nullable()();
   TextColumn get imageUrl => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get trackInventory =>
@@ -231,7 +233,7 @@ class AppDatabase extends _$AppDatabase {
       : super(SecureDatabaseConnection.openSecureConnection());
 
   @override
-  int get schemaVersion => 6; // v6: supplier invoices and OCR receipt tracking
+  int get schemaVersion => 7; // v7: secondary/tertiary unit prices
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -267,6 +269,11 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 6) {
             await _createSupplierFinanceTables();
+          }
+          if (from < 7) {
+            // Add price columns for secondary and tertiary units
+            await m.addColumn(products, products.secondaryUnitPrice);
+            await m.addColumn(products, products.tertiaryUnitPrice);
           }
         },
       );
