@@ -1257,6 +1257,7 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: false,
       builder: (ctx) => const AlertDialog(
         title: Text('Checking for Updates'),
         content: Row(
