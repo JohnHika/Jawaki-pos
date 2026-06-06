@@ -4,6 +4,12 @@ import { ConfigService } from '@nestjs/config';
 import { existsSync } from 'fs';
 import { isAbsolute, resolve } from 'path';
 
+type UpdateSource = {
+  name: string;
+  url: string;
+  priority: 'primary' | 'secondary';
+};
+
 type AndroidUpdateManifest = {
   platform: 'android';
   latestVersion: string;
@@ -12,6 +18,7 @@ type AndroidUpdateManifest = {
   apkUrl: string;
   releaseNotes: string;
   publishedAt: string | null;
+  updateSources?: UpdateSource[];
 };
 
 @Injectable()
@@ -62,6 +69,7 @@ export class AppUpdatesService {
 
   private buildLocalAndroidManifest(): AndroidUpdateManifest {
     const latestVersion = this.config.get<string>('ANDROID_APP_LATEST_VERSION', '1.0.2');
+    const manifestUrl = this.config.get<string>('ANDROID_APP_MANIFEST_URL', '').trim();
 
     return {
       platform: 'android',
@@ -79,6 +87,15 @@ export class AppUpdatesService {
       ),
       releaseNotes: this.config.get<string>('ANDROID_APP_RELEASE_NOTES', ''),
       publishedAt: this.config.get<string>('ANDROID_APP_PUBLISHED_AT') || null,
+      updateSources: manifestUrl
+        ? [
+            {
+              name: 'Cloudflare R2',
+              url: manifestUrl,
+              priority: 'primary',
+            },
+          ]
+        : undefined,
     };
   }
 
@@ -97,7 +114,38 @@ export class AppUpdatesService {
       apkUrl: this.readString(remoteManifest.apkUrl) || fallbackManifest.apkUrl,
       releaseNotes: this.readString(remoteManifest.releaseNotes) || fallbackManifest.releaseNotes,
       publishedAt: this.readString(remoteManifest.publishedAt) || fallbackManifest.publishedAt,
+      updateSources: this.buildUpdateSources(
+        this.readString(remoteManifest.apkUrl),
+        fallbackManifest.apkUrl,
+      ),
     };
+  }
+
+  private buildUpdateSources(
+    primaryApkUrl: string | null,
+    fallbackApkUrl: string,
+  ): UpdateSource[] {
+    const manifestUrl = this.config.get<string>('ANDROID_APP_MANIFEST_URL', '').trim();
+    const githubRepo = this.config.get<string>('GITHUB_REPO', 'JohnHika/Jawaki-pos');
+
+    const sources: UpdateSource[] = [];
+
+    if (manifestUrl) {
+      sources.push({
+        name: 'Cloudflare R2',
+        url: manifestUrl,
+        priority: 'primary',
+      });
+    }
+
+    // Add GitHub Packages as secondary source
+    sources.push({
+      name: 'GitHub Packages',
+      url: `https://github.com/${githubRepo}/releases`,
+      priority: 'secondary',
+    });
+
+    return sources;
   }
 
   private resolveAndroidApkFilePath(): string | null {

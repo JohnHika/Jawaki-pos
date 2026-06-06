@@ -281,6 +281,36 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/json"
 
+      - name: Publish GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.full_version }}
+          name: POS Android v${{ steps.version.outputs.full_version }}
+          body: |
+            ## POS System Android Update
+
+            **Version:** ${{ steps.version.outputs.full_version }}
+            **Source:** Dual (Cloudflare R2 + GitHub Packages)
+
+            ### Download
+            - [Cloudflare R2](${{ env.R2_PUBLIC_BASE_URL }}/${{ steps.version.outputs.release_path }}/app-release.apk)
+            - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.full_version }})
+
+            ### Update Sources
+            1. **Cloudflare R2** (Primary): `${{ env.R2_PUBLIC_BASE_URL }}/android/latest.json`
+            2. **GitHub Packages** (Secondary): GitHub Releases API
+
+            ${{ github.event.inputs.release_notes || 'Automated Android build from GitHub Actions.' }}
+          files: |
+            mobile/build/app/outputs/flutter-apk/app-release.apk
+            ${{ steps.manifest.outputs.latest_manifest_path }}
+          make_latest: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Write publish summary
         if: github.event_name != 'pull_request'
         shell: bash
@@ -290,9 +320,14 @@ jobs:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
         run: |
           {
-            echo "## Android update published"
+            echo "## Android update published (Dual Source)"
             echo
             echo "- Version: \\`$FULL_VERSION\\`"
             echo "- APK: $R2_PUBLIC_BASE_URL/$RELEASE_PATH/app-release.apk"
             echo "- Manifest: $R2_PUBLIC_BASE_URL/android/latest.json"
+            echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$FULL_VERSION"
+            echo
+            echo "### Update Sources"
+            echo "1. **Cloudflare R2** (Primary) - in-app updater"
+            echo "2. **GitHub Packages** (Secondary) - fallback direct download"
           } >> "$GITHUB_STEP_SUMMARY"

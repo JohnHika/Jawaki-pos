@@ -14,6 +14,31 @@ import 'package:url_launcher/url_launcher.dart';
 import '../network/api_client.dart';
 import 'update_version_utils.dart';
 
+// GitHub Packages configuration
+const String _githubPackagesTokenEnv = 'GITHUB_TOKEN';
+const String _githubPackagesReleaseApi =
+    'https://api.github.com/repos/JohnHika/Jawaki-pos/releases';
+
+class UpdateSource {
+  const UpdateSource({
+    required this.name,
+    required this.url,
+    required this.priority,
+  });
+
+  factory UpdateSource.fromJson(Map<String, dynamic> json) {
+    return UpdateSource(
+      name: (json['name'] ?? '').toString(),
+      url: (json['url'] ?? '').toString(),
+      priority: (json['priority'] ?? 'primary').toString() == 'primary' ? 'primary' : 'secondary',
+    );
+  }
+
+  final String name;
+  final String url;
+  final String priority;
+}
+
 class AppUpdateInfo {
   const AppUpdateInfo({
     required this.latestVersion,
@@ -22,9 +47,18 @@ class AppUpdateInfo {
     required this.apkUrl,
     required this.releaseNotes,
     this.publishedAt,
+    this.updateSources,
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) {
+    List<UpdateSource>? sources;
+    final sourcesJson = json['updateSources'];
+    if (sourcesJson is List) {
+      sources = sourcesJson
+          .map((e) => UpdateSource.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+
     return AppUpdateInfo(
       latestVersion: (json['latestVersion'] ?? '').toString(),
       minSupportedVersion: (json['minSupportedVersion'] ?? '').toString(),
@@ -35,6 +69,7 @@ class AppUpdateInfo {
               json['publishedAt'].toString().trim().isEmpty
           ? null
           : DateTime.tryParse(json['publishedAt'].toString()),
+      updateSources: sources,
     );
   }
 
@@ -44,6 +79,7 @@ class AppUpdateInfo {
   final String apkUrl;
   final String releaseNotes;
   final DateTime? publishedAt;
+  final List<UpdateSource>? updateSources;
 }
 
 class UpdateCheckService extends ChangeNotifier {
@@ -98,10 +134,47 @@ class UpdateCheckService extends ChangeNotifier {
     _isChecking = true;
     try {
       final currentVersion = await _resolveCurrentVersion();
-      final manifest =
-          AppUpdateInfo.fromJson(await _apiClient.getLatestAndroidUpdate());
-      _cachedUpdate = manifest;
-      _applyManifest(manifest, currentVersion);
+      AppUpdateInfo? primaryUpdate;
+      AppUpdateInfo? secondaryUpdate;
+
+      // Step 1: Try Cloudflare R2 (primary source)
+      try {
+        final manifest =
+            AppUpdateInfo.fromJson(await _apiClient.getLatestAndroidUpdate());
+        primaryUpdate = manifest;
+        if (!kReleaseMode) {
+          debugPrint('[UpdateCheck] Found primary update from Cloudflare: ${manifest.latestVersion}');
+        }
+      } catch (error) {
+        if (!kReleaseMode) {
+          debugPrint('[UpdateCheck] Cloudflare R2 update check failed: $error');
+        }
+      }
+
+      // Step 2: Check GitHub Packages (secondary source) if Cloudflare fails or no update found
+      if (primaryUpdate == null || !isNewerAppVersion(primaryUpdate.latestVersion, currentVersion)) {
+        try {
+          final githubUpdate = await _getLatestGitHubPackagesUpdate();
+          if (githubUpdate != null) {
+            secondaryUpdate = githubUpdate;
+            if (!kReleaseMode) {
+              debugPrint('[UpdateCheck] Found secondary update from GitHub Packages: ${githubUpdate.latestVersion}');
+            }
+          }
+        } catch (error) {
+          if (!kReleaseMode) {
+            debugPrint('[UpdateCheck] GitHub Packages update check failed: $error');
+          }
+        }
+      }
+
+      // Step 3: Use primary update if available, otherwise use secondary
+      final manifest = primaryUpdate ?? secondaryUpdate;
+      if (manifest != null) {
+        _cachedUpdate = manifest;
+        _applyManifest(manifest, currentVersion);
+      }
+
       return isForceUpdateRequired || hasOptionalUpdateAvailable;
     } catch (error) {
       if (!kReleaseMode) {
@@ -120,6 +193,84 @@ class UpdateCheckService extends ChangeNotifier {
     }
 
     return false;
+  }
+
+  /// Get the latest Android update from GitHub Packages releases
+  Future<AppUpdateInfo?> _getLatestGitHubPackagesUpdate() async {
+    try {
+      // Use GitHub API to get the latest release
+      final dio = Dio();
+      final response = await dio.get(_githubPackagesReleaseApi, options: Options(
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          if (_githubPackagesTokenEnv.isNotEmpty) 'Authorization': 'token $_githubPackagesTokenEnv',
+        },
+      ));
+
+      if (response.statusCode != 200 || response.data == null) {
+        if (!kReleaseMode) {
+          debugPrint('[UpdateCheck] GitHub API returned status ${response.statusCode}');
+        }
+        return null;
+      }
+
+      // Parse the releases and find the latest APK
+      final releases = response.data as List;
+      for (final release in releases) {
+        final assets = release['assets'] as List?;
+        if (assets == null || assets.isEmpty) continue;
+
+        final tagName = release['tag_name'] as String?;
+        final body = release['body'] as String?;
+        final publishedAt = release['published_at'] as String?;
+
+        if (tagName == null) continue;
+
+        // Look for APK asset
+        for (final asset in assets) {
+          final name = asset['name'] as String?;
+          final browserDownloadUrl = asset['browser_download_url'] as String?;
+
+          if (name != null && browserDownloadUrl != null && name.endsWith('.apk')) {
+            // Extract version from tag_name (e.g., "v1.0.3+2004" or "1.0.3+2004")
+            final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
+
+            final apkUrl = _resolveGitHubPackagesApkUrl(browserDownloadUrl);
+
+            return AppUpdateInfo(
+              latestVersion: version,
+              minSupportedVersion: '0.0.0', // GitHub Packages doesn't support min version
+              forceUpdate: false, // GitHub Packages always allows optional updates
+              apkUrl: apkUrl,
+              releaseNotes: body?.trim() ?? '',
+              publishedAt: publishedAt != null ? DateTime.parse(publishedAt) : null,
+            );
+          }
+        }
+      }
+
+      if (!kReleaseMode) {
+        debugPrint('[UpdateCheck] No APK found in GitHub Packages releases');
+      }
+      return null;
+    } catch (error) {
+      if (!kReleaseMode) {
+        debugPrint('[UpdateCheck] Error fetching GitHub Packages update: $error');
+      }
+      return null;
+    }
+  }
+
+  String _resolveGitHubPackagesApkUrl(String rawUrl) {
+    final parsed = Uri.tryParse(rawUrl.trim());
+    if (parsed != null && parsed.hasScheme) {
+      return parsed.toString();
+    }
+
+    // If it's a relative URL, use GitHub's base URL
+    final baseUri = Uri.parse('https://github.com');
+    final normalizedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+    return baseUri.resolve(normalizedPath).toString();
   }
 
   Future<void> showCachedOptionalUpdateDialog(BuildContext context) async {
