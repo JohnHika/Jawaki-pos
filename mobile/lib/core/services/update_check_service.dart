@@ -103,6 +103,7 @@ class UpdateCheckService extends ChangeNotifier {
   AppUpdateInfo? _cachedUpdate;
   AppUpdateInfo? _requiredUpdate;
   AppUpdateInfo? _optionalUpdate;
+  final Stopwatch _downloadDuration = Stopwatch();
 
   bool get hasOptionalUpdateAvailable => _optionalUpdate != null;
   bool get isForceUpdateRequired => _requiredUpdate != null;
@@ -349,6 +350,9 @@ class UpdateCheckService extends ChangeNotifier {
     _errorMessage = null;
     _downloadProgress = 0;
     _isDownloading = true;
+    _downloadDuration
+      ..reset()
+      ..start();
     notifyListeners();
 
     try {
@@ -365,6 +369,7 @@ class UpdateCheckService extends ChangeNotifier {
 
       _isInstalling = false;
       _downloadProgress = null;
+      _downloadDuration.stop();
 
       if (result.type != ResultType.done) {
         final message = result.message;
@@ -377,6 +382,7 @@ class UpdateCheckService extends ChangeNotifier {
       _isDownloading = false;
       _isInstalling = false;
       _downloadProgress = null;
+      _downloadDuration.stop();
       _errorMessage = 'Update download failed: $error';
       notifyListeners();
 
@@ -453,6 +459,7 @@ class UpdateCheckService extends ChangeNotifier {
       _isDownloading = false;
       _isInstalling = false;
       _downloadProgress = null;
+      _downloadDuration.stop();
       _errorMessage = null;
       _downloadedApkPath = null;
     }
@@ -524,7 +531,7 @@ class UpdateCheckService extends ChangeNotifier {
             icon: const Icon(Icons.download),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await _downloadAndInstall(update);
+              await _showDownloadProgressDialog(ctx, update);
             },
             label: const Text('Download Update'),
           ),
@@ -549,6 +556,62 @@ class UpdateCheckService extends ChangeNotifier {
         ],
       ),
     );
+  }
+
+  Future<void> _showDownloadProgressDialog(
+    BuildContext context,
+    AppUpdateInfo update,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Text('Downloading Update'),
+            ],
+          ),
+          content: StreamBuilder<double?>(
+            stream: Stream.periodic(
+              const Duration(milliseconds: 200),
+              (_) => _downloadProgress,
+            ),
+            builder: (context, snapshot) {
+              final progress = snapshot.data ?? 0;
+              final progressPercent = (progress * 100).clamp(0, 100).toStringAsFixed(0);
+              final downloadedMB = (progress * 114).toStringAsFixed(1); // ~114MB APK
+              final elapsedSeconds = _downloadDuration.elapsed.inSeconds;
+              final speedKBps = _isDownloading && elapsedSeconds > 0
+                  ? (progress > 0 ? (progress * 114 * 1024 / elapsedSeconds).toStringAsFixed(0) : '0')
+                  : '0';
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LinearProgressIndicator(value: progress),
+                  const SizedBox(height: 12),
+                  Text('Version: ${update.latestVersion}'),
+                  const SizedBox(height: 8),
+                  Text('Progress: $progressPercent% ($downloadedMB MB of ~114 MB)'),
+                  const SizedBox(height: 4),
+                  Text('Speed: $speedKBps KB/s'),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    await _downloadAndInstall(update);
   }
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
