@@ -71,12 +71,15 @@ jobs:
           semantic_version = match.group(1)
           build_number = match.group(2) or ''
           full_version = semantic_version if not build_number else f'{semantic_version}+{build_number}'
+          # Git tags cannot contain '+' - replace with dashed build number
+          git_tag_version = semantic_version if not build_number else f'{semantic_version}-{build_number}'
           release_path = f'releases/{semantic_version}' if not build_number else f'releases/{semantic_version}/{build_number}'
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'semantic_version={semantic_version}\n')
               fh.write(f'build_number={build_number}\n')
               fh.write(f'full_version={full_version}\n')
+              fh.write(f'git_tag_version={git_tag_version}\n')
               fh.write(f'release_path={release_path}\n')
           PY
 
@@ -285,21 +288,21 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.full_version }}
-          name: POS Android v${{ steps.version.outputs.full_version }}
+          tag_name: v${{ steps.version.outputs.git_tag_version }}
+          name: Jawaki POS Android v${{ steps.version.outputs.full_version }}
           body: |
-            ## POS System Android Update
+            ## Jawaki POS Android Update
 
             **Version:** ${{ steps.version.outputs.full_version }}
-            **Source:** Dual (Cloudflare R2 + GitHub Packages)
+            **Source:** Dual (Cloudflare R2 + GitHub Releases)
 
             ### Download
             - [Cloudflare R2](${{ env.R2_PUBLIC_BASE_URL }}/${{ steps.version.outputs.release_path }}/app-release.apk)
-            - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.full_version }})
+            - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.git_tag_version }})
 
             ### Update Sources
             1. **Cloudflare R2** (Primary): `${{ env.R2_PUBLIC_BASE_URL }}/android/latest.json`
-            2. **GitHub Packages** (Secondary): GitHub Releases API
+            2. **GitHub Releases** (Secondary): GitHub Releases API
 
             ${{ github.event.inputs.release_notes || 'Automated Android build from GitHub Actions.' }}
           files: |
@@ -308,8 +311,8 @@ jobs:
           make_latest: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
       - name: Write publish summary
         if: github.event_name != 'pull_request'
