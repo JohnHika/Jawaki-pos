@@ -291,12 +291,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           TAG_NAME="v${{ steps.version.outputs.git_tag_version }}"
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+          # Check if tag already exists locally or on remote
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1 || git ls-remote --tags origin | grep -q "$TAG_NAME"; then
             echo "Tag $TAG_NAME already exists, skipping"
             exit 0
           fi
           git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          # Use GITHUB_TOKEN to push
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git push origin "$TAG_NAME"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish GitHub Release
         if: github.event_name != 'pull_request'
