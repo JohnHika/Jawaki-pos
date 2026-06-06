@@ -297,10 +297,12 @@ jobs:
             git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
             git push origin "$TAG_NAME"
           fi
+
       - name: Create GitHub Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.git_tag_version }}
           name: Jawaki POS Android v${{ steps.version.outputs.full_version }}
           body: |
             ## Jawaki POS Android Update
