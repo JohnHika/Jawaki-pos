@@ -21,6 +21,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: write
+
 env:
   CF_R2_BUCKET: pos-updates
   R2_PUBLIC_BASE_URL: https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev
@@ -288,6 +291,8 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.git_tag_version }}
+          target_commitish: ${{ github.sha }}
           name: Jawaki POS Android v${{ steps.version.outputs.full_version }}
           body: |
             ## Jawaki POS Android Update
