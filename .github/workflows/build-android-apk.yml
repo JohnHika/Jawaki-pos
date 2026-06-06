@@ -284,25 +284,10 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/json"
 
-      - name: Create Git Tag
-        if: github.event_name != 'pull_request'
-        shell: bash
-        run: |
-          TAG_NAME="v${{ steps.version.outputs.git_tag_version }}"
-          # Check if tag already exists
-          if git ls-remote --tags origin | grep -q "$TAG_NAME"; then
-            echo "Tag $TAG_NAME already exists on remote, creating release"
-          else
-            echo "Creating new tag $TAG_NAME"
-            git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
-            git push origin "$TAG_NAME"
-          fi
-
       - name: Create GitHub Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.git_tag_version }}
           name: Jawaki POS Android v${{ steps.version.outputs.full_version }}
           body: |
             ## Jawaki POS Android Update
@@ -325,8 +310,8 @@ jobs:
           make_latest: true
           draft: false
           prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write publish summary
         if: github.event_name != 'pull_request'
