@@ -36,7 +36,7 @@ bool isNewerAppVersion(String latest, String current) {
 }
 
 List<int> _parseComparableVersion(String value) {
-  final normalizedValue = value.trim().replaceFirst(RegExp(r'^v'), '').replaceAll('+', '.');
+  final normalizedValue = value.trim().replaceFirst(RegExp(r'^v'), '').replaceAll(RegExp(r'[+\-]'), '.');
 
   return normalizedValue
       .split('.')
