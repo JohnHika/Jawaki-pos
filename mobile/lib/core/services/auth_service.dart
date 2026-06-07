@@ -21,6 +21,7 @@ class AuthService {
   AuthStatus _currentStatus = AuthStatus.unknown;
   Map<String, dynamic>? _currentUser;
   String? _accessToken;
+  DateTime? _backgroundedAt;
 
   AuthService({
     required StorageService storage,
@@ -64,6 +65,12 @@ class AuthService {
     _currentUser = _storage.getUser();
 
     if (_accessToken?.isNotEmpty == true && _currentUser != null) {
+      if (_storage.requireUnlockOnResume() && _storage.isAuthLocked()) {
+        _accessToken = null;
+        _updateStatus(AuthStatus.unauthenticated);
+        return;
+      }
+
       _updateStatus(AuthStatus.authenticated);
       return;
     }
@@ -77,10 +84,9 @@ class AuthService {
     String? tenantSlug,
     String? deviceId,
   }) async {
-    final resolvedDeviceId =
-        (deviceId != null && deviceId.isNotEmpty)
-            ? deviceId
-            : await _storage.ensureDeviceId();
+    final resolvedDeviceId = (deviceId != null && deviceId.isNotEmpty)
+        ? deviceId
+        : await _storage.ensureDeviceId();
 
     if (_storage.getDeviceId() != resolvedDeviceId) {
       await _storage.saveDeviceId(resolvedDeviceId);
@@ -202,6 +208,7 @@ class AuthService {
     await _storage.saveAccessToken(_accessToken!);
     await _storage.saveRefreshToken(response['refreshToken']);
     await _storage.saveUser(_currentUser!);
+    await _storage.setAuthLocked(false);
 
     if (_currentUser!['branchId'] != null) {
       await _storage.saveBranchId(_currentUser!['branchId']);
@@ -229,6 +236,35 @@ class AuthService {
     return roles.contains(userRole);
   }
 
+  void markAppBackgrounded() {
+    _backgroundedAt = DateTime.now();
+  }
+
+  Future<void> lockIfRequiredAfterResume() async {
+    if (!isAuthenticated || !_storage.requireUnlockOnResume()) return;
+
+    final autoLockMinutes = _storage.getAutoLockMinutes();
+    if (autoLockMinutes == 0) return;
+
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    if (backgroundedAt == null) return;
+
+    final shouldLock = autoLockMinutes < 0 ||
+        DateTime.now().difference(backgroundedAt).inMinutes >= autoLockMinutes;
+    if (shouldLock) {
+      await lockSession();
+    }
+  }
+
+  Future<void> lockSession() async {
+    if (!isAuthenticated) return;
+    await _storage.setAuthLocked(true);
+    _accessToken = null;
+    _currentUser = _storage.getUser();
+    _updateStatus(AuthStatus.unauthenticated);
+  }
+
   // Hierarchical role checks (higher inherits lower)
   bool get isAdmin => userRole == 'admin';
   bool get isStoreManager => hasAnyRole(['admin', 'store_manager', 'manager']);
@@ -241,6 +277,17 @@ class AuthService {
   bool get isCashier => isSeller;
 
   // Biometric Authentication
+  Future<bool> isDeviceAuthenticationAvailable() async {
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      return canCheck && isSupported;
+    } catch (e) {
+      debugPrint('[AuthService] Device auth availability check failed: $e');
+      return false;
+    }
+  }
+
   Future<bool> isBiometricAvailable() async {
     try {
       final canCheck = await _localAuth.canCheckBiometrics;
@@ -254,8 +301,9 @@ class AuthService {
         debugPrint('[AuthService] Available biometrics: $availableBiometrics');
       }
 
-      final hasStoredSession =
-          _currentUser != null && (_accessToken?.isNotEmpty ?? false);
+      final storedAccessToken = await _storage.getAccessToken();
+      final hasStoredSession = _storage.getUser() != null &&
+          (storedAccessToken?.isNotEmpty ?? false);
       return canCheck && isSupported && hasStoredSession;
     } catch (e) {
       debugPrint('[AuthService] Biometric availability check failed: $e');
@@ -275,8 +323,13 @@ class AuthService {
     try {
       debugPrint('[AuthService] Starting biometric authentication...');
 
+      if (!_storage.isBiometricEnabled()) {
+        debugPrint('[AuthService] Biometric login is disabled in settings');
+        return false;
+      }
+
       final didAuthenticate = await _localAuth.authenticate(
-          localizedReason: 'Sign in to your POS workspace',
+        localizedReason: 'Sign in to your POS workspace',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: false, // Allow PIN/pattern fallback
@@ -295,6 +348,7 @@ class AuthService {
             '[AuthService] Restored session - accessToken: ${_accessToken != null}, user: ${_currentUser != null}');
 
         if (_currentUser != null && _accessToken != null) {
+          await _storage.setAuthLocked(false);
           _updateStatus(AuthStatus.authenticated);
           debugPrint('[AuthService] Biometric login successful!');
           return true;

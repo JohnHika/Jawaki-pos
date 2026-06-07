@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:levisa_adventures_pos/core/di/injection.dart';
 import 'package:levisa_adventures_pos/core/network/api_client.dart';
+import 'package:levisa_adventures_pos/core/services/storage_service.dart';
 import 'package:levisa_adventures_pos/core/theme/design_system.dart';
 import 'package:levisa_adventures_pos/features/auth/presentation/providers/auth_provider.dart';
 
@@ -39,6 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void initState() {
     super.initState();
+    _loadRememberedLogin();
     _checkBiometric();
 
     _fadeAnimation = AnimationController(
@@ -65,6 +67,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     )..repeat(reverse: true);
 
     _fadeAnimation.forward();
+  }
+
+  void _loadRememberedLogin() {
+    final storage = getIt<StorageService>();
+    final rememberLogin = storage.isRememberLoginEnabled();
+    final rememberedTenant = storage.getRememberedTenantSlug();
+    final rememberedEmail = storage.getRememberedEmail();
+    final savedTenant = storage.getTenantSlug();
+
+    _rememberMe = rememberLogin;
+    if ((rememberedTenant ?? savedTenant)?.isNotEmpty == true) {
+      _tenantSlugController.text = rememberedTenant ?? savedTenant!;
+      _onSlugChanged(_tenantSlugController.text);
+    }
+    if (rememberedEmail?.isNotEmpty == true) {
+      _emailController.text = rememberedEmail!;
+    }
   }
 
   @override
@@ -103,10 +122,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _checkBiometric() async {
     debugPrint('[LoginScreen] Checking biometric availability...');
+    final storage = getIt<StorageService>();
     final available =
         await ref.read(authControllerProvider.notifier).isBiometricAvailable();
+    final enabled = storage.isBiometricEnabled();
     debugPrint('[LoginScreen] Biometric available: $available');
-    if (mounted) setState(() => _biometricAvailable = available);
+    if (mounted) setState(() => _biometricAvailable = available && enabled);
   }
 
   Future<void> _handleLogin() async {
@@ -120,6 +141,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         );
 
     if (result && mounted) {
+      await getIt<StorageService>().saveRememberedLogin(
+        enabled: _rememberMe,
+        email: _emailController.text.trim(),
+        tenantSlug: tenantSlug,
+      );
+
       final user = ref.read(authControllerProvider).user;
       final tenant = user?['tenant'];
       final companyName = tenant is Map<String, dynamic>

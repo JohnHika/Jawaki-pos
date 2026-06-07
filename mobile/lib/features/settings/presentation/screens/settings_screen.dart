@@ -26,8 +26,6 @@ class _SettingsKeys {
   static const notifySales = 'setting_notify_sales';
   static const notifyInventory = 'setting_notify_inventory';
   static const notifySync = 'setting_notify_sync';
-  static const biometricEnabled = 'setting_biometric_enabled';
-  static const autoLockMinutes = 'setting_auto_lock_minutes';
 }
 
 class SettingsScreen extends ConsumerWidget {
@@ -588,12 +586,13 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== SECURITY SETTINGS =====
   void _showSecuritySettings(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final biometricEnabled =
-        prefs.getBool(_SettingsKeys.biometricEnabled) ?? false;
-    final autoLockMinutes = prefs.getInt(_SettingsKeys.autoLockMinutes) ?? 5;
+    final storage = getIt<StorageService>();
+    final biometricEnabled = storage.isBiometricEnabled();
+    final requireUnlockOnResume = storage.requireUnlockOnResume();
+    final autoLockMinutes = storage.getAutoLockMinutes();
     final authService = getIt<AuthService>();
-    final biometricAvailable = await authService.isBiometricAvailable();
+    final biometricAvailable =
+        await authService.isDeviceAuthenticationAvailable();
 
     if (!context.mounted) return;
 
@@ -611,6 +610,7 @@ class SettingsScreen extends ConsumerWidget {
         builder: (_, scrollController) => _SecuritySettingsSheet(
           biometricEnabled: biometricEnabled,
           biometricAvailable: biometricAvailable,
+          requireUnlockOnResume: requireUnlockOnResume,
           autoLockMinutes: autoLockMinutes,
           scrollController: scrollController,
         ),
@@ -1294,8 +1294,6 @@ class SettingsScreen extends ConsumerWidget {
       );
     }
   }
-
-
 }
 
 // ===== PRINTER SETTINGS SHEET =====
@@ -1541,12 +1539,14 @@ class _NotificationSettingsSheetState
 class _SecuritySettingsSheet extends StatefulWidget {
   final bool biometricEnabled;
   final bool biometricAvailable;
+  final bool requireUnlockOnResume;
   final int autoLockMinutes;
   final ScrollController scrollController;
 
   const _SecuritySettingsSheet({
     required this.biometricEnabled,
     required this.biometricAvailable,
+    required this.requireUnlockOnResume,
     required this.autoLockMinutes,
     required this.scrollController,
   });
@@ -1557,6 +1557,7 @@ class _SecuritySettingsSheet extends StatefulWidget {
 
 class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   late bool _biometricEnabled;
+  late bool _requireUnlockOnResume;
   late int _autoLockMinutes;
   bool _fingerprintEnabled = true;
   bool _faceRecognitionEnabled = true;
@@ -1565,6 +1566,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   void initState() {
     super.initState();
     _biometricEnabled = widget.biometricEnabled;
+    _requireUnlockOnResume = widget.requireUnlockOnResume;
     _autoLockMinutes = widget.autoLockMinutes;
     _loadBiometricPrefs();
   }
@@ -1603,89 +1605,102 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                         borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Text('Security', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 20),
-          SwitchListTile(
-            title: const Text('Biometric Login'),
-            subtitle: Text(widget.biometricAvailable
-                ? 'Enable biometric authentication'
-                : 'Not available on this device'),
-            secondary: const Icon(Icons.security),
-            value: _biometricEnabled && widget.biometricAvailable,
-            onChanged: widget.biometricAvailable
-                ? (v) => setState(() => _biometricEnabled = v)
-                : null,
-          ),
-          if (_biometricEnabled && widget.biometricAvailable) ...[
+            const SizedBox(height: 20),
+            SwitchListTile(
+              title: const Text('Biometric Login'),
+              subtitle: Text(widget.biometricAvailable
+                  ? 'Use device fingerprint, face, PIN, or pattern to unlock'
+                  : 'Not available on this device'),
+              secondary: const Icon(Icons.security),
+              value: _biometricEnabled && widget.biometricAvailable,
+              onChanged: widget.biometricAvailable
+                  ? (v) => setState(() => _biometricEnabled = v)
+                  : null,
+            ),
+            SwitchListTile(
+              title: const Text('Require unlock when app reopens'),
+              subtitle:
+                  const Text('Ask for authentication after leaving the app'),
+              secondary: const Icon(Icons.lock_clock_rounded),
+              value: _requireUnlockOnResume,
+              onChanged: (v) => setState(() => _requireUnlockOnResume = v),
+            ),
+            if (_biometricEnabled && widget.biometricAvailable) ...[
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: Text('Biometric Methods',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        )),
+              ),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                title: const Text('Fingerprint'),
+                subtitle: const Text('Use fingerprint to sign in'),
+                secondary: const Icon(Icons.fingerprint),
+                value: _fingerprintEnabled,
+                onChanged: (v) => setState(() => _fingerprintEnabled = v),
+              ),
+              SwitchListTile(
+                title: const Text('Face Recognition'),
+                subtitle: const Text('Use face recognition to sign in'),
+                secondary: const Icon(Icons.face),
+                value: _faceRecognitionEnabled,
+                onChanged: (v) => setState(() => _faceRecognitionEnabled = v),
+              ),
+            ],
             const Divider(),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: Text('Biometric Methods',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      )),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Auto-lock after'),
+              enabled: _requireUnlockOnResume,
+              trailing: DropdownButton<int>(
+                value: _autoLockMinutes,
+                underline: const SizedBox(),
+                onChanged: _requireUnlockOnResume
+                    ? (v) => setState(() => _autoLockMinutes = v ?? -1)
+                    : null,
+                items: const [
+                  DropdownMenuItem(value: -1, child: Text('Immediately')),
+                  DropdownMenuItem(value: 1, child: Text('1 min')),
+                  DropdownMenuItem(value: 5, child: Text('5 min')),
+                  DropdownMenuItem(value: 15, child: Text('15 min')),
+                  DropdownMenuItem(value: 30, child: Text('30 min')),
+                  DropdownMenuItem(value: 0, child: Text('Never')),
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              title: const Text('Fingerprint'),
-              subtitle: const Text('Use fingerprint to sign in'),
-              secondary: const Icon(Icons.fingerprint),
-              value: _fingerprintEnabled,
-              onChanged: (v) => setState(() => _fingerprintEnabled = v),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () async {
+                  final storage = getIt<StorageService>();
+                  final prefs = await SharedPreferences.getInstance();
+                  await storage.setBiometricEnabled(_biometricEnabled);
+                  await storage
+                      .setRequireUnlockOnResume(_requireUnlockOnResume);
+                  await storage.setAutoLockMinutes(_autoLockMinutes);
+                  await prefs.setBool(
+                      'setting_fingerprint_enabled', _fingerprintEnabled);
+                  await prefs.setBool('setting_face_recognition_enabled',
+                      _faceRecognitionEnabled);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Security settings saved')),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
             ),
-            SwitchListTile(
-              title: const Text('Face Recognition'),
-              subtitle: const Text('Use face recognition to sign in'),
-              secondary: const Icon(Icons.face),
-              value: _faceRecognitionEnabled,
-              onChanged: (v) => setState(() => _faceRecognitionEnabled = v),
-            ),
+            const SizedBox(height: 8),
           ],
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.timer_outlined),
-            title: const Text('Auto-lock after'),
-            trailing: DropdownButton<int>(
-              value: _autoLockMinutes,
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('1 min')),
-                DropdownMenuItem(value: 5, child: Text('5 min')),
-                DropdownMenuItem(value: 15, child: Text('15 min')),
-                DropdownMenuItem(value: 30, child: Text('30 min')),
-                DropdownMenuItem(value: 0, child: Text('Never')),
-              ],
-              onChanged: (v) => setState(() => _autoLockMinutes = v ?? 5),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool(
-                    _SettingsKeys.biometricEnabled, _biometricEnabled);
-                await prefs.setInt(
-                    _SettingsKeys.autoLockMinutes, _autoLockMinutes);
-                await prefs.setBool(
-                    'setting_fingerprint_enabled', _fingerprintEnabled);
-                await prefs.setBool('setting_face_recognition_enabled',
-                    _faceRecognitionEnabled);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Security settings saved')),
-                  );
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }
 

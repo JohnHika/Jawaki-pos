@@ -10,6 +10,7 @@ import 'core/theme/theme_provider.dart';
 import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/local_server_service.dart';
+import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
 import 'core/widgets/forced_update_gate.dart';
@@ -152,7 +153,8 @@ class _POSAppState extends ConsumerState<POSApp> {
       checkerboardRasterCacheImages: false,
       checkerboardOffscreenLayers: false,
       theme: AppTheme.dynamicLight(themeColors.primary, themeColors.secondary),
-      darkTheme: AppTheme.dynamicDark(themeColors.primary, themeColors.secondary),
+      darkTheme:
+          AppTheme.dynamicDark(themeColors.primary, themeColors.secondary),
       themeMode: themeMode,
       routerConfig: router,
       builder: (context, child) {
@@ -183,8 +185,18 @@ class _POSAppState extends ConsumerState<POSApp> {
 
 class _POSAppLifecycleObserver extends WidgetsBindingObserver {
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    final authService = getIt<AuthService>();
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      authService.markAppBackgrounded();
+      return;
+    }
+
     if (state == AppLifecycleState.resumed) {
+      await authService.lockIfRequiredAfterResume();
       getIt<UpdateCheckService>().checkForUpdates(force: true);
     }
   }

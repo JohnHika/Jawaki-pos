@@ -135,6 +135,10 @@ class AuthController extends StateNotifier<AuthState> {
     return _authService.isBiometricAvailable();
   }
 
+  Future<bool> isDeviceAuthenticationAvailable() async {
+    return _authService.isDeviceAuthenticationAvailable();
+  }
+
   String _getErrorMessage(dynamic error) {
     final msg = error.toString();
     if (msg.contains('401') || msg.contains('Invalid credentials')) {

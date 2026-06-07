@@ -1,9 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:axon_pos/core/network/api_client.dart';
-import 'package:axon_pos/core/services/update_check_service.dart';
-import 'package:axon_pos/core/widgets/optional_update_prompt_host.dart';
+import 'package:levisa_adventures_pos/core/network/api_client.dart';
+import 'package:levisa_adventures_pos/core/services/update_check_service.dart';
+import 'package:levisa_adventures_pos/core/widgets/optional_update_prompt_host.dart';
 
 void main() {
   testWidgets(
