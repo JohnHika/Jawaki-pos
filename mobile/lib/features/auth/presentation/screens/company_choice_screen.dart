@@ -1,12 +1,13 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
-import 'package:levisa_adventures_pos/core/network/api_client.dart';
-import 'package:levisa_adventures_pos/core/services/storage_service.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
 
 /// Screen shown on first app launch to let user choose between
 /// creating a new company or signing into an existing one.
+/// Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 class CompanyChoiceScreen extends StatefulWidget {
   const CompanyChoiceScreen({super.key});
 

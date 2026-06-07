@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:levisa_adventures_pos/core/services/update_version_utils.dart';
+import 'package:axon_pos/core/services/update_version_utils.dart';
 
 void main() {
   group('composeComparableVersion', () {

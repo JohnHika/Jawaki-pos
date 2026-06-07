@@ -133,7 +133,7 @@ class AiBillingService {
     final Uri uri = Uri(
       scheme: 'mpesa',
       path: 'payment',
-      query: 'phone=0742126582&amount=600&reference=Levisa%20AI',
+      query: 'phone=0742126582&amount=600&reference=Axon%20AI',
     );
 
     // Try the M-Pesa app

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
-import 'package:levisa_adventures_pos/features/auth/presentation/providers/auth_provider.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 
 class PinLoginScreen extends ConsumerStatefulWidget {
   const PinLoginScreen({super.key});

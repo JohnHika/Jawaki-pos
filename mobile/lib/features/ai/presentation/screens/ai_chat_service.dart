@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:levisa_adventures_pos/core/services/storage_service.dart';
-import 'package:levisa_adventures_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
+import 'package:axon_pos/core/di/injection.dart';
 
 class AiChatService {
   AiChatService._internal();

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
-import 'package:levisa_adventures_pos/core/theme/app_theme.dart';
-import 'package:levisa_adventures_pos/core/services/storage_service.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
-import 'package:levisa_adventures_pos/features/clients/data/providers/clients_provider.dart';
-import 'package:levisa_adventures_pos/features/clients/data/models/pos_client.dart';
-import 'package:levisa_adventures_pos/features/clients/data/models/branch.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/theme/app_theme.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/features/clients/data/providers/clients_provider.dart';
+import 'package:axon_pos/features/clients/data/models/pos_client.dart';
+import 'package:axon_pos/features/clients/data/models/branch.dart';
 
 /// Client Detail Screen - Shows detailed client info and branch list
 class ClientDetailScreen extends ConsumerStatefulWidget {

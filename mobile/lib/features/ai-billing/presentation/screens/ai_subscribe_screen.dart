@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
-import 'package:levisa_adventures_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 
 class AiSubscribeScreen extends StatefulWidget {
   final String branchId;
@@ -92,7 +92,7 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
     return Scaffold(
       backgroundColor: surface,
       appBar: AppBar(
-        title: Text('Subscribe to Levisa AI'),
+        title: Text('Subscribe to Axon AI'),
         backgroundColor: surface,
         elevation: 0,
         leading: IconButton(

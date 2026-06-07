@@ -5,13 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
-import 'package:levisa_adventures_pos/core/network/api_client.dart';
-import 'package:levisa_adventures_pos/core/services/auth_service.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
 
 /// Screen for setting up a new company, admin user, and first branch.
 /// Part of the first-time setup flow.
+/// Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 class CompanySetupScreen extends ConsumerStatefulWidget {
   const CompanySetupScreen({super.key});
 
