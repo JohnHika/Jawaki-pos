@@ -50,11 +50,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "true"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.0"
+        value: "1.0.13"
       - key: ANDROID_APP_RELEASE_NAME
         value: "Axon POS 1.0"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2014"
+        value: "2015"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER

@@ -112,6 +112,10 @@ jobs:
           if len(version_parts) >= 3 and version_parts[2] != '0':
               marketing_version = '.'.join(version_parts[:3])
           release_name = f'Axon POS {marketing_version}'
+          legacy_patch = ''
+          if build_number and build_number.isdigit():
+              legacy_patch = str(max(0, int(build_number) - 2002))
+          compatibility_version = f'1.0.{legacy_patch}' if legacy_patch else semantic_version
           # Git tags cannot contain '+' - replace with dashed build number
           git_tag_version = semantic_version if not build_number else f'{semantic_version}-{build_number}'
           release_path = f'releases/{semantic_version}' if not build_number else f'releases/{semantic_version}/{build_number}'
@@ -120,6 +124,7 @@ jobs:
               fh.write(f'semantic_version={semantic_version}\n')
               fh.write(f'build_number={build_number}\n')
               fh.write(f'full_version={full_version}\n')
+              fh.write(f'compatibility_version={compatibility_version}\n')
               fh.write(f'release_name={release_name}\n')
               fh.write(f'git_tag_version={git_tag_version}\n')
               fh.write(f'release_path={release_path}\n')
@@ -205,6 +210,7 @@ jobs:
         env:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
           SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
+          COMPATIBILITY_VERSION: ${{ steps.version.outputs.compatibility_version }}
           RELEASE_NAME: ${{ steps.version.outputs.release_name }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
@@ -267,7 +273,9 @@ jobs:
 
           manifest = {
               'platform': 'android',
-              'latestVersion': os.environ['SEMANTIC_VERSION'],
+              # Older installed apps only compare this field, so keep it
+              # monotonically increasing even when the visible release line resets.
+              'latestVersion': os.environ['COMPATIBILITY_VERSION'],
               'releaseName': os.environ['RELEASE_NAME'],
               'buildNumber': build_number,
               'minSupportedVersion': min_supported_version,

@@ -66,7 +66,7 @@ export class AppUpdatesService {
 
     const latestVersion = this.config.get<string>(
       "ANDROID_APP_LATEST_VERSION",
-      "1.0.0",
+      "1.0.13",
     );
     const releaseName = this.config.get<string>(
       "ANDROID_APP_RELEASE_NAME",
@@ -85,7 +85,7 @@ export class AppUpdatesService {
   private buildLocalAndroidManifest(): AndroidUpdateManifest {
     const latestVersion = this.config.get<string>(
       "ANDROID_APP_LATEST_VERSION",
-      "1.0.0",
+      "1.0.13",
     );
     const releaseName = this.config.get<string>(
       "ANDROID_APP_RELEASE_NAME",

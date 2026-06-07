@@ -192,7 +192,12 @@ class UpdateCheckService extends ChangeNotifier {
 
       // Step 2: Check GitHub Packages (secondary source) if Cloudflare fails or no update found
       if (primaryUpdate == null ||
-          !isNewerAppVersion(primaryUpdate.latestVersion, currentVersion)) {
+          !_hasNewerBuildOrVersion(
+            latestBuildNumber: primaryUpdate.buildNumber,
+            currentBuildNumber: _currentBuildNumber(currentVersion),
+            latestVersion: primaryUpdate.latestVersion,
+            currentVersion: currentVersion,
+          )) {
         try {
           final githubUpdate = await _getLatestGitHubPackagesUpdate();
           if (githubUpdate != null) {
