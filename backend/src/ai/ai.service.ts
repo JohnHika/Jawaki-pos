@@ -90,6 +90,62 @@ export class AiService {
   }
 
   /**
+   * List available NVIDIA AI models
+   * Requires NVIDIA_API_KEY to be configured
+   */
+  async listAvailableModels(): Promise<{ models: string[]; currentModel: string }> {
+    if (!this.apiKey) {
+      this.logger.warn('NVIDIA_API_KEY not set — cannot list available models');
+      return {
+        models: [this.model],
+        currentModel: this.model
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        this.logger.error(`NVIDIA models API error: ${response.status} - ${errorBody}`);
+        return {
+          models: [this.model],
+          currentModel: this.model
+        };
+      }
+
+      const data = await response.json();
+      const models = data.data?.map((m: any) => m.id) || [];
+
+      return {
+        models,
+        currentModel: this.model
+      };
+
+    } catch (error) {
+      this.logger.error(`Failed to fetch NVIDIA models: ${error}`);
+      return {
+        models: [this.model],
+        currentModel: this.model
+      };
+    }
+  }
+
+  /**
+   * Set the current AI model
+   */
+  setCurrentModel(model: string): void {
+    this.model = model;
+    this.logger.log(`AI model set to: ${model}`);
+  }
+
+  /**
    * Returns a mock response when no API key is configured.
    * Useful for development and demos.
    */
