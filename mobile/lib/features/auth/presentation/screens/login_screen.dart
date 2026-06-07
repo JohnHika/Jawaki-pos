@@ -25,6 +25,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _biometricAvailable = false;
+  bool _deviceAuthenticationAvailable = false;
 
   // Dynamic company branding
   String? _companyName;
@@ -123,11 +124,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Future<void> _checkBiometric() async {
     debugPrint('[LoginScreen] Checking biometric availability...');
     final storage = getIt<StorageService>();
-    final available =
+    final deviceAvailable = await ref
+        .read(authControllerProvider.notifier)
+        .isDeviceAuthenticationAvailable();
+    final ready =
         await ref.read(authControllerProvider.notifier).isBiometricAvailable();
     final enabled = storage.isBiometricEnabled();
-    debugPrint('[LoginScreen] Biometric available: $available');
-    if (mounted) setState(() => _biometricAvailable = available && enabled);
+    debugPrint(
+      '[LoginScreen] Device auth available: $deviceAvailable, biometric ready: $ready',
+    );
+    if (mounted) {
+      setState(() {
+        _deviceAuthenticationAvailable = deviceAvailable;
+        _biometricAvailable = ready && enabled;
+      });
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -289,6 +300,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _handleBiometricLogin() async {
     debugPrint('[LoginScreen] Attempting biometric login...');
+    if (!_biometricAvailable) {
+      showGlassSnackBar(
+        context,
+        'Sign in once, then enable biometrics in Settings > Security for this company.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.info,
+      );
+      return;
+    }
+
     final result =
         await ref.read(authControllerProvider.notifier).loginWithBiometrics();
     debugPrint('[LoginScreen] Biometric login result: $result');
@@ -742,12 +763,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Biometric login button
-                  if (_biometricAvailable)
+                  // Device biometric / face unlock button
+                  if (_deviceAuthenticationAvailable)
                     Expanded(
                       child: _buildAltLoginButton(
                         icon: Icons.fingerprint_rounded,
-                        label: 'Biometric',
+                        label: _biometricAvailable
+                            ? 'Biometric / Face'
+                            : 'Set up biometric',
                         onTap: authState.isLoading
                             ? () {}
                             : () => _handleBiometricLogin(),
