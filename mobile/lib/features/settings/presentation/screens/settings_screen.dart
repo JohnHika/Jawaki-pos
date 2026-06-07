@@ -642,11 +642,10 @@ class SettingsScreen extends ConsumerWidget {
             Text('Help & Support',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
-            ListTile(
-              leading:
-                  const Icon(Icons.email_outlined, color: DesignColors.brand),
-              title: const Text('Email Support'),
-              subtitle: const Text('johnkimani576@gmail.com'),
+            const ListTile(
+              leading: Icon(Icons.email_outlined, color: DesignColors.brand),
+              title: Text('Email Support'),
+              subtitle: Text('johnkimani576@gmail.com'),
             ),
             ListTile(
               leading:
@@ -784,7 +783,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AboutDialog(
         applicationName: 'Point of Sale',
-        applicationVersion: '${info.version} (Build ${info.buildNumber})',
+        applicationVersion: _formatReleaseName(info.version),
         applicationLegalese:
             'Licensed for your company workspace. Contact your administrator for licence documents.',
         applicationIcon: Container(
@@ -827,6 +826,18 @@ class SettingsScreen extends ConsumerWidget {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  String _formatReleaseName(String version) {
+    final parts = version.split('.');
+    if (parts.length >= 2) {
+      final marketingVersion = parts.length >= 3 && parts[2] != '0'
+          ? parts.take(3).join('.')
+          : parts.take(2).join('.');
+      return 'Axon POS $marketingVersion';
+    }
+
+    return 'Axon POS $version';
   }
 
   // ===== ADMIN-ONLY: USER MANAGEMENT =====
@@ -891,16 +902,15 @@ class SettingsScreen extends ConsumerWidget {
                     _RoleAccessSummary(),
                     const SizedBox(height: 12),
                     // Placeholder for additional users
-                    Card(
+                    const Card(
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: DesignColors.surfaceSubtle,
-                          child: const Icon(Icons.person_add,
+                          child: Icon(Icons.person_add,
                               color: DesignColors.textSecondary),
                         ),
-                        title: const Text('No other users yet'),
-                        subtitle:
-                            const Text('Tap + Add to create staff accounts'),
+                        title: Text('No other users yet'),
+                        subtitle: Text('Tap + Add to create staff accounts'),
                       ),
                     ),
                   ],
@@ -958,7 +968,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   decoration: const InputDecoration(
                     labelText: 'Role',
                     prefixIcon: Icon(Icons.badge),
@@ -1213,7 +1223,7 @@ class SettingsScreen extends ConsumerWidget {
               Expanded(
                 child: ListView(
                   controller: scrollController,
-                  children: [
+                  children: const [
                     _AuditEntry(
                       icon: Icons.login,
                       title: 'Session Started',
@@ -1365,7 +1375,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _paperWidth,
+            initialValue: _paperWidth,
             decoration: const InputDecoration(
               labelText: 'Paper Width',
               prefixIcon: Icon(Icons.straighten),
@@ -2220,9 +2230,9 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
-                          leading: CircleAvatar(
+                          leading: const CircleAvatar(
                             backgroundColor: DesignColors.brand,
-                            child: const Icon(Icons.store,
+                            child: Icon(Icons.store,
                                 color: Colors.white, size: 20),
                           ),
                           title: Text(branch['name'] as String),
@@ -2234,9 +2244,12 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                                   text: 'Active', color: DesignColors.success),
                               PopupMenuButton<String>(
                                 onSelected: (value) {
-                                  if (value == 'edit')
+                                  if (value == 'edit') {
                                     _showEditBranchDialog(branch);
-                                  if (value == 'delete') _deleteBranch(branch);
+                                  }
+                                  if (value == 'delete') {
+                                    _deleteBranch(branch);
+                                  }
                                 },
                                 itemBuilder: (ctx) => [
                                   const PopupMenuItem(

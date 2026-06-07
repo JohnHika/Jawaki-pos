@@ -36,7 +36,7 @@ android {
     }
 
     defaultConfig {
-        // Levisa Adventures POS - Professional Retail Management
+        // Axon POS - Professional Retail Management
         applicationId = "com.levisaadventures.pos"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

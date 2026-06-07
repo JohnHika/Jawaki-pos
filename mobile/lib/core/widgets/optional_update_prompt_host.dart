@@ -21,6 +21,7 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
   String? _shownVersionThisLaunch;
   bool _dialogInFlight = false;
   bool _checkQueued = false;
+  String? _shownInstalledNoticeThisLaunch;
 
   @override
   void initState() {
@@ -64,16 +65,34 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
     if (widget.updateService.isForceUpdateRequired) return;
 
     final update = widget.updateService.optionalUpdate;
-    if (update == null) return;
+    final installedUpdate = widget.updateService.installedUpdateNotice;
+    if (update == null && installedUpdate == null) return;
 
-    final versionKey = update.latestVersion.trim();
-    if (versionKey.isEmpty || versionKey == _shownVersionThisLaunch) return;
+    if (update != null) {
+      final versionKey = update.noticeKey.trim();
+      if (versionKey.isEmpty || versionKey == _shownVersionThisLaunch) return;
 
-    _shownVersionThisLaunch = versionKey;
+      _shownVersionThisLaunch = versionKey;
+      _dialogInFlight = true;
+
+      try {
+        await widget.updateService.showCachedOptionalUpdateDialog(context);
+      } finally {
+        _dialogInFlight = false;
+      }
+      return;
+    }
+
+    final noticeKey = installedUpdate!.noticeKey.trim();
+    if (noticeKey.isEmpty || noticeKey == _shownInstalledNoticeThisLaunch) {
+      return;
+    }
+
+    _shownInstalledNoticeThisLaunch = noticeKey;
     _dialogInFlight = true;
 
     try {
-      await widget.updateService.showCachedOptionalUpdateDialog(context);
+      await widget.updateService.showInstalledUpdateNoticeIfNeeded(context);
     } finally {
       _dialogInFlight = false;
     }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// ═══════════════════════════════════════════════════════════════
-/// LEVISA POS PROFESSIONAL DESIGN SYSTEM
+/// AXON POS PROFESSIONAL DESIGN SYSTEM
 /// Clean, modern, professional UI patterns for POS applications
 /// ═══════════════════════════════════════════════════════════════
 
@@ -435,7 +435,7 @@ class _GradientButtonState extends State<GradientButton>
             blurRadius: _isPressed ? 3 : 6,
             offset: const Offset(0, 4),
           ),
-       ],
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -846,7 +846,11 @@ class JawakiScreenHeader extends StatelessWidget {
             height: 46,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [DesignColors.brandDark, DesignColors.brand, DesignColors.accent],
+                colors: [
+                  DesignColors.brandDark,
+                  DesignColors.brand,
+                  DesignColors.accent
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -1444,7 +1448,6 @@ class LabelDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return Padding(
       padding: padding ?? const EdgeInsets.symmetric(vertical: 16),
       child: Row(
@@ -1796,18 +1799,23 @@ class LevisaLogoTitle extends StatelessWidget {
               ),
             ],
           ),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/levisa_adventures_logo.png',
-              fit: BoxFit.cover,
-              semanticLabel: 'Levisa Adventures logo',
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: DesignGradients.brand,
+            ),
+            child: Icon(
+              Icons.point_of_sale_rounded,
+              color: Colors.white,
+              size: logoSize * 0.52,
+              semanticLabel: 'Axon POS logo',
             ),
           ),
         ),
         if (showText) ...[
           const SizedBox(width: 10),
           Text(
-            'Levisa Adventures',
+            'Axon POS',
             style: TextStyle(
               color: isDark
                   ? DesignColors.darkTextPrimary

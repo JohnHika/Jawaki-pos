@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'design_system.dart';
 
-/// Levisa Adventures POS — Premium Material Theme
+/// Axon POS premium Material theme.
 class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(

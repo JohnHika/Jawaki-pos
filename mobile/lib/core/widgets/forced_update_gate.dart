@@ -51,9 +51,10 @@ class ForcedUpdateGate extends StatelessWidget {
                       Text(
                         'Update required',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -66,20 +67,21 @@ class ForcedUpdateGate extends StatelessWidget {
                       const SizedBox(height: 20),
                       _VersionTile(
                         label: 'Current version',
-                        value: updateService.currentVersion ?? 'Unknown',
+                        value: _cleanVersion(updateService.currentVersion),
                         valueColor: Colors.orange,
                       ),
                       const SizedBox(height: 8),
                       _VersionTile(
                         label: 'Required version',
-                        value: update.minSupportedVersion,
+                        value: update.releaseName ?? update.minSupportedVersion,
                         valueColor: Colors.green,
                       ),
-                      if (update.latestVersion != update.minSupportedVersion) ...[
+                      if (update.latestVersion != update.minSupportedVersion ||
+                          update.releaseName != null) ...[
                         const SizedBox(height: 8),
                         _VersionTile(
                           label: 'Latest version',
-                          value: update.latestVersion,
+                          value: update.displayVersion,
                           valueColor: Colors.green,
                         ),
                       ],
@@ -87,9 +89,10 @@ class ForcedUpdateGate extends StatelessWidget {
                         const SizedBox(height: 20),
                         Text(
                           'What\'s new',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
                         const SizedBox(height: 8),
                         Container(
@@ -130,7 +133,8 @@ class ForcedUpdateGate extends StatelessWidget {
                       const SizedBox(height: 20),
                       if (updateService.requiresInstallerPermission)
                         FilledButton.icon(
-                          onPressed: updateService.openInstallerPermissionSettings,
+                          onPressed:
+                              updateService.openInstallerPermissionSettings,
                           icon: const Icon(Icons.settings_applications_rounded),
                           label: const Text('Enable install permission'),
                         )
@@ -156,7 +160,8 @@ class ForcedUpdateGate extends StatelessWidget {
                         )
                       else
                         FilledButton.icon(
-                          onPressed: updateService.downloadAndInstallRequiredUpdate,
+                          onPressed:
+                              updateService.downloadAndInstallRequiredUpdate,
                           icon: const Icon(Icons.download_rounded),
                           label: const Text('Download & install update'),
                         ),
@@ -167,9 +172,9 @@ class ForcedUpdateGate extends StatelessWidget {
                         label: const Text('Open fallback download link'),
                       ),
                       const SizedBox(height: 8),
-                      TextButton(
+                      const TextButton(
                         onPressed: SystemNavigator.pop,
-                        child: const Text('Close app'),
+                        child: Text('Close app'),
                       ),
                     ],
                   ),
@@ -181,6 +186,12 @@ class ForcedUpdateGate extends StatelessWidget {
       ),
     );
   }
+}
+
+String _cleanVersion(String? value) {
+  if (value == null || value.isEmpty) return 'Unknown';
+  final plusIndex = value.indexOf('+');
+  return plusIndex < 0 ? value : value.substring(0, plusIndex);
 }
 
 class _VersionTile extends StatelessWidget {

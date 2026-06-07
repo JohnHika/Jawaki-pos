@@ -17,7 +17,11 @@ on:
         default: 'false'
         type: string
       min_supported_version:
-        description: Optional minimum supported version (for example 1.0.2+2003)
+        description: Optional minimum supported user-facing version (for example 1.0.0)
+        required: false
+        type: string
+      min_supported_build_number:
+        description: Optional minimum supported Android build number
         required: false
         type: string
 
@@ -103,6 +107,11 @@ jobs:
           semantic_version = match.group(1)
           build_number = match.group(2) or ''
           full_version = semantic_version if not build_number else f'{semantic_version}+{build_number}'
+          version_parts = semantic_version.split('.')
+          marketing_version = '.'.join(version_parts[:2]) if len(version_parts) >= 2 else semantic_version
+          if len(version_parts) >= 3 and version_parts[2] != '0':
+              marketing_version = '.'.join(version_parts[:3])
+          release_name = f'Axon POS {marketing_version}'
           # Git tags cannot contain '+' - replace with dashed build number
           git_tag_version = semantic_version if not build_number else f'{semantic_version}-{build_number}'
           release_path = f'releases/{semantic_version}' if not build_number else f'releases/{semantic_version}/{build_number}'
@@ -111,6 +120,7 @@ jobs:
               fh.write(f'semantic_version={semantic_version}\n')
               fh.write(f'build_number={build_number}\n')
               fh.write(f'full_version={full_version}\n')
+              fh.write(f'release_name={release_name}\n')
               fh.write(f'git_tag_version={git_tag_version}\n')
               fh.write(f'release_path={release_path}\n')
           PY
@@ -194,6 +204,9 @@ jobs:
         shell: bash
         env:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
+          SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
+          RELEASE_NAME: ${{ steps.version.outputs.release_name }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           GITHUB_SHA: ${{ github.sha }}
@@ -231,18 +244,34 @@ jobs:
           if not min_supported_version:
               min_supported_version = str(existing.get('minSupportedVersion') or '0.0.0')
 
+          build_number_raw = os.environ.get('BUILD_NUMBER', '').strip()
+          build_number = int(build_number_raw) if build_number_raw.isdigit() else None
+
+          min_supported_build_number_raw = str(workflow_inputs.get('min_supported_build_number') or '').strip()
+          if min_supported_build_number_raw.isdigit():
+              min_supported_build_number = int(min_supported_build_number_raw)
+          else:
+              existing_build = existing.get('minSupportedBuildNumber')
+              min_supported_build_number = existing_build if isinstance(existing_build, int) else None
+
           release_notes = str(workflow_inputs.get('release_notes') or '').strip()
           if not release_notes:
               short_sha = os.environ.get('GITHUB_SHA', '')[:7]
               branch = os.environ.get('GITHUB_REF_NAME', 'unknown')
-              release_notes = f'Automated Android build from {short_sha} on {branch}.'
+              release_notes = (
+                  f'{os.environ["RELEASE_NAME"]} starts the clean Axon release line. '
+                  f'Build {build_number or "internal"} was published from {short_sha} on {branch}.'
+              )
 
           force_update = str(workflow_inputs.get('force_update') or '').strip().lower() == 'true'
 
           manifest = {
               'platform': 'android',
-              'latestVersion': full_version,
+              'latestVersion': os.environ['SEMANTIC_VERSION'],
+              'releaseName': os.environ['RELEASE_NAME'],
+              'buildNumber': build_number,
               'minSupportedVersion': min_supported_version,
+              'minSupportedBuildNumber': min_supported_build_number,
               'forceUpdate': force_update,
               'apkUrl': f'{base_url}/{release_path}/app-release.apk',
               'releaseNotes': release_notes,
@@ -322,11 +351,12 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.git_tag_version }}
           target_commitish: ${{ github.sha }}
-          name: Axon POS Android v${{ steps.version.outputs.full_version }}
+          name: Axon POS Android ${{ steps.version.outputs.release_name }}
           body: |
             ## Axon POS Android Update
 
-            **Version:** ${{ steps.version.outputs.full_version }}
+            **Release:** ${{ steps.version.outputs.release_name }}
+            **Internal build:** ${{ steps.version.outputs.build_number }}
             **Source:** Dual (Cloudflare R2 + GitHub Releases)
 
             ### Download
@@ -354,14 +384,19 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
+          SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
+          RELEASE_NAME: ${{ steps.version.outputs.release_name }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+          GIT_TAG_VERSION: ${{ steps.version.outputs.git_tag_version }}
         run: |
           {
             echo "## Android update published (Dual Source)"
             echo
-            echo "- Version: \\`$FULL_VERSION\\`"
+            echo "- Release: \\`$RELEASE_NAME\\`"
+            echo "- Internal build: \\`$BUILD_NUMBER\\`"
             echo "- APK: $R2_PUBLIC_BASE_URL/$RELEASE_PATH/app-release.apk"
             echo "- Manifest: $R2_PUBLIC_BASE_URL/android/latest.json"
-            echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$FULL_VERSION"
+            echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$GIT_TAG_VERSION"
             echo
             echo "### Update Sources"
             echo "1. **Cloudflare R2** (Primary) - in-app updater"

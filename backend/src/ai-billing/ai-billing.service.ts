@@ -1,13 +1,13 @@
-import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { PrismaService } from '../common/prisma/prisma.service';
-import { AiSubscriptionStatus, AiPaymentStatus } from '@prisma/client';
+import { Injectable, Logger, HttpException, HttpStatus } from "@nestjs/common";
+import { PrismaService } from "../common/prisma/prisma.service";
+import { AiSubscriptionStatus, AiPaymentStatus } from "@prisma/client";
 
 @Injectable()
 export class AiBillingService {
   private readonly logger = new Logger(AiBillingService.name);
   private readonly TRIAL_DAYS = 7;
   private readonly SUBSCRIPTION_DAYS = 30;
-  private readonly RECIPIENT_PHONE = '0742126582';
+  private readonly RECIPIENT_PHONE = "0742126582";
 
   constructor(private prisma: PrismaService) {}
 
@@ -28,43 +28,53 @@ export class AiBillingService {
     const sub = await this.prisma.aiSubscription.create({
       data: {
         branchId,
-        status: 'TRIAL',
+        status: "TRIAL",
         trialStartedAt: now,
         trialEndsAt: trialEnds,
-        price: 600.00,
+        price: 600.0,
       },
     });
 
-    this.logger.log(`Trial started for branch ${branchId}, ends ${trialEnds.toISOString()}`);
+    this.logger.log(
+      `Trial started for branch ${branchId}, ends ${trialEnds.toISOString()}`,
+    );
     return this.formatSubscription(sub);
   }
 
   /** Get current subscription status */
   async getStatus(branchId: string) {
+    if (this.isBillingDisabled()) {
+      return this.freeAccessStatus(branchId);
+    }
+
     const sub = await this.prisma.aiSubscription.findUnique({
       where: { branchId },
-      include: { payments: { orderBy: { createdAt: 'desc' }, take: 5 } },
+      include: { payments: { orderBy: { createdAt: "desc" }, take: 5 } },
     });
 
     if (!sub) {
-      return { hasSubscription: false, status: null, message: 'No subscription found. Start your free trial!' };
+      return {
+        hasSubscription: false,
+        status: null,
+        message: "No subscription found. Start your free trial!",
+      };
     }
 
     // Check if trial or subscription expired
     const now = new Date();
-    if (sub.status === 'TRIAL' && sub.trialEndsAt < now) {
+    if (sub.status === "TRIAL" && sub.trialEndsAt < now) {
       await this.prisma.aiSubscription.update({
         where: { id: sub.id },
-        data: { status: 'EXPIRED' },
+        data: { status: "EXPIRED" },
       });
-      sub.status = 'EXPIRED';
+      sub.status = "EXPIRED";
     }
-    if (sub.status === 'ACTIVE' && sub.expiresAt && sub.expiresAt < now) {
+    if (sub.status === "ACTIVE" && sub.expiresAt && sub.expiresAt < now) {
       await this.prisma.aiSubscription.update({
         where: { id: sub.id },
-        data: { status: 'EXPIRED' },
+        data: { status: "EXPIRED" },
       });
-      sub.status = 'EXPIRED';
+      sub.status = "EXPIRED";
     }
 
     return this.formatSubscription(sub);
@@ -72,45 +82,69 @@ export class AiBillingService {
 
   /** Check if a branch can use AI */
   async canUseAi(branchId: string): Promise<boolean> {
-    const sub = await this.prisma.aiSubscription.findUnique({ where: { branchId } });
+    if (this.isBillingDisabled()) {
+      return true;
+    }
+
+    const sub = await this.prisma.aiSubscription.findUnique({
+      where: { branchId },
+    });
     if (!sub) return false;
 
     const now = new Date();
-    if (sub.status === 'TRIAL' && sub.trialEndsAt > now) return true;
-    if (sub.status === 'ACTIVE' && sub.expiresAt && sub.expiresAt > now) return true;
+    if (sub.status === "TRIAL" && sub.trialEndsAt > now) return true;
+    if (sub.status === "ACTIVE" && sub.expiresAt && sub.expiresAt > now)
+      return true;
     return false;
   }
 
   /** Submit M-Pesa code for verification */
-  async submitPayment(branchId: string, mpesaCode: string, senderPhone?: string, smsRaw?: string) {
+  async submitPayment(
+    branchId: string,
+    mpesaCode: string,
+    senderPhone?: string,
+    smsRaw?: string,
+  ) {
     // Get or create subscription
-    let sub = await this.prisma.aiSubscription.findUnique({ where: { branchId } });
+    let sub = await this.prisma.aiSubscription.findUnique({
+      where: { branchId },
+    });
     if (!sub) {
       // Create trial first
       const result = await this.startTrial(branchId);
-      sub = await this.prisma.aiSubscription.findUnique({ where: { branchId } });
+      sub = await this.prisma.aiSubscription.findUnique({
+        where: { branchId },
+      });
     }
 
     // Check for duplicate code
-    const existing = await this.prisma.aiPayment.findUnique({ where: { mpesaCode } });
+    const existing = await this.prisma.aiPayment.findUnique({
+      where: { mpesaCode },
+    });
     if (existing) {
-      throw new HttpException('This M-Pesa code has already been used', HttpStatus.CONFLICT);
+      throw new HttpException(
+        "This M-Pesa code has already been used",
+        HttpStatus.CONFLICT,
+      );
     }
 
     // Validate code format (M-Pesa codes are typically 10 chars, alphanumeric)
     if (mpesaCode.length < 5 || mpesaCode.length > 20) {
-      throw new HttpException('Invalid M-Pesa confirmation code format', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        "Invalid M-Pesa confirmation code format",
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const payment = await this.prisma.aiPayment.create({
       data: {
         subscriptionId: sub.id,
         mpesaCode: mpesaCode.toUpperCase(),
-        amount: 600.00,
+        amount: 600.0,
         senderPhone: senderPhone || null,
         recipientPhone: this.RECIPIENT_PHONE,
         smsRaw: smsRaw || null,
-        status: 'PENDING',
+        status: "PENDING",
         verified: false,
       },
     });
@@ -118,34 +152,51 @@ export class AiBillingService {
     this.logger.log(`Payment submitted: ${mpesaCode} from branch ${branchId}`);
     return {
       success: true,
-      message: 'Payment submitted for verification. It will be processed shortly.',
+      message:
+        "Payment submitted for verification. It will be processed shortly.",
       paymentId: payment.id,
       mpesaCode: payment.mpesaCode,
     };
   }
 
   /** Auto-verify from SMS content (parsed by mobile app) */
-  async verifyFromSms(branchId: string, mpesaCode: string, amount: string, recipient: string) {
+  async verifyFromSms(
+    branchId: string,
+    mpesaCode: string,
+    amount: string,
+    recipient: string,
+  ) {
     // Validate amount
-    const parsedAmount = parseFloat(amount.replace(/[^0-9.]/g, ''));
+    const parsedAmount = parseFloat(amount.replace(/[^0-9.]/g, ""));
     if (parsedAmount < 590 || parsedAmount > 610) {
-      this.logger.warn(`SMS verification failed: amount ${parsedAmount} not ~600`);
-      return { verified: false, reason: 'Amount does not match 600 KES' };
+      this.logger.warn(
+        `SMS verification failed: amount ${parsedAmount} not ~600`,
+      );
+      return { verified: false, reason: "Amount does not match 600 KES" };
     }
 
     // Validate recipient (your number)
-    const cleanRecipient = recipient.replace(/[^0-9]/g, '');
-    const cleanYourNumber = this.RECIPIENT_PHONE.replace(/[^0-9]/g, '');
-    if (!cleanRecipient.includes(cleanYourNumber) && !cleanYourNumber.includes(cleanRecipient)) {
-      this.logger.warn(`SMS verification failed: recipient ${cleanRecipient} != ${cleanYourNumber}`);
-      return { verified: false, reason: 'Recipient number does not match' };
+    const cleanRecipient = recipient.replace(/[^0-9]/g, "");
+    const cleanYourNumber = this.RECIPIENT_PHONE.replace(/[^0-9]/g, "");
+    if (
+      !cleanRecipient.includes(cleanYourNumber) &&
+      !cleanYourNumber.includes(cleanRecipient)
+    ) {
+      this.logger.warn(
+        `SMS verification failed: recipient ${cleanRecipient} != ${cleanYourNumber}`,
+      );
+      return { verified: false, reason: "Recipient number does not match" };
     }
 
     // Get or create subscription
-    let sub = await this.prisma.aiSubscription.findUnique({ where: { branchId } });
+    let sub = await this.prisma.aiSubscription.findUnique({
+      where: { branchId },
+    });
     if (!sub) {
       const result = await this.startTrial(branchId);
-      sub = await this.prisma.aiSubscription.findUnique({ where: { branchId } });
+      sub = await this.prisma.aiSubscription.findUnique({
+        where: { branchId },
+      });
     }
 
     // Check for duplicate code
@@ -153,7 +204,7 @@ export class AiBillingService {
       where: { mpesaCode: mpesaCode.toUpperCase() },
     });
     if (existing) {
-      return { verified: false, reason: 'Code already used' };
+      return { verified: false, reason: "Code already used" };
     }
 
     // Auto-verify and create payment
@@ -163,10 +214,10 @@ export class AiBillingService {
         mpesaCode: mpesaCode.toUpperCase(),
         amount: parsedAmount,
         recipientPhone: this.RECIPIENT_PHONE,
-        status: 'VERIFIED',
+        status: "VERIFIED",
         verified: true,
         verifiedAt: new Date(),
-        verifiedBy: 'auto_sms',
+        verifiedBy: "auto_sms",
       },
     });
 
@@ -178,14 +229,16 @@ export class AiBillingService {
     await this.prisma.aiSubscription.update({
       where: { id: sub.id },
       data: {
-        status: 'ACTIVE',
+        status: "ACTIVE",
         subscribedAt: now,
         expiresAt,
         mpesaPhone: null,
       },
     });
 
-    this.logger.log(`Auto-verified payment ${mpesaCode}, branch ${branchId} active until ${expiresAt.toISOString()}`);
+    this.logger.log(
+      `Auto-verified payment ${mpesaCode}, branch ${branchId} active until ${expiresAt.toISOString()}`,
+    );
     return {
       verified: true,
       expiresAt: expiresAt.toISOString(),
@@ -208,7 +261,7 @@ export class AiBillingService {
           },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
     });
   }
 
@@ -218,7 +271,7 @@ export class AiBillingService {
       where: { slug },
       include: {
         branches: {
-          orderBy: { name: 'asc' },
+          orderBy: { name: "asc" },
           include: {
             aiSubscription: true,
           },
@@ -227,7 +280,7 @@ export class AiBillingService {
     });
 
     if (!client) {
-      throw new HttpException('POS client not found', HttpStatus.NOT_FOUND);
+      throw new HttpException("POS client not found", HttpStatus.NOT_FOUND);
     }
 
     return {
@@ -240,7 +293,9 @@ export class AiBillingService {
         id: b.id,
         name: b.name,
         code: b.code,
-        aiSubscription: b.aiSubscription ? this.formatSubscription(b.aiSubscription) : null,
+        aiSubscription: b.aiSubscription
+          ? this.formatSubscription(b.aiSubscription)
+          : null,
       })),
     };
   }
@@ -260,9 +315,9 @@ export class AiBillingService {
             posClient: true,
           },
         },
-        payments: { take: 5, orderBy: { createdAt: 'desc' } },
+        payments: { take: 5, orderBy: { createdAt: "desc" } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     return subscriptions.map((sub: any) => this.formatSubscription(sub));
@@ -270,7 +325,7 @@ export class AiBillingService {
 
   /** Get pending payments (admin approval queue) */
   async getPendingPayments(clientSlug?: string) {
-    const where: any = { status: 'PENDING' };
+    const where: any = { status: "PENDING" };
     if (clientSlug) {
       where.subscription = { branch: { posClient: { slug: clientSlug } } };
     }
@@ -288,7 +343,7 @@ export class AiBillingService {
           },
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
     });
 
     return payments.map((p: any) => ({
@@ -304,29 +359,36 @@ export class AiBillingService {
   }
 
   /** Admin: approve or reject a payment */
-  async handlePayment(paymentId: string, action: 'approve' | 'reject', notes?: string) {
+  async handlePayment(
+    paymentId: string,
+    action: "approve" | "reject",
+    notes?: string,
+  ) {
     const payment = await this.prisma.aiPayment.findUnique({
       where: { id: paymentId },
       include: { subscription: { include: { branch: true } } },
     });
 
     if (!payment) {
-      throw new HttpException('Payment not found', HttpStatus.NOT_FOUND);
+      throw new HttpException("Payment not found", HttpStatus.NOT_FOUND);
     }
 
-    if (payment.status !== 'PENDING') {
-      throw new HttpException('Payment already processed', HttpStatus.BAD_REQUEST);
+    if (payment.status !== "PENDING") {
+      throw new HttpException(
+        "Payment already processed",
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
-    if (action === 'approve') {
+    if (action === "approve") {
       // Mark payment as verified and activate subscription
       await this.prisma.aiPayment.update({
         where: { id: paymentId },
         data: {
-          status: 'VERIFIED',
+          status: "VERIFIED",
           verified: true,
           verifiedAt: new Date(),
-          verifiedBy: 'admin_manual',
+          verifiedBy: "admin_manual",
           adminNotes: notes || null,
         },
       });
@@ -343,7 +405,7 @@ export class AiBillingService {
         await this.prisma.aiSubscription.update({
           where: { id: sub.id },
           data: {
-            status: 'ACTIVE',
+            status: "ACTIVE",
             subscribedAt: now,
             expiresAt,
           },
@@ -351,27 +413,27 @@ export class AiBillingService {
       }
 
       this.logger.log(`Admin approved payment ${payment.mpesaCode}`);
-      return { success: true, message: 'Payment approved' };
+      return { success: true, message: "Payment approved" };
     } else {
       // Reject
       await this.prisma.aiPayment.update({
         where: { id: paymentId },
         data: {
-          status: 'REJECTED',
+          status: "REJECTED",
           verified: false,
-          verifiedBy: 'admin_manual',
+          verifiedBy: "admin_manual",
           adminNotes: notes || null,
         },
       });
 
       this.logger.log(`Admin rejected payment ${payment.mpesaCode}`);
-      return { success: true, message: 'Payment rejected' };
+      return { success: true, message: "Payment rejected" };
     }
   }
 
   /** Revenue summary */
   async getRevenueSummary(clientSlug?: string) {
-    const where: any = { status: 'VERIFIED' };
+    const where: any = { status: "VERIFIED" };
     if (clientSlug) {
       where.subscription = { branch: { posClient: { slug: clientSlug } } };
     }
@@ -382,16 +444,21 @@ export class AiBillingService {
     });
 
     const total = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const thisMonth = payments.filter(p => {
+    const thisMonth = payments.filter((p) => {
       const d = new Date(p.createdAt);
       const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      return (
+        d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      );
     });
-    const monthlyTotal = thisMonth.reduce((sum, p) => sum + Number(p.amount), 0);
+    const monthlyTotal = thisMonth.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0,
+    );
 
     const activeSubs = await this.prisma.aiSubscription.count({
       where: {
-        status: 'ACTIVE',
+        status: "ACTIVE",
         expiresAt: { gt: new Date() },
         ...(clientSlug ? { branch: { posClient: { slug: clientSlug } } } : {}),
       },
@@ -399,7 +466,7 @@ export class AiBillingService {
 
     const trialSubs = await this.prisma.aiSubscription.count({
       where: {
-        status: 'TRIAL',
+        status: "TRIAL",
         trialEndsAt: { gt: new Date() },
         ...(clientSlug ? { branch: { posClient: { slug: clientSlug } } } : {}),
       },
@@ -421,14 +488,24 @@ export class AiBillingService {
     let daysLeft = 0;
     let statusLabel = sub.status;
 
-    if (sub.status === 'TRIAL') {
-      daysLeft = Math.max(0, Math.ceil((sub.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-      statusLabel = 'TRIAL';
-    } else if (sub.status === 'ACTIVE' && sub.expiresAt) {
-      daysLeft = Math.max(0, Math.ceil((sub.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-      statusLabel = 'ACTIVE';
+    if (sub.status === "TRIAL") {
+      daysLeft = Math.max(
+        0,
+        Math.ceil(
+          (sub.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        ),
+      );
+      statusLabel = "TRIAL";
+    } else if (sub.status === "ACTIVE" && sub.expiresAt) {
+      daysLeft = Math.max(
+        0,
+        Math.ceil(
+          (sub.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        ),
+      );
+      statusLabel = "ACTIVE";
     } else {
-      statusLabel = 'EXPIRED';
+      statusLabel = "EXPIRED";
     }
 
     return {
@@ -443,14 +520,38 @@ export class AiBillingService {
       expiresAt: sub.expiresAt?.toISOString(),
       subscribedAt: sub.subscribedAt?.toISOString(),
       price: Number(sub.price),
-      payments: sub.payments?.map((p: any) => ({
-        id: p.id,
-        mpesaCode: p.mpesaCode,
-        amount: Number(p.amount),
-        status: p.status,
-        verifiedAt: p.verifiedAt?.toISOString(),
-        createdAt: p.createdAt?.toISOString(),
-      })) || [],
+      payments:
+        sub.payments?.map((p: any) => ({
+          id: p.id,
+          mpesaCode: p.mpesaCode,
+          amount: Number(p.amount),
+          status: p.status,
+          verifiedAt: p.verifiedAt?.toISOString(),
+          createdAt: p.createdAt?.toISOString(),
+        })) || [],
+    };
+  }
+
+  private isBillingDisabled(): boolean {
+    return process.env.AI_BILLING_DISABLED !== "false";
+  }
+
+  private freeAccessStatus(branchId: string) {
+    return {
+      id: "included",
+      branchId,
+      branchName: null,
+      branchCode: null,
+      posClient: null,
+      hasSubscription: true,
+      status: "ACTIVE",
+      daysLeft: 3650,
+      trialEndsAt: null,
+      expiresAt: null,
+      subscribedAt: null,
+      price: 0,
+      payments: [],
+      message: "AI is included in this Axon POS release.",
     };
   }
 }

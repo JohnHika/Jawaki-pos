@@ -9,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_client.dart';
@@ -44,7 +45,10 @@ class UpdateSource {
 class AppUpdateInfo {
   const AppUpdateInfo({
     required this.latestVersion,
+    this.releaseName,
+    this.buildNumber,
     required this.minSupportedVersion,
+    this.minSupportedBuildNumber,
     required this.forceUpdate,
     required this.apkUrl,
     required this.releaseNotes,
@@ -63,7 +67,12 @@ class AppUpdateInfo {
 
     return AppUpdateInfo(
       latestVersion: (json['latestVersion'] ?? '').toString(),
+      releaseName: _readOptionalString(json['releaseName']) ??
+          _readOptionalString(json['displayVersion']),
+      buildNumber: _readOptionalInt(json['buildNumber']),
       minSupportedVersion: (json['minSupportedVersion'] ?? '').toString(),
+      minSupportedBuildNumber:
+          _readOptionalInt(json['minSupportedBuildNumber']),
       forceUpdate: json['forceUpdate'] == true,
       apkUrl: (json['apkUrl'] ?? '').toString(),
       releaseNotes: (json['releaseNotes'] ?? '').toString(),
@@ -76,12 +85,36 @@ class AppUpdateInfo {
   }
 
   final String latestVersion;
+  final String? releaseName;
+  final int? buildNumber;
   final String minSupportedVersion;
+  final int? minSupportedBuildNumber;
   final bool forceUpdate;
   final String apkUrl;
   final String releaseNotes;
   final DateTime? publishedAt;
   final List<UpdateSource>? updateSources;
+
+  String get displayVersion {
+    final name = releaseName?.trim();
+    return name == null || name.isEmpty ? latestVersion : name;
+  }
+
+  String get noticeKey {
+    final build = buildNumber;
+    return build == null ? displayVersion : '$displayVersion#$build';
+  }
+
+  static String? _readOptionalString(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  static int? _readOptionalInt(Object? value) {
+    if (value == null) return null;
+    final parsed = int.tryParse(value.toString().trim());
+    return parsed != null && parsed > 0 ? parsed : null;
+  }
 }
 
 class UpdateCheckService extends ChangeNotifier {
@@ -105,6 +138,7 @@ class UpdateCheckService extends ChangeNotifier {
   AppUpdateInfo? _cachedUpdate;
   AppUpdateInfo? _requiredUpdate;
   AppUpdateInfo? _optionalUpdate;
+  AppUpdateInfo? _installedUpdateNotice;
   final Stopwatch _downloadDuration = Stopwatch();
 
   bool get hasOptionalUpdateAvailable => _optionalUpdate != null;
@@ -118,6 +152,7 @@ class UpdateCheckService extends ChangeNotifier {
   String? get downloadedApkPath => _downloadedApkPath;
   AppUpdateInfo? get requiredUpdate => _requiredUpdate;
   AppUpdateInfo? get optionalUpdate => _optionalUpdate;
+  AppUpdateInfo? get installedUpdateNotice => _installedUpdateNotice;
 
   Future<bool> checkForUpdates({
     bool force = false,
@@ -147,7 +182,7 @@ class UpdateCheckService extends ChangeNotifier {
         primaryUpdate = manifest;
         if (!kReleaseMode) {
           debugPrint(
-              '[UpdateCheck] Found primary update from Cloudflare: ${manifest.latestVersion}');
+              '[UpdateCheck] Found primary update from Cloudflare: ${manifest.displayVersion}');
         }
       } catch (error) {
         if (!kReleaseMode) {
@@ -252,6 +287,8 @@ class UpdateCheckService extends ChangeNotifier {
 
             return AppUpdateInfo(
               latestVersion: version,
+              releaseName: 'Axon POS ${_stripBuildSuffix(version)}',
+              buildNumber: _extractBuildNumber(version),
               minSupportedVersion:
                   '0.0.0', // GitHub Packages doesn't support min version
               forceUpdate:
@@ -302,6 +339,67 @@ class UpdateCheckService extends ChangeNotifier {
       currentVersion: currentVersion,
       update: optionalUpdate,
     );
+  }
+
+  Future<void> showInstalledUpdateNoticeIfNeeded(BuildContext context) async {
+    final update = _installedUpdateNotice;
+    if (update == null || update.releaseNotes.trim().isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final noticeKey = update.noticeKey;
+    if (prefs.getString('last_seen_update_notice') == noticeKey) return;
+    if (!context.mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        titlePadding: EdgeInsets.zero,
+        title: Container(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
+          decoration: const BoxDecoration(
+            color: Color(0xFF101828),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: Colors.white),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Your POS just got better',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                update.displayVersion,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Text(update.releaseNotes),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+
+    await prefs.setString('last_seen_update_notice', noticeKey);
   }
 
   Future<void> downloadAndInstallRequiredUpdate() async {
@@ -412,7 +510,7 @@ class UpdateCheckService extends ChangeNotifier {
   Future<File> _downloadApk(AppUpdateInfo update) async {
     final tempDir = await getTemporaryDirectory();
     final safeVersion =
-        update.latestVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        update.displayVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     final filePath = p.join(tempDir.path, 'pos-update-$safeVersion.apk');
     final resolvedUrl = _resolveDownloadUrl(update.apkUrl);
 
@@ -462,14 +560,27 @@ class UpdateCheckService extends ChangeNotifier {
   void _applyManifest(AppUpdateInfo update, String currentVersion) {
     _currentVersion = currentVersion;
 
-    final hasNewerVersion =
-        isNewerAppVersion(update.latestVersion, currentVersion);
-    final belowMinimum =
-        isNewerAppVersion(update.minSupportedVersion, currentVersion);
+    final currentBuildNumber = _currentBuildNumber(currentVersion);
+    final hasNewerVersion = _hasNewerBuildOrVersion(
+      latestBuildNumber: update.buildNumber,
+      currentBuildNumber: currentBuildNumber,
+      latestVersion: update.latestVersion,
+      currentVersion: currentVersion,
+    );
+    final belowMinimum = _isBelowMinimum(
+      minSupportedBuildNumber: update.minSupportedBuildNumber,
+      currentBuildNumber: currentBuildNumber,
+      minSupportedVersion: update.minSupportedVersion,
+      currentVersion: currentVersion,
+    );
     final isRequired = hasNewerVersion && (belowMinimum || update.forceUpdate);
 
     _requiredUpdate = isRequired ? update : null;
     _optionalUpdate = hasNewerVersion && !isRequired ? update : null;
+    _installedUpdateNotice =
+        !hasNewerVersion && _sameBuildOrVersion(update, currentVersion)
+            ? update
+            : null;
 
     if (_requiredUpdate == null) {
       _requiresInstallerPermission = false;
@@ -523,8 +634,9 @@ class UpdateCheckService extends ChangeNotifier {
             children: [
               const Text('A newer POS version is available for this device.'),
               const SizedBox(height: 12),
-              _versionRow('Current', currentVersion, isOld: true),
-              _versionRow('Latest', update.latestVersion, isOld: false),
+              _versionRow('Current', _displayCurrentVersion(currentVersion),
+                  isOld: true),
+              _versionRow('Latest', update.displayVersion, isOld: false),
               if (update.releaseNotes.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 const Text(
@@ -635,7 +747,7 @@ class UpdateCheckService extends ChangeNotifier {
                 children: [
                   LinearProgressIndicator(value: progress),
                   const SizedBox(height: 12),
-                  Text('Version: ${update.latestVersion}'),
+                  Text('Version: ${update.displayVersion}'),
                   const SizedBox(height: 8),
                   Text(
                     'Progress: $progressPercent% ($downloadedMB MB of ~114 MB)',
@@ -718,4 +830,62 @@ class UpdateCheckService extends ChangeNotifier {
   }
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
+
+  int? _currentBuildNumber(String currentVersion) {
+    final plusIndex = currentVersion.indexOf('+');
+    if (plusIndex < 0 || plusIndex == currentVersion.length - 1) return null;
+    return int.tryParse(currentVersion.substring(plusIndex + 1));
+  }
+
+  int? _extractBuildNumber(String version) {
+    final match = RegExp(r'(?:\+|-)(\d+)$').firstMatch(version.trim());
+    return match == null ? null : int.tryParse(match.group(1)!);
+  }
+
+  String _stripBuildSuffix(String version) {
+    return version.trim().replaceFirst(RegExp(r'(?:\+|-)\d+$'), '');
+  }
+
+  bool _hasNewerBuildOrVersion({
+    required int? latestBuildNumber,
+    required int? currentBuildNumber,
+    required String latestVersion,
+    required String currentVersion,
+  }) {
+    if (latestBuildNumber != null && currentBuildNumber != null) {
+      return latestBuildNumber > currentBuildNumber;
+    }
+
+    return isNewerAppVersion(latestVersion, currentVersion);
+  }
+
+  bool _isBelowMinimum({
+    required int? minSupportedBuildNumber,
+    required int? currentBuildNumber,
+    required String minSupportedVersion,
+    required String currentVersion,
+  }) {
+    if (minSupportedBuildNumber != null && currentBuildNumber != null) {
+      return minSupportedBuildNumber > currentBuildNumber;
+    }
+
+    return isNewerAppVersion(minSupportedVersion, currentVersion);
+  }
+
+  bool _sameBuildOrVersion(AppUpdateInfo update, String currentVersion) {
+    final currentBuildNumber = _currentBuildNumber(currentVersion);
+    if (update.buildNumber != null && currentBuildNumber != null) {
+      return update.buildNumber == currentBuildNumber;
+    }
+
+    return !isNewerAppVersion(update.latestVersion, currentVersion) &&
+        !isNewerAppVersion(currentVersion, update.latestVersion);
+  }
+
+  String _displayCurrentVersion(String currentVersion) {
+    final plusIndex = currentVersion.indexOf('+');
+    return plusIndex < 0
+        ? currentVersion
+        : currentVersion.substring(0, plusIndex);
+  }
 }

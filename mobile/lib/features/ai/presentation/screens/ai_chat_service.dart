@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:levisa_adventures_pos/core/database/app_database.dart';
 import 'package:levisa_adventures_pos/core/services/storage_service.dart';
-import 'package:levisa_adventures_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 import 'package:levisa_adventures_pos/core/di/injection.dart';
 
 class AiChatService {
@@ -52,27 +51,6 @@ class AiChatService {
     _messages.add({'role': 'user', 'content': content});
   }
 
-  Future<Map<String, dynamic>> checkSubscriptionStatus() async {
-    final billing = getIt<AiBillingService>();
-    return await billing.getStatus(branchId);
-  }
-
-  Future<bool> canUseAi() async {
-    try {
-      final billing = getIt<AiBillingService>();
-      final result = await billing.getStatus(branchId);
-      final status = result['status'] ?? '';
-      final daysLeft = result['daysLeft'] ?? 0;
-
-      if (status == 'TRIAL') return true;
-      if (status == 'ACTIVE' && daysLeft > 0) return true;
-      return false;
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiChat] Subscription check error: $e');
-      return false;
-    }
-  }
-
   Future<String> sendMessage({
     required String content,
     String context = 'general',
@@ -80,15 +58,6 @@ class AiChatService {
     addUserMessage(content);
 
     try {
-      // Check subscription before sending
-      final canUse = await canUseAi();
-      if (!canUse) {
-        const error =
-            'Your AI subscription has expired. Please subscribe to continue using AI features.';
-        _messages.add({'role': 'assistant', 'content': error});
-        return error;
-      }
-
       final businessContext = _buildBusinessContext();
       final dataContext = await _buildDataContext();
 
@@ -118,11 +87,6 @@ class AiChatService {
         final reply = data['data']['reply'] as String;
         _messages.add({'role': 'assistant', 'content': reply});
         return reply;
-      } else if (response.statusCode == 403) {
-        const error =
-            'Your AI subscription is no longer active. Please subscribe to continue using AI features.';
-        _messages.add({'role': 'assistant', 'content': error});
-        return error;
       } else {
         final error =
             'Sorry, the AI service is unavailable right now. (${response.statusCode})';
