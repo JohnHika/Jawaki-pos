@@ -650,7 +650,71 @@ class UpdateCheckService extends ChangeNotifier {
       },
     );
 
-    await downloadFuture;
+    if (downloadFuture != null) {
+      await downloadFuture;
+    }
+
+    if (!context.mounted) return;
+
+    if (_requiresInstallerPermission) {
+      await _showInstallerPermissionDialog(context);
+    } else if (_errorMessage != null) {
+      await _showUpdateErrorDialog(context);
+    }
+  }
+
+  Future<void> _showInstallerPermissionDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Install Permission Needed'),
+        content: const Text(
+          'Android needs one-time permission before Axon POS can install app updates. '
+          'Enable "Allow from this source", then return to Axon POS and check for updates again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Later'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.settings_applications_rounded),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await openInstallerPermissionSettings();
+            },
+            label: const Text('Enable Permission'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showUpdateErrorDialog(BuildContext context) async {
+    final message = _errorMessage;
+    if (message == null || message.isEmpty) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Update Could Not Continue'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.open_in_new_rounded),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await openDownloadFallback();
+            },
+            label: const Text('Open Download'),
+          ),
+        ],
+      ),
+    );
   }
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
