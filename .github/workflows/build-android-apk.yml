@@ -57,6 +57,35 @@ jobs:
         working-directory: ./mobile
         run: flutter pub get
 
+      - name: Prepare Android release signing
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -z "$ANDROID_KEYSTORE_PASSWORD" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -z "$ANDROID_KEY_ALIAS" ]] && missing+=("ANDROID_KEY_ALIAS")
+          [[ -z "$ANDROID_KEY_PASSWORD" ]] && missing+=("ANDROID_KEY_PASSWORD")
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing Android release signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+          mkdir -p mobile/android/app
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > mobile/android/app/upload-keystore.jks
+          cat > mobile/android/key.properties <<EOF
+          storeFile=app/upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
       - name: Read app version
         id: version
         shell: bash
