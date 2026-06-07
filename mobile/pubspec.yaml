@@ -1,7 +1,7 @@
 name: levisa_adventures_pos
 description: Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 publish_to: 'none'
-version: 1.0.7+2009
+version: 1.0.9+2011
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

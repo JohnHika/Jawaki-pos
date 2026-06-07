@@ -30,7 +30,9 @@ class UpdateSource {
     return UpdateSource(
       name: (json['name'] ?? '').toString(),
       url: (json['url'] ?? '').toString(),
-      priority: (json['priority'] ?? 'primary').toString() == 'primary' ? 'primary' : 'secondary',
+      priority: (json['priority'] ?? 'primary').toString() == 'primary'
+          ? 'primary'
+          : 'secondary',
     );
   }
 
@@ -144,7 +146,8 @@ class UpdateCheckService extends ChangeNotifier {
             AppUpdateInfo.fromJson(await _apiClient.getLatestAndroidUpdate());
         primaryUpdate = manifest;
         if (!kReleaseMode) {
-          debugPrint('[UpdateCheck] Found primary update from Cloudflare: ${manifest.latestVersion}');
+          debugPrint(
+              '[UpdateCheck] Found primary update from Cloudflare: ${manifest.latestVersion}');
         }
       } catch (error) {
         if (!kReleaseMode) {
@@ -153,18 +156,21 @@ class UpdateCheckService extends ChangeNotifier {
       }
 
       // Step 2: Check GitHub Packages (secondary source) if Cloudflare fails or no update found
-      if (primaryUpdate == null || !isNewerAppVersion(primaryUpdate.latestVersion, currentVersion)) {
+      if (primaryUpdate == null ||
+          !isNewerAppVersion(primaryUpdate.latestVersion, currentVersion)) {
         try {
           final githubUpdate = await _getLatestGitHubPackagesUpdate();
           if (githubUpdate != null) {
             secondaryUpdate = githubUpdate;
             if (!kReleaseMode) {
-              debugPrint('[UpdateCheck] Found secondary update from GitHub Packages: ${githubUpdate.latestVersion}');
+              debugPrint(
+                  '[UpdateCheck] Found secondary update from GitHub Packages: ${githubUpdate.latestVersion}');
             }
           }
         } catch (error) {
           if (!kReleaseMode) {
-            debugPrint('[UpdateCheck] GitHub Packages update check failed: $error');
+            debugPrint(
+                '[UpdateCheck] GitHub Packages update check failed: $error');
           }
         }
       }
@@ -201,16 +207,19 @@ class UpdateCheckService extends ChangeNotifier {
     try {
       // Use GitHub API to get the latest release
       final dio = Dio();
-      final response = await dio.get(_githubPackagesReleaseApi, options: Options(
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          if (_githubPackagesTokenEnv.isNotEmpty) 'Authorization': 'token $_githubPackagesTokenEnv',
-        },
-      ));
+      final response = await dio.get(_githubPackagesReleaseApi,
+          options: Options(
+            headers: {
+              'Accept': 'application/vnd.github.v3+json',
+              if (_githubPackagesTokenEnv.isNotEmpty)
+                'Authorization': 'token $_githubPackagesTokenEnv',
+            },
+          ));
 
       if (response.statusCode != 200 || response.data == null) {
         if (!kReleaseMode) {
-          debugPrint('[UpdateCheck] GitHub API returned status ${response.statusCode}');
+          debugPrint(
+              '[UpdateCheck] GitHub API returned status ${response.statusCode}');
         }
         return null;
       }
@@ -232,19 +241,25 @@ class UpdateCheckService extends ChangeNotifier {
           final name = asset['name'] as String?;
           final browserDownloadUrl = asset['browser_download_url'] as String?;
 
-          if (name != null && browserDownloadUrl != null && name.endsWith('.apk')) {
+          if (name != null &&
+              browserDownloadUrl != null &&
+              name.endsWith('.apk')) {
             // Extract version from tag_name (e.g., "v1.0.3+2004" or "1.0.3+2004")
-            final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
+            final version =
+                tagName.startsWith('v') ? tagName.substring(1) : tagName;
 
             final apkUrl = _resolveGitHubPackagesApkUrl(browserDownloadUrl);
 
             return AppUpdateInfo(
               latestVersion: version,
-              minSupportedVersion: '0.0.0', // GitHub Packages doesn't support min version
-              forceUpdate: false, // GitHub Packages always allows optional updates
+              minSupportedVersion:
+                  '0.0.0', // GitHub Packages doesn't support min version
+              forceUpdate:
+                  false, // GitHub Packages always allows optional updates
               apkUrl: apkUrl,
               releaseNotes: body?.trim() ?? '',
-              publishedAt: publishedAt != null ? DateTime.parse(publishedAt) : null,
+              publishedAt:
+                  publishedAt != null ? DateTime.parse(publishedAt) : null,
             );
           }
         }
@@ -256,7 +271,8 @@ class UpdateCheckService extends ChangeNotifier {
       return null;
     } catch (error) {
       if (!kReleaseMode) {
-        debugPrint('[UpdateCheck] Error fetching GitHub Packages update: $error');
+        debugPrint(
+            '[UpdateCheck] Error fetching GitHub Packages update: $error');
       }
       return null;
     }
@@ -310,7 +326,8 @@ class UpdateCheckService extends ChangeNotifier {
   Future<void> openDownloadFallback() async {
     final update = _requiredUpdate ?? _optionalUpdate;
     if (update == null || update.apkUrl.trim().isEmpty) {
-      _errorMessage = 'No fallback download link is configured for this update.';
+      _errorMessage =
+          'No fallback download link is configured for this update.';
       notifyListeners();
       return;
     }
@@ -446,9 +463,9 @@ class UpdateCheckService extends ChangeNotifier {
     _currentVersion = currentVersion;
 
     final hasNewerVersion =
-      isNewerAppVersion(update.latestVersion, currentVersion);
+        isNewerAppVersion(update.latestVersion, currentVersion);
     final belowMinimum =
-      isNewerAppVersion(update.minSupportedVersion, currentVersion);
+        isNewerAppVersion(update.minSupportedVersion, currentVersion);
     final isRequired = hasNewerVersion && (belowMinimum || update.forceUpdate);
 
     _requiredUpdate = isRequired ? update : null;
@@ -483,6 +500,7 @@ class UpdateCheckService extends ChangeNotifier {
     final normalizedPath = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
     return origin.resolve(normalizedPath).toString();
   }
+
   Future<void> _showOptionalUpdateDialog({
     required BuildContext context,
     required String currentVersion,
@@ -531,7 +549,8 @@ class UpdateCheckService extends ChangeNotifier {
             icon: const Icon(Icons.download),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await _showDownloadProgressDialog(ctx, update);
+              if (!context.mounted) return;
+              await _showDownloadProgressDialog(context, update);
             },
             label: const Text('Download Update'),
           ),
@@ -562,10 +581,23 @@ class UpdateCheckService extends ChangeNotifier {
     BuildContext context,
     AppUpdateInfo update,
   ) async {
+    var started = false;
+    Future<void>? downloadFuture;
+
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
+        if (!started) {
+          started = true;
+          downloadFuture = Future<void>.microtask(() async {
+            await _downloadAndInstall(update);
+            if (ctx.mounted) {
+              Navigator.of(ctx).pop();
+            }
+          });
+        }
+
         return AlertDialog(
           title: const Row(
             children: [
@@ -585,11 +617,16 @@ class UpdateCheckService extends ChangeNotifier {
             ),
             builder: (context, snapshot) {
               final progress = snapshot.data ?? 0;
-              final progressPercent = (progress * 100).clamp(0, 100).toStringAsFixed(0);
-              final downloadedMB = (progress * 114).toStringAsFixed(1); // ~114MB APK
+              final progressPercent =
+                  (progress * 100).clamp(0, 100).toStringAsFixed(0);
+              final downloadedMB =
+                  (progress * 114).toStringAsFixed(1); // ~114MB APK
               final elapsedSeconds = _downloadDuration.elapsed.inSeconds;
               final speedKBps = _isDownloading && elapsedSeconds > 0
-                  ? (progress > 0 ? (progress * 114 * 1024 / elapsedSeconds).toStringAsFixed(0) : '0')
+                  ? (progress > 0
+                      ? (progress * 114 * 1024 / elapsedSeconds)
+                          .toStringAsFixed(0)
+                      : '0')
                   : '0';
 
               return Column(
@@ -600,7 +637,9 @@ class UpdateCheckService extends ChangeNotifier {
                   const SizedBox(height: 12),
                   Text('Version: ${update.latestVersion}'),
                   const SizedBox(height: 8),
-                  Text('Progress: $progressPercent% ($downloadedMB MB of ~114 MB)'),
+                  Text(
+                    'Progress: $progressPercent% ($downloadedMB MB of ~114 MB)',
+                  ),
                   const SizedBox(height: 4),
                   Text('Speed: $speedKBps KB/s'),
                 ],
@@ -611,7 +650,7 @@ class UpdateCheckService extends ChangeNotifier {
       },
     );
 
-    await _downloadAndInstall(update);
+    await downloadFuture;
   }
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
