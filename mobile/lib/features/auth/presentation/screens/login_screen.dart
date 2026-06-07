@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:axon_pos/core/di/injection.dart';
-import 'package:axon_pos/core/network/api_client.dart';
-import 'package:axon_pos/core/theme/design_system.dart';
-import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
+import 'package:levisa_adventures_pos/core/di/injection.dart';
+import 'package:levisa_adventures_pos/core/network/api_client.dart';
+import 'package:levisa_adventures_pos/core/theme/design_system.dart';
+import 'package:levisa_adventures_pos/features/auth/presentation/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});

@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:axon_pos/features/clients/data/models/branch.dart';
-import 'package:axon_pos/features/clients/data/models/pos_client.dart';
+import 'package:levisa_adventures_pos/features/clients/data/models/branch.dart';
+import 'package:levisa_adventures_pos/features/clients/data/models/pos_client.dart';
 
 /// Client List Provider - Manages the list of POS clients
 final clientsProvider = StateNotifierProvider<ClientsNotifier, List<PosClient>>((ref) {
