@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
 import 'package:levisa_adventures_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 
 class AiTrialScreen extends StatefulWidget {
@@ -60,7 +59,7 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: primary.withOpacity(0.1),
+                    color: primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.auto_awesome, size: 48, color: primary),
@@ -68,11 +67,11 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                 const SizedBox(height: 24),
 
                 Text(
-                  'Levisa AI Assistant',
+                  'Axon AI Assistant',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: textPrimary,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: textPrimary,
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
@@ -80,9 +79,9 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                 Text(
                   'Get instant insights, product recommendations, and business analytics powered by AI.',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: textSecondary,
-                    height: 1.5,
-                  ),
+                        color: textSecondary,
+                        height: 1.5,
+                      ),
                   textAlign: TextAlign.center,
                 ).animate().fadeIn(delay: 200.ms),
                 const SizedBox(height: 32),
@@ -115,7 +114,7 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                   decoration: BoxDecoration(
                     color: surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: primary.withOpacity(0.3)),
+                    border: Border.all(color: primary.withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     children: [
@@ -146,7 +145,7 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                         child: ElevatedButton.icon(
                           onPressed: _isLoading ? null : _startTrial,
                           icon: _isLoading
-                              ? SizedBox(
+                              ? const SizedBox(
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
@@ -155,7 +154,8 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                                   ),
                                 )
                               : const Icon(Icons.rocket_launch),
-                          label: Text(_isLoading ? 'Starting...' : 'Start Free Trial'),
+                          label: Text(
+                              _isLoading ? 'Starting...' : 'Start Free Trial'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: primary,
                             foregroundColor: Colors.white,
@@ -167,11 +167,13 @@ class _AiTrialScreenState extends State<AiTrialScreen> {
                       ),
                     ],
                   ),
-                ).animate().slideY(begin: 0.3, duration: 500.ms, curve: Curves.easeOut),
+                ).animate().slideY(
+                    begin: 0.3, duration: 500.ms, curve: Curves.easeOut),
 
                 if (_error != null) ...[
                   const SizedBox(height: 16),
-                  Text(_error!, style: TextStyle(color: Colors.red, fontSize: 13)),
+                  Text(_error!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13)),
                 ],
 
                 const SizedBox(height: 16),
@@ -214,7 +216,7 @@ class _FeatureTile extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: primary.withOpacity(0.1),
+              color: primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: primary, size: 22),
@@ -224,8 +226,13 @@ class _FeatureTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: textPrimary)),
-                Text(subtitle, style: TextStyle(color: textSecondary, fontSize: 13)),
+                Text(title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: textPrimary)),
+                Text(subtitle,
+                    style: TextStyle(color: textSecondary, fontSize: 13)),
               ],
             ),
           ),

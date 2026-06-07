@@ -79,10 +79,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                  color: isDark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder,
                   width: 0.5,
                 ),
               ),
@@ -117,7 +120,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     ),
                     const SizedBox(width: 12),
                     const Text(
-                      'Levisa AI',
+                      'Axon AI',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -145,7 +148,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 ? _buildWelcomeScreen()
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     itemCount: messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index == messages.length) {
@@ -191,17 +195,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 color: DesignColors.brand.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.auto_awesome, size: 40, color: DesignColors.brand),
+              child: const Icon(Icons.auto_awesome,
+                  size: 40, color: DesignColors.brand),
             ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
             const SizedBox(height: 20),
             Text(
-              'Levisa AI Assistant',
+              'Axon AI Assistant',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ).animate().fadeIn(delay: 200.ms),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Your intelligent business companion.\nAsk me anything about your sales, inventory, and customers.',
               textAlign: TextAlign.center,
               style: TextStyle(color: DesignColors.textSecondary, fontSize: 14),
@@ -254,8 +259,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: 0.3),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               textInputAction: TextInputAction.send,
               onSubmitted: _sendMessage,
@@ -274,7 +283,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     ),
                   )
                 : IconButton(
-                    icon: const Icon(Icons.send_rounded, color: DesignColors.brand),
+                    icon: const Icon(Icons.send_rounded,
+                        color: DesignColors.brand),
                     onPressed: () => _sendMessage(_controller.text),
                   ),
           ),
@@ -295,14 +305,16 @@ class _ChatBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
             CircleAvatar(
               radius: 16,
               backgroundColor: DesignColors.brand.withValues(alpha: 0.15),
-              child: const Icon(Icons.auto_awesome, size: 16, color: DesignColors.brand),
+              child: const Icon(Icons.auto_awesome,
+                  size: 16, color: DesignColors.brand),
             ),
             const SizedBox(width: 8),
           ],
@@ -312,7 +324,10 @@ class _ChatBubble extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isUser
                     ? DesignColors.brand.withValues(alpha: 0.1)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    : Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.5),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -343,7 +358,9 @@ class _ChatBubble extends StatelessWidget {
             child: RichText(
               text: TextSpan(
                 style: TextStyle(
-                  color: isUser ? DesignColors.textPrimary : DesignColors.textPrimary,
+                  color: isUser
+                      ? DesignColors.textPrimary
+                      : DesignColors.textPrimary,
                   fontSize: 14,
                   height: 1.5,
                 ),
@@ -361,13 +378,16 @@ class _ChatBubble extends StatelessWidget {
           );
         }
         // Bullet points
-        if (line.trimLeft().startsWith('•') || line.trimLeft().startsWith('-')) {
+        if (line.trimLeft().startsWith('•') ||
+            line.trimLeft().startsWith('-')) {
           return Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 2),
             child: Text(
               line,
               style: TextStyle(
-                color: isUser ? DesignColors.textPrimary : DesignColors.textPrimary,
+                color: isUser
+                    ? DesignColors.textPrimary
+                    : DesignColors.textPrimary,
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -379,7 +399,8 @@ class _ChatBubble extends StatelessWidget {
           child: Text(
             line.isEmpty ? ' ' : line,
             style: TextStyle(
-              color: isUser ? DesignColors.textPrimary : DesignColors.textPrimary,
+              color:
+                  isUser ? DesignColors.textPrimary : DesignColors.textPrimary,
               fontSize: 14,
               height: 1.5,
             ),
@@ -421,7 +442,10 @@ class _TypingIndicatorState extends State<_TypingIndicator>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.5),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(4),
           topRight: Radius.circular(16),
@@ -437,7 +461,8 @@ class _TypingIndicatorState extends State<_TypingIndicator>
             children: List.generate(3, (i) {
               final delay = i * 0.2;
               final value = (_controller.value - delay).clamp(0.0, 1.0);
-              final opacity = (value < 0.5 ? value * 2 : 2 - value * 2).clamp(0.2, 1.0);
+              final opacity =
+                  (value < 0.5 ? value * 2 : 2 - value * 2).clamp(0.2, 1.0);
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Opacity(

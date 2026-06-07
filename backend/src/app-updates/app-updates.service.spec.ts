@@ -60,6 +60,18 @@ describe('AppUpdatesService', () => {
       apkUrl: 'https://pub.example.r2.dev/releases/1.0.4/app-release.apk',
       releaseNotes: 'Published from R2',
       publishedAt: '2026-06-03T08:30:00Z',
+      updateSources: [
+        {
+          name: 'Cloudflare R2',
+          url: 'https://pub.example.r2.dev/android/latest.json',
+          priority: 'primary',
+        },
+        {
+          name: 'GitHub Packages',
+          url: 'https://github.com/JohnHika/Jawaki-pos/releases',
+          priority: 'secondary',
+        },
+      ],
     });
   });
 
@@ -85,6 +97,13 @@ describe('AppUpdatesService', () => {
       apkUrl: 'https://downloads.example.com/app-release.apk',
       releaseNotes: 'Fallback after remote error',
       publishedAt: null,
+      updateSources: [
+        {
+          name: 'Cloudflare R2',
+          url: 'https://pub.example.r2.dev/android/latest.json',
+          priority: 'primary',
+        },
+      ],
     });
   });
 });

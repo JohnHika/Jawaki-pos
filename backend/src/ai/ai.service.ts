@@ -1,61 +1,78 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatRequestDto } from './dto/chat.dto';
+import { ChatMessageDto, ChatRequestDto } from './dto/chat.dto';
+
+type NvidiaRole = 'system' | 'user' | 'assistant';
 
 interface NvidiaMessage {
-  role: string;
+  role: NvidiaRole;
   content: string;
 }
 
 interface NvidiaResponse {
   choices?: Array<{
-    message?: { content: string };
+    message?: { content?: string };
   }>;
-  error?: { message: string };
+  error?: { message?: string };
+}
+
+interface BusinessResponse {
+  summary: string;
+  key_insights: string[];
+  problems_detected: Array<{
+    problem: string;
+    impact: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+  recommended_actions: Array<{
+    action: string;
+    reason: string;
+    expected_result: string;
+  }>;
+  growth_opportunities: string[];
+  follow_up_questions: string[];
 }
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly apiKey: string;
-  private readonly baseUrl = 'https://integrate.api.nvidia.com/v1';
+  private readonly baseUrl: string;
   private model: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(private readonly configService: ConfigService) {
     this.apiKey = this.configService.get<string>('NVIDIA_API_KEY') || '';
-    this.model = this.configService.get<string>('NVIDIA_MODEL') || 'nvidia/llama-3.1-nemotron-70b-instruct';
+    this.baseUrl =
+      this.configService.get<string>('NVIDIA_API_BASE_URL') ||
+      'https://integrate.api.nvidia.com/v1';
+    this.model =
+      this.configService.get<string>('NVIDIA_MODEL') ||
+      'nvidia/llama-3.1-nemotron-70b-instruct';
 
     if (!this.apiKey) {
-      this.logger.warn('NVIDIA_API_KEY not set — AI endpoints will return mock responses');
+      this.logger.warn('NVIDIA_API_KEY not set - AI endpoints will use local business responses');
     }
   }
 
   async chat(dto: ChatRequestDto): Promise<{ reply: string; model: string }> {
-    // If no API key configured, return a helpful mock response
+    const normalized = this.normalizeRequest(dto);
+
     if (!this.apiKey) {
-      return this.mockResponse(dto);
+      return this.localBusinessResponse(normalized, 'local-business-ai');
     }
 
     try {
-      const systemPrompt = this.buildSystemPrompt(dto.context, dto.includeData);
-      const messages: NvidiaMessage[] = [
-        { role: 'system', content: systemPrompt },
-        ...dto.messages.map(m => ({ role: m.role, content: m.content })),
-      ];
-
-      // Try NVIDIA's chat completions endpoint
-      // Note: NVIDIA API structure may differ from standard OpenAI format
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
           model: this.model,
-          messages,
-          temperature: 0.7,
-          max_tokens: 1024,
+          messages: this.buildMessages(normalized),
+          temperature: 0.45,
+          max_tokens: 1100,
           top_p: 0.9,
           stream: false,
         }),
@@ -68,45 +85,41 @@ export class AiService {
         if (response.status === 401 || response.status === 403) {
           throw new HttpException('AI service authentication failed', HttpStatus.SERVICE_UNAVAILABLE);
         }
+
         if (response.status === 429) {
-          throw new HttpException('AI rate limit exceeded — please try again shortly', HttpStatus.TOO_MANY_REQUESTS);
+          throw new HttpException('AI rate limit exceeded. Please try again shortly.', HttpStatus.TOO_MANY_REQUESTS);
         }
-        if (response.status === 404) {
-          // NVIDIA API endpoint not found - fall back to mock response
-          this.logger.warn('NVIDIA chat endpoint not found - using enhanced mock response');
-          return this.enhancedMockResponse(dto, this.model);
-        }
-        throw new HttpException('AI service temporarily unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+
+        return this.localBusinessResponse(normalized, `${this.model} fallback`);
       }
 
-      const data: NvidiaResponse = await response.json();
-
+      const data = (await response.json()) as NvidiaResponse;
       if (data.error) {
-        this.logger.error(`NVIDIA API returned error: ${data.error.message}`);
-        throw new HttpException('AI processing error', HttpStatus.INTERNAL_SERVER_ERROR);
+        this.logger.error(`NVIDIA API returned error: ${data.error.message || 'unknown error'}`);
+        return this.localBusinessResponse(normalized, `${this.model} fallback`);
       }
 
-      const reply = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+      const reply = data.choices?.[0]?.message?.content?.trim();
+      if (!reply) {
+        return this.localBusinessResponse(normalized, `${this.model} fallback`);
+      }
 
       return { reply, model: this.model };
-
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      this.logger.error(`AI chat error: ${error}`);
-      throw new HttpException('AI service error', HttpStatus.INTERNAL_SERVER_ERROR);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      this.logger.error(`AI chat error: ${error instanceof Error ? error.message : String(error)}`);
+      return this.localBusinessResponse(normalized, `${this.model} fallback`);
     }
   }
 
-  /**
-   * List available NVIDIA AI models
-   * Requires NVIDIA_API_KEY to be configured
-   */
   async listAvailableModels(): Promise<{ models: string[]; currentModel: string }> {
     if (!this.apiKey) {
-      this.logger.warn('NVIDIA_API_KEY not set — cannot list available models');
       return {
         models: [this.model],
-        currentModel: this.model
+        currentModel: this.model,
       };
     }
 
@@ -115,189 +128,331 @@ export class AiService {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
       });
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        this.logger.error(`NVIDIA models API error: ${response.status} - ${errorBody}`);
-        return {
-          models: [this.model],
-          currentModel: this.model
-        };
+        this.logger.warn(`NVIDIA models request failed with ${response.status}`);
+        return { models: [this.model], currentModel: this.model };
       }
 
       const data = await response.json();
-      const models = data.data?.map((m: any) => m.id) || [];
+      const models = Array.isArray(data?.data)
+        ? data.data.map((model: { id?: string }) => model.id).filter(Boolean)
+        : [];
 
       return {
-        models,
-        currentModel: this.model
+        models: models.length > 0 ? models : [this.model],
+        currentModel: this.model,
       };
-
     } catch (error) {
-      this.logger.error(`Failed to fetch NVIDIA models: ${error}`);
-      return {
-        models: [this.model],
-        currentModel: this.model
-      };
+      this.logger.error(`Failed to fetch NVIDIA models: ${error instanceof Error ? error.message : String(error)}`);
+      return { models: [this.model], currentModel: this.model };
     }
   }
 
-  /**
-   * Set the current AI model
-   */
   setCurrentModel(model: string): void {
-    this.model = model;
-    this.logger.log(`AI model set to: ${model}`);
-  }
-
-  /**
-   * Returns an enhanced mock response with detailed business insights
-   * Used when API key is set but endpoint is not available
-   */
-  private enhancedMockResponse(dto: ChatRequestDto, model: string): { reply: string; model: string } {
-    const lastMessage = dto.messages[dto.messages.length - 1]?.content?.toLowerCase() || '';
-    const context = dto.context || 'general business advice';
-
-    let reply: string;
-
-    if (lastMessage.includes('sales') || lastMessage.includes('revenue')) {
-      reply = `📊 **Axon POS Sales Strategies for Kenyan Retail Stores**
-
-Based on ${context}, here are data-driven strategies:
-
-**Top 5 Strategies:**
-1. **Bundle Products**: Combine fast-moving items with slower ones (e.g., bread + margarine)
-2. **Peak Hour Promotions**: Run discounts during 10 AM-2 PM and 5 PM-8 PM when traffic is highest
-3. **Loyalty Programs**: Offer points for every KES 100 spent - customers redeem for discounts
-4. **Mobile Money Integration**: Accept M-Pesa, Airtel Money, and T-Kash for convenience
-5. **Weekend Specials**: Increase prices slightly on Saturdays when demand is 20-30% higher
-
-**Axon POS Tip**: Use the built-in sales analytics to identify your top 10 products and create targeted promotions for them.
-
-**Example**: If you sell 50 loaves of bread daily at KES 60 each, bundling with margarine (KES 80) at KES 130 saves customers KES 10 and increases your average sale by 8.3%.
-
-Would you like me to analyze your specific sales data from Axon POS?`;
-
-    } else if (lastMessage.includes('stock') || lastMessage.includes('inventory')) {
-      reply = `📦 **Axon POS Inventory Optimization**
-
-**Critical Strategies for ${context}:**
-1. **ABC Analysis**: Classify items by revenue (A=70%, B=20%, C=10%) and focus on A items
-2. **Reorder Points**: Set automatic alerts at 30% remaining stock for top sellers
-3. **Supplier Lead Times**: Track and add 2-day buffer to avoid stockouts
-4. **FIFO Method**: Always sell older stock first (critical for perishables)
-5. **Dead Stock Review**: Monthly audit of items not sold in 30+ days
-
-**Axon POS Feature**: Use the low-stock alerts in Inventory > Reports to automatically notify you when popular items need reordering.
-
-**Pro Tip**: For a retail store with KES 50,000 monthly revenue, proper inventory management can reduce waste by 12-18% and increase cash flow by KES 6,000-9,000/month.
-
-Need me to generate a specific inventory report from your Axon POS data?`;
-
-    } else if (lastMessage.includes('customer') || lastMessage.includes('client')) {
-      reply = `👥 **Axon POS Customer Insights & Retention**
-
-**Key Strategies for ${context}:**
-1. **Customer Database**: Collect phone numbers at checkout (offer KES 10 discount for sign-up)
-2. **SMS Marketing**: Send weekly promotions via bulk SMS (92% open rate in Kenya)
-3. **Loyalty Points**: 1 point per KES 50 spent = 10% discount after 500 points
-4. **Purchase History**: "Customers who bought X also buy Y" recommendations
-5. **Birthday Offers**: Free item on their birthday month
-
-**Axon POS Data Insight**: Your top 20% of customers typically generate 65-75% of revenue. Focus retention efforts on them.
-
-**Action Item**: Run the Customer > Purchase History report in Axon POS to identify your VIP customers and create personalized offers.
-
-Would you like me to generate a customer segmentation analysis?`;
-
-    } else if (lastMessage.includes('price') || lastMessage.includes('profit')) {
-      reply = `💰 **Axon POS Pricing & Profit Optimization**
-
-**Optimal Strategy for ${context}:**
-1. **Keystone Pricing**: Standard markup of 40-50% on cost price
-2. **Psychological Pricing**: KES 99 instead of KES 100 increases sales by 8-12%
-3. **Bundle Pricing**: "Buy 2 get 10% off" increases average transaction value
-4. **Seasonal Adjustments**: Increase prices by 5-8% during peak seasons
-5. **Loss Leader Strategy**: Sell essentials at cost to attract customers who buy higher-margin items
-
-**Profit Calculation Example**:
-- Cost price: KES 80
-- Selling price: KES 120 (50% markup)
-- Gross profit: KES 40 per unit
-- If you sell 30 units/day: KES 1,200 daily profit
-
-**Axon POS Tip**: Run the Profit Margin report weekly to identify your 5 most and least profitable items.
-
-**Question**: Would you like me to calculate optimal pricing for your top 5 products based on your cost data in Axon POS?`;
-
-    } else {
-      reply = `👋 Hi! I'm **Axon POS AI** — your intelligent business assistant.
-
-**I can help with:**
-📊 **Sales Analysis**: "What were my top products last week?"
-📦 **Inventory Management**: "Which items are running low?"
-👥 **Customer Insights**: "Who are my most valuable customers?"
-💰 **Profit Optimization**: "How should I price this product?"
-📈 **Business Growth**: "What strategies increase revenue?"
-
-**Popular Questions**:
-- "What sold best yesterday?"
-- "Which items have lowest profit margins?"
-- "Who are my top 5 customers this month?"
-- "What's the optimal reorder quantity for product X?"
-
-**Current AI Model**: ${model}
-**Status**: Connected and ready for analysis
-
-What would you like me to analyze or explain about your business today?`;
+    if (!model?.trim()) {
+      throw new HttpException('Model is required', HttpStatus.BAD_REQUEST);
     }
 
-    return { reply, model: 'mock (API endpoint adjustment needed)' };
-
+    this.model = model.trim();
+    this.logger.log(`AI model set to: ${this.model}`);
   }
 
-  /**
-   * Returns a mock response when no API key is configured.
-   * Useful for development and demos.
-   */
-  private mockResponse(dto: ChatRequestDto): { reply: string; model: string } {
-    const lastMessage = dto.messages[dto.messages.length - 1]?.content?.toLowerCase() || '';
+  getCurrentModel(): string {
+    return this.model;
+  }
 
-    let reply: string;
+  private normalizeRequest(dto: ChatRequestDto): ChatRequestDto {
+    const messages = Array.isArray(dto.messages) ? dto.messages : [];
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    const userQuestion = dto.user_question?.trim() || lastUserMessage?.content?.trim() || '';
 
-    if (lastMessage.includes('sales') || lastMessage.includes('revenue')) {
-      reply = `📊 **Sales Insights**\n\nBased on typical POS patterns, here are some insights:\n\n• **Best performing items** tend to be fast-moving consumer goods\n• **Peak hours** are usually 10 AM - 2 PM and 5 PM - 8 PM\n• **Weekend sales** typically increase by 15-25%\n\n> 💡 *Connect your NVIDIA API key for real-time insights from your actual data!*\n\nTo get live AI analysis, add your NVIDIA API key in the backend configuration.`;
-    } else if (lastMessage.includes('stock') || lastMessage.includes('inventory')) {
-      reply = `📦 **Inventory Tips**\n\n• Set **low-stock alerts** for your top 20 products\n• Review stock levels every morning before opening\n• Track supplier lead times to avoid stockouts\n• Use **FIFO** (first-in-first-out) for perishable goods\n\n> 💡 *With real AI, I can predict exactly which items will run out and when!*`;
-    } else if (lastMessage.includes('customer') || lastMessage.includes('client')) {
-      reply = `👥 **Customer Insights**\n\n• **Loyal customers** typically account for 30% of revenue\n• Collect phone numbers for SMS marketing\n• Offer loyalty points or discounts to repeat buyers\n• Track what each customer buys most often\n\n> 💡 *Live AI can analyze customer patterns and suggest personalized offers!*`;
-    } else if (lastMessage.includes('price') || lastMessage.includes('profit')) {
-      reply = `💰 **Pricing & Profit**\n\n• Aim for **30-50% markup** on most products\n• Review pricing monthly based on supplier costs\n• Bundle slow-moving items with popular ones\n• Track profit margins per product category\n\n> 💡 *With AI, I can suggest optimal pricing for every product based on demand!*`;
+    return {
+      ...dto,
+      messages,
+      user_question: userQuestion,
+      context: dto.context || 'general',
+      includeData: dto.includeData ?? Boolean(dto.data_context),
+      ai_task: dto.ai_task || 'analyze_and_recommend',
+      response_style: dto.response_style || 'actionable_partner',
+    };
+  }
+
+  private buildMessages(dto: ChatRequestDto): NvidiaMessage[] {
+    const messages: NvidiaMessage[] = [
+      {
+        role: 'system',
+        content: this.buildSystemPrompt(dto),
+      },
+    ];
+
+    const conversation = (dto.messages || [])
+      .filter((message) => Boolean(message?.content))
+      .map((message) => this.toNvidiaMessage(message));
+
+    if (conversation.length > 0) {
+      messages.push(...conversation);
     } else {
-      reply = `👋 Hi! I'm **POS AI** — your POS business assistant.\n\nI can help you with:\n• 📊 **Sales analysis** — "What sold best today?"\n• 📦 **Inventory tips** — "Which items are running low?"\n• 👥 **Customer insights** — "Who are my top customers?"\n• 💰 **Pricing advice** — "How should I price this product?"\n\n> 💡 *Connect your NVIDIA API key for full AI power with real-time data analysis!*\n\n*This is a demo response. Live AI is available once the API key is configured.*`;
+      messages.push({
+        role: 'user',
+        content: this.buildStructuredUserMessage(dto),
+      });
     }
 
-    return { reply, model: 'mock (no API key configured)' };
+    if (dto.data_context || dto.business_context) {
+      messages.push({
+        role: 'user',
+        content: this.buildStructuredUserMessage(dto),
+      });
+    }
+
+    return messages;
   }
 
-  private buildSystemPrompt(context?: string, includeData?: boolean): string {
-    const base = `You are Axon POS AI, an intelligent business assistant for the Axon POS (Point of Sale) system by Arche Axon Intelligence. You help retail stores in Kenya manage their businesses.
+  private toNvidiaMessage(message: ChatMessageDto): NvidiaMessage {
+    const role = ['system', 'user', 'assistant'].includes(message.role)
+      ? (message.role as NvidiaRole)
+      : 'user';
 
-Your role:
-- Help store owners analyze sales, inventory, and customer data
-- Provide actionable business insights for Axon POS users
-- Answer questions about running a retail business
-- Be concise, practical, and use simple language
-- Suggest ways to increase profit and reduce waste
+    return {
+      role,
+      content: message.content,
+    };
+  }
 
-Context: ${context || 'general business advice'}
-${includeData ? 'Real-time store data from Axon POS will be included in follow-up messages.' : ''}
+  private buildStructuredUserMessage(dto: ChatRequestDto): string {
+    const parts = [`Question: ${dto.user_question || 'Analyze my business and recommend next steps.'}`];
 
-Keep responses under 500 words. Use bullet points for clarity. Format currency as KES.`;
+    if (dto.business_context) {
+      parts.push(`Business context: ${JSON.stringify(dto.business_context)}`);
+    }
 
-    return base;
+    if (dto.data_context) {
+      parts.push(`Available POS data: ${JSON.stringify(dto.data_context)}`);
+    }
+
+    return parts.join('\n');
+  }
+
+  private buildSystemPrompt(dto: ChatRequestDto): string {
+    const styleInstruction =
+      dto.response_style === 'detailed_report'
+        ? 'Give enough detail for an owner to act without needing another report.'
+        : dto.response_style === 'concise'
+          ? 'Keep the answer short and focused.'
+          : 'Be specific, practical, and action-oriented.';
+
+    return `You are Axon POS AI, a business growth partner for POS users in Kenya.
+
+Analyze sales, inventory, customers, staff activity, expenses, and branch performance. Detect risks and opportunities, then recommend specific next steps with expected business impact.
+
+Response rules:
+- Use plain business language.
+- Format currency as KES.
+- Prefer concrete recommendations over generic advice.
+- If POS data is provided, base the answer on that data.
+- If data is missing, say what data would improve the answer and still provide useful guidance.
+- ${styleInstruction}
+
+Current context: ${dto.context || 'general'}
+AI task: ${dto.ai_task || 'analyze_and_recommend'}
+Real POS data included: ${dto.includeData ? 'yes' : 'no'}`;
+  }
+
+  private localBusinessResponse(dto: ChatRequestDto, model: string): { reply: string; model: string } {
+    const response = this.buildLocalBusinessAnalysis(dto);
+    const reply = this.formatBusinessResponse(response);
+
+    return { reply, model };
+  }
+
+  private buildLocalBusinessAnalysis(dto: ChatRequestDto): BusinessResponse {
+    const question = (dto.user_question || '').toLowerCase();
+    const data = dto.data_context || {};
+    const business = dto.business_context || {};
+    const branch = business.branch || dto.storeId || 'this branch';
+    const totalSales = this.toNumber(data.total_sales ?? data.sales?.total_sales);
+    const transactions = this.toNumber(data.transactions ?? data.sales?.transactions);
+    const topProducts = this.toArray(data.top_products ?? data.sales?.top_products);
+    const lowStockItems = this.toArray(data.low_stock_items ?? data.inventory?.low_stock_items);
+    const slowMovingItems = this.toArray(data.slow_moving_items ?? data.inventory?.slow_moving_items);
+
+    const averageBasket = totalSales && transactions ? Math.round(totalSales / transactions) : undefined;
+    const focus = this.detectFocus(question, dto.context);
+
+    const keyInsights: string[] = [];
+    const problems: BusinessResponse['problems_detected'] = [];
+    const actions: BusinessResponse['recommended_actions'] = [];
+    const growth: string[] = [];
+
+    if (totalSales) {
+      keyInsights.push(`${branch} has recorded KES ${totalSales.toLocaleString('en-KE')} in sales for the selected period.`);
+    }
+
+    if (averageBasket) {
+      keyInsights.push(`Average transaction value is about KES ${averageBasket.toLocaleString('en-KE')}.`);
+    }
+
+    if (topProducts.length > 0) {
+      const names = topProducts.slice(0, 3).map((item) => item.name || item.productName || 'Unnamed product').join(', ');
+      keyInsights.push(`Top moving products are ${names}.`);
+    }
+
+    if (lowStockItems.length > 0) {
+      problems.push({
+        problem: `${lowStockItems.length} item(s) are below safe stock levels.`,
+        impact: 'Fast-moving products may stock out and cause lost sales.',
+        priority: 'high',
+      });
+      actions.push({
+        action: `Restock ${this.describeItems(lowStockItems)} first.`,
+        reason: 'These items are most likely to block sales if they run out.',
+        expected_result: 'Fewer lost sales and better customer satisfaction.',
+      });
+    }
+
+    if (slowMovingItems.length > 0) {
+      problems.push({
+        problem: `${slowMovingItems.length} item(s) are slow-moving.`,
+        impact: 'Cash is tied up in products that are not converting quickly.',
+        priority: lowStockItems.length > 0 ? 'medium' : 'high',
+      });
+      actions.push({
+        action: `Create a bundle or small discount for ${this.describeItems(slowMovingItems)}.`,
+        reason: 'Bundling slow items with fast movers clears stock without training customers to wait for discounts.',
+        expected_result: 'Improved cash flow and cleaner inventory.',
+      });
+    }
+
+    if (focus === 'sales' || focus === 'general') {
+      actions.push({
+        action: 'Run a peak-hour promotion on the top 3 products.',
+        reason: 'Focused promotions on already-moving products usually lift basket value faster than broad discounts.',
+        expected_result: 'Higher daily revenue and stronger repeat traffic.',
+      });
+      growth.push('Track top products weekly and create bundles that pair fast movers with higher-margin add-ons.');
+    }
+
+    if (focus === 'customers' || question.includes('loyalty')) {
+      actions.push({
+        action: 'Start a simple loyalty offer for repeat customers.',
+        reason: 'A small reward gives customers a reason to return and lets staff collect customer details at checkout.',
+        expected_result: 'Better retention and more useful customer purchase history.',
+      });
+      growth.push('Segment customers into new, repeat, and inactive groups before sending offers.');
+    }
+
+    if (keyInsights.length === 0) {
+      keyInsights.push('No live POS totals were included, so this answer is based on business operating patterns.');
+    }
+
+    if (problems.length === 0) {
+      problems.push({
+        problem: 'Limited live sales and stock data was provided to the assistant.',
+        impact: 'Recommendations are useful but less precise than they could be.',
+        priority: 'medium',
+      });
+    }
+
+    if (actions.length === 0) {
+      actions.push({
+        action: 'Review today sales, low-stock products, and inactive customers before closing.',
+        reason: 'These three checks catch the most common daily retail problems.',
+        expected_result: 'Better stock control and clearer next-day priorities.',
+      });
+    }
+
+    growth.push('Use M-Pesa-friendly checkout messaging and receipt follow-ups to improve repeat purchases.');
+    growth.push('Review profit margin by category, not just total sales, so discounts do not hide weak margins.');
+
+    return {
+      summary: this.buildSummary(branch, focus, totalSales, transactions),
+      key_insights: keyInsights.slice(0, 4),
+      problems_detected: problems.slice(0, 3),
+      recommended_actions: actions.slice(0, 4),
+      growth_opportunities: [...new Set(growth)].slice(0, 4),
+      follow_up_questions: [
+        'Do you want me to focus next on sales, stock, customers, or profit margin?',
+      ],
+    };
+  }
+
+  private buildSummary(branch: string, focus: string, totalSales?: number, transactions?: number): string {
+    const salesText = totalSales
+      ? `KES ${totalSales.toLocaleString('en-KE')}${transactions ? ` from ${transactions} transaction(s)` : ''}`
+      : 'the available POS activity';
+
+    return `For ${branch}, I reviewed ${salesText} with a ${focus} focus. The best next step is to protect fast-moving stock, improve basket value, and turn slow stock back into cash.`;
+  }
+
+  private formatBusinessResponse(response: BusinessResponse): string {
+    const lines = [
+      `**Summary**`,
+      response.summary,
+      '',
+      `**Key insights**`,
+      ...response.key_insights.map((item) => `- ${item}`),
+      '',
+      `**Problems detected**`,
+      ...response.problems_detected.map((item) => `- ${item.problem} Impact: ${item.impact} Priority: ${item.priority}.`),
+      '',
+      `**Recommended actions**`,
+      ...response.recommended_actions.map((item) => `- ${item.action} Reason: ${item.reason} Expected result: ${item.expected_result}`),
+      '',
+      `**Growth opportunities**`,
+      ...response.growth_opportunities.map((item) => `- ${item}`),
+      '',
+      `**Follow-up**`,
+      `- ${response.follow_up_questions[0]}`,
+    ];
+
+    return lines.join('\n');
+  }
+
+  private detectFocus(question: string, context?: string): string {
+    if (context && context !== 'general') {
+      return context;
+    }
+
+    if (question.includes('stock') || question.includes('inventory') || question.includes('reorder')) {
+      return 'inventory';
+    }
+
+    if (question.includes('customer') || question.includes('client') || question.includes('loyalty')) {
+      return 'customers';
+    }
+
+    if (question.includes('profit') || question.includes('margin') || question.includes('price')) {
+      return 'profit';
+    }
+
+    if (question.includes('sale') || question.includes('revenue') || question.includes('sold')) {
+      return 'sales';
+    }
+
+    return 'general';
+  }
+
+  private toNumber(value: unknown): number | undefined {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : undefined;
+  }
+
+  private toArray(value: unknown): Array<Record<string, any>> {
+    return Array.isArray(value) ? value : [];
+  }
+
+  private describeItems(items: Array<Record<string, any>>): string {
+    if (items.length === 0) {
+      return 'priority items';
+    }
+
+    return items
+      .slice(0, 3)
+      .map((item) => item.name || item.productName || item.sku || 'Unnamed product')
+      .join(', ');
   }
 }
