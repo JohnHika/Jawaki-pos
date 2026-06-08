@@ -61,35 +61,6 @@ jobs:
         working-directory: ./mobile
         run: flutter pub get
 
-      - name: Prepare Android release signing
-        if: github.event_name != 'pull_request'
-        shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          missing=()
-          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
-          [[ -z "$ANDROID_KEYSTORE_PASSWORD" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
-          [[ -z "$ANDROID_KEY_ALIAS" ]] && missing+=("ANDROID_KEY_ALIAS")
-          [[ -z "$ANDROID_KEY_PASSWORD" ]] && missing+=("ANDROID_KEY_PASSWORD")
-
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing Android release signing secrets: ${missing[*]}"
-            exit 1
-          fi
-
-          mkdir -p mobile/android/app
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > mobile/android/app/upload-keystore.jks
-          cat > mobile/android/key.properties <<EOF
-          storeFile=app/upload-keystore.jks
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          EOF
-
       - name: Read app version
         id: version
         shell: bash
@@ -130,8 +101,84 @@ jobs:
               fh.write(f'release_path={release_path}\n')
           PY
 
-      - name: Validate R2 publish credentials
+      - name: Resolve Android release floor
         if: github.event_name != 'pull_request'
+        id: release_floor
+        shell: bash
+        env:
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+        run: |
+          mkdir -p dist/update-manifest
+          min_version_code=2015
+          if curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
+            parsed="$(
+              python -c "import json; from pathlib import Path; data=json.loads(Path('dist/update-manifest/existing-latest.json').read_text(encoding='utf-8')); value=data.get('buildNumber'); print(int(value) if value is not None else '')" || true
+            )"
+            if [[ "$parsed" =~ ^[0-9]+$ ]]; then
+              min_version_code="$parsed"
+            fi
+          else
+            echo "No existing remote manifest found; using customer baseline build 2015."
+          fi
+
+          [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || {
+            echo "::error::mobile/pubspec.yaml must include a numeric +buildNumber for production Android releases."
+            exit 1
+          }
+
+          publish_release=false
+          if (( BUILD_NUMBER > min_version_code )); then
+            publish_release=true
+          fi
+
+          echo "min_version_code=$min_version_code" >> "$GITHUB_OUTPUT"
+          echo "publish_release=$publish_release" >> "$GITHUB_OUTPUT"
+          echo "Current published Android build floor: $min_version_code"
+          echo "Candidate Android build: $BUILD_NUMBER"
+
+      - name: Skip unchanged Android release
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release != 'true'
+        shell: bash
+        run: |
+          {
+            echo "## Android update not published"
+            echo
+            echo "Candidate build \`${{ steps.version.outputs.build_number }}\` is not greater than the currently published build \`${{ steps.release_floor.outputs.min_version_code }}\`."
+            echo "No APK, manifest, tag, or GitHub Release was created."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare Android release signing
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -z "$ANDROID_KEYSTORE_PASSWORD" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -z "$ANDROID_KEY_ALIAS" ]] && missing+=("ANDROID_KEY_ALIAS")
+          [[ -z "$ANDROID_KEY_PASSWORD" ]] && missing+=("ANDROID_KEY_PASSWORD")
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing Android release signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+          mkdir -p mobile/android/app
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > mobile/android/app/upload-keystore.jks
+          cat > mobile/android/key.properties <<EOF
+          storeFile=app/upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Validate R2 publish credentials
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -179,13 +226,26 @@ jobs:
             >/dev/null || true
 
       - name: Build APK
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         working-directory: ./mobile
         run: |
           # Clear any cached Gradle config with stale Windows paths
           rm -f ~/.gradle/gradle.properties
           flutter build apk --release
 
+      - name: Verify Android release lineage
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
+        id: release_verify
+        shell: bash
+        env:
+          APK_PATH: mobile/build/app/outputs/flutter-apk/app-release.apk
+          EXPECTED_ANDROID_PACKAGE: com.levisaadventures.pos
+          EXPECTED_ANDROID_CERT_SHA256: 0289d757a110883956bc03faeedc3c281d1eb685b98d9bfbad533a9b0d340393
+          MIN_ANDROID_VERSION_CODE: ${{ steps.release_floor.outputs.min_version_code }}
+        run: bash scripts/verify-android-release.sh
+
       - name: Upload APK artifact
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: levisa-adventures-apk-${{ steps.version.outputs.full_version }}
@@ -193,18 +253,20 @@ jobs:
           retention-days: 30
 
       - name: Download current manifest
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
         env:
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
         run: |
           mkdir -p dist/update-manifest
-          if ! curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
+          if [[ -f dist/update-manifest/existing-latest.json ]]; then
+            echo "Using existing manifest downloaded during release-floor validation."
+          elif ! curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
             echo "No existing remote manifest found yet; starting fresh."
           fi
 
       - name: Build update manifest
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         id: manifest
         shell: bash
         env:
@@ -294,7 +356,7 @@ jobs:
           PY
 
       - name: Publish APK to Cloudflare R2
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
@@ -321,7 +383,7 @@ jobs:
             --content-type "application/vnd.android.package-archive"
 
       - name: Publish update manifest to Cloudflare R2
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
@@ -354,7 +416,7 @@ jobs:
             --content-type "application/json"
 
       - name: Create GitHub Release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.git_tag_version }}
@@ -386,7 +448,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write publish summary
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
         env:
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}

@@ -255,6 +255,10 @@ export class AppUpdatesService {
     release: Record<string, unknown>,
     fallbackManifest: AndroidUpdateManifest,
   ): AndroidUpdateManifest | null {
+    if (release.draft === true || release.prerelease === true) {
+      return null;
+    }
+
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const apkAsset = assets
       .filter((asset): asset is Record<string, unknown> => Boolean(asset))

@@ -59,11 +59,12 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (hasReleaseSigningConfig) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            if (!hasReleaseSigningConfig) {
+                throw GradleException(
+                    "Release signing config is required. Refusing to create a debug-signed release APK."
+                )
             }
+            signingConfig = signingConfigs.getByName("release")
             // Disable R8 to avoid duplicate class errors from sqlcipher/sqlite3 conflict
             isMinifyEnabled = false
             isShrinkResources = false

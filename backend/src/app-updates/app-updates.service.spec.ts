@@ -187,6 +187,72 @@ describe("AppUpdatesService", () => {
       publishedAt: "2026-06-08T17:47:35Z",
     });
   });
+
+  it("ignores draft and prerelease GitHub releases", async () => {
+    jest
+      .spyOn(axios, "get")
+      .mockResolvedValueOnce({
+        data: {
+          latestVersion: "1.0.13",
+          releaseName: "Axon POS 1.0",
+          buildNumber: 2016,
+          apkUrl:
+            "https://pub.example.r2.dev/releases/1.0.0/2016/app-release.apk",
+          releaseNotes: "Stale R2 manifest",
+          publishedAt: "2026-06-08T16:36:52Z",
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: [
+          {
+            tag_name: "v1.0.14-2017",
+            name: "Unsafe debug-signed release",
+            prerelease: true,
+            published_at: "2026-06-08T17:47:35Z",
+            assets: [
+              {
+                name: "app-release.apk",
+                browser_download_url:
+                  "https://github.com/JohnHika/Jawaki-pos/releases/download/v1.0.14-2017/app-release.apk",
+              },
+            ],
+          },
+          {
+            tag_name: "v1.0.15-2018",
+            name: "Draft release",
+            draft: true,
+            published_at: "2026-06-08T18:47:35Z",
+            assets: [
+              {
+                name: "app-release.apk",
+                browser_download_url:
+                  "https://github.com/JohnHika/Jawaki-pos/releases/download/v1.0.15-2018/app-release.apk",
+              },
+            ],
+          },
+        ],
+      } as never);
+
+    const service = new AppUpdatesService(
+      createConfigService({
+        ANDROID_APP_MANIFEST_URL:
+          "https://pub.example.r2.dev/android/latest.json",
+        ANDROID_APP_GITHUB_RELEASES_URL:
+          "https://api.github.com/repos/JohnHika/Jawaki-pos/releases",
+        ANDROID_APP_LATEST_VERSION: "1.0.13",
+        ANDROID_APP_RELEASE_NAME: "Axon POS 1.0",
+        ANDROID_APP_BUILD_NUMBER: "2015",
+        ANDROID_APP_MIN_SUPPORTED_VERSION: "0.0.0",
+        ANDROID_APP_FORCE_UPDATE: "false",
+      }),
+    );
+
+    await expect(service.getLatestAndroidUpdate()).resolves.toMatchObject({
+      buildNumber: 2016,
+      apkUrl:
+        "https://pub.example.r2.dev/releases/1.0.0/2016/app-release.apk",
+    });
+  });
 });
 
 function createConfigService(values: Record<string, string>): ConfigService {
