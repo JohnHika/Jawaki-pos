@@ -75,11 +75,7 @@ void main() async {
 
     debugPrint('[main] All initializations complete, launching app...');
 
-    runApp(
-      const ProviderScope(
-        child: POSApp(),
-      ),
-    );
+    runApp(const ProviderScope(child: POSApp()));
   } catch (e, stackTrace) {
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
     debugPrint('║ CRITICAL INITIALIZATION ERROR                             ║');
@@ -89,11 +85,7 @@ void main() async {
     debugPrint('$stackTrace');
     debugPrint('═══════════════════════════════════════════════════════════');
 
-    runApp(
-      const ProviderScope(
-        child: POSApp(),
-      ),
-    );
+    runApp(const ProviderScope(child: POSApp()));
   }
 }
 
@@ -115,12 +107,22 @@ class _POSAppState extends ConsumerState<POSApp> {
     if (!_checkedForUpdates) {
       _checkedForUpdates = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        getIt<UpdateCheckService>().checkForUpdates(
-          context: context,
-          force: false, // don't force; uses cache interval
-        );
+        _showPostUpdateNotesThenCheck();
       });
     }
+  }
+
+  Future<void> _showPostUpdateNotesThenCheck() async {
+    final updateService = getIt<UpdateCheckService>();
+    final showedInstalledNotes = await updateService
+        .showInstalledUpdateNotesIfNeeded(context);
+
+    if (!mounted || showedInstalledNotes) return;
+
+    await updateService.checkForUpdates(
+      context: context,
+      force: false, // don't force; uses cache interval
+    );
   }
 
   @override
@@ -140,8 +142,9 @@ class _POSAppState extends ConsumerState<POSApp> {
       routerConfig: router,
       builder: (context, child) {
         return MediaQuery(
-          data:
-              MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.noScaling),
           child: child!,
         );
       },

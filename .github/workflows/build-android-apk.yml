@@ -21,6 +21,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: write
+
 env:
   CF_R2_BUCKET: pos-updates
   R2_PUBLIC_BASE_URL: https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev
@@ -71,12 +74,16 @@ jobs:
           semantic_version = match.group(1)
           build_number = match.group(2) or ''
           full_version = semantic_version if not build_number else f'{semantic_version}+{build_number}'
+          release_tag = f'v{semantic_version}' if not build_number else f'v{semantic_version}-{build_number}'
+          release_name = f'Axon POS Android {full_version}'
           release_path = f'releases/{semantic_version}' if not build_number else f'releases/{semantic_version}/{build_number}'
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'semantic_version={semantic_version}\n')
               fh.write(f'build_number={build_number}\n')
               fh.write(f'full_version={full_version}\n')
+              fh.write(f'release_tag={release_tag}\n')
+              fh.write(f'release_name={release_name}\n')
               fh.write(f'release_path={release_path}\n')
           PY
 
@@ -130,10 +137,13 @@ jobs:
         shell: bash
         env:
           FULL_VERSION: ${{ steps.version.outputs.full_version }}
+          SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
           RELEASE_PATH: ${{ steps.version.outputs.release_path }}
           R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
         run: |
           python - <<'PY'
           import json
@@ -160,8 +170,12 @@ jobs:
               workflow_inputs = {}
 
           full_version = os.environ['FULL_VERSION']
+          semantic_version = os.environ['SEMANTIC_VERSION']
+          build_number_raw = os.environ.get('BUILD_NUMBER', '').strip()
+          build_number = int(build_number_raw) if build_number_raw.isdigit() else None
           release_path = os.environ['RELEASE_PATH'].strip('/')
           base_url = os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')
+          release_tag = os.environ['RELEASE_TAG']
 
           min_supported_version = str(workflow_inputs.get('min_supported_version') or '').strip()
           if not min_supported_version:
@@ -177,19 +191,25 @@ jobs:
 
           manifest = {
               'platform': 'android',
-              'latestVersion': full_version,
+              'latestVersion': semantic_version,
+              'fullVersion': full_version,
+              'buildNumber': build_number,
               'minSupportedVersion': min_supported_version,
               'forceUpdate': force_update,
               'apkUrl': f'{base_url}/{release_path}/app-release.apk',
               'releaseNotes': release_notes,
+              'releaseUrl': f'https://github.com/{os.environ["GITHUB_REPOSITORY"]}/releases/tag/{release_tag}',
               'publishedAt': datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
           }
 
           latest_path = dist_dir / 'latest.json'
           latest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          notes_path = dist_dir / 'release-notes.md'
+          notes_path.write_text(release_notes + '\n', encoding='utf-8')
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'latest_manifest_path={latest_path.as_posix()}\n')
+              fh.write(f'release_notes_path={notes_path.as_posix()}\n')
           PY
 
       - name: Publish APK to Cloudflare R2
@@ -235,6 +255,34 @@ jobs:
             "s3://$CF_R2_BUCKET/$RELEASE_PATH/latest.json" \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/json"
+
+      - name: Publish GitHub release
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
+          RELEASE_NAME: ${{ steps.version.outputs.release_name }}
+          RELEASE_NOTES_PATH: ${{ steps.manifest.outputs.release_notes_path }}
+          LATEST_MANIFEST_PATH: ${{ steps.manifest.outputs.latest_manifest_path }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_NAME" \
+              --notes-file "$RELEASE_NOTES_PATH" \
+              --latest
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_NAME" \
+              --notes-file "$RELEASE_NOTES_PATH" \
+              --target "$GITHUB_SHA" \
+              --latest
+          fi
+
+          gh release upload "$RELEASE_TAG" \
+            mobile/build/app/outputs/flutter-apk/app-release.apk \
+            "$LATEST_MANIFEST_PATH" \
+            --clobber
 
       - name: Write publish summary
         if: github.event_name != 'pull_request'
