@@ -47,7 +47,7 @@ export class AiService {
       'https://integrate.api.nvidia.com/v1';
     this.model =
       this.configService.get<string>('NVIDIA_MODEL') ||
-      'nvidia/llama-3.1-nemotron-70b-instruct';
+      'nvidia/nemotron-3-super-120b-a12b';
 
     if (!this.apiKey) {
       this.logger.warn('NVIDIA_API_KEY not set - AI endpoints will use local business responses');
@@ -71,9 +71,9 @@ export class AiService {
         body: JSON.stringify({
           model: this.model,
           messages: this.buildMessages(normalized),
-          temperature: 0.45,
+          temperature: 0.15,
           max_tokens: 1100,
-          top_p: 0.9,
+          top_p: 0.7,
           stream: false,
         }),
       });
@@ -253,6 +253,8 @@ Response rules:
 - Use plain business language.
 - Format currency as KES.
 - Prefer concrete recommendations over generic advice.
+- Do not invent sales, stock, customer, staff, or payment facts.
+- If the POS data does not include something, say the data is not available and explain what would be needed.
 - If POS data is provided, base the answer on that data.
 - If data is missing, say what data would improve the answer and still provide useful guidance.
 - ${styleInstruction}
