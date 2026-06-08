@@ -651,6 +651,15 @@ export class CatalogService {
       currentStock = Number(product.stock[0].quantity);
     }
 
+    // Calculate derived pricing for all unit types
+    const basePrice = Number(product.basePrice);
+    const secondaryUnitQty = product.secondaryUnitQty ? Number(product.secondaryUnitQty) : null;
+    const tertiaryUnitQty = product.tertiaryUnitQty ? Number(product.tertiaryUnitQty) : null;
+    
+    // Calculate per-unit prices for bulk tiers (divide bulk price by quantity)
+    const secondaryUnitPrice = currentPrice / (secondaryUnitQty || 1);
+    const tertiaryUnitPrice = currentPrice / (tertiaryUnitQty || 1);
+
     return {
       id: product.id,
       sku: product.sku,
@@ -661,15 +670,17 @@ export class CatalogService {
       imagePublicId: product.imagePublicId,
       categoryId: categoryIds[0],
       categoryIds,
-      basePrice: Number(product.basePrice),
+      basePrice: basePrice,
       price: currentPrice,
       costPrice: product.costPrice ? Number(product.costPrice) : undefined,
       taxRate: Number(product.taxRate),
       unit: product.unit,
       secondaryUnit: product.secondaryUnit ?? undefined,
-      secondaryUnitQty: product.secondaryUnitQty ? Number(product.secondaryUnitQty) : undefined,
+      secondaryUnitQty: secondaryUnitQty,
+      secondaryUnitPrice: secondaryUnitPrice,
       tertiaryUnit: product.tertiaryUnit ?? undefined,
-      tertiaryUnitQty: product.tertiaryUnitQty ? Number(product.tertiaryUnitQty) : undefined,
+      tertiaryUnitQty: tertiaryUnitQty,
+      tertiaryUnitPrice: tertiaryUnitPrice,
       minStock: product.minStock,
       trackInventory: product.trackInventory,
       allowFractions: product.allowFractions,
@@ -682,6 +693,18 @@ export class CatalogService {
       categories,
       currentPrice,
       currentStock,
+      // Unit price breakdown for POS display
+      unitPriceInfo: {
+        basePrice,
+        currentPrice,
+        unit: product.unit,
+        secondaryUnit: product.secondaryUnit,
+        secondaryUnitQty: secondaryUnitQty,
+        secondaryUnitPrice: secondaryUnitPrice,
+        tertiaryUnit: product.tertiaryUnit,
+        tertiaryUnitQty: tertiaryUnitQty,
+        tertiaryUnitPrice: tertiaryUnitPrice,
+      },
     };
   }
 

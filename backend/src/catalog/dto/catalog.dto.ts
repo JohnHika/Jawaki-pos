@@ -388,6 +388,19 @@ export class ProductResponseDto {
   @ApiProperty({ description: 'Current stock at requested branch' })
   currentStock?: number;
 
+  @ApiPropertyOptional({ description: 'Unit price breakdown for POS display' })
+  unitPriceInfo?: {
+    basePrice: number;
+    currentPrice: number;
+    unit: string;
+    secondaryUnit?: string;
+    secondaryUnitQty?: number;
+    secondaryUnitPrice?: number;
+    tertiaryUnit?: string;
+    tertiaryUnitQty?: number;
+    tertiaryUnitPrice?: number;
+  };
+
   @ApiPropertyOptional()
   sortOrder?: number;
 

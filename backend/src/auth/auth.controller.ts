@@ -50,6 +50,7 @@ export class AuthController {
   @Post('register-company')
   @ApiOperation({ summary: 'Create a new company, first shop, and owner admin' })
   @ApiResponse({ status: 201, description: 'Company registered', type: AuthResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad request - invalid input or validation error' })
   @ApiResponse({ status: 409, description: 'Company already exists' })
   async registerCompany(@Body() dto: RegisterCompanyDto): Promise<AuthResponseDto> {
     return this.authService.registerCompany(dto);

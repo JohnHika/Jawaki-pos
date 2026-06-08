@@ -129,67 +129,202 @@ export class AuthService {
   }
 
   async registerCompany(dto: RegisterCompanyDto): Promise<AuthResponseDto> {
-    const slug = dto.companySlug || this.slugify(dto.companyName);
-    const existingTenant = await this.prisma.tenant.findUnique({
-      where: { slug },
-    });
+    try {
+      // Validate required fields at the top level
+      if (!dto || !dto.companyName) {
+        throw new BadRequestException('Company information is required');
+      }
 
-    if (existingTenant) {
-      throw new ConflictException('Company with this slug already exists');
-    }
+      // Validate admin information
+      if (!dto.admin) {
+        throw new BadRequestException('Admin information is required');
+      }
 
-    const passwordHash = await bcrypt.hash(dto.admin.password, 12);
-    const branchCode = dto.branch.code || 'MAIN';
+      if (!dto.admin.email || !dto.admin.password || !dto.admin.firstName || !dto.admin.lastName) {
+        throw new BadRequestException('Admin information is incomplete');
+      }
 
-    const user = await this.prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: {
-          name: dto.companyName,
-          slug,
-          logo: dto.logo,
-          logoPublicId: dto.logoPublicId,
-          settings: dto.settings || {},
-        },
+      // Validate branch information
+      if (!dto.branch) {
+        throw new BadRequestException('Branch information is required');
+      }
+
+      if (!dto.branch.name) {
+        throw new BadRequestException('Branch name is required');
+      }
+
+      // Validate company name format
+      if (typeof dto.companyName !== 'string' || dto.companyName.trim().length < 2) {
+        throw new BadRequestException('Company name must be at least 2 characters');
+      }
+
+      // Generate slug and check for existing company
+      const slug = dto.companySlug || this.slugify(dto.companyName);
+      const existingTenantBySlug = await this.prisma.tenant.findUnique({
+        where: { slug },
       });
 
-      const branch = await tx.branch.create({
-        data: {
-          tenantId: tenant.id,
-          name: dto.branch.name,
-          code: branchCode,
-          address: dto.branch.address,
-          phone: dto.branch.phone,
-          email: dto.branch.email,
-        },
-      });
+      if (existingTenantBySlug) {
+        throw new BadRequestException('Company with this slug already exists');
+      }
 
-      return tx.user.create({
-        data: {
-          tenantId: tenant.id,
-          email: dto.admin.email,
-          passwordHash,
-          firstName: dto.admin.firstName,
-          lastName: dto.admin.lastName,
-          phone: dto.admin.phone,
-          role: UserRole.ADMIN,
-          lastLoginAt: new Date(),
-          branches: {
-            create: {
-              branchId: branch.id,
-              isPrimary: true,
+      // Check if company name already exists (case-insensitive)
+      try {
+        const existingTenantByName = await this.prisma.tenant.findFirst({
+          where: {
+            name: {
+              equals: dto.companyName.trim(),
+              mode: 'insensitive',
             },
           },
-        },
-        include: {
-          tenant: true,
-          branches: {
-            include: { branch: true },
-          },
-        },
-      });
-    });
+        });
 
-    return this.generateTokens(user, user.branches[0]?.branchId, dto.deviceId);
+        if (existingTenantByName) {
+          throw new BadRequestException('Company name already exists');
+        }
+      } catch (error) {
+        // Log the error but continue
+        console.warn('Failed to check company name uniqueness: ' + error.message);
+      }
+
+      // Validate phone numbers if provided
+      const validatePhoneNumber = (phone) => {
+        if (!phone) return true; // Optional
+        const phoneRegex = /^\+?[\d\s\-\(\)]+$/;
+        if (!phoneRegex.test(phone)) {
+          throw new BadRequestException('Invalid phone number format');
+        }
+        return true;
+      };
+
+      // Validate branch phone if provided
+      if (dto.branch.phone && !validatePhoneNumber(dto.branch.phone)) {
+        throw new BadRequestException('Invalid branch phone number format');
+      }
+
+      // Validate admin phone if provided
+      if (dto.admin.phone && !validatePhoneNumber(dto.admin.phone)) {
+        throw new BadRequestException('Invalid admin phone number format');
+      }
+
+      // Validate email formats
+      const validateEmail = (email) => {
+        if (!email) return true; // Should not happen due to DTO validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          throw new BadRequestException('Invalid email format');
+        }
+        return true;
+      };
+
+      if (!validateEmail(dto.admin.email)) {
+        throw new BadRequestException('Invalid admin email format');
+      }
+
+      if (dto.branch.email && !validateEmail(dto.branch.email)) {
+        throw new BadRequestException('Invalid branch email format');
+      }
+
+      // Validate password strength for admin
+      const password = dto.admin.password;
+      if (password.length < 8) {
+        throw new BadRequestException('Password must be at least 8 characters');
+      }
+      if (!/[A-Z]/.test(password)) {
+        throw new BadRequestException('Password must contain at least one uppercase letter');
+      }
+      if (!/[a-z]/.test(password)) {
+        throw new BadRequestException('Password must contain at least one lowercase letter');
+      }
+      if (!/\d/.test(password)) {
+        throw new BadRequestException('Password must contain at least one number');
+      }
+
+      const passwordHash = await bcrypt.hash(dto.admin.password, 12);
+      const branchCode = dto.branch.code || 'MAIN';
+
+      // Process registration in transaction
+      try {
+        const user = await this.prisma.$transaction(async (tx) => {
+          const tenant = await tx.tenant.create({
+            data: {
+              name: dto.companyName.trim(),
+              slug,
+              logo: dto.logo,
+              logoPublicId: dto.logoPublicId,
+              settings: dto.settings || {},
+            },
+          });
+
+          const branch = await tx.branch.create({
+            data: {
+              tenantId: tenant.id,
+              name: dto.branch.name.trim(),
+              code: branchCode,
+              address: dto.branch.address?.trim() || null,
+              phone: dto.branch.phone?.trim() || null,
+              email: dto.branch.email?.trim() || null,
+            },
+          });
+
+          return tx.user.create({
+            data: {
+              tenantId: tenant.id,
+              email: dto.admin.email.trim().toLowerCase(),
+              passwordHash,
+              firstName: dto.admin.firstName.trim(),
+              lastName: dto.admin.lastName.trim(),
+              phone: dto.admin.phone?.trim() || null,
+              role: UserRole.ADMIN,
+              lastLoginAt: new Date(),
+              branches: {
+                create: {
+                  branchId: branch.id,
+                  isPrimary: true,
+                },
+              },
+            },
+            include: {
+              tenant: true,
+              branches: {
+                include: { branch: true },
+              },
+            },
+          });
+        });
+
+        return this.generateTokens(user, user.branches[0]?.branchId, dto.deviceId);
+      } catch (error) {
+        // Handle specific database errors
+        if (error.code === 'P2002') {
+          // Unique constraint violation
+          if (error.meta?.target?.includes('slug')) {
+            throw new BadRequestException('Company with this slug already exists');
+          }
+          if (error.meta?.target?.includes('email')) {
+            throw new BadRequestException('Admin email already exists');
+          }
+          if (error.meta?.target?.includes('phone')) {
+            throw new BadRequestException('Admin phone number already exists');
+          }
+          throw new BadRequestException('Company registration failed due to duplicate data');
+        } else if (error.code === 'P2003') {
+          // Foreign key constraint violation
+          throw new BadRequestException('Invalid branch or tenant reference');
+        } else if (error.code === 'P2025') {
+          // Record not found
+          throw new NotFoundException('Database operation failed');
+        } else {
+          // Log the error for debugging
+          console.error('Register company error:', error);
+          throw new BadRequestException(`Company registration failed: ${error.message || 'Unknown error'}`);
+        }
+      }
+    } catch (error) {
+      // Handle validation errors at the top level
+      console.error('Register company validation error:', error);
+      throw error;
+    }
   }
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {

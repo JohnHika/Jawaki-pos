@@ -1,11 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { ValidationPipe, VersioningType, NotFoundException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -40,6 +41,9 @@ async function bootstrap() {
     }),
   );
 
+  // Global Interceptor for error transformation
+  app.useGlobalInterceptors(new TransformInterceptor());
+
   // Swagger Documentation
   const swaggerConfig = new DocumentBuilder()
     .setTitle('POS System API')
@@ -61,7 +65,9 @@ async function bootstrap() {
     .addTag('catalog', 'Products and categories')
     .addTag('sales', 'Sales and receipts')
     .addTag('inventory', 'Stock management')
+    .addTag('payments', 'Payment processing (M-Pesa, PesaPal, TouristTap)')
     .addTag('sync', 'Device synchronization')
+    .addTag('Reporting', 'Analytics and reporting')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

@@ -27,9 +27,6 @@ export class LoginDto {
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
   @MaxLength(128, { message: 'Password must not exceed 128 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
-  })
   password: string;
 
   @ApiPropertyOptional({ description: 'Device UUID for mobile login' })
@@ -67,11 +64,11 @@ export class PinLoginDto {
   pin: string;
 
   @ApiProperty({ description: 'Device UUID' })
-  @IsUUID('4', { message: 'Device ID must be a valid UUID' })
+  @IsUUID('4', { message: 'Device ID must be a valid UUID v4' })
   deviceId: string;
 
   @ApiPropertyOptional({ description: 'Branch ID. Optional when device is already registered to a branch.' })
-  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID v4' })
   @IsOptional()
   branchId?: string;
 }
