@@ -35,25 +35,35 @@ export class AppUpdatesService {
     const manifestUrl = this.config
       .get<string>("ANDROID_APP_MANIFEST_URL", "")
       .trim();
+    const candidates: AndroidUpdateManifest[] = [fallbackManifest];
 
-    if (!manifestUrl) {
-      return fallbackManifest;
+    if (manifestUrl) {
+      try {
+        const response = await axios.get<Record<string, unknown>>(manifestUrl, {
+          timeout: this.getManifestTimeoutMs(),
+        });
+
+        candidates.push(
+          this.mergeRemoteManifest(response.data, fallbackManifest),
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        this.logger.warn(
+          `Failed to load Android app manifest from ${manifestUrl}. Falling back to local env configuration. ${message}`,
+        );
+      }
     }
 
-    try {
-      const response = await axios.get<Record<string, unknown>>(manifestUrl, {
-        timeout: this.getManifestTimeoutMs(),
-      });
-
-      return this.mergeRemoteManifest(response.data, fallbackManifest);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      this.logger.warn(
-        `Failed to load Android app manifest from ${manifestUrl}. Falling back to local env configuration. ${message}`,
-      );
-
-      return fallbackManifest;
+    const githubManifest =
+      await this.getLatestGitHubReleaseManifest(fallbackManifest);
+    if (githubManifest) {
+      candidates.push(githubManifest);
     }
+
+    return candidates.reduce((newest, candidate) =>
+      this.isManifestNewer(candidate, newest) ? candidate : newest,
+    );
   }
 
   getAndroidApkDownload() {
@@ -205,6 +215,155 @@ export class AppUpdatesService {
     });
 
     return sources;
+  }
+
+  private async getLatestGitHubReleaseManifest(
+    fallbackManifest: AndroidUpdateManifest,
+  ): Promise<AndroidUpdateManifest | null> {
+    const releasesUrl = this.getGitHubReleasesApiUrl();
+    if (!releasesUrl) {
+      return null;
+    }
+
+    try {
+      const response = await axios.get<unknown[]>(releasesUrl, {
+        timeout: this.getManifestTimeoutMs(),
+        headers: { Accept: "application/vnd.github+json" },
+      });
+      const releases = Array.isArray(response.data) ? response.data : [];
+
+      for (const release of releases) {
+        const manifest = this.githubReleaseToManifest(
+          release as Record<string, unknown>,
+          fallbackManifest,
+        );
+        if (manifest) {
+          return manifest;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      this.logger.warn(
+        `Failed to load GitHub Android releases from ${releasesUrl}. ${message}`,
+      );
+    }
+
+    return null;
+  }
+
+  private githubReleaseToManifest(
+    release: Record<string, unknown>,
+    fallbackManifest: AndroidUpdateManifest,
+  ): AndroidUpdateManifest | null {
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const apkAsset = assets
+      .filter((asset): asset is Record<string, unknown> => Boolean(asset))
+      .find((asset) => this.readString(asset.name)?.endsWith(".apk"));
+
+    if (!apkAsset) {
+      return null;
+    }
+
+    const tagName = this.readString(release.tag_name);
+    const parsed = this.parseReleaseVersion(tagName || "");
+    const apkUrl = this.readString(apkAsset.browser_download_url);
+
+    if (!parsed.latestVersion || !apkUrl) {
+      return null;
+    }
+
+    return {
+      platform: "android",
+      latestVersion: parsed.latestVersion,
+      releaseName:
+        this.readString(release.name) ||
+        fallbackManifest.releaseName ||
+        parsed.latestVersion,
+      buildNumber: parsed.buildNumber,
+      minSupportedVersion: fallbackManifest.minSupportedVersion,
+      minSupportedBuildNumber: fallbackManifest.minSupportedBuildNumber,
+      forceUpdate: fallbackManifest.forceUpdate,
+      apkUrl,
+      releaseNotes:
+        this.readString(release.body) || fallbackManifest.releaseNotes,
+      publishedAt:
+        this.readString(release.published_at) || fallbackManifest.publishedAt,
+      updateSources: this.buildUpdateSources(null, apkUrl),
+    };
+  }
+
+  private getGitHubReleasesApiUrl(): string | null {
+    const configured = this.config
+      .get<string>("ANDROID_APP_GITHUB_RELEASES_URL", "")
+      .trim();
+    if (
+      ["false", "none", "off", "disabled"].includes(configured.toLowerCase())
+    ) {
+      return null;
+    }
+
+    if (configured) {
+      return configured;
+    }
+
+    const githubRepo = this.config.get<string>(
+      "GITHUB_REPO",
+      "JohnHika/Jawaki-pos",
+    );
+
+    return `https://api.github.com/repos/${githubRepo}/releases`;
+  }
+
+  private parseReleaseVersion(tagName: string): {
+    latestVersion: string | null;
+    buildNumber: number | null;
+  } {
+    const normalized = tagName.trim().replace(/^v/i, "");
+    const match = normalized.match(/^(\d+\.\d+\.\d+)(?:[+-](\d+))?$/);
+    if (!match) {
+      return { latestVersion: null, buildNumber: null };
+    }
+
+    return {
+      latestVersion: match[1],
+      buildNumber: this.readNumber(match[2]),
+    };
+  }
+
+  private isManifestNewer(
+    candidate: AndroidUpdateManifest,
+    current: AndroidUpdateManifest,
+  ): boolean {
+    if (candidate.buildNumber && current.buildNumber) {
+      return candidate.buildNumber > current.buildNumber;
+    }
+
+    return this.isVersionNewer(candidate.latestVersion, current.latestVersion);
+  }
+
+  private isVersionNewer(candidate: string, current: string): boolean {
+    const candidateParts = this.versionParts(candidate);
+    const currentParts = this.versionParts(current);
+    const length = Math.max(candidateParts.length, currentParts.length);
+
+    for (let index = 0; index < length; index += 1) {
+      const candidatePart = candidateParts[index] || 0;
+      const currentPart = currentParts[index] || 0;
+      if (candidatePart > currentPart) return true;
+      if (candidatePart < currentPart) return false;
+    }
+
+    return false;
+  }
+
+  private versionParts(version: string): number[] {
+    return version
+      .trim()
+      .replace(/^v/i, "")
+      .replace(/[+-]/g, ".")
+      .split(".")
+      .map((part) => Number.parseInt(part, 10))
+      .filter((part) => Number.isFinite(part));
   }
 
   private resolveAndroidApkFilePath(): string | null {
