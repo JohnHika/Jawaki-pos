@@ -100,9 +100,18 @@ class _ProductCard extends ConsumerWidget {
     final productName = product['name'] as String;
     final price = (product['price'] as num).toDouble();
     final imageUrl = product['imageUrl'] as String?;
+    final unit = product['unit'] as String? ?? 'piece';
+    final secondaryUnit = product['secondaryUnit'] as String?;
+    final secondaryUnitQty = (product['secondaryUnitQty'] as num?)?.toDouble();
+    final secondaryUnitPrice = (product['secondaryUnitPrice'] as num?)?.toDouble();
     final quantityInCart = cartState.items
         .where((item) => item.productId == productId)
         .fold<int>(0, (sum, item) => sum + item.quantity);
+
+    // Get unit price info from product
+    final unitPriceInfo = product['unitPriceInfo'] as Map<String, dynamic>? ?? {};
+    final currentPrice = unitPriceInfo['currentPrice'] as num? ?? price;
+    final secondaryUnitPriceDisplay = unitPriceInfo['secondaryUnitPrice'] as num? ?? secondaryUnitPrice;
 
     return GlassCard(
       onTap: () => _addToCart(context, ref),
@@ -258,7 +267,7 @@ class _ProductCard extends ConsumerWidget {
                   Row(
                     children: [
                       Text(
-                        'KES ${price.toStringAsFixed(0)}',
+                        'KES ${currentPrice.toStringAsFixed(0)}',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -268,6 +277,17 @@ class _ProductCard extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  if (secondaryUnit != null && secondaryUnitPriceDisplay != null) 
+                    SizedBox(height: 4),
+                  if (secondaryUnit != null && secondaryUnitPriceDisplay != null)
+                    Text(
+                      'KES ${secondaryUnitPriceDisplay.toStringAsFixed(0)}/unit ($secondaryUnit)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                 ],
               ),
             ),
