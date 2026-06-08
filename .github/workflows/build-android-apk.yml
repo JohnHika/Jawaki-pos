@@ -214,6 +214,7 @@ jobs:
 
       - name: Publish APK to Cloudflare R2
         if: github.event_name != 'pull_request'
+        continue-on-error: true
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
@@ -232,6 +233,7 @@ jobs:
 
       - name: Publish update manifest to Cloudflare R2
         if: github.event_name != 'pull_request'
+        continue-on-error: true
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
