@@ -159,6 +159,11 @@ export class ChatRequestDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  branchId?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(50)
   context?: 'sales' | 'inventory' | 'customers' | 'general';
 
