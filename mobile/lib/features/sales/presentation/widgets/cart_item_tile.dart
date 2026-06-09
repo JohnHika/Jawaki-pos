@@ -22,22 +22,24 @@ class CartItemTile extends ConsumerWidget {
       ),
       confirmDismiss: (direction) async {
         return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Remove Item'),
-            content: Text('Remove ${item.productName} from cart?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Remove Item'),
+                content: Text('Remove ${item.productName} from cart?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Remove',
+                        style: TextStyle(color: DesignColors.error)),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Remove', style: TextStyle(color: DesignColors.error)),
-              ),
-            ],
-          ),
-        ) ?? false;
+            ) ??
+            false;
       },
       onDismissed: (_) {
         ref.read(cartProvider.notifier).removeItem(item.productId);
@@ -83,7 +85,9 @@ class CartItemTile extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'KES ${item.unitPrice.toStringAsFixed(0)} each',
+                    item.saleUnit != null && item.saleQuantity != null
+                        ? '${item.saleQuantity!.toStringAsFixed(item.saleQuantity!.truncateToDouble() == item.saleQuantity ? 0 : 1)} ${item.saleUnit} @ KES ${(item.unitPrice * (item.unitConversionFactor ?? 1)).toStringAsFixed(0)}'
+                        : 'KES ${item.unitPrice.toStringAsFixed(0)} each',
                     style: TextStyle(
                       color: Theme.of(context).disabledColor,
                       fontSize: 12,
@@ -92,9 +96,10 @@ class CartItemTile extends ConsumerWidget {
                   if (item.discount > 0) ...[
                     const SizedBox(height: 2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: DesignColors.success.withValues(alpha:0.1),
+                        color: DesignColors.success.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -119,9 +124,9 @@ class CartItemTile extends ConsumerWidget {
                 Text(
                   'KES ${item.total.toStringAsFixed(0)}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: DesignColors.brand,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: DesignColors.brand,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 _QuantityControls(item: item),
@@ -144,7 +149,9 @@ class _QuantityControls extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle,
+        color: isDark
+            ? DesignColors.darkSurfaceElevated
+            : DesignColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -163,7 +170,13 @@ class _QuantityControls extends ConsumerWidget {
             constraints: const BoxConstraints(minWidth: 36),
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
-              '${item.quantity}',
+              item.saleUnit != null && item.saleQuantity != null
+                  ? item.saleQuantity!.toStringAsFixed(
+                      item.saleQuantity!.truncateToDouble() == item.saleQuantity
+                          ? 0
+                          : 1,
+                    )
+                  : '${item.quantity}',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
@@ -202,9 +215,7 @@ class _QuantityButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 18,
-            color: onPressed != null
-                ? null
-                : Theme.of(context).disabledColor,
+            color: onPressed != null ? null : Theme.of(context).disabledColor,
           ),
         ),
       ),
@@ -232,12 +243,14 @@ class CartItemCompact extends ConsumerWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: DesignColors.brand.withValues(alpha:0.1),
+              color: DesignColors.brand.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Center(
               child: Text(
-                '${item.quantity}x',
+                item.saleUnit != null && item.saleQuantity != null
+                    ? '${item.saleQuantity!.toStringAsFixed(item.saleQuantity!.truncateToDouble() == item.saleQuantity ? 0 : 1)} ${item.saleUnit}'
+                    : '${item.quantity}x',
                 style: const TextStyle(
                   color: DesignColors.brand,
                   fontSize: 11,

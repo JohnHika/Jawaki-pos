@@ -767,11 +767,13 @@ class AppDatabase extends _$AppDatabase {
 
   // ===== END DAILY PURCHASES =====
 
-  Future<LocalStockData?> getProductStock(String productId, String branchId) {
-    return (select(localStock)
+  Future<LocalStockData?> getProductStock(
+      String productId, String branchId) async {
+    final rows = await (select(localStock)
           ..where((s) =>
               s.productId.equals(productId) & s.branchId.equals(branchId)))
-        .getSingleOrNull();
+        .get();
+    return rows.isEmpty ? null : rows.first;
   }
 
   // Get stock for product using current branch
@@ -1032,15 +1034,18 @@ class AppDatabase extends _$AppDatabase {
 
   /// Inventory summary with product names & stock levels.
   Future<List<Map<String, dynamic>>> getInventoryReport() async {
+    final branchId = _storage.getBranchId();
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, p.cost_price, '
       'COALESCE(ls.quantity, 0) as stock, COALESCE(ls.min_quantity, 0) as min_stock, '
       'c.name as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
+      "${branchId == null ? '' : 'AND ls.branch_id = ? '}"
       'LEFT JOIN categories c ON c.id = p.category_id '
       'WHERE p.is_active = 1 '
       'ORDER BY stock ASC',
+      variables: branchId == null ? [] : [Variable.withString(branchId)],
     ).get();
     return result
         .map((r) => {

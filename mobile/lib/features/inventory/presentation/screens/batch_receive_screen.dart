@@ -5,6 +5,7 @@ import '../widgets/unit_selector_widget.dart';
 import '../../../../core/providers/api_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
 
 /// Enhanced Batch Receive Screen with Multi-Unit Support
@@ -30,6 +31,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   final List<BatchEntry> _batches = [];
   bool _isLoading = false;
   bool _isLoadingConfig = true;
+  String? _resolvedProductName;
 
   // Product unit configuration - loaded from API
   UnitConfig? _unitConfig;
@@ -37,8 +39,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   @override
   void initState() {
     super.initState();
+    _resolvedProductName = widget.productName;
     // If no product specified, show error
-    if (widget.productId == null || widget.productName == null) {
+    if (widget.productId == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           showGlassSnackBar(
@@ -53,8 +56,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       return;
     }
     _loadProductConfig();
-    // Start with one empty batch
-    _addBatch();
   }
 
   Future<void> _loadProductConfig() async {
@@ -66,6 +67,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       if (mounted) {
         setState(() {
+          _resolvedProductName =
+              product['name']?.toString() ?? _resolvedProductName;
           _unitConfig = UnitConfig(
             baseUnit: product['unit'] ?? 'piece',
             secondaryUnit: product['secondaryUnit'],
@@ -75,22 +78,32 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
           );
           _isLoadingConfig = false;
         });
+        _ensureInitialBatch();
       }
     } catch (e) {
-      // Fallback to basic unit config if API fails
+      final localProduct =
+          await getIt<AppDatabase>().getProduct(widget.productId!);
       if (mounted) {
         setState(() {
+          _resolvedProductName = localProduct?.name ?? _resolvedProductName;
           _unitConfig = UnitConfig(
-            baseUnit: 'piece',
-            secondaryUnit: null,
-            secondaryUnitQty: null,
-            tertiaryUnit: null,
-            tertiaryUnitQty: null,
+            baseUnit: localProduct?.unit ?? 'piece',
+            secondaryUnit: localProduct?.secondaryUnit,
+            secondaryUnitQty: localProduct?.secondaryUnitQty,
+            tertiaryUnit: localProduct?.tertiaryUnit,
+            tertiaryUnitQty: localProduct?.tertiaryUnitQty,
           );
           _isLoadingConfig = false;
         });
+        _ensureInitialBatch();
       }
       debugPrint('Error loading product config: $e');
+    }
+  }
+
+  void _ensureInitialBatch() {
+    if (_batches.isEmpty && _unitConfig != null) {
+      _addBatch();
     }
   }
 
@@ -285,7 +298,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.productName ?? 'Unknown Product',
+                                  _resolvedProductName ?? 'Selected Product',
                                   style: const TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,

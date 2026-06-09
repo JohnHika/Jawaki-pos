@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 
 final _dashboardSummaryProvider =
@@ -32,6 +33,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
+    final companyName = _companyDisplayName();
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Dashboard',
@@ -66,7 +68,7 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Good ${_getGreeting()}, Team',
+                      'Good ${_getGreeting()}, $companyName',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
@@ -88,7 +90,13 @@ class DashboardScreen extends ConsumerWidget {
 
               // Summary Cards - Using Wrap+LayoutBuilder to prevent overflow in Column
               summaryAsync.when(
-                data: (summary) => _buildSummaryGrid(context, summary),
+                data: (summary) => Column(
+                  children: [
+                    _buildSummaryGrid(context, summary),
+                    const SizedBox(height: 12),
+                    _buildAiBrief(context, summary),
+                  ],
+                ),
                 loading: () => _buildSummaryGrid(context, {
                   'transactionCount': 0,
                   'totalRevenue': 0.0,
@@ -213,13 +221,11 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> summary) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     return LayoutBuilder(
       builder: (context, constraints) {
         // Calculate card width to fit 2 per row with proper spacing
         final cardWidth = (constraints.maxWidth - 12) / 2;
-        
+
         return Wrap(
           spacing: 12,
           runSpacing: 12,
@@ -275,6 +281,115 @@ class DashboardScreen extends ConsumerWidget {
     if (hour < 12) return 'Morning';
     if (hour < 17) return 'Afternoon';
     return 'Evening';
+  }
+
+  String _companyDisplayName() {
+    final auth = getIt<AuthService>();
+    final user = auth.currentUser;
+    final tenant = user?['tenant'];
+    final tenantMap =
+        tenant is Map<String, dynamic> ? tenant : <String, dynamic>{};
+    final candidates = [
+      tenantMap['name'],
+      user?['tenantName'],
+      user?['companyName'],
+      auth.tenantSlug,
+      'Your Company',
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return 'Your Company';
+  }
+
+  Widget _buildAiBrief(BuildContext context, Map<String, dynamic> summary) {
+    final revenue = (summary['totalRevenue'] as num?)?.toDouble() ?? 0;
+    final transactions = (summary['transactionCount'] as num?)?.toInt() ?? 0;
+    final avgTicket = (summary['avgTicket'] as num?)?.toDouble() ?? 0;
+    final itemsSold = (summary['itemsSold'] as num?)?.toInt() ?? 0;
+
+    final snippets = <String>[
+      transactions == 0
+          ? 'No sales have landed today yet. Start with fast-moving items and watch stock before checkout.'
+          : '$transactions transactions have brought in ${_currencyFmt.format(revenue)} today.',
+      avgTicket > 0
+          ? 'Average ticket is ${_currencyFmt.format(avgTicket)} across $itemsSold sold items.'
+          : 'Average ticket will appear once the first sale is completed.',
+      itemsSold > 0
+          ? 'Keep an eye on inventory after each sale so zero-stock items stay blocked from POS.'
+          : 'Inventory and POS are linked, so received stock becomes sellable immediately.',
+    ];
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 14,
+      tint: DesignColors.info.withValues(alpha: 0.05),
+      borderColor: DesignColors.info.withValues(alpha: 0.16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: DesignColors.info,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'AI Brief',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: DesignColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...snippets.map(
+            (snippet) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 5),
+                    child: Icon(
+                      Icons.circle,
+                      size: 5,
+                      color: DesignColors.info,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      snippet,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: DesignColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _shareDashboardReport(

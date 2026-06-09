@@ -67,13 +67,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isLoggedIn = authService.isAuthenticated;
       final path = state.matchedLocation;
-      
+
       // Setup routes (company-choice, company-setup) are always accessible
-      final isSetupRoute = path == '/company-choice' || path == '/company-setup';
-      
+      final isSetupRoute =
+          path == '/company-choice' || path == '/company-setup';
+
       // Login routes
       final isLoginRoute = path == '/login' || path == '/pin-login';
-      
+
       // If user is not logged in
       if (!isLoggedIn) {
         // Allow setup and login routes
@@ -83,28 +84,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // Redirect all others to company-choice
         return '/company-choice';
       }
-      
+
       // If logged in and on setup/login page, go to main app
       if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
         return '/';
       }
-      
+
       // Role-based route guards
       if (isLoggedIn) {
         final role = AppRole.fromString(authService.userRole);
         final perms = RolePermissions(role);
-        
+
         // Products & Inventory require stock keeper+
-        if ((path == '/products' || path.startsWith('/products/') ||
-             path == '/inventory') && !perms.canSeeProducts) {
+        if ((path == '/products' ||
+                path.startsWith('/products/') ||
+                path == '/inventory' ||
+                path.startsWith('/inventory/')) &&
+            !perms.canSeeProducts) {
           return '/';
         }
         // Reports & Dashboard require store manager+
-        if ((path == '/reports' || path == '/dashboard') && !perms.canSeeReports) {
+        if ((path == '/reports' || path == '/dashboard') &&
+            !perms.canSeeReports) {
           return '/';
         }
       }
-      
+
       return null;
     },
     routes: [
@@ -119,7 +124,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'company-setup',
         builder: (context, state) => const CompanySetupScreen(),
       ),
-      
+
       // Auth Routes
       GoRoute(
         path: '/login',
@@ -131,7 +136,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'pin-login',
         builder: (context, state) => const PinLoginScreen(),
       ),
-      
+
       // Main Shell Route with Bottom Navigation
       ShellRoute(
         builder: (context, state, child) => HomeScreen(child: child),
@@ -168,7 +173,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          
+
           // Receipts List Screen
           GoRoute(
             path: '/receipts',
@@ -191,7 +196,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          
+
           // Inventory Screen
           GoRoute(
             path: '/inventory',
@@ -214,11 +219,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'receive-batch',
                 name: 'receive-batch',
-                builder: (context, state) => const BatchReceiveScreen(),
+                builder: (context, state) => BatchReceiveScreen(
+                  productId: state.uri.queryParameters['productId'],
+                  productName: state.uri.queryParameters['productName'],
+                  branchId: state.uri.queryParameters['branchId'],
+                ),
+              ),
+              GoRoute(
+                path: 'batch-receive',
+                name: 'batch-receive',
+                builder: (context, state) => BatchReceiveScreen(
+                  productId: state.uri.queryParameters['productId'],
+                  productName: state.uri.queryParameters['productName'],
+                  branchId: state.uri.queryParameters['branchId'],
+                ),
               ),
             ],
           ),
-          
+
           // Reports Screen
           GoRoute(
             path: '/reports',

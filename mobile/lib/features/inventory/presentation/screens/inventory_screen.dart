@@ -488,7 +488,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       label: 'Receive',
                       icon: Icons.add_box_outlined,
                       onPressed: () => context.push(
-                          '/inventory/batch-receive?productId=$productId'),
+                        '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(name)}',
+                      ),
                       gradient: [DesignColors.brand, DesignColors.brandDark],
                       height: 34,
                       expanded: false,
