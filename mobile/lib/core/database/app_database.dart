@@ -151,8 +151,9 @@ class SyncQueue extends Table {
   TextColumn get deviceId => text()();
   TextColumn get userId => text().withDefault(const Constant(''))();
   IntColumn get sequenceNumber => integer()();
-  TextColumn get status => text().withDefault(const Constant(
-      'pending'))(); // pending, synced, failed, conflict, resolved
+  TextColumn get status => text().withDefault(
+    const Constant('pending'),
+  )(); // pending, synced, failed, conflict, resolved
   TextColumn get errorMessage => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   IntColumn get maxRetries => integer().withDefault(const Constant(3))();
@@ -212,71 +213,71 @@ class SupplierPayments extends Table {
   // No need to override primaryKey when using autoIncrement()
 }
 
-@DriftDatabase(tables: [
-  Categories,
-  Products,
-  BranchPrices,
-  LocalStock,
-  DailyPurchases,
-  CartItems,
-  PendingSales,
-  PendingSaleItems,
-  SyncQueue,
-  FavoriteProducts,
-  RecentSearches,
-])
+@DriftDatabase(
+  tables: [
+    Categories,
+    Products,
+    BranchPrices,
+    LocalStock,
+    DailyPurchases,
+    CartItems,
+    PendingSales,
+    PendingSaleItems,
+    SyncQueue,
+    FavoriteProducts,
+    RecentSearches,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   final StorageService _storage;
 
   // Use encrypted database connection
   AppDatabase(this._storage)
-      : super(SecureDatabaseConnection.openSecureConnection());
+    : super(SecureDatabaseConnection.openSecureConnection());
 
   @override
   int get schemaVersion => 7; // v7: secondary/tertiary unit prices
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (Migrator m) async {
-          await m.createAll();
-          await _createSupplierFinanceTables();
-        },
-        onUpgrade: (Migrator m, int from, int to) async {
-          if (from < 2) {
-            // Drop old sync_queue table and recreate with new schema
-            // Sync data is ephemeral, so it's safe to drop
-            await m.drop(syncQueue);
-            await m.createTable(syncQueue);
-          }
-          if (from < 3) {
-            // Add multi-unit fields to products table
-            await m.addColumn(products, products.secondaryUnit);
-            await m.addColumn(products, products.secondaryUnitQty);
-            await m.addColumn(products, products.tertiaryUnit);
-            await m.addColumn(products, products.tertiaryUnitQty);
-          }
-          if (from < 4) {
-            // Normalize status values
-            await customStatement(
-              "UPDATE sync_queue SET status = LOWER(status)",
-            );
-            await customStatement(
-              "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
-            );
-          }
-          if (from < 5) {
-            await _createSupplierFinanceTables();
-          }
-          if (from < 6) {
-            await _createSupplierFinanceTables();
-          }
-          if (from < 7) {
-            // Add price columns for secondary and tertiary units
-            await m.addColumn(products, products.secondaryUnitPrice);
-            await m.addColumn(products, products.tertiaryUnitPrice);
-          }
-        },
-      );
+    onCreate: (Migrator m) async {
+      await m.createAll();
+      await _createSupplierFinanceTables();
+    },
+    onUpgrade: (Migrator m, int from, int to) async {
+      if (from < 2) {
+        // Drop old sync_queue table and recreate with new schema
+        // Sync data is ephemeral, so it's safe to drop
+        await m.drop(syncQueue);
+        await m.createTable(syncQueue);
+      }
+      if (from < 3) {
+        // Add multi-unit fields to products table
+        await m.addColumn(products, products.secondaryUnit);
+        await m.addColumn(products, products.secondaryUnitQty);
+        await m.addColumn(products, products.tertiaryUnit);
+        await m.addColumn(products, products.tertiaryUnitQty);
+      }
+      if (from < 4) {
+        // Normalize status values
+        await customStatement("UPDATE sync_queue SET status = LOWER(status)");
+        await customStatement(
+          "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
+        );
+      }
+      if (from < 5) {
+        await _createSupplierFinanceTables();
+      }
+      if (from < 6) {
+        await _createSupplierFinanceTables();
+      }
+      if (from < 7) {
+        // Add price columns for secondary and tertiary units
+        await m.addColumn(products, products.secondaryUnitPrice);
+        await m.addColumn(products, products.tertiaryUnitPrice);
+      }
+    },
+  );
 
   Future<void> _createSupplierFinanceTables() async {
     await customStatement('''
@@ -368,14 +369,15 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Product>> getAllProducts() => select(products).get();
 
   Future<List<Product>> getProductsByCategory(String categoryId) {
-    return (select(products)..where((p) => p.categoryId.equals(categoryId)))
-        .get();
+    return (select(
+      products,
+    )..where((p) => p.categoryId.equals(categoryId))).get();
   }
 
   Future<List<Product>> searchProducts(String query) {
-    return (select(products)
-          ..where((p) => p.name.like('%$query%') | p.sku.like('%$query%')))
-        .get();
+    return (select(
+      products,
+    )..where((p) => p.name.like('%$query%') | p.sku.like('%$query%'))).get();
   }
 
   Stream<List<Product>> watchAllProducts() => select(products).watch();
@@ -523,7 +525,10 @@ class AppDatabase extends _$AppDatabase {
 
   /// Mark sync item as synced
   Future<void> markSyncQueueSynced(
-      String id, String serverId, DateTime serverTimestamp) {
+    String id,
+    String serverId,
+    DateTime serverTimestamp,
+  ) {
     return (update(syncQueue)..where((q) => q.id.equals(id))).write(
       SyncQueueCompanion(
         status: const Value('synced'),
@@ -542,8 +547,9 @@ class AppDatabase extends _$AppDatabase {
     String errorMessage,
     Duration delay,
   ) async {
-    final item = await (select(syncQueue)..where((q) => q.id.equals(id)))
-        .getSingleOrNull();
+    final item = await (select(
+      syncQueue,
+    )..where((q) => q.id.equals(id))).getSingleOrNull();
     if (item == null) return;
 
     final newRetryCount = item.retryCount + 1;
@@ -607,34 +613,35 @@ class AppDatabase extends _$AppDatabase {
   /// Delete synced items older than X days
   Future<int> cleanupSyncQueue({int olderThanDays = 30}) {
     final cutoffDate = DateTime.now().subtract(Duration(days: olderThanDays));
-    return (delete(syncQueue)
-          ..where((q) =>
+    return (delete(syncQueue)..where(
+          (q) =>
               (q.status.equals('synced') | q.status.equals('resolved')) &
-              q.syncedAt.isSmallerThanValue(cutoffDate)))
+              q.syncedAt.isSmallerThanValue(cutoffDate),
+        ))
         .go();
   }
 
   /// Get sync queue count by status
   Future<Map<String, int>> getSyncQueueStats() async {
-    final pending = await (select(syncQueue)
-          ..where((q) => q.status.equals('pending')))
-        .get();
+    final pending = await (select(
+      syncQueue,
+    )..where((q) => q.status.equals('pending'))).get();
 
-    final synced = await (select(syncQueue)
-          ..where((q) => q.status.equals('synced')))
-        .get();
+    final synced = await (select(
+      syncQueue,
+    )..where((q) => q.status.equals('synced'))).get();
 
-    final failed = await (select(syncQueue)
-          ..where((q) => q.status.equals('failed')))
-        .get();
+    final failed = await (select(
+      syncQueue,
+    )..where((q) => q.status.equals('failed'))).get();
 
-    final conflicts = await (select(syncQueue)
-          ..where((q) => q.status.equals('conflict')))
-        .get();
+    final conflicts = await (select(
+      syncQueue,
+    )..where((q) => q.status.equals('conflict'))).get();
 
-    final resolved = await (select(syncQueue)
-          ..where((q) => q.status.equals('resolved')))
-        .get();
+    final resolved = await (select(
+      syncQueue,
+    )..where((q) => q.status.equals('resolved'))).get();
 
     return {
       'pending': pending.length,
@@ -642,7 +649,8 @@ class AppDatabase extends _$AppDatabase {
       'failed': failed.length,
       'conflict': conflicts.length,
       'resolved': resolved.length,
-      'total': pending.length +
+      'total':
+          pending.length +
           synced.length +
           failed.length +
           conflicts.length +
@@ -679,15 +687,15 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> removeFavorite(String productId) {
-    return (delete(favoriteProducts)
-          ..where((f) => f.productId.equals(productId)))
-        .go();
+    return (delete(
+      favoriteProducts,
+    )..where((f) => f.productId.equals(productId))).go();
   }
 
   Future<bool> isFavorite(String productId) async {
-    final result = await (select(favoriteProducts)
-          ..where((f) => f.productId.equals(productId)))
-        .getSingleOrNull();
+    final result = await (select(
+      favoriteProducts,
+    )..where((f) => f.productId.equals(productId))).getSingleOrNull();
     return result != null;
   }
 
@@ -724,9 +732,11 @@ class AppDatabase extends _$AppDatabase {
     final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
 
     return await (select(dailyPurchases)
-          ..where((p) =>
-              p.branchId.equals(branchId) &
-              p.purchaseDate.isBetweenValues(startOfDay, endOfDay))
+          ..where(
+            (p) =>
+                p.branchId.equals(branchId) &
+                p.purchaseDate.isBetweenValues(startOfDay, endOfDay),
+          )
           ..orderBy([(p) => OrderingTerm.asc(p.purchaseDate)]))
         .get();
   }
@@ -745,10 +755,11 @@ class AppDatabase extends _$AppDatabase {
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
 
-    await (delete(dailyPurchases)
-          ..where((p) =>
+    await (delete(dailyPurchases)..where(
+          (p) =>
               p.branchId.equals(branchId) &
-              p.purchaseDate.isBetweenValues(startOfDay, endOfDay)))
+              p.purchaseDate.isBetweenValues(startOfDay, endOfDay),
+        ))
         .go();
   }
 
@@ -767,11 +778,17 @@ class AppDatabase extends _$AppDatabase {
 
   // ===== END DAILY PURCHASES =====
 
-  Future<LocalStockData?> getProductStock(String productId, String branchId) {
-    return (select(localStock)
-          ..where((s) =>
-              s.productId.equals(productId) & s.branchId.equals(branchId)))
-        .getSingleOrNull();
+  Future<LocalStockData?> getProductStock(
+    String productId,
+    String branchId,
+  ) async {
+    final rows =
+        await (select(localStock)..where(
+              (s) =>
+                  s.productId.equals(productId) & s.branchId.equals(branchId),
+            ))
+            .get();
+    return rows.isEmpty ? null : rows.first;
   }
 
   // Get stock for product using current branch
@@ -784,16 +801,21 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> decrementStock(
-      String productId, String branchId, int quantity) async {
+    String productId,
+    String branchId,
+    int quantity,
+  ) async {
     final stock = await getProductStock(productId, branchId);
     if (stock != null) {
-      await (update(localStock)
-            ..where((s) =>
-                s.productId.equals(productId) & s.branchId.equals(branchId)))
-          .write(LocalStockCompanion(
-        quantity: Value(stock.quantity - quantity),
-        updatedAt: Value(DateTime.now()),
-      ));
+      await (update(localStock)..where(
+            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
+          ))
+          .write(
+            LocalStockCompanion(
+              quantity: Value(stock.quantity - quantity),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
     }
   }
 
@@ -818,40 +840,47 @@ class AppDatabase extends _$AppDatabase {
       }
 
       final now = DateTime.now();
-      await (update(localStock)
-            ..where((s) =>
-                s.productId.equals(productId) &
-                s.branchId.equals(fromBranchId)))
-          .write(LocalStockCompanion(
-        quantity: Value(available - quantity),
-        updatedAt: Value(now),
-      ));
+      await (update(localStock)..where(
+            (s) =>
+                s.productId.equals(productId) & s.branchId.equals(fromBranchId),
+          ))
+          .write(
+            LocalStockCompanion(
+              quantity: Value(available - quantity),
+              updatedAt: Value(now),
+            ),
+          );
 
       final toStock = await getProductStock(productId, toBranchId);
       if (toStock == null) {
-        await into(localStock).insert(LocalStockCompanion.insert(
-          id: 'stock-$toBranchId-$productId',
-          productId: productId,
-          branchId: toBranchId,
-          quantity: quantity,
-          updatedAt: now,
-        ));
+        await into(localStock).insert(
+          LocalStockCompanion.insert(
+            id: 'stock-$toBranchId-$productId',
+            productId: productId,
+            branchId: toBranchId,
+            quantity: quantity,
+            updatedAt: now,
+          ),
+        );
       } else {
-        await (update(localStock)
-              ..where((s) =>
-                  s.productId.equals(productId) &
-                  s.branchId.equals(toBranchId)))
-            .write(LocalStockCompanion(
-          quantity: Value(toStock.quantity + quantity),
-          updatedAt: Value(now),
-        ));
+        await (update(localStock)..where(
+              (s) =>
+                  s.productId.equals(productId) & s.branchId.equals(toBranchId),
+            ))
+            .write(
+              LocalStockCompanion(
+                quantity: Value(toStock.quantity + quantity),
+                updatedAt: Value(now),
+              ),
+            );
       }
     });
   }
 
   // Low Stock Alerts
-  Future<List<Map<String, dynamic>>> getLowStockProducts(
-      {int threshold = 10}) async {
+  Future<List<Map<String, dynamic>>> getLowStockProducts({
+    int threshold = 10,
+  }) async {
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, ls.quantity, ls.branch_id, '
       '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
@@ -863,16 +892,18 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     return result
-        .map((r) => <String, dynamic>{
-              'id': r.read<String>('id'),
-              'name': r.read<String>('name'),
-              'sku': r.read<String>('sku'),
-              'price': r.read<double>('price'),
-              'quantity': r.readNullable<int>('quantity') ?? 0,
-              'branchId': r.readNullable<String>('branch_id') ?? '',
-              'categoryName':
-                  r.readNullable<String>('category_name') ?? 'Uncategorized',
-            })
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'name': r.read<String>('name'),
+            'sku': r.read<String>('sku'),
+            'price': r.read<double>('price'),
+            'quantity': r.readNullable<int>('quantity') ?? 0,
+            'branchId': r.readNullable<String>('branch_id') ?? '',
+            'categoryName':
+                r.readNullable<String>('category_name') ?? 'Uncategorized',
+          },
+        )
         .toList();
   }
 
@@ -887,15 +918,17 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     return result
-        .map((r) => <String, dynamic>{
-              'id': r.read<String>('id'),
-              'name': r.read<String>('name'),
-              'sku': r.read<String>('sku'),
-              'quantity': r.readNullable<int>('quantity') ?? 0,
-              'branchId': r.readNullable<String>('branch_id') ?? '',
-              'categoryName':
-                  r.readNullable<String>('category_name') ?? 'Uncategorized',
-            })
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'name': r.read<String>('name'),
+            'sku': r.read<String>('sku'),
+            'quantity': r.readNullable<int>('quantity') ?? 0,
+            'branchId': r.readNullable<String>('branch_id') ?? '',
+            'categoryName':
+                r.readNullable<String>('category_name') ?? 'Uncategorized',
+          },
+        )
         .toList();
   }
 
@@ -904,17 +937,19 @@ class AppDatabase extends _$AppDatabase {
   /// All sales within [from]..[to].
   Future<List<PendingSale>> getSalesByDateRange(DateTime from, DateTime to) {
     return (select(pendingSales)
-          ..where((s) =>
-              s.createdAt.isBiggerOrEqualValue(from) &
-              s.createdAt.isSmallerOrEqualValue(to))
+          ..where(
+            (s) =>
+                s.createdAt.isBiggerOrEqualValue(from) &
+                s.createdAt.isSmallerOrEqualValue(to),
+          )
           ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
         .get();
   }
 
   /// Stream of all sales (for real-time).
-  Stream<List<PendingSale>> watchAllSales() =>
-      (select(pendingSales)..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
-          .watch();
+  Stream<List<PendingSale>> watchAllSales() => (select(
+    pendingSales,
+  )..orderBy([(s) => OrderingTerm.desc(s.createdAt)])).watch();
 
   /// Stream of today's sales.
   Stream<List<PendingSale>> watchTodaysSales() {
@@ -922,17 +957,20 @@ class AppDatabase extends _$AppDatabase {
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     return (select(pendingSales)
-          ..where((s) =>
-              s.createdAt.isBiggerOrEqualValue(startOfDay) &
-              s.createdAt.isSmallerThanValue(endOfDay))
+          ..where(
+            (s) =>
+                s.createdAt.isBiggerOrEqualValue(startOfDay) &
+                s.createdAt.isSmallerThanValue(endOfDay),
+          )
           ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
         .watch();
   }
 
   /// Get sales items for a specific sale.
   Future<List<PendingSaleItem>> getSaleItems(String saleId) {
-    return (select(pendingSaleItems)..where((i) => i.saleId.equals(saleId)))
-        .get();
+    return (select(
+      pendingSaleItems,
+    )..where((i) => i.saleId.equals(saleId))).get();
   }
 
   /// Stream all sale items (for category / product reports).
@@ -941,7 +979,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Sales grouped by payment method for a date range.
   Future<List<Map<String, dynamic>>> getSalesByPaymentMethod(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT payment_method, COUNT(*) as count, SUM(total) as total_amount '
       'FROM pending_sales '
@@ -951,17 +991,21 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).get();
     return result
-        .map((r) => {
-              'paymentMethod': r.read<String>('payment_method'),
-              'count': r.read<int>('count'),
-              'totalAmount': r.read<double>('total_amount'),
-            })
+        .map(
+          (r) => {
+            'paymentMethod': r.read<String>('payment_method'),
+            'count': r.read<int>('count'),
+            'totalAmount': r.read<double>('total_amount'),
+          },
+        )
         .toList();
   }
 
   /// Sales grouped by cashier for a date range.
   Future<List<Map<String, dynamic>>> getSalesByCashier(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT cashier_id, COUNT(*) as count, SUM(total) as total_amount '
       'FROM pending_sales '
@@ -971,17 +1015,22 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).get();
     return result
-        .map((r) => {
-              'cashierId': r.read<String>('cashier_id'),
-              'count': r.read<int>('count'),
-              'totalAmount': r.read<double>('total_amount'),
-            })
+        .map(
+          (r) => {
+            'cashierId': r.read<String>('cashier_id'),
+            'count': r.read<int>('count'),
+            'totalAmount': r.read<double>('total_amount'),
+          },
+        )
         .toList();
   }
 
   /// Top selling products by quantity within a date range.
-  Future<List<Map<String, dynamic>>> getTopProducts(DateTime from, DateTime to,
-      {int limit = 20}) async {
+  Future<List<Map<String, dynamic>>> getTopProducts(
+    DateTime from,
+    DateTime to, {
+    int limit = 20,
+  }) async {
     final result = await customSelect(
       'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, SUM(psi.total) as total_revenue '
       'FROM pending_sale_items psi '
@@ -993,22 +1042,26 @@ class AppDatabase extends _$AppDatabase {
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
-        Variable.withInt(limit)
+        Variable.withInt(limit),
       ],
     ).get();
     return result
-        .map((r) => {
-              'productId': r.read<String>('product_id'),
-              'productName': r.read<String>('product_name'),
-              'totalQty': r.read<int>('total_qty'),
-              'totalRevenue': r.read<double>('total_revenue'),
-            })
+        .map(
+          (r) => {
+            'productId': r.read<String>('product_id'),
+            'productName': r.read<String>('product_name'),
+            'totalQty': r.read<int>('total_qty'),
+            'totalRevenue': r.read<double>('total_revenue'),
+          },
+        )
         .toList();
   }
 
   /// Sales grouped by category for a date range.
   Future<List<Map<String, dynamic>>> getSalesByCategory(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT c.id as category_id, c.name as category_name, '
       'COALESCE(SUM(psi.quantity), 0) as total_qty, COALESCE(SUM(psi.total), 0) as total_revenue '
@@ -1021,39 +1074,46 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).get();
     return result
-        .map((r) => {
-              'categoryId': r.read<String>('category_id'),
-              'categoryName': r.read<String>('category_name'),
-              'totalQty': r.read<int>('total_qty'),
-              'totalRevenue': r.read<double>('total_revenue'),
-            })
+        .map(
+          (r) => {
+            'categoryId': r.read<String>('category_id'),
+            'categoryName': r.read<String>('category_name'),
+            'totalQty': r.read<int>('total_qty'),
+            'totalRevenue': r.read<double>('total_revenue'),
+          },
+        )
         .toList();
   }
 
   /// Inventory summary with product names & stock levels.
   Future<List<Map<String, dynamic>>> getInventoryReport() async {
+    final branchId = _storage.getBranchId();
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, p.cost_price, '
       'COALESCE(ls.quantity, 0) as stock, COALESCE(ls.min_quantity, 0) as min_stock, '
       'c.name as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
+      "${branchId == null ? '' : 'AND ls.branch_id = ? '}"
       'LEFT JOIN categories c ON c.id = p.category_id '
       'WHERE p.is_active = 1 '
       'ORDER BY stock ASC',
+      variables: branchId == null ? [] : [Variable.withString(branchId)],
     ).get();
     return result
-        .map((r) => {
-              'id': r.read<String>('id'),
-              'name': r.read<String>('name'),
-              'sku': r.read<String>('sku'),
-              'price': r.read<double>('price'),
-              'costPrice': r.readNullable<double>('cost_price') ?? 0.0,
-              'stock': r.read<int>('stock'),
-              'minStock': r.read<int>('min_stock'),
-              'categoryName':
-                  r.readNullable<String>('category_name') ?? 'Uncategorised',
-            })
+        .map(
+          (r) => {
+            'id': r.read<String>('id'),
+            'name': r.read<String>('name'),
+            'sku': r.read<String>('sku'),
+            'price': r.read<double>('price'),
+            'costPrice': r.readNullable<double>('cost_price') ?? 0.0,
+            'stock': r.read<int>('stock'),
+            'minStock': r.read<int>('min_stock'),
+            'categoryName':
+                r.readNullable<String>('category_name') ?? 'Uncategorised',
+          },
+        )
         .toList();
   }
 
@@ -1068,7 +1128,7 @@ class AppDatabase extends _$AppDatabase {
       'FROM pending_sales WHERE created_at >= ? AND created_at < ?',
       variables: [
         Variable.withDateTime(startOfDay),
-        Variable.withDateTime(endOfDay)
+        Variable.withDateTime(endOfDay),
       ],
     ).getSingle();
     // Items sold today
@@ -1079,7 +1139,7 @@ class AppDatabase extends _$AppDatabase {
       'WHERE ps.created_at >= ? AND ps.created_at < ?',
       variables: [
         Variable.withDateTime(startOfDay),
-        Variable.withDateTime(endOfDay)
+        Variable.withDateTime(endOfDay),
       ],
     ).getSingle();
     return {
@@ -1092,7 +1152,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Weekly summary for analytics dashboard.
   Future<Map<String, dynamic>> getWeeklySummary(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
@@ -1116,7 +1178,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Monthly summary for analytics dashboard.
   Future<Map<String, dynamic>> getMonthlySummary(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
@@ -1140,7 +1204,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Hourly sales breakdown for a date range.
   Future<List<Map<String, dynamic>>> getHourlySales(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
@@ -1150,18 +1216,22 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).get();
     return result
-        .map((r) => {
-              'hour': r.read<String>('hour'),
-              'transactionCount': r.read<int>('transaction_count'),
-              'totalAmount': r.read<double>('total_amount'),
-              'date': from.toIso8601String(),
-            })
+        .map(
+          (r) => {
+            'hour': r.read<String>('hour'),
+            'transactionCount': r.read<int>('transaction_count'),
+            'totalAmount': r.read<double>('total_amount'),
+            'date': from.toIso8601String(),
+          },
+        )
         .toList();
   }
 
   /// Daily sales breakdown for a date range.
   Future<List<Map<String, dynamic>>> getDailySales(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT date(created_at) as date, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
@@ -1171,17 +1241,21 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).get();
     return result
-        .map((r) => {
-              'date': r.read<String>('date'),
-              'transactionCount': r.read<int>('transaction_count'),
-              'totalAmount': r.read<double>('total_amount'),
-            })
+        .map(
+          (r) => {
+            'date': r.read<String>('date'),
+            'transactionCount': r.read<int>('transaction_count'),
+            'totalAmount': r.read<double>('total_amount'),
+          },
+        )
         .toList();
   }
 
   /// Payment summary for analytics.
   Future<Map<String, dynamic>> getPaymentSummary(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT '
       'COUNT(*) as transaction_count, '
@@ -1206,7 +1280,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Peak hours analysis.
   Future<List<Map<String, dynamic>>> getPeakHours(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final result = await customSelect(
       'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
@@ -1217,18 +1293,22 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).get();
     return result
-        .map((r) => {
-              'hour': r.read<int>('hour'),
-              'transactionCount': r.read<int>('transaction_count'),
-              'totalAmount': r.read<double>('total_amount'),
-            })
+        .map(
+          (r) => {
+            'hour': r.read<int>('hour'),
+            'transactionCount': r.read<int>('transaction_count'),
+            'totalAmount': r.read<double>('total_amount'),
+          },
+        )
         .toList();
   }
 
   /// Slow moving products (products with low sales).
   Future<List<Map<String, dynamic>>> getSlowMovingProducts(
-      DateTime from, DateTime to,
-      {int limit = 10}) async {
+    DateTime from,
+    DateTime to, {
+    int limit = 10,
+  }) async {
     final result = await customSelect(
       'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, SUM(psi.total) as total_revenue '
       'FROM pending_sale_items psi '
@@ -1241,16 +1321,18 @@ class AppDatabase extends _$AppDatabase {
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
-        Variable.withInt(limit)
+        Variable.withInt(limit),
       ],
     ).get();
     return result
-        .map((r) => {
-              'productId': r.read<String>('product_id'),
-              'productName': r.read<String>('product_name'),
-              'totalQty': r.read<int>('total_qty'),
-              'totalRevenue': r.read<double>('total_revenue'),
-            })
+        .map(
+          (r) => {
+            'productId': r.read<String>('product_id'),
+            'productName': r.read<String>('product_name'),
+            'totalQty': r.read<int>('total_qty'),
+            'totalRevenue': r.read<double>('total_revenue'),
+          },
+        )
         .toList();
   }
 
@@ -1263,14 +1345,16 @@ class AppDatabase extends _$AppDatabase {
         'SELECT * FROM branches ORDER BY created_at DESC',
       ).get();
       return result
-          .map((r) => {
-                'id': r.read<String>('id'),
-                'name': r.read<String>('name'),
-                'location': r.read<String>('location'),
-                'phone': r.readNullable<String>('phone') ?? '',
-                'isActive': r.read<int>('is_active') == 1,
-                'createdAt': r.read<String>('created_at'),
-              })
+          .map(
+            (r) => {
+              'id': r.read<String>('id'),
+              'name': r.read<String>('name'),
+              'location': r.read<String>('location'),
+              'phone': r.readNullable<String>('phone') ?? '',
+              'isActive': r.read<int>('is_active') == 1,
+              'createdAt': r.read<String>('created_at'),
+            },
+          )
           .toList();
     } catch (_) {
       return [];
@@ -1291,7 +1375,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> insertBranch(
-      String id, String name, String location, String phone) async {
+    String id,
+    String name,
+    String location,
+    String phone,
+  ) async {
     await createBranchesTable();
     await customInsert(
       'INSERT INTO branches (id, name, location, phone, is_active, created_at) '
@@ -1307,19 +1395,24 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> deleteBranch(String id) async {
-    await customStatement(
-        'DELETE FROM branches WHERE id = ?', [Variable.withString(id)]);
+    await customStatement('DELETE FROM branches WHERE id = ?', [
+      Variable.withString(id),
+    ]);
   }
 
   Future<void> updateBranch(
-      String id, String name, String location, String phone) async {
+    String id,
+    String name,
+    String location,
+    String phone,
+  ) async {
     await customStatement(
       'UPDATE branches SET name = ?, location = ?, phone = ? WHERE id = ?',
       [
         Variable.withString(name),
         Variable.withString(location),
         Variable.withString(phone),
-        Variable.withString(id)
+        Variable.withString(id),
       ],
     );
   }
@@ -1351,20 +1444,22 @@ class AppDatabase extends _$AppDatabase {
       'SELECT * FROM customers WHERE name LIKE ? OR phone LIKE ? ORDER BY total_purchases DESC LIMIT 20',
       variables: [
         Variable.withString('%$query%'),
-        Variable.withString('%$query%')
+        Variable.withString('%$query%'),
       ],
     ).get();
     return result
-        .map((r) => <String, dynamic>{
-              'id': r.read<String>('id'),
-              'name': r.read<String>('name'),
-              'phone': r.readNullable<String>('phone') ?? '',
-              'email': r.readNullable<String>('email') ?? '',
-              'notes': r.readNullable<String>('notes') ?? '',
-              'totalPurchases': r.read<int>('total_purchases'),
-              'totalSpent': r.read<double>('total_spent'),
-              'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
-            })
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'name': r.read<String>('name'),
+            'phone': r.readNullable<String>('phone') ?? '',
+            'email': r.readNullable<String>('email') ?? '',
+            'notes': r.readNullable<String>('notes') ?? '',
+            'totalPurchases': r.read<int>('total_purchases'),
+            'totalSpent': r.read<double>('total_spent'),
+            'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
+          },
+        )
         .toList();
   }
 
@@ -1374,16 +1469,18 @@ class AppDatabase extends _$AppDatabase {
       'SELECT * FROM customers ORDER BY name ASC',
     ).get();
     return result
-        .map((r) => <String, dynamic>{
-              'id': r.read<String>('id'),
-              'name': r.read<String>('name'),
-              'phone': r.readNullable<String>('phone') ?? '',
-              'email': r.readNullable<String>('email') ?? '',
-              'notes': r.readNullable<String>('notes') ?? '',
-              'totalPurchases': r.read<int>('total_purchases'),
-              'totalSpent': r.read<double>('total_spent'),
-              'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
-            })
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'name': r.read<String>('name'),
+            'phone': r.readNullable<String>('phone') ?? '',
+            'email': r.readNullable<String>('email') ?? '',
+            'notes': r.readNullable<String>('notes') ?? '',
+            'totalPurchases': r.read<int>('total_purchases'),
+            'totalSpent': r.read<double>('total_spent'),
+            'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
+          },
+        )
         .toList();
   }
 
@@ -1407,8 +1504,11 @@ class AppDatabase extends _$AppDatabase {
     };
   }
 
-  Future<String> insertOrGetCustomer(String id, String name,
-      {String? phone}) async {
+  Future<String> insertOrGetCustomer(
+    String id,
+    String name, {
+    String? phone,
+  }) async {
     await createCustomersTable();
     // Check if customer exists by name (case-insensitive)
     final existing = await customSelect(
@@ -1419,10 +1519,10 @@ class AppDatabase extends _$AppDatabase {
       final existingId = existing.first.read<String>('id');
       // Update phone if provided
       if (phone != null && phone.isNotEmpty) {
-        await customStatement(
-          'UPDATE customers SET phone = ? WHERE id = ?',
-          [Variable.withString(phone), Variable.withString(existingId)],
-        );
+        await customStatement('UPDATE customers SET phone = ? WHERE id = ?', [
+          Variable.withString(phone),
+          Variable.withString(existingId),
+        ]);
       }
       return existingId;
     }
@@ -1450,10 +1550,10 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> setCustomerBalance(String customerId, double amount) async {
     await createCustomersTable();
-    await customStatement(
-      'UPDATE customers SET balance = ? WHERE id = ?',
-      [Variable.withReal(amount), Variable.withString(customerId)],
-    );
+    await customStatement('UPDATE customers SET balance = ? WHERE id = ?', [
+      Variable.withReal(amount),
+      Variable.withString(customerId),
+    ]);
   }
 
   Future<void> setCustomerCreditLimit(String customerId, double limit) async {
@@ -1479,7 +1579,7 @@ class AppDatabase extends _$AppDatabase {
       [
         Variable.withInt(points),
         Variable.withString(customerId),
-        Variable.withInt(points)
+        Variable.withInt(points),
       ],
     );
   }
@@ -1490,14 +1590,16 @@ class AppDatabase extends _$AppDatabase {
       'SELECT * FROM customers WHERE balance > 0 ORDER BY balance DESC',
     ).get();
     return result
-        .map((r) => <String, dynamic>{
-              'id': r.read<String>('id'),
-              'name': r.read<String>('name'),
-              'phone': r.readNullable<String>('phone') ?? '',
-              'balance': r.read<double>('balance'),
-              'creditLimit': r.read<double>('credit_limit'),
-              'loyaltyPoints': r.read<int>('loyalty_points'),
-            })
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'name': r.read<String>('name'),
+            'phone': r.readNullable<String>('phone') ?? '',
+            'balance': r.read<double>('balance'),
+            'creditLimit': r.read<double>('credit_limit'),
+            'loyaltyPoints': r.read<int>('loyalty_points'),
+          },
+        )
         .toList();
   }
 
@@ -1509,14 +1611,15 @@ class AppDatabase extends _$AppDatabase {
       [
         Variable.withReal(amount),
         Variable.withString(DateTime.now().toIso8601String()),
-        Variable.withString(customerId)
+        Variable.withString(customerId),
       ],
     );
   }
 
   /// Get top products a specific customer buys (AI recommendation).
   Future<List<Map<String, dynamic>>> getCustomerTopProducts(
-      String customerId) async {
+    String customerId,
+  ) async {
     final result = await customSelect(
       'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, COUNT(*) as times_bought '
       'FROM pending_sale_items psi '
@@ -1527,12 +1630,14 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withString(customerId)],
     ).get();
     return result
-        .map((r) => <String, dynamic>{
-              'productId': r.read<String>('product_id'),
-              'productName': r.read<String>('product_name'),
-              'totalQty': r.read<int>('total_qty'),
-              'timesBought': r.read<int>('times_bought'),
-            })
+        .map(
+          (r) => <String, dynamic>{
+            'productId': r.read<String>('product_id'),
+            'productName': r.read<String>('product_name'),
+            'totalQty': r.read<int>('total_qty'),
+            'timesBought': r.read<int>('times_bought'),
+          },
+        )
         .toList();
   }
 
@@ -1550,8 +1655,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<Category?> getCategory(String id) {
-    return (select(categories)..where((c) => c.id.equals(id)))
-        .getSingleOrNull();
+    return (select(
+      categories,
+    )..where((c) => c.id.equals(id))).getSingleOrNull();
   }
 
   Future<void> insertProduct(ProductsCompanion item) {
@@ -1583,8 +1689,12 @@ class AppDatabase extends _$AppDatabase {
   // ── Supplier Finance Tracking ──
 
   /// Add or update a supplier record
-  Future<String> insertOrGetSupplier(String id, String name,
-      {String? phone, String? email}) async {
+  Future<String> insertOrGetSupplier(
+    String id,
+    String name, {
+    String? phone,
+    String? email,
+  }) async {
     final existing = await customSelect(
       'SELECT id FROM suppliers WHERE name = ? OR phone = ?',
       variables: [Variable.withString(name), Variable.withString(phone ?? '')],
@@ -1622,26 +1732,32 @@ class AppDatabase extends _$AppDatabase {
     ''').get();
 
     return result
-        .map((row) => {
-              'id': row.read<String>('id'),
-              'name': row.read<String>('name'),
-              'phone': row.read<String?>('phone') ?? '',
-              'email': row.read<String?>('email') ?? '',
-              'totalInvoiced': row.read<double?>('total_invoiced') ?? 0,
-              'totalOwed': ((row.read<double?>('total_invoiced') ?? 0) -
-                      (row.read<double?>('total_paid') ?? 0))
-                  .clamp(0, double.infinity),
-              'totalPaid': (row.read<double?>('total_paid') ?? 0),
-              'lastPaymentDate': row.read<String?>('last_payment_date'),
-              'invoiceCount': row.read<int?>('invoice_count') ?? 0,
-              'overdueCount': row.read<int?>('overdue_count') ?? 0,
-            })
+        .map(
+          (row) => {
+            'id': row.read<String>('id'),
+            'name': row.read<String>('name'),
+            'phone': row.read<String?>('phone') ?? '',
+            'email': row.read<String?>('email') ?? '',
+            'totalInvoiced': row.read<double?>('total_invoiced') ?? 0,
+            'totalOwed':
+                ((row.read<double?>('total_invoiced') ?? 0) -
+                        (row.read<double?>('total_paid') ?? 0))
+                    .clamp(0, double.infinity),
+            'totalPaid': (row.read<double?>('total_paid') ?? 0),
+            'lastPaymentDate': row.read<String?>('last_payment_date'),
+            'invoiceCount': row.read<int?>('invoice_count') ?? 0,
+            'overdueCount': row.read<int?>('overdue_count') ?? 0,
+          },
+        )
         .toList();
   }
 
   /// Record a payment to a supplier
-  Future<void> recordSupplierPayment(String supplierId, double amount,
-      {String? notes}) async {
+  Future<void> recordSupplierPayment(
+    String supplierId,
+    double amount, {
+    String? notes,
+  }) async {
     await _createSupplierFinanceTables();
     final now = DateTime.now().toIso8601String();
     await customStatement(
@@ -1652,7 +1768,8 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get payment history for a supplier
   Future<List<Map<String, dynamic>>> getSupplierPaymentHistory(
-      String supplierId) async {
+    String supplierId,
+  ) async {
     await _createSupplierFinanceTables();
     final result = await customSelect(
       'SELECT id, amount, notes, payment_date FROM supplier_payments WHERE supplier_id = ? ORDER BY payment_date DESC',
@@ -1660,17 +1777,20 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     return result
-        .map((row) => {
-              'id': row.read<int>('id'),
-              'amount': row.read<double>('amount'),
-              'notes': row.read<String?>('notes') ?? '',
-              'paymentDate': row.read<String>('payment_date'),
-            })
+        .map(
+          (row) => {
+            'id': row.read<int>('id'),
+            'amount': row.read<double>('amount'),
+            'notes': row.read<String?>('notes') ?? '',
+            'paymentDate': row.read<String>('payment_date'),
+          },
+        )
         .toList();
   }
 
   Future<List<Map<String, dynamic>>> getSupplierInvoices(
-      String supplierId) async {
+    String supplierId,
+  ) async {
     await _createSupplierFinanceTables();
     final result = await customSelect(
       'SELECT * FROM supplier_invoices WHERE supplier_id = ? ORDER BY created_at DESC',
@@ -1678,19 +1798,21 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     return result
-        .map((row) => {
-              'id': row.read<String>('id'),
-              'invoiceNumber': row.read<String?>('invoice_number') ?? '',
-              'summary': row.read<String?>('summary') ?? '',
-              'terms': row.read<String>('terms'),
-              'totalAmount': row.read<double>('total_amount'),
-              'dueAmount': row.read<double>('due_amount'),
-              'paidAmount': row.read<double>('paid_amount'),
-              'dueDate': row.read<String?>('due_date'),
-              'status': row.read<String>('status'),
-              'createdAt': row.read<String>('created_at'),
-              'receiptImagePath': row.read<String?>('receipt_image_path'),
-            })
+        .map(
+          (row) => {
+            'id': row.read<String>('id'),
+            'invoiceNumber': row.read<String?>('invoice_number') ?? '',
+            'summary': row.read<String?>('summary') ?? '',
+            'terms': row.read<String>('terms'),
+            'totalAmount': row.read<double>('total_amount'),
+            'dueAmount': row.read<double>('due_amount'),
+            'paidAmount': row.read<double>('paid_amount'),
+            'dueDate': row.read<String?>('due_date'),
+            'status': row.read<String>('status'),
+            'createdAt': row.read<String>('created_at'),
+            'receiptImagePath': row.read<String?>('receipt_image_path'),
+          },
+        )
         .toList();
   }
 
@@ -1718,7 +1840,9 @@ class AppDatabase extends _$AppDatabase {
     );
     final invoiceId = 'supplier-invoice-${now.microsecondsSinceEpoch}';
     final subtotal = items.fold<double>(
-        0, (sum, item) => sum + ((item['lineTotal'] as num?)?.toDouble() ?? 0));
+      0,
+      (sum, item) => sum + ((item['lineTotal'] as num?)?.toDouble() ?? 0),
+    );
     final total = subtotal;
     final due = (total - paidAmount).clamp(0, double.infinity).toDouble();
     final status = due <= 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'open');
@@ -1802,8 +1926,11 @@ class AppDatabase extends _$AppDatabase {
       }
 
       if (paidAmount > 0) {
-        await recordSupplierPayment(supplierId, paidAmount,
-            notes: 'Initial payment for invoice ${invoiceNumber ?? invoiceId}');
+        await recordSupplierPayment(
+          supplierId,
+          paidAmount,
+          notes: 'Initial payment for invoice ${invoiceNumber ?? invoiceId}',
+        );
       }
     });
 
@@ -1822,7 +1949,8 @@ class AppDatabase extends _$AppDatabase {
       'SELECT id FROM products WHERE LOWER(name) = LOWER(?) OR sku = ? LIMIT 1',
       variables: [Variable.withString(name), Variable.withString(sku)],
     ).getSingleOrNull();
-    final productId = existing?.read<String>('id') ??
+    final productId =
+        existing?.read<String>('id') ??
         'product-${DateTime.now().microsecondsSinceEpoch}-${sku.hashCode.abs()}';
     final categoryId = await _ensureDefaultCategory(nowIso);
 
@@ -1843,7 +1971,7 @@ class AppDatabase extends _$AppDatabase {
           unitCost,
           unitCost,
           nowIso,
-          nowIso
+          nowIso,
         ],
       );
     } else {
@@ -1864,7 +1992,7 @@ class AppDatabase extends _$AppDatabase {
         productId,
         branchId,
         quantity.round(),
-        nowIso
+        nowIso,
       ],
     );
 
@@ -1888,8 +2016,9 @@ class AppDatabase extends _$AppDatabase {
         .toUpperCase()
         .replaceAll(RegExp(r'[^A-Z0-9]+'), '-')
         .replaceAll(RegExp(r'^-+|-+$'), '');
-    final prefix =
-        cleaned.isEmpty ? 'ITEM' : cleaned.split('-').take(3).join('-');
+    final prefix = cleaned.isEmpty
+        ? 'ITEM'
+        : cleaned.split('-').take(3).join('-');
     return 'SUP-$prefix';
   }
 }

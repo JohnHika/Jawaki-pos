@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
@@ -10,13 +11,18 @@ class ProductGrid extends ConsumerWidget {
   static String _getUserFriendlyErrorMessage(dynamic error) {
     final errorString = error.toString().toLowerCase();
 
-    if (errorString.contains('network') || errorString.contains('socket') || errorString.contains('connection')) {
+    if (errorString.contains('network') ||
+        errorString.contains('socket') ||
+        errorString.contains('connection')) {
       return 'Please check your internet connection and try again';
     } else if (errorString.contains('timeout')) {
       return 'Request timed out. Please try again.';
-    } else if (errorString.contains('format') || errorString.contains('parse')) {
+    } else if (errorString.contains('format') ||
+        errorString.contains('parse')) {
       return 'Data format error. We\'re working to fix this.';
-    } else if (errorString.contains('auth') || errorString.contains('permission') || errorString.contains('unauthorized')) {
+    } else if (errorString.contains('auth') ||
+        errorString.contains('permission') ||
+        errorString.contains('unauthorized')) {
       return 'Authentication required. Please log in again.';
     } else if (error is Exception) {
       return 'An unexpected error occurred. Please try again.';
@@ -24,17 +30,21 @@ class ProductGrid extends ConsumerWidget {
 
     return 'Unable to load products. Please try again.';
   }
+
   const ProductGrid({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categoryId = ref.watch(selectedCategoryProvider);
     final searchQuery = ref.watch(searchQueryProvider);
-    final productsAsync = ref.watch(filteredProductsProvider(
-      FilterParams(
+    final productsAsync = ref.watch(
+      filteredProductsProvider(
+        FilterParams(
           categoryId: categoryId,
-          searchQuery: searchQuery.isEmpty ? null : searchQuery),
-    ));
+          searchQuery: searchQuery.isEmpty ? null : searchQuery,
+        ),
+      ),
+    );
 
     return productsAsync.when(
       data: (products) {
@@ -100,9 +110,23 @@ class _ProductCard extends ConsumerWidget {
     final productName = product['name'] as String;
     final price = (product['price'] as num).toDouble();
     final imageUrl = product['imageUrl'] as String?;
+    final unit = product['unit'] as String? ?? 'piece';
+    final secondaryUnit = product['secondaryUnit'] as String?;
+    final secondaryUnitPrice = (product['secondaryUnitPrice'] as num?)
+        ?.toDouble();
+    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+    final trackInventory = product['trackInventory'] as bool? ?? true;
+    final isOutOfStock = trackInventory && stock <= 0;
     final quantityInCart = cartState.items
         .where((item) => item.productId == productId)
         .fold<int>(0, (sum, item) => sum + item.quantity);
+
+    // Get unit price info from product
+    final unitPriceInfo =
+        product['unitPriceInfo'] as Map<String, dynamic>? ?? {};
+    final currentPrice = unitPriceInfo['currentPrice'] as num? ?? price;
+    final secondaryUnitPriceDisplay =
+        unitPriceInfo['secondaryUnitPrice'] as num? ?? secondaryUnitPrice;
 
     return GlassCard(
       onTap: () => _addToCart(context, ref),
@@ -112,15 +136,15 @@ class _ProductCard extends ConsumerWidget {
       tint: isDark
           ? DesignColors.glassDark
           : (quantityInCart > 0
-              ? DesignColors.brand.withValues(alpha:0.04)
-              : DesignColors.glassWhite),
+                ? DesignColors.brand.withValues(alpha: 0.04)
+                : DesignColors.glassWhite),
       borderColor: quantityInCart > 0
-          ? DesignColors.brand.withValues(alpha:0.3)
+          ? DesignColors.brand.withValues(alpha: 0.3)
           : (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder),
       boxShadow: quantityInCart > 0
           ? [
               BoxShadow(
-                color: DesignColors.brand.withValues(alpha:0.15),
+                color: DesignColors.brand.withValues(alpha: 0.15),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -136,8 +160,9 @@ class _ProductCard extends ConsumerWidget {
               fit: StackFit.expand,
               children: [
                 ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(16)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
                   child: imageUrl != null
                       ? CachedNetworkImage(
                           imageUrl: imageUrl,
@@ -147,6 +172,29 @@ class _ProductCard extends ConsumerWidget {
                         )
                       : _ImagePlaceholder(),
                 ),
+
+                // Quantity Badge
+                if (isOutOfStock)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.42),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(16),
+                        ),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'OUT OF STOCK',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // Quantity Badge
                 if (quantityInCart > 0)
@@ -159,17 +207,24 @@ class _ProductCard extends ConsumerWidget {
                       builder: (context, value, child) {
                         return Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [DesignColors.brand, DesignColors.brandDark],
+                              colors: [
+                                DesignColors.brand,
+                                DesignColors.brandDark,
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: DesignColors.brand.withValues(alpha:0.4),
+                                color: DesignColors.brand.withValues(
+                                  alpha: 0.4,
+                                ),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
@@ -196,22 +251,50 @@ class _ProductCard extends ConsumerWidget {
                     color: DesignColors.brand,
                     borderRadius: BorderRadius.circular(20),
                     elevation: 3,
-                    shadowColor: DesignColors.brand.withValues(alpha:0.4),
+                    shadowColor: DesignColors.brand.withValues(alpha: 0.4),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
-                      onTap: () {
+                      onTap: () async {
+                        if (isOutOfStock) {
+                          _showStockBlocked(context, productName, stock);
+                          return;
+                        }
                         final sku = product['sku'] as String? ?? '';
                         if (quantityInCart > 0) {
-                          ref.read(cartProvider.notifier).updateQuantity(
-                              productId, quantityInCart + 1);
+                          final result = await ref
+                              .read(cartProvider.notifier)
+                              .updateQuantity(productId, quantityInCart + 1);
+                          if (!context.mounted) return;
+                          if (!result.success) {
+                            _showStockBlocked(
+                              context,
+                              productName,
+                              result.currentStock,
+                            );
+                            return;
+                          }
                         } else {
-                          ref.read(cartProvider.notifier).addItem(
+                          final result = await ref
+                              .read(cartProvider.notifier)
+                              .addItem(
                                 productId: productId,
                                 productName: productName,
                                 sku: sku,
                                 unitPrice: price,
                                 quantity: 1,
+                                saleUnit: unit,
+                                saleQuantity: 1,
+                                unitConversionFactor: 1,
                               );
+                          if (!context.mounted) return;
+                          if (!result.success) {
+                            _showStockBlocked(
+                              context,
+                              productName,
+                              result.currentStock,
+                            );
+                            return;
+                          }
                         }
                         ScaffoldMessenger.of(context).clearSnackBars();
                         showGlassSnackBar(
@@ -236,8 +319,7 @@ class _ProductCard extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -268,6 +350,34 @@ class _ProductCard extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  if (secondaryUnit != null &&
+                      secondaryUnitPriceDisplay != null)
+                    SizedBox(height: 4),
+                  if (secondaryUnit != null &&
+                      secondaryUnitPriceDisplay != null)
+                    Text(
+                      'KES ${secondaryUnitPriceDisplay.toStringAsFixed(0)}/unit ($secondaryUnit)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: DesignColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  const SizedBox(height: 3),
+                  Text(
+                    trackInventory
+                        ? '$stock $unit in stock'
+                        : 'Stock not tracked',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isOutOfStock
+                          ? DesignColors.error
+                          : DesignColors.textTertiary,
+                      fontWeight: isOutOfStock
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -283,6 +393,14 @@ class _ProductCard extends ConsumerWidget {
     final sku = product['sku'] as String? ?? '';
     final price = (product['price'] as num).toDouble();
     final unit = product['unit'] as String? ?? 'piece';
+    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+    final trackInventory = product['trackInventory'] as bool? ?? true;
+    final tiers = PricingService.getAllPricingTiers(product);
+
+    if (trackInventory && stock <= 0) {
+      _showStockBlocked(context, productName, stock);
+      return;
+    }
 
     final cartState = ref.read(cartProvider);
     final existing = cartState.items.where((i) => i.productId == productId);
@@ -292,30 +410,61 @@ class _ProductCard extends ConsumerWidget {
       context,
       child: _QuantitySheet(
         productName: productName,
-        price: price,
-        unit: unit,
+        basePrice: price,
+        baseUnit: unit,
+        pricingTiers: tiers,
+        availableStock: trackInventory ? stock : null,
         currentQuantity: currentQty,
-        onConfirm: (qty) {
-          if (currentQty > 0) {
-            ref.read(cartProvider.notifier).updateQuantity(productId, qty);
-          } else {
-            ref.read(cartProvider.notifier).addItem(
-                  productId: productId,
-                  productName: productName,
-                  sku: sku,
-                  unitPrice: price,
-                  quantity: qty,
-                );
+        onConfirm: (qty, tier) async {
+          final conversion = tier.quantityPerUnit ?? 1;
+          final baseQty = (qty * conversion).round();
+          final unitPrice = tier.price / conversion;
+          final result = currentQty > 0
+              ? await ref
+                    .read(cartProvider.notifier)
+                    .updateQuantity(productId, baseQty)
+              : await ref
+                    .read(cartProvider.notifier)
+                    .addItem(
+                      productId: productId,
+                      productName: productName,
+                      sku: sku,
+                      unitPrice: unitPrice,
+                      quantity: baseQty,
+                      notes: tier.unitTypeLabel,
+                      saleUnit: tier.unit,
+                      saleQuantity: qty.toDouble(),
+                      unitConversionFactor: conversion,
+                    );
+
+          if (!context.mounted) return;
+          if (!result.success) {
+            _showStockBlocked(context, productName, result.currentStock);
+            return;
           }
           ScaffoldMessenger.of(context).clearSnackBars();
           showGlassSnackBar(
             context,
-            '$qty x $productName added to cart',
+            '$qty ${tier.unit} ${productName} added to cart',
             icon: Icons.add_shopping_cart_rounded,
             color: DesignColors.success,
           );
         },
       ),
+    );
+  }
+
+  void _showStockBlocked(
+    BuildContext context,
+    String productName,
+    int currentStock,
+  ) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    showGlassSnackBar(
+      context,
+      '$productName is out of stock. Receive inventory before selling.',
+      icon: Icons.inventory_2_outlined,
+      color: DesignColors.error,
     );
   }
 }
@@ -325,7 +474,9 @@ class _ImagePlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      color: isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle,
+      color: isDark
+          ? DesignColors.darkSurfaceElevated
+          : DesignColors.surfaceSubtle,
       child: Center(
         child: Icon(
           Icons.image_outlined,
@@ -345,15 +496,19 @@ class _ImagePlaceholder extends StatelessWidget {
 
 class _QuantitySheet extends StatefulWidget {
   final String productName;
-  final double price;
-  final String unit;
+  final double basePrice;
+  final String baseUnit;
+  final List<UnitPriceInfo> pricingTiers;
+  final int? availableStock;
   final int currentQuantity;
-  final void Function(int quantity) onConfirm;
+  final Future<void> Function(int quantity, UnitPriceInfo tier) onConfirm;
 
   const _QuantitySheet({
     required this.productName,
-    required this.price,
-    required this.unit,
+    required this.basePrice,
+    required this.baseUnit,
+    required this.pricingTiers,
+    required this.availableStock,
     required this.currentQuantity,
     required this.onConfirm,
   });
@@ -366,6 +521,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   late int _quantity;
   late final TextEditingController _qtyController;
   bool _isCarton = false;
+  late UnitPriceInfo _selectedTier;
 
   static const _quickPicks = [1, 6, 12, 24, 48];
   static const _bulkPicks = [
@@ -379,7 +535,14 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   @override
   void initState() {
     super.initState();
-    _quantity = widget.currentQuantity > 0 ? widget.currentQuantity : 1;
+    _selectedTier = widget.pricingTiers.isNotEmpty
+        ? widget.pricingTiers.first
+        : UnitPriceInfo(
+            unit: widget.baseUnit,
+            price: widget.basePrice,
+            unitTypeLabel: widget.baseUnit,
+          );
+    _quantity = 1;
     _qtyController = TextEditingController(text: '$_quantity');
   }
 
@@ -403,8 +566,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final total = widget.price * _quantity;
+    final total = _selectedTier.price * _quantity;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final conversion = _selectedTier.quantityPerUnit ?? 1;
+    final baseUnits = (_quantity * conversion).round();
+    final availableStock = widget.availableStock;
+    final exceedsStock = availableStock != null && baseUnits > availableStock;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -421,10 +588,11 @@ class _QuantitySheetState extends State<_QuantitySheet> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.06),
+                color: DesignColors.brand.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: DesignColors.brand.withValues(alpha:0.12)),
+                  color: DesignColors.brand.withValues(alpha: 0.12),
+                ),
               ),
               child: Column(
                 children: [
@@ -443,7 +611,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'KES ${widget.price.toStringAsFixed(0)} per ${widget.unit}',
+                    'KES ${_selectedTier.price.toStringAsFixed(0)} per ${_selectedTier.unit}',
                     style: TextStyle(
                       color: isDark
                           ? DesignColors.darkTextSecondary
@@ -463,14 +631,16 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               children: [
                 Material(
                   color: _quantity > 1
-                      ? DesignColors.brand.withValues(alpha:0.1)
+                      ? DesignColors.brand.withValues(alpha: 0.1)
                       : (isDark
-                          ? DesignColors.darkSurfaceElevated
-                          : DesignColors.surfaceSubtle),
+                            ? DesignColors.darkSurfaceElevated
+                            : DesignColors.surfaceSubtle),
                   borderRadius: BorderRadius.circular(14),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
-                    onTap: _quantity > 1 ? () => _updateQty(_quantity - 1) : null,
+                    onTap: _quantity > 1
+                        ? () => _updateQty(_quantity - 1)
+                        : null,
                     child: SizedBox(
                       width: 48,
                       height: 48,
@@ -479,8 +649,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         color: _quantity > 1
                             ? DesignColors.brand
                             : (isDark
-                                ? DesignColors.darkTextTertiary
-                                : DesignColors.textTertiary),
+                                  ? DesignColors.darkTextTertiary
+                                  : DesignColors.textTertiary),
                       ),
                     ),
                   ),
@@ -500,8 +670,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           : DesignColors.textPrimary,
                     ),
                     decoration: InputDecoration(
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
@@ -536,7 +705,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                 ),
                 const SizedBox(width: 12),
                 Material(
-                  color: DesignColors.brand.withValues(alpha:0.15),
+                  color: DesignColors.brand.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(14),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
@@ -552,10 +721,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           end: Alignment.bottomRight,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
-                      ),
+                      child: const Icon(Icons.add_rounded, color: Colors.white),
                     ),
                   ),
                 ),
@@ -563,6 +729,58 @@ class _QuantitySheetState extends State<_QuantitySheet> {
             ),
 
             const SizedBox(height: 16),
+
+            if (widget.pricingTiers.length > 1) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Sell as',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.pricingTiers.map((tier) {
+                  final selected =
+                      identical(tier, _selectedTier) ||
+                      (tier.unit == _selectedTier.unit &&
+                          tier.price == _selectedTier.price);
+                  final tierConversion = tier.quantityPerUnit ?? 1;
+                  return ChoiceChip(
+                    label: Text(
+                      tierConversion > 1
+                          ? '${tier.unit} (${tierConversion.toStringAsFixed(tierConversion.truncateToDouble() == tierConversion ? 0 : 1)} ${widget.baseUnit})'
+                          : tier.unit,
+                    ),
+                    selected: selected,
+                    onSelected: (_) {
+                      _selectedTier = tier;
+                      _isCarton = false;
+                      _updateQty(1);
+                    },
+                    selectedColor: DesignColors.brand.withValues(alpha: 0.15),
+                    backgroundColor: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceMuted,
+                    labelStyle: TextStyle(
+                      color: selected ? DesignColors.brand : null,
+                      fontWeight: selected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Tabs: Pieces | Bulk
             Row(
@@ -597,23 +815,24 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     label: Text('$n'),
                     selected: selected,
                     onSelected: (_) => _updateQty(n),
-                    selectedColor: DesignColors.brand.withValues(alpha:0.15),
+                    selectedColor: DesignColors.brand.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceMuted,
                     labelStyle: TextStyle(
                       color: selected ? DesignColors.brand : null,
-                      fontWeight:
-                          selected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: selected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                       side: BorderSide(
                         color: selected
-                            ? DesignColors.brand.withValues(alpha:0.4)
+                            ? DesignColors.brand.withValues(alpha: 0.4)
                             : (isDark
-                                ? DesignColors.darkBorder
-                                : DesignColors.surfaceBorder),
+                                  ? DesignColors.darkBorder
+                                  : DesignColors.surfaceBorder),
                       ),
                     ),
                   );
@@ -631,23 +850,24 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     label: Text('$label ($qty)'),
                     selected: selected,
                     onSelected: (_) => _updateQty(qty),
-                    selectedColor: Colors.teal.withValues(alpha:0.15),
+                    selectedColor: Colors.teal.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceMuted,
                     labelStyle: TextStyle(
                       color: selected ? Colors.teal : null,
-                      fontWeight:
-                          selected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: selected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                       side: BorderSide(
                         color: selected
-                            ? Colors.teal.withValues(alpha:0.4)
+                            ? Colors.teal.withValues(alpha: 0.4)
                             : (isDark
-                                ? DesignColors.darkBorder
-                                : DesignColors.surfaceBorder),
+                                  ? DesignColors.darkBorder
+                                  : DesignColors.surfaceBorder),
                       ),
                     ),
                   );
@@ -656,13 +876,48 @@ class _QuantitySheetState extends State<_QuantitySheet> {
 
             const SizedBox(height: 16),
 
+            if (availableStock != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      exceedsStock
+                          ? Icons.warning_amber_rounded
+                          : Icons.inventory_2_outlined,
+                      size: 16,
+                      color: exceedsStock
+                          ? DesignColors.error
+                          : DesignColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        exceedsStock
+                            ? 'Only $availableStock ${widget.baseUnit} available'
+                            : '$baseUnits ${widget.baseUnit} will be deducted from stock',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: exceedsStock
+                              ? DesignColors.error
+                              : DesignColors.textSecondary,
+                          fontWeight: exceedsStock
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Total bar
             GlassCard(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               borderRadius: 14,
               blur: 6,
-              tint: DesignColors.brand.withValues(alpha:0.06),
-              borderColor: DesignColors.brand.withValues(alpha:0.12),
+              tint: DesignColors.brand.withValues(alpha: 0.06),
+              borderColor: DesignColors.brand.withValues(alpha: 0.12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -672,10 +927,11 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       Text(
                         'Total',
                         style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? DesignColors.darkTextSecondary
-                                : DesignColors.textSecondary),
+                          fontSize: 13,
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -693,7 +949,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '$_quantity ${widget.unit}${_quantity != 1 ? 's' : ''}',
+                        '$_quantity ${_selectedTier.unit}${_quantity != 1 ? 's' : ''}',
                         style: TextStyle(
                           fontSize: 14,
                           color: isDark
@@ -703,7 +959,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '@ KES ${widget.price.toStringAsFixed(0)}',
+                        '@ KES ${_selectedTier.price.toStringAsFixed(0)}',
                         style: TextStyle(
                           fontSize: 11,
                           color: isDark
@@ -747,13 +1003,18 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ? 'Update Cart'
                         : 'Add to Cart',
                     icon: Icons.shopping_cart_checkout_rounded,
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onConfirm(_quantity);
-                    },
+                    onPressed: exceedsStock
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            widget.onConfirm(_quantity, _selectedTier);
+                          },
                     height: 48,
                     borderRadius: 12,
-                    gradient: const [DesignColors.brand, DesignColors.brandDark],
+                    gradient: const [
+                      DesignColors.brand,
+                      DesignColors.brandDark,
+                    ],
                   ),
                 ),
               ],
@@ -777,12 +1038,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: selected
-              ? DesignColors.brand.withValues(alpha:0.12)
+              ? DesignColors.brand.withValues(alpha: 0.12)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected
-                ? DesignColors.brand.withValues(alpha:0.4)
+                ? DesignColors.brand.withValues(alpha: 0.4)
                 : DesignColors.surfaceBorder,
             width: selected ? 1.5 : 1,
           ),

@@ -10,18 +10,47 @@ import '../../../../core/services/connectivity_service.dart';
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
+Future<Map<String, dynamic>> _productToPosMap(
+  AppDatabase database,
+  Product product,
+) async {
+  final stock = await database.getStockForProduct(product.id);
+
+  return {
+    'id': product.id,
+    'sku': product.sku,
+    'name': product.name,
+    'description': product.description,
+    'categoryId': product.categoryId,
+    'price': product.price,
+    'costPrice': product.costPrice,
+    'unit': product.unit,
+    'secondaryUnit': product.secondaryUnit,
+    'secondaryUnitQty': product.secondaryUnitQty,
+    'secondaryUnitPrice': product.secondaryUnitPrice,
+    'tertiaryUnit': product.tertiaryUnit,
+    'tertiaryUnitQty': product.tertiaryUnitQty,
+    'tertiaryUnitPrice': product.tertiaryUnitPrice,
+    'imageUrl': product.imageUrl,
+    'isActive': product.isActive,
+    'trackInventory': product.trackInventory,
+    'stock': stock?.quantity ?? 0,
+    'minStock': stock?.minQuantity ?? 0,
+  };
+}
+
 /// Parse timestamp from various formats (ISO string or milliseconds since epoch)
 DateTime _parseTimestamp(dynamic value) {
   if (value == null) return DateTime.now();
-  
+
   // If it's already a DateTime, return it
   if (value is DateTime) return value;
-  
+
   // If it's a number (Unix timestamp in milliseconds)
   if (value is int || value is double) {
     return DateTime.fromMillisecondsSinceEpoch(value.toInt());
   }
-  
+
   // If it's a string
   if (value is String) {
     // Try to parse as ISO string first
@@ -42,7 +71,7 @@ DateTime _parseTimestamp(dynamic value) {
       }
     }
   }
-  
+
   return DateTime.now();
 }
 
@@ -102,9 +131,14 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
   final name = product['name']?.toString();
   final sku = product['sku']?.toString();
   final categoryId = product['categoryId']?.toString();
-  final priceValue = product['price'] ?? product['currentPrice'] ?? product['basePrice'];
+  final priceValue =
+      product['price'] ?? product['currentPrice'] ?? product['basePrice'];
 
-  if (id == null || name == null || sku == null || categoryId == null || priceValue == null) {
+  if (id == null ||
+      name == null ||
+      sku == null ||
+      categoryId == null ||
+      priceValue == null) {
     return null;
   }
 
@@ -115,14 +149,34 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
     description: Value(product['description']?.toString()),
     categoryId: categoryId,
     price: (priceValue as num).toDouble(),
-    costPrice: Value(product['costPrice'] != null ? (product['costPrice'] as num).toDouble() : null),
+    costPrice: Value(
+      product['costPrice'] != null
+          ? (product['costPrice'] as num).toDouble()
+          : null,
+    ),
     unit: Value(product['unit']?.toString() ?? 'piece'),
     secondaryUnit: Value(product['secondaryUnit']?.toString()),
-    secondaryUnitQty: Value(product['secondaryUnitQty'] != null ? (product['secondaryUnitQty'] as num).toDouble() : null),
-    secondaryUnitPrice: Value(_parseMetadataPrice(product, 'secondary')),
+    secondaryUnitQty: Value(
+      product['secondaryUnitQty'] != null
+          ? (product['secondaryUnitQty'] as num).toDouble()
+          : null,
+    ),
+    secondaryUnitPrice: Value(
+      product['secondaryUnitPrice'] != null
+          ? (product['secondaryUnitPrice'] as num).toDouble()
+          : _parseMetadataPrice(product, 'secondary'),
+    ),
     tertiaryUnit: Value(product['tertiaryUnit']?.toString()),
-    tertiaryUnitQty: Value(product['tertiaryUnitQty'] != null ? (product['tertiaryUnitQty'] as num).toDouble() : null),
-    tertiaryUnitPrice: Value(_parseMetadataPrice(product, 'tertiary')),
+    tertiaryUnitQty: Value(
+      product['tertiaryUnitQty'] != null
+          ? (product['tertiaryUnitQty'] as num).toDouble()
+          : null,
+    ),
+    tertiaryUnitPrice: Value(
+      product['tertiaryUnitPrice'] != null
+          ? (product['tertiaryUnitPrice'] as num).toDouble()
+          : _parseMetadataPrice(product, 'tertiary'),
+    ),
     imageUrl: Value(product['imageUrl']?.toString()),
     isActive: Value(product['isActive'] as bool? ?? true),
     trackInventory: Value(product['trackInventory'] as bool? ?? true),
@@ -159,9 +213,9 @@ Future<void> syncCatalogCacheFromApi() async {
 class FilterParams {
   final String? categoryId;
   final String? searchQuery;
-  
+
   FilterParams({this.categoryId, this.searchQuery});
-  
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
@@ -169,13 +223,15 @@ class FilterParams {
         other.categoryId == categoryId &&
         other.searchQuery == searchQuery;
   }
-  
+
   @override
   int get hashCode => categoryId.hashCode ^ searchQuery.hashCode;
 }
 
 // Categories provider
-final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final database = getIt<AppDatabase>();
   final apiClient = getIt<ApiClient>();
   final connectivity = getIt<ConnectivityService>();
@@ -197,22 +253,29 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) asyn
 
   final localCategories = await database.getAllCategories();
   if (localCategories.isNotEmpty) {
-    return localCategories.where((c) => c.isActive).map((c) => {
-      'id': c.id,
-      'name': c.name,
-      'description': c.description,
-      'parentId': c.parentId,
-      'imageUrl': c.imageUrl,
-      'sortOrder': c.sortOrder,
-      'isActive': c.isActive,
-    }).toList();
+    return localCategories
+        .where((c) => c.isActive)
+        .map(
+          (c) => {
+            'id': c.id,
+            'name': c.name,
+            'description': c.description,
+            'parentId': c.parentId,
+            'imageUrl': c.imageUrl,
+            'sortOrder': c.sortOrder,
+            'isActive': c.isActive,
+          },
+        )
+        .toList();
   }
 
   return [];
 });
 
 // Products provider
-final productsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final database = getIt<AppDatabase>();
   final apiClient = getIt<ApiClient>();
   final connectivity = getIt<ConnectivityService>();
@@ -226,7 +289,17 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async 
             .whereType<ProductsCompanion>()
             .toList(),
       );
-      return products.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+      final localProducts = await database.getAllProducts();
+      final mapped = <Map<String, dynamic>>[];
+      for (final product in localProducts.where((p) => p.isActive)) {
+        mapped.add(await _productToPosMap(database, product));
+      }
+      if (mapped.isNotEmpty) return mapped;
+
+      return products
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
     } catch (e) {
       // API unavailable
     }
@@ -234,67 +307,56 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async 
 
   final localProducts = await database.getAllProducts();
   if (localProducts.isNotEmpty) {
-    return localProducts.where((p) => p.isActive).map((p) => {
-      'id': p.id,
-      'sku': p.sku,
-      'name': p.name,
-      'description': p.description,
-      'categoryId': p.categoryId,
-      'price': p.price,
-      'costPrice': p.costPrice,
-      'unit': p.unit,
-      'imageUrl': p.imageUrl,
-      'isActive': p.isActive,
-      'trackInventory': p.trackInventory,
-    }).toList();
+    final mapped = <Map<String, dynamic>>[];
+    for (final product in localProducts.where((p) => p.isActive)) {
+      mapped.add(await _productToPosMap(database, product));
+    }
+    return mapped;
   }
 
   return [];
 });
 
 // Filtered products provider
-final filteredProductsProvider = FutureProvider.family<List<Map<String, dynamic>>, FilterParams>((ref, params) async {
-  final database = getIt<AppDatabase>();
-  
-  List<Product> products;
-  
-  if (params.searchQuery != null && params.searchQuery!.isNotEmpty) {
-    products = await database.searchProducts(params.searchQuery!);
-  } else if (params.categoryId != null) {
-    products = await database.getProductsByCategory(params.categoryId!);
-  } else {
-    products = await database.getAllProducts();
-  }
-  
-  return products.where((p) => p.isActive).map((p) => {
-    'id': p.id,
-    'sku': p.sku,
-    'name': p.name,
-    'description': p.description,
-    'categoryId': p.categoryId,
-    'price': p.price,
-    'costPrice': p.costPrice,
-    'unit': p.unit,
-    'imageUrl': p.imageUrl,
-    'isActive': p.isActive,
-  }).toList();
-});
+final filteredProductsProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, FilterParams>((
+      ref,
+      params,
+    ) async {
+      final database = getIt<AppDatabase>();
+
+      List<Product> products;
+
+      if (params.searchQuery != null && params.searchQuery!.isNotEmpty) {
+        products = await database.searchProducts(params.searchQuery!);
+      } else if (params.categoryId != null) {
+        products = await database.getProductsByCategory(params.categoryId!);
+      } else {
+        products = await database.getAllProducts();
+      }
+
+      final mapped = <Map<String, dynamic>>[];
+      for (final product in products.where((p) => p.isActive)) {
+        mapped.add(await _productToPosMap(database, product));
+      }
+      return mapped;
+    });
 
 // Favorites provider
 class FavoritesNotifier extends StateNotifier<Set<String>> {
   final AppDatabase _database;
-  
+
   FavoritesNotifier(this._database) : super({}) {
     _loadFavorites();
   }
-  
+
   Future<void> _loadFavorites() async {
-    final favorites = await _database.customSelect(
-      'SELECT product_id FROM favorite_products',
-    ).get();
+    final favorites = await _database
+        .customSelect('SELECT product_id FROM favorite_products')
+        .get();
     state = favorites.map((f) => f.read<String>('product_id')).toSet();
   }
-  
+
   Future<void> toggle(String productId) async {
     if (state.contains(productId)) {
       await _database.removeFavorite(productId);
@@ -304,26 +366,26 @@ class FavoritesNotifier extends StateNotifier<Set<String>> {
       state = {...state, productId};
     }
   }
-  
+
   bool isFavorite(String productId) => state.contains(productId);
 }
 
-final favoritesProvider = StateNotifierProvider<FavoritesNotifier, Set<String>>((ref) {
-  return FavoritesNotifier(getIt<AppDatabase>());
-});
+final favoritesProvider = StateNotifierProvider<FavoritesNotifier, Set<String>>(
+  (ref) {
+    return FavoritesNotifier(getIt<AppDatabase>());
+  },
+);
 
 // Favorite products provider
-final favoriteProductsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final favoriteProductsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final database = getIt<AppDatabase>();
   final favorites = await database.getFavoriteProducts();
-  
-  return favorites.map((p) => {
-    'id': p.id,
-    'sku': p.sku,
-    'name': p.name,
-    'description': p.description,
-    'categoryId': p.categoryId,
-    'price': p.price,
-    'imageUrl': p.imageUrl,
-  }).toList();
+
+  final mapped = <Map<String, dynamic>>[];
+  for (final product in favorites.where((p) => p.isActive)) {
+    mapped.add(await _productToPosMap(database, product));
+  }
+  return mapped;
 });

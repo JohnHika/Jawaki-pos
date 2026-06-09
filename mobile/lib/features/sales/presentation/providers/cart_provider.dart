@@ -14,6 +14,9 @@ class CartItem {
   final double unitPrice;
   final double discount;
   final String? notes;
+  final String? saleUnit;
+  final double? saleQuantity;
+  final double? unitConversionFactor;
 
   CartItem({
     required this.id,
@@ -24,6 +27,9 @@ class CartItem {
     required this.unitPrice,
     this.discount = 0,
     this.notes,
+    this.saleUnit,
+    this.saleQuantity,
+    this.unitConversionFactor,
   });
 
   double get total => (unitPrice * quantity) - discount;
@@ -37,6 +43,9 @@ class CartItem {
     double? unitPrice,
     double? discount,
     String? notes,
+    String? saleUnit,
+    double? saleQuantity,
+    double? unitConversionFactor,
   }) {
     return CartItem(
       id: id ?? this.id,
@@ -47,6 +56,9 @@ class CartItem {
       unitPrice: unitPrice ?? this.unitPrice,
       discount: discount ?? this.discount,
       notes: notes ?? this.notes,
+      saleUnit: saleUnit ?? this.saleUnit,
+      saleQuantity: saleQuantity ?? this.saleQuantity,
+      unitConversionFactor: unitConversionFactor ?? this.unitConversionFactor,
     );
   }
 
@@ -61,8 +73,26 @@ class CartItem {
       'discount': discount,
       'total': total,
       'notes': notes,
+      'saleUnit': saleUnit,
+      'saleQuantity': saleQuantity,
+      'unitConversionFactor': unitConversionFactor,
     };
   }
+}
+
+class CartMutationResult {
+  final bool success;
+  final String message;
+  final int currentStock;
+
+  const CartMutationResult({
+    required this.success,
+    required this.message,
+    this.currentStock = 0,
+  });
+
+  const CartMutationResult.success([String message = 'Updated cart'])
+    : this(success: true, message: message);
 }
 
 class CartState {
@@ -94,7 +124,9 @@ class CartState {
   }
 
   double get taxableAmount => subtotal - discount;
-  double get tax => taxableAmount * 0.16; // 16% VAT - TODO: Use product-level tax rates from backend
+  double get tax =>
+      taxableAmount *
+      0.16; // 16% VAT - TODO: Use product-level tax rates from backend
   double get total => taxableAmount + tax;
 
   CartState copyWith({
@@ -136,9 +168,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
   ParkedSalesNotifier() : super([]);
 
   void park(CartState cart, {String? label}) {
-    final name = label ??
-        cart.customerName ??
-        'Sale #${state.length + 1}';
+    final name = label ?? cart.customerName ?? 'Sale #${state.length + 1}';
     state = [
       ...state,
       ParkedSale(
@@ -163,8 +193,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
 
 final parkedSalesProvider =
     StateNotifierProvider<ParkedSalesNotifier, List<ParkedSale>>((ref) {
-  return ParkedSalesNotifier();
-});
+      return ParkedSalesNotifier();
+    });
 
 // ════════ CART NOTIFIER ════════
 
@@ -174,8 +204,21 @@ class CartNotifier extends StateNotifier<CartState> {
   CartNotifier() : super(const CartState());
 
   // Stock validation method
-  Future<Map<String, dynamic>> _validateStockAvailability(String productId, int quantity) async {
+  Future<Map<String, dynamic>> _validateStockAvailability(
+    String productId,
+    int quantity,
+  ) async {
     try {
+      final product = await _database.getProduct(productId);
+      if (product != null && !product.trackInventory) {
+        return {
+          'available': true,
+          'message': 'Inventory tracking disabled',
+          'currentStock': quantity,
+          'required': quantity,
+        };
+      }
+
       final stock = await _database.getStockForProduct(productId);
 
       if (stock == null) {
@@ -183,7 +226,7 @@ class CartNotifier extends StateNotifier<CartState> {
           'available': false,
           'message': 'Product not found in inventory',
           'currentStock': 0,
-          'required': quantity
+          'required': quantity,
         };
       }
 
@@ -192,7 +235,7 @@ class CartNotifier extends StateNotifier<CartState> {
           'available': false,
           'message': 'Product is out of stock',
           'currentStock': stock.quantity,
-          'required': quantity
+          'required': quantity,
         };
       }
 
@@ -202,7 +245,7 @@ class CartNotifier extends StateNotifier<CartState> {
           'message': 'Insufficient stock available',
           'currentStock': stock.quantity,
           'required': quantity,
-          'availableQuantity': stock.quantity
+          'availableQuantity': stock.quantity,
         };
       }
 
@@ -210,19 +253,19 @@ class CartNotifier extends StateNotifier<CartState> {
         'available': true,
         'message': 'Stock available',
         'currentStock': stock.quantity,
-        'required': quantity
+        'required': quantity,
       };
     } catch (e) {
       return {
         'available': false,
         'message': 'Error checking stock: $e',
         'currentStock': 0,
-        'required': quantity
+        'required': quantity,
       };
     }
   }
 
-  void addItem({
+  Future<CartMutationResult> addItem({
     required String productId,
     required String productName,
     required String sku,
@@ -230,24 +273,41 @@ class CartNotifier extends StateNotifier<CartState> {
     int quantity = 1,
     double discount = 0,
     String? notes,
+    String? saleUnit,
+    double? saleQuantity,
+    double? unitConversionFactor,
   }) async {
-    // Check stock availability with warning only (as requested)
-    final stockCheck = await _validateStockAvailability(productId, quantity);
+    final existingIndex = state.items.indexWhere(
+      (i) => i.productId == productId,
+    );
+    final requestedQuantity = existingIndex >= 0
+        ? state.items[existingIndex].quantity + quantity
+        : quantity;
+    final stockCheck = await _validateStockAvailability(
+      productId,
+      requestedQuantity,
+    );
 
     if (!stockCheck['available']) {
-      // Show warning but allow adding to cart
-      print('WARNING: ${stockCheck['message']}');
-      print('Product: $productName, Available: ${stockCheck['currentStock']}, Requested: $quantity');
+      return CartMutationResult(
+        success: false,
+        message: stockCheck['message'] as String? ?? 'Insufficient stock',
+        currentStock: stockCheck['currentStock'] as int? ?? 0,
+      );
     }
-
-    final existingIndex =
-        state.items.indexWhere((i) => i.productId == productId);
 
     if (existingIndex >= 0) {
       final updatedItems = [...state.items];
       final existing = updatedItems[existingIndex];
       updatedItems[existingIndex] = existing.copyWith(
         quantity: existing.quantity + quantity,
+        unitPrice: unitPrice,
+        notes: notes,
+        saleUnit: saleUnit,
+        saleQuantity:
+            (existing.saleQuantity ?? existing.quantity.toDouble()) +
+            (saleQuantity ?? quantity.toDouble()),
+        unitConversionFactor: unitConversionFactor,
       );
       state = state.copyWith(items: updatedItems);
     } else {
@@ -260,34 +320,49 @@ class CartNotifier extends StateNotifier<CartState> {
         unitPrice: unitPrice,
         discount: discount,
         notes: notes,
+        saleUnit: saleUnit,
+        saleQuantity: saleQuantity,
+        unitConversionFactor: unitConversionFactor,
       );
       state = state.copyWith(items: [...state.items, newItem]);
     }
+    return const CartMutationResult.success();
   }
 
-  void updateQuantity(String productId, int quantity) async {
+  Future<CartMutationResult> updateQuantity(
+    String productId,
+    int quantity,
+  ) async {
     if (quantity <= 0) {
       removeItem(productId);
-      return;
+      return const CartMutationResult.success('Removed item');
     }
 
-    // Check stock availability with warning only (as requested)
     final stockCheck = await _validateStockAvailability(productId, quantity);
 
     if (!stockCheck['available']) {
-      // Show warning but allow updating quantity
-      print('WARNING: ${stockCheck['message']}');
-      print('Product: ${state.items.firstWhere((i) => i.productId == productId).productName}, Available: ${stockCheck['currentStock']}, Requested: $quantity');
+      return CartMutationResult(
+        success: false,
+        message: stockCheck['message'] as String? ?? 'Insufficient stock',
+        currentStock: stockCheck['currentStock'] as int? ?? 0,
+      );
     }
 
     final updatedItems = state.items.map((item) {
       if (item.productId == productId) {
-        return item.copyWith(quantity: quantity);
+        final conversion = item.unitConversionFactor;
+        return item.copyWith(
+          quantity: quantity,
+          saleQuantity: conversion != null && conversion > 0
+              ? quantity / conversion
+              : item.saleQuantity,
+        );
       }
       return item;
     }).toList();
 
     state = state.copyWith(items: updatedItems);
+    return const CartMutationResult.success();
   }
 
   void updateItemDiscount(String productId, double discount) {
@@ -302,8 +377,9 @@ class CartNotifier extends StateNotifier<CartState> {
   }
 
   void removeItem(String productId) {
-    final updatedItems =
-        state.items.where((i) => i.productId != productId).toList();
+    final updatedItems = state.items
+        .where((i) => i.productId != productId)
+        .toList();
     state = state.copyWith(items: updatedItems);
   }
 
@@ -336,7 +412,10 @@ class CartNotifier extends StateNotifier<CartState> {
     final results = <Map<String, dynamic>>[];
 
     for (final item in state.items) {
-      final stockCheck = await _validateStockAvailability(item.productId, item.quantity);
+      final stockCheck = await _validateStockAvailability(
+        item.productId,
+        item.quantity,
+      );
       results.add({
         'productId': item.productId,
         'productName': item.productName,
@@ -353,12 +432,14 @@ class CartNotifier extends StateNotifier<CartState> {
 
   List<Map<String, dynamic>> getItemsForApi() {
     return state.items
-        .map((item) => {
-              'productId': item.productId,
-              'quantity': item.quantity,
-              'unitPrice': item.unitPrice,
-              'discount': item.discount,
-            })
+        .map(
+          (item) => {
+            'productId': item.productId,
+            'quantity': item.quantity,
+            'unitPrice': item.unitPrice,
+            'discount': item.discount,
+          },
+        )
         .toList();
   }
 }

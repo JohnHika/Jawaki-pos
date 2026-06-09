@@ -50,11 +50,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "true"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.16"
+        value: "1.0.17"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.1"
+        value: "Axon POS 1.0.2"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2018"
+        value: "2019"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -64,4 +64,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Axon POS 1.0.1 restores the signed customer update path from build 2015 and keeps installation continuity without reinstalling."
+        value: "Axon POS 1.0.2 links POS selling to inventory stock, restores receive-stock routing, adds unit-tier selling from product setup, and adds dashboard company/AI summaries."

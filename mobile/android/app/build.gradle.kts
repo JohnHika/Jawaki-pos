@@ -20,6 +20,9 @@ val hasReleaseSigningConfig =
         keystoreProperties["storePassword"] != null &&
         keystoreProperties["keyAlias"] != null &&
         keystoreProperties["keyPassword"] != null
+val isReleaseTask = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
 
 android {
     namespace = "com.levisaadventures.pos"
@@ -59,12 +62,16 @@ android {
 
     buildTypes {
         release {
-            if (!hasReleaseSigningConfig) {
+            if (!hasReleaseSigningConfig && isReleaseTask) {
                 throw GradleException(
                     "Release signing config is required. Refusing to create a debug-signed release APK."
                 )
             }
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigningConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             // Disable R8 to avoid duplicate class errors from sqlcipher/sqlite3 conflict
             isMinifyEnabled = false
             isShrinkResources = false
