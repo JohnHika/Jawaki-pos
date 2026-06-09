@@ -61,9 +61,15 @@ if [[ -n "$min_version_code" ]]; then
 fi
 
 certs="$("$apksigner_bin" verify --print-certs "$apk_path")"
-cert_sha256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs" | head -n 1 | tr '[:upper:]' '[:lower:]')"
+cert_sha256="$(
+  grep -Eio 'SHA-256 digest:[[:space:]]*[a-f0-9:]+' <<<"$certs" \
+    | head -n 1 \
+    | sed -E 's/.*SHA-256 digest:[[:space:]]*//I; s/://g' \
+    | tr '[:upper:]' '[:lower:]'
+)"
 expected_cert_sha256="$(tr '[:upper:]' '[:lower:]' <<<"$expected_cert_sha256")"
 
+[[ -n "$cert_sha256" ]] || fail "Could not read signing certificate SHA-256 digest from apksigner output"
 [[ "$cert_sha256" == "$expected_cert_sha256" ]] || fail "Signing certificate mismatch. Expected $expected_cert_sha256, got ${cert_sha256:-unknown}"
 
 if grep -qi "Android Debug" <<<"$certs"; then
