@@ -5,14 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
-import 'package:levisa_adventures_pos/core/network/api_client.dart';
-import 'package:levisa_adventures_pos/core/services/auth_service.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
 
-/// Screen for setting up a new company, admin user, and first branch.
-/// Part of the first-time setup flow.
-/// Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
+/// Collects company, admin account, and first-branch details to
+/// register a new tenant. Part of the first-time setup flow.
 class CompanySetupScreen extends ConsumerStatefulWidget {
   const CompanySetupScreen({super.key});
 
@@ -236,7 +235,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // This flow always renders on the dark Axon setup canvas, matching
+    // the company-choice screen it's reached from — not tied to the
+    // device theme, since it's a focused first-run task, not app chrome.
+    const isDark = true;
     final size = MediaQuery.of(context).size;
     final isSmallScreen = size.height < 700;
 
@@ -244,7 +246,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        color: isDark ? DesignColors.darkBg : const Color(0xFF1A1A2E),
+        color: DesignColors.darkBg,
         child: SafeArea(
           child: Column(
             children: [
@@ -360,9 +362,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                                 _obscurePassword
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
-                                color: isDark
-                                    ? DesignColors.darkTextSecondary
-                                    : DesignColors.textSecondary,
+                                color: DesignColors.darkTextSecondary,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -399,9 +399,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                                 _obscureConfirmPassword
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
-                                color: isDark
-                                    ? DesignColors.darkTextSecondary
-                                    : DesignColors.textSecondary,
+                                color: DesignColors.darkTextSecondary,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -538,12 +536,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                           Center(
                             child: TextButton(
                               onPressed: () => context.go('/company-choice'),
-                              child: Text(
+                              child: const Text(
                                 'Back to options',
                                 style: TextStyle(
-                                  color: isDark
-                                      ? DesignColors.darkTextSecondary
-                                      : Colors.white.withValues(alpha: 0.8),
+                                  color: DesignColors.darkTextSecondary,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -709,19 +705,20 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
       child: Row(
         children: [
           IconButton(
-            icon: Icon(
+            icon: const Icon(
               Icons.arrow_back_rounded,
-              color: isDark ? DesignColors.darkTextPrimary : Colors.white,
+              color: DesignColors.darkTextPrimary,
             ),
             onPressed: () => context.go('/company-choice'),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           Text(
-            'Create Company',
+            'Register your company',
             style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.darkTextPrimary : Colors.white,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: DesignColors.darkTextPrimary,
+              letterSpacing: -0.2,
             ),
           ),
         ],
@@ -732,10 +729,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
   Widget _buildSectionTitle(String title, bool isDark) {
     return Text(
       title,
-      style: TextStyle(
+      style: const TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.w600,
-        color: isDark ? DesignColors.darkTextPrimary : Colors.white,
+        color: DesignColors.darkTextPrimary,
         letterSpacing: 0.3,
       ),
     );
@@ -749,15 +746,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.darkSurfaceElevated
-              : Colors.white.withValues(alpha: 0.15),
+          color: DesignColors.darkSurfaceElevated,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? DesignColors.darkBorder
-                : Colors.white.withValues(alpha: 0.2),
-          ),
+          border: Border.all(color: DesignColors.darkBorder),
         ),
         child: Row(
           children: [
@@ -765,9 +756,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: isDark
-                    ? DesignColors.darkBorder
-                    : Colors.white.withValues(alpha: 0.2),
+                color: DesignColors.darkBorder,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: _logoFile != null
@@ -778,12 +767,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                         fit: BoxFit.cover,
                       ),
                     )
-                  : Icon(
+                  : const Icon(
                       Icons.add_photo_alternate_outlined,
                       size: 28,
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : Colors.white,
+                      color: DesignColors.darkTextSecondary,
                     ),
             ),
             const SizedBox(width: 16),
@@ -793,11 +780,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                 children: [
                   Text(
                     _logoFile != null ? 'Logo selected' : 'Add Company Logo',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
-                      color:
-                          isDark ? DesignColors.darkTextPrimary : Colors.white,
+                      color: DesignColors.darkTextPrimary,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -805,21 +791,17 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                     _logoFile != null
                         ? 'The logo uploads after your company is created'
                         : 'Optional - PNG or JPG',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 13,
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : Colors.white.withValues(alpha: 0.7),
+                      color: DesignColors.darkTextSecondary,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.chevron_right_rounded,
-              color: isDark
-                  ? DesignColors.darkTextTertiary
-                  : Colors.white.withValues(alpha: 0.6),
+              color: DesignColors.darkTextTertiary,
             ),
           ],
         ),
@@ -845,12 +827,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
       children: [
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            color: isDark
-                ? DesignColors.darkTextSecondary
-                : Colors.white.withValues(alpha: 0.9),
+            color: DesignColors.darkTextSecondary,
           ),
         ),
         const SizedBox(height: 8),
@@ -860,57 +840,41 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
           obscureText: obscureText,
           maxLines: maxLines,
           inputFormatters: inputFormatters,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 15,
-            color: isDark ? DesignColors.darkTextPrimary : Colors.white,
+            color: DesignColors.darkTextPrimary,
           ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(
-              color: isDark
-                  ? DesignColors.darkTextTertiary
-                  : Colors.white.withValues(alpha: 0.5),
-            ),
+            hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
             prefixIcon: Padding(
               padding: const EdgeInsets.only(left: 12, right: 8),
               child: Icon(
                 icon,
                 size: 20,
-                color: isDark
-                    ? DesignColors.darkTextSecondary
-                    : Colors.white.withValues(alpha: 0.7),
+                color: DesignColors.darkTextSecondary,
               ),
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 44),
             suffixIcon: suffixIcon,
             filled: true,
-            fillColor: isDark
-                ? DesignColors.darkSurfaceElevated
-                : Colors.white.withValues(alpha: 0.15),
+            fillColor: DesignColors.darkSurfaceElevated,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 14,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: isDark
-                    ? DesignColors.darkBorder
-                    : Colors.white.withValues(alpha: 0.2),
-              ),
+              borderSide: const BorderSide(color: DesignColors.darkBorder),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: isDark
-                    ? DesignColors.darkBorder
-                    : Colors.white.withValues(alpha: 0.2),
-              ),
+              borderSide: const BorderSide(color: DesignColors.darkBorder),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: isDark ? DesignColors.brand : Colors.white,
+              borderSide: const BorderSide(
+                color: DesignColors.brand,
                 width: 1.5,
               ),
             ),

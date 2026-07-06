@@ -1,13 +1,13 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
-import 'package:levisa_adventures_pos/core/network/api_client.dart';
-import 'package:levisa_adventures_pos/core/services/storage_service.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
 
-/// Screen shown on first app launch to let user choose between
-/// creating a new company or signing into an existing one.
-/// Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
+/// First-launch screen: choose between registering a new company
+/// or signing in to one that already exists on this backend.
 class CompanyChoiceScreen extends StatefulWidget {
   const CompanyChoiceScreen({super.key});
 
@@ -20,6 +20,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  bool _showBackendLink = false;
 
   @override
   void initState() {
@@ -51,7 +52,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
     super.dispose();
   }
 
-  // â”€â”€ Server URL configuration dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Backend connection dialog ──────────────────────────────────
 
   Future<void> _showServerUrlDialog() async {
     final storage = getIt<StorageService>();
@@ -62,14 +63,30 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Server URL'),
+        backgroundColor: DesignColors.darkSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Connect to a backend',
+          style: TextStyle(color: DesignColors.darkTextPrimary, fontSize: 17),
+        ),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.url,
           autocorrect: false,
-          decoration: const InputDecoration(
+          style: const TextStyle(color: DesignColors.darkTextPrimary),
+          decoration: InputDecoration(
             hintText: 'https://your-backend.com/api/v1',
+            hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
             labelText: 'Backend API URL',
+            labelStyle: const TextStyle(color: DesignColors.darkTextSecondary),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: DesignColors.darkBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: DesignColors.brand),
+            ),
           ),
         ),
         actions: [
@@ -77,7 +94,8 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: DesignColors.brand),
             onPressed: () async {
               final url = controller.text.trim();
               if (url.isNotEmpty) {
@@ -86,8 +104,13 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
               }
               if (ctx.mounted) Navigator.of(ctx).pop();
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(url.isEmpty ? 'Using default URL' : 'Server URL updated')),
+                showGlassSnackBar(
+                  context,
+                  url.isEmpty
+                      ? 'Using the default Axon backend'
+                      : 'Backend URL saved',
+                  icon: Icons.check_circle_rounded,
+                  color: DesignColors.success,
                 );
               }
             },
@@ -101,162 +124,133 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final size = MediaQuery.of(context).size;
     final isSmallScreen = size.height < 700;
 
-    // Solid dark background instead of gradient
-    final bgColor = isDark ? DesignColors.darkBg : const Color(0xFF1A1A2E);
-    final textOnBg = Colors.white;
-    final subtextOnBg = Colors.white.withValues(alpha: 0.75);
-
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: bgColor,
-        child: SafeArea(
-          child: Stack(
-            children: [
-              // Gear icon â€” top right
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  icon: const Icon(Icons.settings_rounded, color: Colors.white70),
-                  tooltip: 'Server settings',
-                  onPressed: _showServerUrlDialog,
-                ),
+      backgroundColor: DesignColors.darkBg,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: isSmallScreen ? 32 : 48,
               ),
+              child: Column(
+                children: [
+                  SizedBox(height: isSmallScreen ? 16 : 32),
 
-              // Main content
-              SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: isSmallScreen ? 32 : 48,
-                ),
-                child: Column(
-                  children: [
-                    SizedBox(height: isSmallScreen ? 24 : 48),
-
-                    // App icon placeholder
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: Container(
-                          width: isSmallScreen ? 80 : 100,
-                          height: isSmallScreen ? 80 : 100,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.store_rounded,
-                            size: 50,
-                            color: DesignColors.brand,
-                          ),
+                  // Axon brand mark — long-press reveals backend connection
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: GestureDetector(
+                        onLongPress: () =>
+                            setState(() => _showBackendLink = true),
+                        child: SvgPicture.asset(
+                          'assets/images/axon_logo_mark.svg',
+                          width: isSmallScreen ? 72 : 88,
+                          height: isSmallScreen ? 72 : 88,
+                          semanticsLabel: 'Axon POS',
                         ),
                       ),
                     ),
-                    SizedBox(height: isSmallScreen ? 20 : 32),
+                  ),
+                  SizedBox(height: isSmallScreen ? 20 : 28),
 
-                    // Title
-                    FadeTransition(
-                      opacity: _fadeAnimation,
+                  // Title
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Column(
+                      children: [
+                        Text(
+                          'Axon POS',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 26 : 32,
+                            fontWeight: FontWeight.w800,
+                            color: DesignColors.darkTextPrimary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Connect this device to your business',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 13 : 15,
+                            fontWeight: FontWeight.w400,
+                            color: DesignColors.darkTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: isSmallScreen ? 36 : 56),
+
+                  // Choice cards
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
                       child: Column(
                         children: [
-                          Text(
-                            'Welcome',
-                            style: TextStyle(
-                              fontSize: isSmallScreen ? 28 : 36,
-                              fontWeight: FontWeight.w700,
-                              color: textOnBg,
-                              letterSpacing: 0.5,
-                            ),
+                          _buildChoiceCard(
+                            icon: Icons.add_business_rounded,
+                            title: 'Register a new company',
+                            subtitle:
+                                'First time here — set up your business, admin login, and first branch',
+                            isPrimary: true,
+                            onTap: () => context.go('/company-setup'),
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Set up your point of sale system',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: isSmallScreen ? 14 : 16,
-                              fontWeight: FontWeight.w400,
-                              color: subtextOnBg,
-                            ),
+                          const SizedBox(height: 14),
+                          _buildChoiceCard(
+                            icon: Icons.badge_outlined,
+                            title: 'Sign in with a company code',
+                            subtitle:
+                                'Your business is already set up on another device',
+                            isPrimary: false,
+                            onTap: () => context.go('/login'),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(height: isSmallScreen ? 40 : 64),
+                  ),
+                  SizedBox(height: isSmallScreen ? 28 : 40),
 
-                    // Choice cards
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: Column(
-                          children: [
-                            // Create new company card
-                            _buildChoiceCard(
-                              isDark: isDark,
-                              icon: Icons.add_business_rounded,
-                              title: 'Create New Company',
-                              subtitle:
-                                  'Set up a new company account with your business details',
-                              isPrimary: true,
-                              onTap: () => context.go('/company-setup'),
+                  // Backend connection — hidden until the logo is
+                  // long-pressed, since switching servers is a setup/support
+                  // action almost no one needs on first launch.
+                  AnimatedSwitcher(
+                    duration: DesignAnimation.fast,
+                    child: _showBackendLink
+                        ? TextButton.icon(
+                            key: const ValueKey('backend-link'),
+                            onPressed: _showServerUrlDialog,
+                            style: TextButton.styleFrom(
+                              foregroundColor: DesignColors.darkTextTertiary,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                             ),
-                            const SizedBox(height: 16),
-
-                            // Sign in to existing card
-                            _buildChoiceCard(
-                              isDark: isDark,
-                              icon: Icons.login_rounded,
-                              title: 'Sign In to Existing',
-                              subtitle:
-                                  'Connect to a company that\'s already set up',
-                              isPrimary: false,
-                              onTap: () => context.go('/login'),
+                            icon: const Icon(Icons.dns_outlined, size: 16),
+                            label: const Text(
+                              'Connect to a different backend',
+                              style: TextStyle(fontSize: 13),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: isSmallScreen ? 32 : 48),
-
-                    // Footer
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: Text(
-                        'Professional Point of Sale System',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white.withValues(alpha: 0.5),
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                          )
+                        : const SizedBox(key: ValueKey('backend-link-hidden')),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildChoiceCard({
-    required bool isDark,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -270,30 +264,34 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
         borderRadius: BorderRadius.circular(16),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: isPrimary
-                ? Colors.white.withValues(alpha: 0.12)
-                : Colors.white.withValues(alpha: 0.07),
+                ? DesignColors.brand.withValues(alpha: 0.12)
+                : DesignColors.darkSurfaceElevated,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha: isPrimary ? 0.3 : 0.15),
+              color: isPrimary
+                  ? DesignColors.brand.withValues(alpha: 0.4)
+                  : DesignColors.darkBorder,
               width: isPrimary ? 1.5 : 1,
             ),
           ),
           child: Row(
             children: [
               Container(
-                width: 56,
-                height: 56,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: isPrimary ? 0.2 : 0.1),
+                  color: isPrimary
+                      ? DesignColors.brand
+                      : DesignColors.darkBorder.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   icon,
-                  size: 28,
-                  color: Colors.white,
+                  size: 26,
+                  color: isPrimary ? Colors.white : DesignColors.darkTextPrimary,
                 ),
               ),
               const SizedBox(width: 16),
@@ -304,18 +302,19 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: DesignColors.darkTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
+                      style: const TextStyle(
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: 0.75),
+                        color: DesignColors.darkTextSecondary,
+                        height: 1.3,
                       ),
                     ),
                   ],
@@ -323,8 +322,8 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
               ),
               Icon(
                 Icons.arrow_forward_ios_rounded,
-                size: 18,
-                color: Colors.white.withValues(alpha: 0.6),
+                size: 16,
+                color: DesignColors.darkTextTertiary,
               ),
             ],
           ),

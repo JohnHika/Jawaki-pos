@@ -1,51 +1,56 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// ═══════════════════════════════════════════════════════════════
 /// AXON POS PROFESSIONAL DESIGN SYSTEM
 /// Clean, modern, professional UI patterns for POS applications
 /// ═══════════════════════════════════════════════════════════════
 
-// ─── Professional Color Palette ──────────────────────────────────
+// ─── Axon Brand Color Palette ─────────────────────────────────────
+// Derived from the Arche Axon Intelligence brand mark: an indigo
+// neural-node hex icon on near-black. Functional colors (success,
+// error, warning) stay conventional so their meaning reads instantly
+// at the till; only brand and surface tones carry the Axon identity.
 class DesignColors {
-  // Brand - Professional blue
-  static const Color brand = Color(0xFF1A73E8);
-  static const Color brandLight = Color(0xFF4285F4);
-  static const Color brandDark = Color(0xFF1557B0);
-  static const Color brandSubtle = Color(0xFFE8F0FE);
+  // Brand - Axon indigo (from arche_axon_logo.svg mark)
+  static const Color brand = Color(0xFF6B7BFF);
+  static const Color brandLight = Color(0xFF8B9BFF);
+  static const Color brandDark = Color(0xFF4A5AE8);
+  static const Color brandSubtle = Color(0xFFEEF0FF);
 
-  // Accent — Orange for highlights
-  static const Color accent = Color(0xFFFBBC04);
-  static const Color accentLight = Color(0xFFF9AB00);
-  static const Color accentSubtle = Color(0xFFFFF7E0);
+  // Accent — violet, the secondary branch color in the logo mark
+  static const Color accent = Color(0xFFA78BFA);
+  static const Color accentLight = Color(0xFFC4B5FD);
+  static const Color accentSubtle = Color(0xFFF3EFFF);
 
   // Success
-  static const Color success = Color(0xFF34A853);
-  static const Color successLight = Color(0xFF57B069);
-  static const Color successSubtle = Color(0xFFE4F8E9);
+  static const Color success = Color(0xFF22A06B);
+  static const Color successLight = Color(0xFF4CBF8A);
+  static const Color successSubtle = Color(0xFFE3F6EC);
 
   // Error
-  static const Color error = Color(0xFFEA4335);
-  static const Color errorSubtle = Color(0xFFFCE8E5);
+  static const Color error = Color(0xFFE5484D);
+  static const Color errorSubtle = Color(0xFFFDECEC);
 
   // Warning
-  static const Color warning = Color(0xFFF9AB00);
-  static const Color warningSubtle = Color(0xFFFFF7E0);
+  static const Color warning = Color(0xFFDC9421);
+  static const Color warningSubtle = Color(0xFFFDF3E0);
 
   // Info
-  static const Color info = Color(0xFF4285F4);
-  static const Color infoSubtle = Color(0xFFE8F0FE);
+  static const Color info = Color(0xFF6B7BFF);
+  static const Color infoSubtle = Color(0xFFEEF0FF);
 
   // Surface tones
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFF7F7F7);
-  static const Color surfaceSubtle = Color(0xFFF0F0F0);
-  static const Color surfaceBorder = Color(0xFFDBDBDB);
-  static const Color surfaceBorderLight = Color(0xFFE5E5E5);
+  static const Color surfaceMuted = Color(0xFFF6F6FB);
+  static const Color surfaceSubtle = Color(0xFFEFEFF7);
+  static const Color surfaceBorder = Color(0xFFDDDDE8);
+  static const Color surfaceBorderLight = Color(0xFFE8E8F2);
 
   // Text — Excellent hierarchy
-  static const Color textPrimary = Color(0xFF1F1F1F);
-  static const Color textSecondary = Color(0xFF666666);
-  static const Color textTertiary = Color(0xFF999999);
+  static const Color textPrimary = Color(0xFF0A0C1F);
+  static const Color textSecondary = Color(0xFF5B5D72);
+  static const Color textTertiary = Color(0xFF9698AB);
   static const Color textInverse = Color(0xFFFFFFFF);
   static const Color textOnBrand = Color(0xFFFFFFFF);
 
@@ -56,20 +61,20 @@ class DesignColors {
   static const Color cash = Color(0xFF795548);
   static const Color credit = Color(0xFF673AB7);
 
-  // Dark mode
-  static const Color darkBg = Color(0xFF121212);
-  static const Color darkSurface = Color(0xFF1E1E2E);
-  static const Color darkSurfaceElevated = Color(0xFF2A2A3E);
-  static const Color darkBorder = Color(0xFF3A3A4A);
-  static const Color darkTextPrimary = Color(0xFFE0E0E0);
-  static const Color darkTextSecondary = Color(0xFFB0B0B0);
-  static const Color darkTextTertiary = Color(0xFF707070);
+  // Dark mode — near-black from the logo's dark canvas (#0A0C18 / #070910)
+  static const Color darkBg = Color(0xFF0A0C18);
+  static const Color darkSurface = Color(0xFF13152A);
+  static const Color darkSurfaceElevated = Color(0xFF1C1F3B);
+  static const Color darkBorder = Color(0xFF2E3155);
+  static const Color darkTextPrimary = Color(0xFFEEF0FF);
+  static const Color darkTextSecondary = Color(0xFFAEB1D4);
+  static const Color darkTextTertiary = Color(0xFF6E7196);
 
   // Glass (using hex alpha)
   static const Color glassWhite = Color(0x2EFFFFFF);
   static const Color glassBorder = Color(0x40FFFFFF);
-  static const Color glassDark = Color(0x2A131C31);
-  static const Color glassDarkBorder = Color(0x14FFFFFF);
+  static const Color glassDark = Color(0x2A0A0C18);
+  static const Color glassDarkBorder = Color(0x146B7BFF);
 }
 
 // ─── Spacing & Sizing Scale ──────────────────────────────────────
@@ -1761,13 +1766,15 @@ class DesignGradients {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  PREMIUM LOGO TITLE
+//  AXON LOGO MARK
+//  Renders the Arche Axon Intelligence hex/node brand mark from
+//  assets/images/axon_logo_mark(.svg|_light.svg).
 // ═══════════════════════════════════════════════════════════════
-class LevisaLogoTitle extends StatelessWidget {
+class AxonLogoTitle extends StatelessWidget {
   final double logoSize;
   final bool showText;
 
-  const LevisaLogoTitle({
+  const AxonLogoTitle({
     super.key,
     this.logoSize = 34,
     this.showText = false,
@@ -1776,41 +1783,18 @@ class LevisaLogoTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final asset = isDark
+        ? 'assets/images/axon_logo_mark.svg'
+        : 'assets/images/axon_logo_mark_light.svg';
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
+        SvgPicture.asset(
+          asset,
           width: logoSize,
           height: logoSize,
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-            border: Border.all(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: DesignGradients.brand,
-            ),
-            child: Icon(
-              Icons.point_of_sale_rounded,
-              color: Colors.white,
-              size: logoSize * 0.52,
-              semanticLabel: 'Axon POS logo',
-            ),
-          ),
+          semanticsLabel: 'Axon POS logo',
         ),
         if (showText) ...[
           const SizedBox(width: 10),
@@ -1822,6 +1806,7 @@ class LevisaLogoTitle extends StatelessWidget {
                   : DesignColors.textPrimary,
               fontSize: 15,
               fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
             ),
           ),
         ],
@@ -1869,7 +1854,7 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showLogo) ...[
-            const LevisaLogoTitle(logoSize: 32),
+            const AxonLogoTitle(logoSize: 32),
             const SizedBox(width: 10),
           ],
           Flexible(

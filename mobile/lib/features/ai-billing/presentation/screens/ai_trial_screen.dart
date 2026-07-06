@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:levisa_adventures_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
+import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 
 class AiTrialScreen extends StatefulWidget {
   final String branchId;

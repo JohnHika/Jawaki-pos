@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:levisa_adventures_pos/core/theme/design_system.dart';
-import 'package:levisa_adventures_pos/features/clients/data/providers/clients_provider.dart';
-import 'package:levisa_adventures_pos/features/clients/data/models/pos_client.dart';
+import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/features/clients/data/providers/clients_provider.dart';
+import 'package:axon_pos/features/clients/data/models/pos_client.dart';
 
 /// Client Management Screen - List and manage all Axon POS clients
 class ClientManagementScreen extends ConsumerWidget {

@@ -2,7 +2,6 @@ import { Controller, Post, Body, HttpCode, HttpStatus, Get, UseGuards } from '@n
 import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
-import { GithubIntegrationService } from './github-integration.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -12,7 +11,6 @@ export class AiController {
     private readonly aiService: AiService,
     private readonly aiWebService: AiWebService,
     private readonly aiCognitiveService: AiCognitiveService,
-    private readonly githubIntegrationService: GithubIntegrationService,
   ) {}
 
   @Get('chat')
@@ -95,36 +93,6 @@ export class AiController {
   @HttpCode(HttpStatus.OK)
   async cognitiveAdvisor(@Body() dto: ChatRequestDto) {
     const result = await this.aiCognitiveService.cognitiveBusinessAdvisor(dto);
-    return {
-      success: true,
-      data: result,
-    };
-  }
-
-  @Get('github/skills')
-  @HttpCode(HttpStatus.OK)
-  async getGithubSkills() {
-    const result = await this.githubIntegrationService.getRetailAutomationSkills();
-    return {
-      success: true,
-      data: result,
-    };
-  }
-
-  @Get('github/pos-skills')
-  @HttpCode(HttpStatus.OK)
-  async getPosSkills() {
-    const result = await this.githubIntegrationService.searchPosSkills();
-    return {
-      success: true,
-      data: result,
-    };
-  }
-
-  @Post('github/integrate')
-  @HttpCode(HttpStatus.OK)
-  async integrateGithubSkills(@Body('business_type') businessType: string, @Body('location') location: string) {
-    const result = await this.githubIntegrationService.integrateSkillsWithAnalysis(businessType, location);
     return {
       success: true,
       data: result,
