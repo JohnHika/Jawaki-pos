@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import 'package:levisa_adventures_pos/core/di/injection.dart';
-import 'package:levisa_adventures_pos/core/database/app_database.dart';
+import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/database/app_database.dart';
 
 const _uuid = Uuid();
 
