@@ -17,6 +17,7 @@ import {
   PinLoginDto,
   RegisterDto,
   RefreshTokenDto,
+  LogoutDto,
   ChangePasswordDto,
   SetPinDto,
   AuthResponseDto,
@@ -310,14 +311,17 @@ export class AuthService {
     );
   }
 
-  async logout(userId: string, refreshToken?: string): Promise<void> {
-    if (refreshToken) {
+  async logout(userId: string, logoutDto?: LogoutDto): Promise<void> {
+    const refreshToken = logoutDto?.refreshToken;
+    const allDevices = logoutDto?.allDevices ?? false;
+
+    if (!allDevices && refreshToken) {
       const tokenHash = this.hashToken(refreshToken);
       await this.prisma.refreshToken.deleteMany({
         where: { userId, tokenHash },
       });
     } else {
-      // Logout from all devices
+      // Backward compatibility: missing refresh token still means all devices.
       await this.revokeAllUserTokens(userId);
     }
 

@@ -129,21 +129,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: DesignColors.teal.withValues(alpha: 0.12),
+                        color: Colors.teal.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: DesignColors.teal.withValues(alpha: 0.25)),
+                            color: Colors.teal.withValues(alpha: 0.25)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.person_rounded,
-                              size: 15, color: DesignColors.teal),
+                              size: 15, color: Colors.teal),
                           const SizedBox(width: 6),
                           Text(
                             cart.customerName!,
                             style: const TextStyle(
-                                color: DesignColors.teal,
+                                color: Colors.teal,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600),
                           ),

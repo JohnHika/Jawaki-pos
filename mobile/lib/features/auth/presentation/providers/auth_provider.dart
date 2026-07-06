@@ -53,11 +53,16 @@ class AuthController extends StateNotifier<AuthState> {
   Future<bool> login({
     required String email,
     required String password,
+    String? tenantSlug,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      await _authService.login(email: email, password: password);
+      await _authService.login(
+        email: email,
+        password: password,
+        tenantSlug: tenantSlug,
+      );
       state = state.copyWith(
         isLoading: false,
         isAuthenticated: true,
@@ -130,28 +135,37 @@ class AuthController extends StateNotifier<AuthState> {
     return _authService.isBiometricAvailable();
   }
 
+  Future<bool> isDeviceAuthenticationAvailable() async {
+    return _authService.isDeviceAuthenticationAvailable();
+  }
+
   String _getErrorMessage(dynamic error) {
     final msg = error.toString();
     if (msg.contains('401') || msg.contains('Invalid credentials')) {
       return 'Invalid email or password';
     }
-    if (msg.contains('network') || msg.contains('Connection refused') || msg.contains('SocketException')) {
-      return 'Server not reachable. Tap "Start Phone Server" first.';
+    if (msg.contains('network') ||
+        msg.contains('Connection refused') ||
+        msg.contains('SocketException')) {
+      return 'Cloud POS is not reachable. Check your internet connection and try again.';
     }
     if (msg.contains('403') || msg.contains('deactivated')) {
       return 'Account deactivated. Contact administrator.';
     }
     // Show the actual error when debugging
     if (msg.contains('400') || msg.contains('Bad Request')) {
-      return 'Server error. Try restarting server mode.';
+      return 'Cloud POS error. Please try again in a moment.';
     }
     debugPrint('[AuthError] $error');
-    return msg.length > 80 ? 'Login failed. Check server is running.' : msg;
+    return msg.length > 80
+        ? 'Login failed. Check your internet connection and try again.'
+        : msg;
   }
 }
 
 // Providers
-final authControllerProvider = StateNotifierProvider<AuthController, AuthState>((ref) {
+final authControllerProvider =
+    StateNotifierProvider<AuthController, AuthState>((ref) {
   return AuthController(getIt<AuthService>());
 });
 

@@ -18,13 +18,22 @@ class InventoryRoutes {
     r.post('/api/v1/inventory/batches/receive', _handleReceiveBatches);
 
     // Stock requests
-    r.get('/api/v1/inventory/stock-requests/stats/summary', _handleStockRequestStats);
+    r.get(
+      '/api/v1/inventory/stock-requests/stats/summary',
+      _handleStockRequestStats,
+    );
     r.get('/api/v1/inventory/stock-requests', _handleGetStockRequests);
     r.get('/api/v1/inventory/stock-requests/<id>', _handleGetStockRequest);
     r.post('/api/v1/inventory/stock-requests', _handleCreateStockRequest);
     r.put('/api/v1/inventory/stock-requests/<id>', _handleUpdateStockRequest);
-    r.put('/api/v1/inventory/stock-requests/<id>/resolve', _handleResolveStockRequest);
-    r.put('/api/v1/inventory/stock-requests/<id>/cancel', _handleCancelStockRequest);
+    r.put(
+      '/api/v1/inventory/stock-requests/<id>/resolve',
+      _handleResolveStockRequest,
+    );
+    r.put(
+      '/api/v1/inventory/stock-requests/<id>/cancel',
+      _handleCancelStockRequest,
+    );
   }
 
   /// GET /api/v1/inventory/stock?branchId=
@@ -59,8 +68,19 @@ class InventoryRoutes {
 
     final productId = body['productId'] as String?;
     final branchId = body['branchId'] as String?;
-    final quantity = (body['quantity'] as num?)?.toInt() ?? 0;
-    final batchNumber = body['batchNumber'] as String? ?? 'BATCH-${DateTime.now().millisecondsSinceEpoch}';
+    final batches = body['batches'];
+    final quantity = batches is List
+        ? batches.fold<int>(0, (sum, item) {
+            if (item is! Map) return sum;
+            final batchQty = (item['quantity'] as num?)?.toDouble() ?? 0;
+            final unitsPerQuantity =
+                (item['unitsPerQuantity'] as num?)?.toDouble() ?? 1;
+            return sum + (batchQty * unitsPerQuantity).round();
+          })
+        : ((body['quantity'] as num?)?.toInt() ?? 0);
+    final batchNumber =
+        body['batchNumber'] as String? ??
+        'BATCH-${DateTime.now().millisecondsSinceEpoch}';
 
     if (productId == null || branchId == null || quantity <= 0) {
       return _error(400, 'productId, branchId, and quantity > 0 are required');
@@ -69,20 +89,27 @@ class InventoryRoutes {
     // Upsert local stock
     final existing = await _db.getProductStock(productId, branchId);
     if (existing != null) {
-      await (_db.update(_db.localStock)
-        ..where((s) => s.productId.equals(productId) & s.branchId.equals(branchId)))
-        .write(LocalStockCompanion(
-          quantity: Value(existing.quantity + quantity),
-          updatedAt: Value(DateTime.now()),
-        ));
+      await (_db.update(_db.localStock)..where(
+            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
+          ))
+          .write(
+            LocalStockCompanion(
+              quantity: Value(existing.quantity + quantity),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
     } else {
-      await _db.into(_db.localStock).insert(LocalStockCompanion(
-        id: Value('stock-${_uuid()}'),
-        productId: Value(productId),
-        branchId: Value(branchId),
-        quantity: Value(quantity),
-        updatedAt: Value(DateTime.now()),
-      ));
+      await _db
+          .into(_db.localStock)
+          .insert(
+            LocalStockCompanion(
+              id: Value('stock-$branchId-$productId'),
+              productId: Value(productId),
+              branchId: Value(branchId),
+              quantity: Value(quantity),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
     }
 
     return shelf.Response(
@@ -110,7 +137,9 @@ class InventoryRoutes {
     if (status != null && status.isNotEmpty) {
       conditions.add('status = ${Sql.str(status)}');
     }
-    final where = conditions.isNotEmpty ? ' WHERE ${conditions.join(' AND ')}' : '';
+    final where = conditions.isNotEmpty
+        ? ' WHERE ${conditions.join(' AND ')}'
+        : '';
     final sql = 'SELECT * FROM stock_requests$where ORDER BY created_at DESC';
 
     try {
@@ -127,11 +156,16 @@ class InventoryRoutes {
     }
   }
 
-  Future<shelf.Response> _handleGetStockRequest(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleGetStockRequest(
+    shelf.Request request,
+    String id,
+  ) async {
     try {
-      final result = await _db.customSelect(
-        'SELECT * FROM stock_requests WHERE id = ${Sql.str(id)}',
-      ).get();
+      final result = await _db
+          .customSelect(
+            'SELECT * FROM stock_requests WHERE id = ${Sql.str(id)}',
+          )
+          .get();
       if (result.isEmpty) return _error(404, 'Stock request not found');
       return shelf.Response.ok(
         jsonEncode(_stockRequestToMap(result.first)),
@@ -142,7 +176,9 @@ class InventoryRoutes {
     }
   }
 
-  Future<shelf.Response> _handleCreateStockRequest(shelf.Request request) async {
+  Future<shelf.Response> _handleCreateStockRequest(
+    shelf.Request request,
+  ) async {
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
 
@@ -170,7 +206,10 @@ class InventoryRoutes {
     );
   }
 
-  Future<shelf.Response> _handleUpdateStockRequest(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleUpdateStockRequest(
+    shelf.Request request,
+    String id,
+  ) async {
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
 
@@ -192,7 +231,10 @@ class InventoryRoutes {
     }
   }
 
-  Future<shelf.Response> _handleResolveStockRequest(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleResolveStockRequest(
+    shelf.Request request,
+    String id,
+  ) async {
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
 
@@ -215,7 +257,10 @@ class InventoryRoutes {
     }
   }
 
-  Future<shelf.Response> _handleCancelStockRequest(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleCancelStockRequest(
+    shelf.Request request,
+    String id,
+  ) async {
     final now = Sql.str(DateTime.now().toIso8601String());
     try {
       await _db.customStatement(
@@ -232,9 +277,11 @@ class InventoryRoutes {
 
   Future<shelf.Response> _handleStockRequestStats(shelf.Request request) async {
     try {
-      final result = await _db.customSelect(
-        'SELECT status, COUNT(*) as count FROM stock_requests GROUP BY status',
-      ).get();
+      final result = await _db
+          .customSelect(
+            'SELECT status, COUNT(*) as count FROM stock_requests GROUP BY status',
+          )
+          .get();
       final stats = <String, int>{};
       for (final row in result) {
         stats[row.read<String>('status')] = row.read<int>('count');
@@ -245,7 +292,13 @@ class InventoryRoutes {
       );
     } catch (_) {
       return shelf.Response.ok(
-        jsonEncode({'PENDING': 0, 'APPROVED': 0, 'REJECTED': 0, 'FULFILLED': 0, 'CANCELLED': 0}),
+        jsonEncode({
+          'PENDING': 0,
+          'APPROVED': 0,
+          'REJECTED': 0,
+          'FULFILLED': 0,
+          'CANCELLED': 0,
+        }),
         headers: {'content-type': 'application/json'},
       );
     }

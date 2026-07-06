@@ -313,6 +313,40 @@ class SyncService {
     }
   }
   
+  /// Parse timestamp from various formats (ISO string or milliseconds since epoch)
+  DateTime _parseTimestamp(dynamic value) {
+    if (value == null) return DateTime.now();
+    
+    // If it's already a DateTime, return it
+    if (value is DateTime) return value;
+    
+    // If it's a number (Unix timestamp in milliseconds)
+    if (value is int || value is double) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    }
+    
+    // If it's a string
+    if (value is String) {
+      // Try to parse as ISO string first
+      try {
+        return DateTime.parse(value);
+      } catch (_) {
+        // If that fails, try parsing as milliseconds since epoch
+        try {
+          final milliseconds = int.tryParse(value);
+          if (milliseconds != null) {
+            return DateTime.fromMillisecondsSinceEpoch(milliseconds);
+          }
+          return DateTime.now();
+        } catch (_) {
+          return DateTime.now();
+        }
+      }
+    }
+    
+    return DateTime.now();
+  }
+  
   Future<void> _processServerEvent(Map<String, dynamic> event) async {
     final eventType = event['eventType'] as String;
     final payload = event['payload'] as Map<String, dynamic>;
@@ -334,6 +368,9 @@ class SyncService {
   }
   
   Future<void> _updateLocalProduct(Map<String, dynamic> data) async {
+    final createdAt = _parseTimestamp(data['createdAt']);
+    final updatedAt = _parseTimestamp(data['updatedAt']);
+    
     await _database.insertProducts([
       ProductsCompanion(
         id: Value(data['id']),
@@ -349,13 +386,16 @@ class SyncService {
         imageUrl: Value(data['imageUrl']),
         isActive: Value(data['isActive'] ?? true),
         trackInventory: Value(data['trackInventory'] ?? true),
-        createdAt: Value(DateTime.parse(data['createdAt'])),
-        updatedAt: Value(DateTime.parse(data['updatedAt'])),
+        createdAt: Value(createdAt),
+        updatedAt: Value(updatedAt),
       ),
     ]);
   }
   
   Future<void> _updateLocalCategory(Map<String, dynamic> data) async {
+    final createdAt = _parseTimestamp(data['createdAt']);
+    final updatedAt = _parseTimestamp(data['updatedAt']);
+    
     await _database.insertCategories([
       CategoriesCompanion(
         id: Value(data['id']),
@@ -365,8 +405,8 @@ class SyncService {
         imageUrl: Value(data['imageUrl']),
         sortOrder: Value(data['sortOrder'] ?? 0),
         isActive: Value(data['isActive'] ?? true),
-        createdAt: Value(DateTime.parse(data['createdAt'])),
-        updatedAt: Value(DateTime.parse(data['updatedAt'])),
+        createdAt: Value(createdAt),
+        updatedAt: Value(updatedAt),
       ),
     ]);
   }

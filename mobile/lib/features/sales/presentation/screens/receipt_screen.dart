@@ -280,8 +280,8 @@ class ReceiptScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(12),
                 borderRadius: 12,
                 blur: 4,
-                tint: DesignColors.teal.withValues(alpha:0.04),
-                borderColor: DesignColors.teal.withValues(alpha:0.12),
+                tint: Colors.teal.withValues(alpha:0.04),
+                borderColor: Colors.teal.withValues(alpha:0.12),
                 child: Column(
                   children: [
                     _buildReceiptRow(context,

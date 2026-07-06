@@ -1,0 +1,16 @@
+name: Android R2 Sanity
+
+on:
+  push:
+    branches: [ update-feature ]
+  workflow_dispatch:
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sanity check
+        run: |
+          echo "workflow started"
+          echo "ref=$GITHUB_REF"
+          echo "sha=$GITHUB_SHA"

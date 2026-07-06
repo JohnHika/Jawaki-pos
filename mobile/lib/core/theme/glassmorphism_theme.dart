@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-/// Glassmorphism Theme for Levisa Adventures POS
+/// Glassmorphism Theme for Axon POS
 /// Implements modern frosted glass effects with transparency and blur
 class GlassColors {
   // Glass Base Colors (Semi-transparent with blur effect)

@@ -12,8 +12,10 @@ import '../services/storage_service.dart';
 import '../services/haptic_service.dart';
 import '../services/local_server_service.dart';
 import '../services/update_check_service.dart';
+import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 
 final getIt = GetIt.instance;
+const _defaultApiUrl = 'https://arche-axon-pos-api.onrender.com/api/v1';
 
 /// Configure all dependencies for the app
 /// This must be called after WidgetsFlutterBinding.ensureInitialized()
@@ -31,6 +33,7 @@ Future<void> configureDependencies() async {
     // Initialize storage FIRST (required by all other services)
     debugPrint('[DI] Initializing StorageService...');
     await storageService.initialize();
+    await storageService.ensureDeviceId();
     debugPrint('[DI] StorageService initialized');
 
     debugPrint('[DI] Registering ConnectivityService...');
@@ -60,6 +63,21 @@ Future<void> configureDependencies() async {
     final apiClient = ApiClient(dio);
     getIt.registerSingleton<ApiClient>(apiClient);
     debugPrint('[DI] ApiClient registered');
+
+    // Apply saved server URL (overrides compile-time default)
+    final savedUrl = storageService.getServerBaseUrl();
+    if (savedUrl != null && savedUrl.isNotEmpty) {
+      final isLegacyLocalUrl = savedUrl.contains('192.168.100.47') ||
+          savedUrl.contains('10.30.168.100');
+      final effectiveUrl = isLegacyLocalUrl ? _defaultApiUrl : savedUrl;
+      if (isLegacyLocalUrl) {
+        await storageService.setServerBaseUrl(effectiveUrl);
+      }
+      apiClient.setBaseUrl(effectiveUrl);
+      debugPrint('[DI] ApiClient base URL from storage: $effectiveUrl');
+    } else {
+      debugPrint('[DI] Using default ApiClient base URL');
+    }
 
     // ============================================
     // STEP 4: Auth Service (depends on StorageService, ApiClient)
@@ -104,11 +122,20 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] LocalServerService registered');
 
     // ============================================
-    // STEP 8: Update Check Service (GitHub Releases)
+    // STEP 8: Update Check Service (backend manifest)
     // ============================================
     debugPrint('[DI] Registering UpdateCheckService...');
-    getIt.registerSingleton<UpdateCheckService>(UpdateCheckService());
+    getIt.registerSingleton<UpdateCheckService>(
+      UpdateCheckService(apiClient: getIt<ApiClient>()),
+    );
     debugPrint('[DI] UpdateCheckService registered');
+
+    // ============================================
+    // STEP 9: AI Billing Service
+    // ============================================
+    debugPrint('[DI] Registering AiBillingService...');
+    getIt.registerSingleton<AiBillingService>(AiBillingService());
+    debugPrint('[DI] AiBillingService registered');
 
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {
@@ -128,7 +155,7 @@ Dio _createDio() {
     BaseOptions(
       baseUrl: const String.fromEnvironment(
         'API_URL',
-        defaultValue: 'http://192.168.100.47:3000/api/v1',
+        defaultValue: _defaultApiUrl,
       ),
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),

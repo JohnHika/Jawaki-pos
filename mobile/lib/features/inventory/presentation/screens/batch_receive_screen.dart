@@ -5,6 +5,7 @@ import '../widgets/unit_selector_widget.dart';
 import '../../../../core/providers/api_provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
 
 /// Enhanced Batch Receive Screen with Multi-Unit Support
@@ -30,6 +31,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   final List<BatchEntry> _batches = [];
   bool _isLoading = false;
   bool _isLoadingConfig = true;
+  String? _resolvedProductName;
 
   // Product unit configuration - loaded from API
   UnitConfig? _unitConfig;
@@ -37,8 +39,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   @override
   void initState() {
     super.initState();
+    _resolvedProductName = widget.productName;
     // If no product specified, show error
-    if (widget.productId == null || widget.productName == null) {
+    if (widget.productId == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           showGlassSnackBar(
@@ -53,8 +56,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       return;
     }
     _loadProductConfig();
-    // Start with one empty batch
-    _addBatch();
   }
 
   Future<void> _loadProductConfig() async {
@@ -66,6 +67,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       if (mounted) {
         setState(() {
+          _resolvedProductName =
+              product['name']?.toString() ?? _resolvedProductName;
           _unitConfig = UnitConfig(
             baseUnit: product['unit'] ?? 'piece',
             secondaryUnit: product['secondaryUnit'],
@@ -75,22 +78,33 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
           );
           _isLoadingConfig = false;
         });
+        _ensureInitialBatch();
       }
     } catch (e) {
-      // Fallback to basic unit config if API fails
+      final localProduct = await getIt<AppDatabase>().getProduct(
+        widget.productId!,
+      );
       if (mounted) {
         setState(() {
+          _resolvedProductName = localProduct?.name ?? _resolvedProductName;
           _unitConfig = UnitConfig(
-            baseUnit: 'piece',
-            secondaryUnit: null,
-            secondaryUnitQty: null,
-            tertiaryUnit: null,
-            tertiaryUnitQty: null,
+            baseUnit: localProduct?.unit ?? 'piece',
+            secondaryUnit: localProduct?.secondaryUnit,
+            secondaryUnitQty: localProduct?.secondaryUnitQty,
+            tertiaryUnit: localProduct?.tertiaryUnit,
+            tertiaryUnitQty: localProduct?.tertiaryUnitQty,
           );
           _isLoadingConfig = false;
         });
+        _ensureInitialBatch();
       }
       debugPrint('Error loading product config: $e');
+    }
+  }
+
+  void _ensureInitialBatch() {
+    if (_batches.isEmpty && _unitConfig != null) {
+      _addBatch();
     }
   }
 
@@ -98,14 +112,16 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     if (_unitConfig == null) return;
 
     setState(() {
-      _batches.add(BatchEntry(
-        batchNumberController: TextEditingController(),
-        quantityController: TextEditingController(),
-        costPriceController: TextEditingController(),
-        notesController: TextEditingController(),
-        supplierRefController: TextEditingController(),
-        selectedUnit: _unitConfig!.baseUnit,
-      ));
+      _batches.add(
+        BatchEntry(
+          batchNumberController: TextEditingController(),
+          quantityController: TextEditingController(),
+          costPriceController: TextEditingController(),
+          notesController: TextEditingController(),
+          supplierRefController: TextEditingController(),
+          selectedUnit: _unitConfig!.baseUnit,
+        ),
+      );
     });
   }
 
@@ -241,8 +257,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 color: DesignColors.brand.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.add_circle_outline_rounded,
-                  color: DesignColors.brand, size: 20),
+              child: const Icon(
+                Icons.add_circle_outline_rounded,
+                color: DesignColors.brand,
+                size: 20,
+              ),
             ),
             tooltip: 'Add another batch',
             onPressed: _addBatch,
@@ -285,7 +304,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.productName ?? 'Unknown Product',
+                                  _resolvedProductName ?? 'Selected Product',
                                   style: const TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
@@ -313,26 +332,33 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                           runSpacing: 4,
                           children: _unitConfig!.availableUnits
                               .where((u) => u.conversionFactor != 1.0)
-                              .map((unit) => Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 5),
-                                    decoration: BoxDecoration(
-                                      color: DesignColors.brand
-                                          .withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                          color: DesignColors.brand
-                                              .withValues(alpha: 0.15)),
+                              .map(
+                                (unit) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: DesignColors.brand.withValues(
+                                      alpha: 0.08,
                                     ),
-                                    child: Text(
-                                      '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: DesignColors.brand,
-                                        fontWeight: FontWeight.w500,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: DesignColors.brand.withValues(
+                                        alpha: 0.15,
                                       ),
                                     ),
-                                  ))
+                                  ),
+                                  child: Text(
+                                    '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: DesignColors.brand,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              )
                               .toList(),
                         ),
                       ],
@@ -495,8 +521,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   fontWeight: FontWeight.w500,
                 ),
                 floatingLabelBehavior: FloatingLabelBehavior.auto,
-                prefixIcon: const Icon(Icons.qr_code_rounded,
-                    color: DesignColors.textTertiary, size: 20),
+                prefixIcon: const Icon(
+                  Icons.qr_code_rounded,
+                  color: DesignColors.textTertiary,
+                  size: 20,
+                ),
                 filled: true,
                 fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
                 border: OutlineInputBorder(
@@ -509,11 +538,15 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: DesignColors.brand, width: 1.5),
+                  borderSide: const BorderSide(
+                    color: DesignColors.brand,
+                    width: 1.5,
+                  ),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -542,8 +575,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       ),
                       floatingLabelBehavior: FloatingLabelBehavior.auto,
                       filled: true,
-                      fillColor:
-                          DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                      fillColor: DesignColors.surfaceBorder.withValues(
+                        alpha: 0.15,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -555,13 +589,18 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
+                          color: DesignColors.brand,
+                          width: 1.5,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Required';
@@ -591,8 +630,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         isExpanded: true,
                         dropdownColor:
                             Theme.of(context).brightness == Brightness.dark
-                                ? DesignColors.darkSurface
-                                : Colors.white,
+                            ? DesignColors.darkSurface
+                            : Colors.white,
                         style: const TextStyle(
                           color: DesignColors.textPrimary,
                           fontWeight: FontWeight.w600,
@@ -630,16 +669,21 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
             InkWell(
               onTap: () => _selectDate(context, batch, isExpiry: true),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: DesignColors.surfaceBorder.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_today_rounded,
-                        color: DesignColors.textTertiary, size: 20),
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      color: DesignColors.textTertiary,
+                      size: 20,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -657,8 +701,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                           Text(
                             batch.expiryDate == null
                                 ? 'Select date'
-                                : DateFormat('MMM d, yyyy')
-                                    .format(batch.expiryDate!),
+                                : DateFormat(
+                                    'MMM d, yyyy',
+                                  ).format(batch.expiryDate!),
                             style: TextStyle(
                               color: batch.expiryDate == null
                                   ? DesignColors.textTertiary
@@ -672,8 +717,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded,
-                        color: DesignColors.textTertiary, size: 20),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: DesignColors.textTertiary,
+                      size: 20,
+                    ),
                   ],
                 ),
               ),
@@ -683,8 +731,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
             // Collapsible Additional Details
             Theme(
-              data:
-                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 title: const Text(
                   'Additional Details (Optional)',
@@ -704,16 +753,22 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                     onTap: () => _selectDate(context, batch, isExpiry: false),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
-                        color:
-                            DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                        color: DesignColors.surfaceBorder.withValues(
+                          alpha: 0.15,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_month_rounded,
-                              color: DesignColors.textTertiary, size: 20),
+                          const Icon(
+                            Icons.calendar_month_rounded,
+                            color: DesignColors.textTertiary,
+                            size: 20,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -731,8 +786,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                 Text(
                                   batch.manufactureDate == null
                                       ? 'Select date'
-                                      : DateFormat('MMM d, yyyy')
-                                          .format(batch.manufactureDate!),
+                                      : DateFormat(
+                                          'MMM d, yyyy',
+                                        ).format(batch.manufactureDate!),
                                   style: TextStyle(
                                     color: batch.manufactureDate == null
                                         ? DesignColors.textTertiary
@@ -746,8 +802,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               ],
                             ),
                           ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: DesignColors.textTertiary, size: 20),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: DesignColors.textTertiary,
+                            size: 20,
+                          ),
                         ],
                       ),
                     ),
@@ -773,8 +832,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                       filled: true,
-                      fillColor:
-                          DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                      fillColor: DesignColors.surfaceBorder.withValues(
+                        alpha: 0.15,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -786,13 +846,18 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
+                          color: DesignColors.brand,
+                          width: 1.5,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
 
                   const SizedBox(height: 14),
@@ -809,11 +874,15 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                       floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      prefixIcon: const Icon(Icons.receipt_rounded,
-                          color: DesignColors.textTertiary, size: 20),
+                      prefixIcon: const Icon(
+                        Icons.receipt_rounded,
+                        color: DesignColors.textTertiary,
+                        size: 20,
+                      ),
                       filled: true,
-                      fillColor:
-                          DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                      fillColor: DesignColors.surfaceBorder.withValues(
+                        alpha: 0.15,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -825,10 +894,14 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
+                          color: DesignColors.brand,
+                          width: 1.5,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                   ),
 
@@ -846,11 +919,15 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                       floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      prefixIcon: const Icon(Icons.notes_rounded,
-                          color: DesignColors.textTertiary, size: 20),
+                      prefixIcon: const Icon(
+                        Icons.notes_rounded,
+                        color: DesignColors.textTertiary,
+                        size: 20,
+                      ),
                       filled: true,
-                      fillColor:
-                          DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                      fillColor: DesignColors.surfaceBorder.withValues(
+                        alpha: 0.15,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -862,10 +939,14 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                            color: DesignColors.brand, width: 1.5),
+                          color: DesignColors.brand,
+                          width: 1.5,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                     maxLines: 2,
                   ),
@@ -901,9 +982,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: DesignColors.brand.withValues(alpha: 0.15),
-        ),
+        border: Border.all(color: DesignColors.brand.withValues(alpha: 0.15)),
       ),
       child: Row(
         children: [
@@ -928,8 +1007,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     );
   }
 
-  Future<void> _selectDate(BuildContext context, BatchEntry batch,
-      {required bool isExpiry}) async {
+  Future<void> _selectDate(
+    BuildContext context,
+    BatchEntry batch, {
+    required bool isExpiry,
+  }) async {
     final initialDate = isExpiry ? batch.expiryDate : batch.manufactureDate;
 
     final date = await showDatePicker(

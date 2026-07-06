@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="60,8 104,34 104,86 60,112 16,86 16,34"
+    fill="#EEF0FF" stroke="#6B7BFF" stroke-width="2" stroke-linejoin="round"/>
+  <polygon points="60,18 94,37 94,83 60,102 26,83 26,37"
+    fill="none" stroke="#6B7BFF" stroke-width="0.6" stroke-opacity="0.2" stroke-linejoin="round"/>
+  <circle cx="60" cy="60" r="8.5" fill="#6B7BFF"/>
+  <circle cx="60" cy="60" r="4" fill="#EEF0FF"/>
+  <line x1="60" y1="51.5" x2="60" y2="16" stroke="#4A5AE8" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="60" cy="13.5" r="5" fill="#4A5AE8"/>
+  <circle cx="60" cy="13.5" r="2.5" fill="#EEF0FF"/>
+  <line x1="67.5" y1="55.5" x2="96" y2="38.5" stroke="#6B7BFF" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="98.5" cy="37" r="4.5" fill="#6B7BFF"/>
+  <line x1="67.5" y1="64.5" x2="96" y2="81.5" stroke="#8B9BFF" stroke-width="2" stroke-linecap="round" opacity=".9"/>
+  <circle cx="98.5" cy="83" r="4" fill="#8B9BFF" opacity=".9"/>
+  <line x1="60" y1="68.5" x2="60" y2="104" stroke="#8B9BFF" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
+  <circle cx="60" cy="107" r="3" fill="#8B9BFF" opacity=".7"/>
+  <line x1="52.5" y1="64.5" x2="24" y2="81.5" stroke="#8B9BFF" stroke-width="2" stroke-linecap="round" opacity=".9"/>
+  <circle cx="21.5" cy="83" r="4" fill="#8B9BFF" opacity=".9"/>
+  <line x1="52.5" y1="55.5" x2="24" y2="38.5" stroke="#6B7BFF" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="21.5" cy="37" r="4.5" fill="#6B7BFF"/>
+</svg>

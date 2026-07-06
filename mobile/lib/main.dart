@@ -10,8 +10,11 @@ import 'core/theme/theme_provider.dart';
 import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/local_server_service.dart';
+import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
+import 'core/widgets/forced_update_gate.dart';
+import 'core/widgets/optional_update_prompt_host.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -75,7 +78,11 @@ void main() async {
 
     debugPrint('[main] All initializations complete, launching app...');
 
-    runApp(const ProviderScope(child: POSApp()));
+    runApp(
+      const ProviderScope(
+        child: POSApp(),
+      ),
+    );
   } catch (e, stackTrace) {
     debugPrint('╔═══════════════════════════════════════════════════════════╗');
     debugPrint('║ CRITICAL INITIALIZATION ERROR                             ║');
@@ -85,7 +92,11 @@ void main() async {
     debugPrint('$stackTrace');
     debugPrint('═══════════════════════════════════════════════════════════');
 
-    runApp(const ProviderScope(child: POSApp()));
+    runApp(
+      const ProviderScope(
+        child: POSApp(),
+      ),
+    );
   }
 }
 
@@ -99,55 +110,94 @@ class POSApp extends ConsumerStatefulWidget {
 class _POSAppState extends ConsumerState<POSApp> {
   bool _checkedForUpdates = false;
 
+  late final _POSAppLifecycleObserver _lifecycleObserver;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleObserver = _POSAppLifecycleObserver();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Auto-check for updates once after the first frame — the user sees
-    // a dialog immediately if a newer GitHub Release exists.
+    // Auto-check for updates once after the first frame so the app can
+    // enforce backend-managed remote updates immediately when required.
     if (!_checkedForUpdates) {
       _checkedForUpdates = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showPostUpdateNotesThenCheck();
+        getIt<UpdateCheckService>().checkForUpdates(
+          force: false, // don't force; uses cache interval
+        );
       });
     }
-  }
-
-  Future<void> _showPostUpdateNotesThenCheck() async {
-    final updateService = getIt<UpdateCheckService>();
-    final showedInstalledNotes = await updateService
-        .showInstalledUpdateNotesIfNeeded(context);
-
-    if (!mounted || showedInstalledNotes) return;
-
-    await updateService.checkForUpdates(
-      context: context,
-      force: false, // don't force; uses cache interval
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final themeColors = ref.watch(themeColorsProvider);
 
     return MaterialApp.router(
-      title: 'Levisa Adventures POS',
+      title: 'POS System',
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: false,
       checkerboardRasterCacheImages: false,
       checkerboardOffscreenLayers: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: AppTheme.dynamicLight(themeColors.primary, themeColors.secondary),
+      darkTheme:
+          AppTheme.dynamicDark(themeColors.primary, themeColors.secondary),
       themeMode: themeMode,
       routerConfig: router,
       builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.noScaling),
-          child: child!,
+        final updateService = getIt<UpdateCheckService>();
+        return AnimatedBuilder(
+          animation: updateService,
+          builder: (context, _) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.noScaling),
+            child: OptionalUpdatePromptHost(
+              updateService: updateService,
+              child: Stack(
+                children: [
+                  child!,
+                  if (updateService.isForceUpdateRequired)
+                    Positioned.fill(
+                      child: ForcedUpdateGate(updateService: updateService),
+                    ),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );
+  }
+}
+
+class _POSAppLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    final authService = getIt<AuthService>();
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      authService.markAppBackgrounded();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      await authService.lockIfRequiredAfterResume();
+      getIt<UpdateCheckService>().checkForUpdates(force: true);
+    }
   }
 }

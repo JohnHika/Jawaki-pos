@@ -9,8 +9,8 @@ class AuthInterceptor extends Interceptor {
   
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    // Skip auth for login/register/logout endpoints
-    final noAuthPaths = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
+    // Skip auth for public auth endpoints; logout still needs the bearer token.
+    final noAuthPaths = ['/auth/login', '/auth/register', '/auth/refresh'];
     if (noAuthPaths.any((path) => options.path.contains(path))) {
       return handler.next(options);
     }

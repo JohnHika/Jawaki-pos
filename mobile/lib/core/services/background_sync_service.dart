@@ -31,7 +31,7 @@ class BackgroundSyncService {
   static const String _immediateSyncTag = 'immediate-sync';
   static const String _defaultApiBaseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'http://10.30.168.100:3000/api/v1',
+    defaultValue: 'https://arche-axon-pos-api.onrender.com/api/v1',
   );
 
   // Run every 15 minutes

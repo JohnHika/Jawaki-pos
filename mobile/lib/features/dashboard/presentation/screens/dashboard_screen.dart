@@ -5,10 +5,12 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 
-final _dashboardSummaryProvider =
-    StreamProvider<Map<String, dynamic>>((ref) async* {
+final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
+  ref,
+) async* {
   final db = getIt<AppDatabase>();
   await for (final _ in db.watchTodaysSales()) {
     yield await db.getDashboardSummary();
@@ -23,8 +25,11 @@ final _recentSalesProvider = StreamProvider<List<PendingSale>>((ref) {
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
-  static final _currencyFmt =
-      NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
+  static final _currencyFmt = NumberFormat.currency(
+    locale: 'en_KE',
+    symbol: 'KES ',
+    decimalDigits: 0,
+  );
   static final _timeFmt = DateFormat('hh:mm a');
   static final _dateFmt = DateFormat('EEEE, d MMMM yyyy');
 
@@ -32,6 +37,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
+    final companyName = _companyDisplayName();
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Dashboard',
@@ -60,88 +66,41 @@ class DashboardScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Greeting header
-              GlassCard(
-                padding: const EdgeInsets.all(20),
-                borderRadius: 16,
-                blur: 12,
-                tint: DesignColors.brand.withValues(alpha: 0.06),
-                borderColor: DesignColors.brand.withValues(alpha: 0.1),
-                margin: const EdgeInsets.only(bottom: 20),
-                child: Row(
+              Padding(
+                padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.today_rounded,
-                        color: DesignColors.brand,
-                        size: 28,
+                    Text(
+                      'Good ${_getGreeting()}, $companyName',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: DesignColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Good ${_getGreeting()}, Levisa Adventures!',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: DesignColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _dateFmt.format(DateTime.now()),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: DesignColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            DesignColors.brand,
-                            DesignColors.brandDark,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: DesignColors.brand.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Text(
-                        'Today',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _dateFmt.format(DateTime.now()),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: DesignColors.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
 
-              // Summary Cards
+              // Summary Cards - Using Wrap+LayoutBuilder to prevent overflow in Column
               summaryAsync.when(
-                data: (summary) => _buildSummaryGrid(context, summary),
+                data: (summary) => Column(
+                  children: [
+                    _buildSummaryGrid(context, summary),
+                    const SizedBox(height: 12),
+                    _buildAiBrief(context, summary),
+                  ],
+                ),
                 loading: () => _buildSummaryGrid(context, {
                   'transactionCount': 0,
                   'totalRevenue': 0.0,
@@ -151,8 +110,10 @@ class DashboardScreen extends ConsumerWidget {
                 error: (e, _) => Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: Text('Error: $e',
-                        style: const TextStyle(color: DesignColors.error)),
+                    child: Text(
+                      'Error: $e',
+                      style: const TextStyle(color: DesignColors.error),
+                    ),
                   ),
                 ),
               ),
@@ -186,7 +147,9 @@ class DashboardScreen extends ConsumerWidget {
                     children: sales.take(10).map((sale) {
                       return GlassCard(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         borderRadius: 12,
                         blur: 8,
                         tint: Colors.transparent,
@@ -197,8 +160,9 @@ class DashboardScreen extends ConsumerWidget {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color:
-                                    DesignColors.brand.withValues(alpha: 0.1),
+                                color: DesignColors.brand.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -236,7 +200,7 @@ class DashboardScreen extends ConsumerWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
-                                color: DesignColors.teal,
+                                color: Colors.teal,
                               ),
                             ),
                           ],
@@ -252,8 +216,10 @@ class DashboardScreen extends ConsumerWidget {
                 error: (e, _) => Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: Text('Error: $e',
-                        style: const TextStyle(color: DesignColors.error)),
+                    child: Text(
+                      'Error: $e',
+                      style: const TextStyle(color: DesignColors.error),
+                    ),
                   ),
                 ),
               ),
@@ -266,20 +232,28 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> summary) {
-    return Column(
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate card width to fit 2 per row with proper spacing
+        final cardWidth = (constraints.maxWidth - 12) / 2;
+
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            Expanded(
+            // Today's Revenue
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: "Today's Revenue",
                 value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
                 icon: Icons.trending_up_rounded,
-                color: DesignColors.teal,
+                color: Colors.teal,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            // Transactions
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: 'Transactions',
                 value: '${summary['transactionCount'] ?? 0}',
@@ -287,12 +261,9 @@ class DashboardScreen extends ConsumerWidget {
                 color: DesignColors.brand,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
+            // Avg. Ticket
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: 'Avg. Ticket',
                 value: _currencyFmt.format(summary['avgTicket'] ?? 0),
@@ -300,8 +271,9 @@ class DashboardScreen extends ConsumerWidget {
                 color: DesignColors.info,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            // Items Sold
+            SizedBox(
+              width: cardWidth,
               child: MetricCard(
                 title: 'Items Sold',
                 value: '${summary['itemsSold'] ?? 0}',
@@ -310,8 +282,8 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -322,13 +294,126 @@ class DashboardScreen extends ConsumerWidget {
     return 'Evening';
   }
 
+  String _companyDisplayName() {
+    final auth = getIt<AuthService>();
+    final user = auth.currentUser;
+    final tenant = user?['tenant'];
+    final tenantMap = tenant is Map<String, dynamic>
+        ? tenant
+        : <String, dynamic>{};
+    final candidates = [
+      tenantMap['name'],
+      user?['tenantName'],
+      user?['companyName'],
+      auth.tenantSlug,
+      'Your Company',
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return 'Your Company';
+  }
+
+  Widget _buildAiBrief(BuildContext context, Map<String, dynamic> summary) {
+    final revenue = (summary['totalRevenue'] as num?)?.toDouble() ?? 0;
+    final transactions = (summary['transactionCount'] as num?)?.toInt() ?? 0;
+    final avgTicket = (summary['avgTicket'] as num?)?.toDouble() ?? 0;
+    final itemsSold = (summary['itemsSold'] as num?)?.toInt() ?? 0;
+
+    final snippets = <String>[
+      transactions == 0
+          ? 'No sales have landed today yet. Start with fast-moving items and watch stock before checkout.'
+          : '$transactions transactions have brought in ${_currencyFmt.format(revenue)} today.',
+      avgTicket > 0
+          ? 'Average ticket is ${_currencyFmt.format(avgTicket)} across $itemsSold sold items.'
+          : 'Average ticket will appear once the first sale is completed.',
+      itemsSold > 0
+          ? 'Keep an eye on inventory after each sale so zero-stock items stay blocked from POS.'
+          : 'Inventory and POS are linked, so received stock becomes sellable immediately.',
+    ];
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 14,
+      tint: DesignColors.info.withValues(alpha: 0.05),
+      borderColor: DesignColors.info.withValues(alpha: 0.16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: DesignColors.info,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'AI Brief',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: DesignColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...snippets.map(
+            (snippet) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 5),
+                    child: Icon(
+                      Icons.circle,
+                      size: 5,
+                      color: DesignColors.info,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      snippet,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: DesignColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _shareDashboardReport(
-      BuildContext context, WidgetRef ref) async {
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final db = getIt<AppDatabase>();
     final summary = await db.getDashboardSummary();
-    final report = '''
-Levisa Adventures — Daily Summary
-═══════════════════════════════
+    final report =
+        '''
+  Daily Summary
+  ═════════════
 ${_dateFmt.format(DateTime.now())}
 
 Sales:    ${_currencyFmt.format(summary['totalSales'] ?? 0)}
@@ -337,7 +422,7 @@ Profit:   ${_currencyFmt.format(summary['grossProfit'] ?? 0)}
 Avg Ticket: ${_currencyFmt.format(summary['avgTicket'] ?? 0)}
 Items Sold: ${summary['itemsSold'] ?? 0}
 
-Sent from Levisa Adventures POS
+Sent from your POS workspace
 ''';
     await Share.share(report, subject: 'Daily Sales Report');
   }

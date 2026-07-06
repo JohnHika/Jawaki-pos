@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class StorageService {
   FlutterSecureStorage? _secureStorage;
   SharedPreferences? _prefs;
+  static const Uuid _uuid = Uuid();
 
   bool _initialized = false;
-  
+
   // Storage keys
   static const String keyAccessToken = 'access_token';
   static const String keyRefreshToken = 'refresh_token';
@@ -15,10 +17,19 @@ class StorageService {
   static const String keyDeviceId = 'device_id';
   static const String keyBranchId = 'branch_id';
   static const String keyTenantId = 'tenant_id';
+  static const String keyTenantSlug = 'tenant_slug';
   static const String keyLastSyncAt = 'last_sync_at';
   static const String keyPinHash = 'pin_hash';
   static const String keyFavoriteProducts = 'favorite_products';
-  
+  static const String keyRememberLogin = 'remember_login';
+  static const String keyRememberedEmail = 'remembered_email';
+  static const String keyRememberedTenantSlug = 'remembered_tenant_slug';
+  static const String keyBiometricEnabled = 'setting_biometric_enabled';
+  static const String keyRequireUnlockOnResume =
+      'setting_require_unlock_on_resume';
+  static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
+  static const String keyAuthLocked = 'auth_locked';
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -33,12 +44,13 @@ class StorageService {
     _prefs = await SharedPreferences.getInstance();
     _initialized = true;
   }
-  
+
   // Secure Storage Methods (for sensitive data)
 
   void _checkInitialized() {
     if (!_initialized || _secureStorage == null) {
-      throw Exception('StorageService not initialized. Call initialize() first.');
+      throw Exception(
+          'StorageService not initialized. Call initialize() first.');
     }
   }
 
@@ -78,7 +90,7 @@ class StorageService {
     await _secureStorage!.delete(key: keyRefreshToken);
     await _secureStorage!.delete(key: keyPinHash);
   }
-  
+
   // Shared Preferences Methods (for non-sensitive data)
 
   Future<void> saveUser(Map<String, dynamic> user) async {
@@ -103,6 +115,19 @@ class StorageService {
     return _prefs!.getString(keyDeviceId);
   }
 
+  Future<String> ensureDeviceId() async {
+    _checkInitialized();
+
+    final existingDeviceId = _prefs!.getString(keyDeviceId);
+    if (existingDeviceId != null && existingDeviceId.isNotEmpty) {
+      return existingDeviceId;
+    }
+
+    final generatedDeviceId = _uuid.v4();
+    await _prefs!.setString(keyDeviceId, generatedDeviceId);
+    return generatedDeviceId;
+  }
+
   Future<void> saveBranchId(String branchId) async {
     _checkInitialized();
     await _prefs!.setString(keyBranchId, branchId);
@@ -121,6 +146,16 @@ class StorageService {
   String? getTenantId() {
     if (!_initialized || _prefs == null) return null;
     return _prefs!.getString(keyTenantId);
+  }
+
+  Future<void> saveTenantSlug(String tenantSlug) async {
+    _checkInitialized();
+    await _prefs!.setString(keyTenantSlug, tenantSlug);
+  }
+
+  String? getTenantSlug() {
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(keyTenantSlug);
   }
 
   Future<void> saveLastSyncAt(DateTime dateTime) async {
@@ -163,11 +198,76 @@ class StorageService {
     return getFavoriteProducts().contains(productId);
   }
 
+  bool isRememberLoginEnabled() {
+    return _prefs?.getBool(keyRememberLogin) ?? false;
+  }
+
+  String? getRememberedEmail() {
+    return _prefs?.getString(keyRememberedEmail);
+  }
+
+  String? getRememberedTenantSlug() {
+    return _prefs?.getString(keyRememberedTenantSlug);
+  }
+
+  Future<void> saveRememberedLogin({
+    required bool enabled,
+    required String email,
+    required String tenantSlug,
+  }) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyRememberLogin, enabled);
+    if (enabled) {
+      await _prefs!.setString(keyRememberedEmail, email);
+      await _prefs!.setString(keyRememberedTenantSlug, tenantSlug);
+    } else {
+      await _prefs!.remove(keyRememberedEmail);
+      await _prefs!.remove(keyRememberedTenantSlug);
+    }
+  }
+
+  bool isBiometricEnabled() {
+    return _prefs?.getBool(keyBiometricEnabled) ?? false;
+  }
+
+  Future<void> setBiometricEnabled(bool enabled) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyBiometricEnabled, enabled);
+  }
+
+  bool requireUnlockOnResume() {
+    return _prefs?.getBool(keyRequireUnlockOnResume) ?? true;
+  }
+
+  Future<void> setRequireUnlockOnResume(bool enabled) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyRequireUnlockOnResume, enabled);
+  }
+
+  int getAutoLockMinutes() {
+    return _prefs?.getInt(keyAutoLockMinutes) ?? -1;
+  }
+
+  Future<void> setAutoLockMinutes(int minutes) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyAutoLockMinutes, minutes);
+  }
+
+  bool isAuthLocked() {
+    return _prefs?.getBool(keyAuthLocked) ?? false;
+  }
+
+  Future<void> setAuthLocked(bool locked) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyAuthLocked, locked);
+  }
+
   // Server mode keys
   static const String keyServerModeEnabled = 'server_mode_enabled';
   static const String keyServerPort = 'server_port';
   static const String keyBackendServerIp = 'backend_server_ip';
   static const String keyBackendServerPort = 'backend_server_port';
+  static const String keyServerBaseUrl = 'server_base_url';
 
   bool isServerModeEnabled() {
     return _prefs?.getBool(keyServerModeEnabled) ?? false;
@@ -205,6 +305,15 @@ class StorageService {
     await _prefs!.setInt(keyBackendServerPort, port);
   }
 
+  String? getServerBaseUrl() {
+    return _prefs?.getString(keyServerBaseUrl);
+  }
+
+  Future<void> setServerBaseUrl(String url) async {
+    _checkInitialized();
+    await _prefs!.setString(keyServerBaseUrl, url);
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await clearSecureStorage();
@@ -217,6 +326,10 @@ class StorageService {
     await clearSecureStorage();
     _checkInitialized();
     await _prefs!.remove(keyUser);
+    await _prefs!.remove(keyBranchId);
+    await _prefs!.remove(keyTenantId);
+    await _prefs!.remove(keyTenantSlug);
     await _prefs!.remove(keyLastSyncAt);
+    await _prefs!.remove(keyAuthLocked);
   }
 }

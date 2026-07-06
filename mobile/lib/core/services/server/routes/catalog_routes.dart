@@ -29,6 +29,8 @@ class CatalogRoutes {
         'imageUrl': c.imageUrl,
         'sortOrder': c.sortOrder,
         'isActive': c.isActive,
+        'createdAt': c.createdAt.toIso8601String(),
+        'updatedAt': c.updatedAt.toIso8601String(),
       }).toList()),
       headers: {'content-type': 'application/json'},
     );
@@ -123,6 +125,8 @@ class CatalogRoutes {
       'isActive': p.isActive,
       'trackInventory': p.trackInventory,
       'categoryId': p.categoryId,
+      'createdAt': p.createdAt.toIso8601String(),
+      'updatedAt': p.updatedAt.toIso8601String(),
       'categories': [], // Filled in by caller if needed
       'currentStock': 0, // Filled in by caller if needed
     };
