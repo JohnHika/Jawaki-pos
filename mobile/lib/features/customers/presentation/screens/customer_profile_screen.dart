@@ -121,7 +121,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       Row(children: [
                         Expanded(child: MetricCard(title: 'Loyalty Points', value: '${_customer!['loyaltyPoints'] ?? 0}', icon: Icons.card_giftcard_rounded, color: DesignColors.warning)),
                         const SizedBox(width: 12),
-                        Expanded(child: MetricCard(title: 'Balance', value: 'KES ${(_customer!['balance'] as num?)?.toStringAsFixed(0) ?? '0'}', icon: Icons.account_balance_wallet_rounded, color: (_customer!['balance'] as num? ?? 0) > 0 ? DesignColors.error : DesignColors.teal)),
+                        Expanded(child: MetricCard(title: 'Balance', value: 'KES ${(_customer!['balance'] as num?)?.toStringAsFixed(0) ?? '0'}', icon: Icons.account_balance_wallet_rounded, color: (_customer!['balance'] as num? ?? 0) > 0 ? DesignColors.error : Colors.teal)),
                       ]),
                       const SizedBox(height: 20),
                       // Top Products

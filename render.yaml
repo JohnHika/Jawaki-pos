@@ -1,0 +1,67 @@
+services:
+  - type: keyvalue
+    name: arche-axon-pos-redis
+    plan: free
+    ipAllowList: []
+
+  - type: web
+    name: arche-axon-pos-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: update-feature
+    healthCheckPath: /health
+    buildCommand: cd backend && npm ci --include=dev && npx prisma generate && npm run build
+    preDeployCommand: cd backend && npx prisma migrate deploy
+    startCommand: cd backend && npx prisma migrate deploy && npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: arche-axon-pos-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: arche-axon-pos-redis
+          property: port
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_MODEL
+        value: nvidia/nemotron-3-super-120b-a12b
+      - key: AI_BILLING_DISABLED
+        value: "true"
+      - key: ANDROID_APP_LATEST_VERSION
+        value: "1.0.17"
+      - key: ANDROID_APP_RELEASE_NAME
+        value: "Axon POS 1.0.2"
+      - key: ANDROID_APP_BUILD_NUMBER
+        value: "2019"
+      - key: ANDROID_APP_MIN_SUPPORTED_VERSION
+        value: "1.0.0"
+      - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
+        value: "1"
+      - key: ANDROID_APP_FORCE_UPDATE
+        value: "false"
+      - key: ANDROID_APP_APK_URL
+        value: "/api/v1/app-updates/android/download"
+      - key: ANDROID_APP_RELEASE_NOTES
+        value: "Axon POS 1.0.2 links POS selling to inventory stock, restores receive-stock routing, adds unit-tier selling from product setup, and adds dashboard company/AI summaries."

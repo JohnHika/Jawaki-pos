@@ -215,30 +215,8 @@ class LocalServerService {
         ')',
       );
 
-      // Check if any users exist
-      final count = await db
-          .customSelect(
-            'SELECT COUNT(*) as c FROM server_users',
-          )
-          .get();
-      if (count.first.read<int>('c') > 0) return; // Already seeded
-
-      // Create default admin
-      final id = const Uuid().v4();
-      final now = DateTime.now().toIso8601String();
-      final passwordHash = sha256.convert(utf8.encode('admin123')).toString();
-      final pinHash = sha256.convert(utf8.encode('0000')).toString();
-
-      await db.customStatement(
-        'INSERT INTO server_users '
-        '(id, email, password_hash, pin_hash, first_name, last_name, role, tenant_id, branch_id, is_active, created_at, updated_at) '
-        'VALUES (${Sql.str(id)}, ${Sql.str('admin@levisa.com')}, ${Sql.str(passwordHash)}, '
-        '${Sql.str(pinHash)}, ${Sql.str('Admin')}, ${Sql.str('User')}, '
-        '${Sql.str('ADMIN')}, ${Sql.str('local')}, ${Sql.str('branch-main')}, '
-        '1, ${Sql.str(now)}, ${Sql.str(now)})',
-      );
-      debugPrint(
-          '[LocalServer] ✅ Default admin user created: admin@levisa.com / admin123 / PIN: 0000');
+      // No default admin seeded - user must create their own via setup screen
+      debugPrint('[LocalServer] ℹ️  No default users - setup required on first login');
     } catch (e) {
       debugPrint('[LocalServer] ⚠️  Could not seed admin user: $e');
     }

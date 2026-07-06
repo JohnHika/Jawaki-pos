@@ -268,7 +268,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Levisa Adventures POS',
+                          'POS Workspace',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: DesignColors.info,

@@ -537,6 +537,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
   late final GeneratedColumn<double> secondaryUnitQty = GeneratedColumn<double>(
       'secondary_unit_qty', aliasedName, true,
       type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _secondaryUnitPriceMeta =
+      const VerificationMeta('secondaryUnitPrice');
+  @override
+  late final GeneratedColumn<double> secondaryUnitPrice =
+      GeneratedColumn<double>('secondary_unit_price', aliasedName, true,
+          type: DriftSqlType.double, requiredDuringInsert: false);
   static const VerificationMeta _tertiaryUnitMeta =
       const VerificationMeta('tertiaryUnit');
   @override
@@ -549,6 +555,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
   late final GeneratedColumn<double> tertiaryUnitQty = GeneratedColumn<double>(
       'tertiary_unit_qty', aliasedName, true,
       type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _tertiaryUnitPriceMeta =
+      const VerificationMeta('tertiaryUnitPrice');
+  @override
+  late final GeneratedColumn<double> tertiaryUnitPrice =
+      GeneratedColumn<double>('tertiary_unit_price', aliasedName, true,
+          type: DriftSqlType.double, requiredDuringInsert: false);
   static const VerificationMeta _imageUrlMeta =
       const VerificationMeta('imageUrl');
   @override
@@ -599,8 +611,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         unit,
         secondaryUnit,
         secondaryUnitQty,
+        secondaryUnitPrice,
         tertiaryUnit,
         tertiaryUnitQty,
+        tertiaryUnitPrice,
         imageUrl,
         isActive,
         trackInventory,
@@ -674,6 +688,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           secondaryUnitQty.isAcceptableOrUnknown(
               data['secondary_unit_qty']!, _secondaryUnitQtyMeta));
     }
+    if (data.containsKey('secondary_unit_price')) {
+      context.handle(
+          _secondaryUnitPriceMeta,
+          secondaryUnitPrice.isAcceptableOrUnknown(
+              data['secondary_unit_price']!, _secondaryUnitPriceMeta));
+    }
     if (data.containsKey('tertiary_unit')) {
       context.handle(
           _tertiaryUnitMeta,
@@ -685,6 +705,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           _tertiaryUnitQtyMeta,
           tertiaryUnitQty.isAcceptableOrUnknown(
               data['tertiary_unit_qty']!, _tertiaryUnitQtyMeta));
+    }
+    if (data.containsKey('tertiary_unit_price')) {
+      context.handle(
+          _tertiaryUnitPriceMeta,
+          tertiaryUnitPrice.isAcceptableOrUnknown(
+              data['tertiary_unit_price']!, _tertiaryUnitPriceMeta));
     }
     if (data.containsKey('image_url')) {
       context.handle(_imageUrlMeta,
@@ -741,10 +767,14 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.string, data['${effectivePrefix}secondary_unit']),
       secondaryUnitQty: attachedDatabase.typeMapping.read(
           DriftSqlType.double, data['${effectivePrefix}secondary_unit_qty']),
+      secondaryUnitPrice: attachedDatabase.typeMapping.read(
+          DriftSqlType.double, data['${effectivePrefix}secondary_unit_price']),
       tertiaryUnit: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}tertiary_unit']),
       tertiaryUnitQty: attachedDatabase.typeMapping.read(
           DriftSqlType.double, data['${effectivePrefix}tertiary_unit_qty']),
+      tertiaryUnitPrice: attachedDatabase.typeMapping.read(
+          DriftSqlType.double, data['${effectivePrefix}tertiary_unit_price']),
       imageUrl: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}image_url']),
       isActive: attachedDatabase.typeMapping
@@ -775,8 +805,10 @@ class Product extends DataClass implements Insertable<Product> {
   final String unit;
   final String? secondaryUnit;
   final double? secondaryUnitQty;
+  final double? secondaryUnitPrice;
   final String? tertiaryUnit;
   final double? tertiaryUnitQty;
+  final double? tertiaryUnitPrice;
   final String? imageUrl;
   final bool isActive;
   final bool trackInventory;
@@ -793,8 +825,10 @@ class Product extends DataClass implements Insertable<Product> {
       required this.unit,
       this.secondaryUnit,
       this.secondaryUnitQty,
+      this.secondaryUnitPrice,
       this.tertiaryUnit,
       this.tertiaryUnitQty,
+      this.tertiaryUnitPrice,
       this.imageUrl,
       required this.isActive,
       required this.trackInventory,
@@ -821,11 +855,17 @@ class Product extends DataClass implements Insertable<Product> {
     if (!nullToAbsent || secondaryUnitQty != null) {
       map['secondary_unit_qty'] = Variable<double>(secondaryUnitQty);
     }
+    if (!nullToAbsent || secondaryUnitPrice != null) {
+      map['secondary_unit_price'] = Variable<double>(secondaryUnitPrice);
+    }
     if (!nullToAbsent || tertiaryUnit != null) {
       map['tertiary_unit'] = Variable<String>(tertiaryUnit);
     }
     if (!nullToAbsent || tertiaryUnitQty != null) {
       map['tertiary_unit_qty'] = Variable<double>(tertiaryUnitQty);
+    }
+    if (!nullToAbsent || tertiaryUnitPrice != null) {
+      map['tertiary_unit_price'] = Variable<double>(tertiaryUnitPrice);
     }
     if (!nullToAbsent || imageUrl != null) {
       map['image_url'] = Variable<String>(imageUrl);
@@ -857,12 +897,18 @@ class Product extends DataClass implements Insertable<Product> {
       secondaryUnitQty: secondaryUnitQty == null && nullToAbsent
           ? const Value.absent()
           : Value(secondaryUnitQty),
+      secondaryUnitPrice: secondaryUnitPrice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(secondaryUnitPrice),
       tertiaryUnit: tertiaryUnit == null && nullToAbsent
           ? const Value.absent()
           : Value(tertiaryUnit),
       tertiaryUnitQty: tertiaryUnitQty == null && nullToAbsent
           ? const Value.absent()
           : Value(tertiaryUnitQty),
+      tertiaryUnitPrice: tertiaryUnitPrice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tertiaryUnitPrice),
       imageUrl: imageUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(imageUrl),
@@ -887,8 +933,12 @@ class Product extends DataClass implements Insertable<Product> {
       unit: serializer.fromJson<String>(json['unit']),
       secondaryUnit: serializer.fromJson<String?>(json['secondaryUnit']),
       secondaryUnitQty: serializer.fromJson<double?>(json['secondaryUnitQty']),
+      secondaryUnitPrice:
+          serializer.fromJson<double?>(json['secondaryUnitPrice']),
       tertiaryUnit: serializer.fromJson<String?>(json['tertiaryUnit']),
       tertiaryUnitQty: serializer.fromJson<double?>(json['tertiaryUnitQty']),
+      tertiaryUnitPrice:
+          serializer.fromJson<double?>(json['tertiaryUnitPrice']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       trackInventory: serializer.fromJson<bool>(json['trackInventory']),
@@ -910,8 +960,10 @@ class Product extends DataClass implements Insertable<Product> {
       'unit': serializer.toJson<String>(unit),
       'secondaryUnit': serializer.toJson<String?>(secondaryUnit),
       'secondaryUnitQty': serializer.toJson<double?>(secondaryUnitQty),
+      'secondaryUnitPrice': serializer.toJson<double?>(secondaryUnitPrice),
       'tertiaryUnit': serializer.toJson<String?>(tertiaryUnit),
       'tertiaryUnitQty': serializer.toJson<double?>(tertiaryUnitQty),
+      'tertiaryUnitPrice': serializer.toJson<double?>(tertiaryUnitPrice),
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'isActive': serializer.toJson<bool>(isActive),
       'trackInventory': serializer.toJson<bool>(trackInventory),
@@ -931,8 +983,10 @@ class Product extends DataClass implements Insertable<Product> {
           String? unit,
           Value<String?> secondaryUnit = const Value.absent(),
           Value<double?> secondaryUnitQty = const Value.absent(),
+          Value<double?> secondaryUnitPrice = const Value.absent(),
           Value<String?> tertiaryUnit = const Value.absent(),
           Value<double?> tertiaryUnitQty = const Value.absent(),
+          Value<double?> tertiaryUnitPrice = const Value.absent(),
           Value<String?> imageUrl = const Value.absent(),
           bool? isActive,
           bool? trackInventory,
@@ -952,11 +1006,17 @@ class Product extends DataClass implements Insertable<Product> {
         secondaryUnitQty: secondaryUnitQty.present
             ? secondaryUnitQty.value
             : this.secondaryUnitQty,
+        secondaryUnitPrice: secondaryUnitPrice.present
+            ? secondaryUnitPrice.value
+            : this.secondaryUnitPrice,
         tertiaryUnit:
             tertiaryUnit.present ? tertiaryUnit.value : this.tertiaryUnit,
         tertiaryUnitQty: tertiaryUnitQty.present
             ? tertiaryUnitQty.value
             : this.tertiaryUnitQty,
+        tertiaryUnitPrice: tertiaryUnitPrice.present
+            ? tertiaryUnitPrice.value
+            : this.tertiaryUnitPrice,
         imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
         isActive: isActive ?? this.isActive,
         trackInventory: trackInventory ?? this.trackInventory,
@@ -981,12 +1041,18 @@ class Product extends DataClass implements Insertable<Product> {
       secondaryUnitQty: data.secondaryUnitQty.present
           ? data.secondaryUnitQty.value
           : this.secondaryUnitQty,
+      secondaryUnitPrice: data.secondaryUnitPrice.present
+          ? data.secondaryUnitPrice.value
+          : this.secondaryUnitPrice,
       tertiaryUnit: data.tertiaryUnit.present
           ? data.tertiaryUnit.value
           : this.tertiaryUnit,
       tertiaryUnitQty: data.tertiaryUnitQty.present
           ? data.tertiaryUnitQty.value
           : this.tertiaryUnitQty,
+      tertiaryUnitPrice: data.tertiaryUnitPrice.present
+          ? data.tertiaryUnitPrice.value
+          : this.tertiaryUnitPrice,
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       trackInventory: data.trackInventory.present
@@ -1010,8 +1076,10 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('unit: $unit, ')
           ..write('secondaryUnit: $secondaryUnit, ')
           ..write('secondaryUnitQty: $secondaryUnitQty, ')
+          ..write('secondaryUnitPrice: $secondaryUnitPrice, ')
           ..write('tertiaryUnit: $tertiaryUnit, ')
           ..write('tertiaryUnitQty: $tertiaryUnitQty, ')
+          ..write('tertiaryUnitPrice: $tertiaryUnitPrice, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
@@ -1033,8 +1101,10 @@ class Product extends DataClass implements Insertable<Product> {
       unit,
       secondaryUnit,
       secondaryUnitQty,
+      secondaryUnitPrice,
       tertiaryUnit,
       tertiaryUnitQty,
+      tertiaryUnitPrice,
       imageUrl,
       isActive,
       trackInventory,
@@ -1054,8 +1124,10 @@ class Product extends DataClass implements Insertable<Product> {
           other.unit == this.unit &&
           other.secondaryUnit == this.secondaryUnit &&
           other.secondaryUnitQty == this.secondaryUnitQty &&
+          other.secondaryUnitPrice == this.secondaryUnitPrice &&
           other.tertiaryUnit == this.tertiaryUnit &&
           other.tertiaryUnitQty == this.tertiaryUnitQty &&
+          other.tertiaryUnitPrice == this.tertiaryUnitPrice &&
           other.imageUrl == this.imageUrl &&
           other.isActive == this.isActive &&
           other.trackInventory == this.trackInventory &&
@@ -1074,8 +1146,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String> unit;
   final Value<String?> secondaryUnit;
   final Value<double?> secondaryUnitQty;
+  final Value<double?> secondaryUnitPrice;
   final Value<String?> tertiaryUnit;
   final Value<double?> tertiaryUnitQty;
+  final Value<double?> tertiaryUnitPrice;
   final Value<String?> imageUrl;
   final Value<bool> isActive;
   final Value<bool> trackInventory;
@@ -1093,8 +1167,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.unit = const Value.absent(),
     this.secondaryUnit = const Value.absent(),
     this.secondaryUnitQty = const Value.absent(),
+    this.secondaryUnitPrice = const Value.absent(),
     this.tertiaryUnit = const Value.absent(),
     this.tertiaryUnitQty = const Value.absent(),
+    this.tertiaryUnitPrice = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
@@ -1113,8 +1189,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.unit = const Value.absent(),
     this.secondaryUnit = const Value.absent(),
     this.secondaryUnitQty = const Value.absent(),
+    this.secondaryUnitPrice = const Value.absent(),
     this.tertiaryUnit = const Value.absent(),
     this.tertiaryUnitQty = const Value.absent(),
+    this.tertiaryUnitPrice = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
@@ -1139,8 +1217,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? unit,
     Expression<String>? secondaryUnit,
     Expression<double>? secondaryUnitQty,
+    Expression<double>? secondaryUnitPrice,
     Expression<String>? tertiaryUnit,
     Expression<double>? tertiaryUnitQty,
+    Expression<double>? tertiaryUnitPrice,
     Expression<String>? imageUrl,
     Expression<bool>? isActive,
     Expression<bool>? trackInventory,
@@ -1159,8 +1239,11 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (unit != null) 'unit': unit,
       if (secondaryUnit != null) 'secondary_unit': secondaryUnit,
       if (secondaryUnitQty != null) 'secondary_unit_qty': secondaryUnitQty,
+      if (secondaryUnitPrice != null)
+        'secondary_unit_price': secondaryUnitPrice,
       if (tertiaryUnit != null) 'tertiary_unit': tertiaryUnit,
       if (tertiaryUnitQty != null) 'tertiary_unit_qty': tertiaryUnitQty,
+      if (tertiaryUnitPrice != null) 'tertiary_unit_price': tertiaryUnitPrice,
       if (imageUrl != null) 'image_url': imageUrl,
       if (isActive != null) 'is_active': isActive,
       if (trackInventory != null) 'track_inventory': trackInventory,
@@ -1181,8 +1264,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<String>? unit,
       Value<String?>? secondaryUnit,
       Value<double?>? secondaryUnitQty,
+      Value<double?>? secondaryUnitPrice,
       Value<String?>? tertiaryUnit,
       Value<double?>? tertiaryUnitQty,
+      Value<double?>? tertiaryUnitPrice,
       Value<String?>? imageUrl,
       Value<bool>? isActive,
       Value<bool>? trackInventory,
@@ -1200,8 +1285,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       unit: unit ?? this.unit,
       secondaryUnit: secondaryUnit ?? this.secondaryUnit,
       secondaryUnitQty: secondaryUnitQty ?? this.secondaryUnitQty,
+      secondaryUnitPrice: secondaryUnitPrice ?? this.secondaryUnitPrice,
       tertiaryUnit: tertiaryUnit ?? this.tertiaryUnit,
       tertiaryUnitQty: tertiaryUnitQty ?? this.tertiaryUnitQty,
+      tertiaryUnitPrice: tertiaryUnitPrice ?? this.tertiaryUnitPrice,
       imageUrl: imageUrl ?? this.imageUrl,
       isActive: isActive ?? this.isActive,
       trackInventory: trackInventory ?? this.trackInventory,
@@ -1244,11 +1331,17 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (secondaryUnitQty.present) {
       map['secondary_unit_qty'] = Variable<double>(secondaryUnitQty.value);
     }
+    if (secondaryUnitPrice.present) {
+      map['secondary_unit_price'] = Variable<double>(secondaryUnitPrice.value);
+    }
     if (tertiaryUnit.present) {
       map['tertiary_unit'] = Variable<String>(tertiaryUnit.value);
     }
     if (tertiaryUnitQty.present) {
       map['tertiary_unit_qty'] = Variable<double>(tertiaryUnitQty.value);
+    }
+    if (tertiaryUnitPrice.present) {
+      map['tertiary_unit_price'] = Variable<double>(tertiaryUnitPrice.value);
     }
     if (imageUrl.present) {
       map['image_url'] = Variable<String>(imageUrl.value);
@@ -1284,8 +1377,10 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('unit: $unit, ')
           ..write('secondaryUnit: $secondaryUnit, ')
           ..write('secondaryUnitQty: $secondaryUnitQty, ')
+          ..write('secondaryUnitPrice: $secondaryUnitPrice, ')
           ..write('tertiaryUnit: $tertiaryUnit, ')
           ..write('tertiaryUnitQty: $tertiaryUnitQty, ')
+          ..write('tertiaryUnitPrice: $tertiaryUnitPrice, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
@@ -5689,8 +5784,10 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   Value<String> unit,
   Value<String?> secondaryUnit,
   Value<double?> secondaryUnitQty,
+  Value<double?> secondaryUnitPrice,
   Value<String?> tertiaryUnit,
   Value<double?> tertiaryUnitQty,
+  Value<double?> tertiaryUnitPrice,
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
@@ -5709,8 +5806,10 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<String> unit,
   Value<String?> secondaryUnit,
   Value<double?> secondaryUnitQty,
+  Value<double?> secondaryUnitPrice,
   Value<String?> tertiaryUnit,
   Value<double?> tertiaryUnitQty,
+  Value<double?> tertiaryUnitPrice,
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
@@ -5759,11 +5858,19 @@ class $$ProductsTableFilterComposer
       column: $table.secondaryUnitQty,
       builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<double> get secondaryUnitPrice => $composableBuilder(
+      column: $table.secondaryUnitPrice,
+      builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get tertiaryUnit => $composableBuilder(
       column: $table.tertiaryUnit, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<double> get tertiaryUnitQty => $composableBuilder(
       column: $table.tertiaryUnitQty,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get tertiaryUnitPrice => $composableBuilder(
+      column: $table.tertiaryUnitPrice,
       builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get imageUrl => $composableBuilder(
@@ -5824,12 +5931,20 @@ class $$ProductsTableOrderingComposer
       column: $table.secondaryUnitQty,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<double> get secondaryUnitPrice => $composableBuilder(
+      column: $table.secondaryUnitPrice,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get tertiaryUnit => $composableBuilder(
       column: $table.tertiaryUnit,
       builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<double> get tertiaryUnitQty => $composableBuilder(
       column: $table.tertiaryUnitQty,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get tertiaryUnitPrice => $composableBuilder(
+      column: $table.tertiaryUnitPrice,
       builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get imageUrl => $composableBuilder(
@@ -5888,11 +6003,17 @@ class $$ProductsTableAnnotationComposer
   GeneratedColumn<double> get secondaryUnitQty => $composableBuilder(
       column: $table.secondaryUnitQty, builder: (column) => column);
 
+  GeneratedColumn<double> get secondaryUnitPrice => $composableBuilder(
+      column: $table.secondaryUnitPrice, builder: (column) => column);
+
   GeneratedColumn<String> get tertiaryUnit => $composableBuilder(
       column: $table.tertiaryUnit, builder: (column) => column);
 
   GeneratedColumn<double> get tertiaryUnitQty => $composableBuilder(
       column: $table.tertiaryUnitQty, builder: (column) => column);
+
+  GeneratedColumn<double> get tertiaryUnitPrice => $composableBuilder(
+      column: $table.tertiaryUnitPrice, builder: (column) => column);
 
   GeneratedColumn<String> get imageUrl =>
       $composableBuilder(column: $table.imageUrl, builder: (column) => column);
@@ -5943,8 +6064,10 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String> unit = const Value.absent(),
             Value<String?> secondaryUnit = const Value.absent(),
             Value<double?> secondaryUnitQty = const Value.absent(),
+            Value<double?> secondaryUnitPrice = const Value.absent(),
             Value<String?> tertiaryUnit = const Value.absent(),
             Value<double?> tertiaryUnitQty = const Value.absent(),
+            Value<double?> tertiaryUnitPrice = const Value.absent(),
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
@@ -5963,8 +6086,10 @@ class $$ProductsTableTableManager extends RootTableManager<
             unit: unit,
             secondaryUnit: secondaryUnit,
             secondaryUnitQty: secondaryUnitQty,
+            secondaryUnitPrice: secondaryUnitPrice,
             tertiaryUnit: tertiaryUnit,
             tertiaryUnitQty: tertiaryUnitQty,
+            tertiaryUnitPrice: tertiaryUnitPrice,
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
@@ -5983,8 +6108,10 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String> unit = const Value.absent(),
             Value<String?> secondaryUnit = const Value.absent(),
             Value<double?> secondaryUnitQty = const Value.absent(),
+            Value<double?> secondaryUnitPrice = const Value.absent(),
             Value<String?> tertiaryUnit = const Value.absent(),
             Value<double?> tertiaryUnitQty = const Value.absent(),
+            Value<double?> tertiaryUnitPrice = const Value.absent(),
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
@@ -6003,8 +6130,10 @@ class $$ProductsTableTableManager extends RootTableManager<
             unit: unit,
             secondaryUnit: secondaryUnit,
             secondaryUnitQty: secondaryUnitQty,
+            secondaryUnitPrice: secondaryUnitPrice,
             tertiaryUnit: tertiaryUnit,
             tertiaryUnitQty: tertiaryUnitQty,
+            tertiaryUnitPrice: tertiaryUnitPrice,
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,

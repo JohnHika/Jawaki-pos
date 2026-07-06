@@ -32,13 +32,22 @@ export class SyncService {
    * Processes events idempotently to handle duplicate submissions
    */
   async pushEvents(
-    deviceId: string,
+    deviceUuid: string | undefined,
     branchId: string,
     dto: PushSyncEventsDto,
   ): Promise<PushSyncResponseDto> {
     const results: SyncResultDto[] = [];
     let successCount = 0;
     let failureCount = 0;
+    const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
+    const device = await this.findDeviceByUuid(normalizedDeviceUuid);
+    const deviceRecordId = device?.id;
+
+    if (!normalizedDeviceUuid) {
+      this.logger.warn('Sync request received without device UUID; device-level sync tracking will be skipped.');
+    } else if (!deviceRecordId) {
+      this.logger.warn(`Sync request received for unregistered device UUID ${normalizedDeviceUuid}; device-level sync tracking will be skipped.`);
+    }
 
     // Sort events by sequence number if provided
     const sortedEvents = [...dto.events].sort(
@@ -48,9 +57,16 @@ export class SyncService {
     for (const event of sortedEvents) {
       try {
         // Check if event was already processed (idempotency)
-        const existingEvent = await this.prisma.syncEvent.findUnique({
-          where: { id: event.eventId },
-        });
+        const existingEvent = deviceRecordId
+          ? await this.prisma.syncEvent.findUnique({
+              where: {
+                deviceId_eventId: {
+                  deviceId: deviceRecordId,
+                  eventId: event.eventId,
+                },
+              },
+            })
+          : null;
 
         if (existingEvent) {
           // Event already processed, return success with existing data
@@ -65,27 +81,29 @@ export class SyncService {
         }
 
         // Process the event based on type
-        const result = await this.processEvent(event, branchId, deviceId);
+        const result = await this.processEvent(event, branchId, normalizedDeviceUuid || '');
         
         // Get userId from payload or use default
         const userId = event.payload.cashierId || event.payload.createdById || event.payload.userId || '';
-        
-        // Record the sync event
-        await this.prisma.syncEvent.create({
-          data: {
-            deviceId,
-            branchId,
-            userId,
-            eventId: event.eventId,
-            eventType: event.eventType as unknown as PrismaSyncEventType,
-            payload: event.payload,
-            entityId: result.serverId,
-            entityType: this.getEntityType(event.eventType),
-            status: SyncEventStatus.PROCESSED,
-            processedAt: new Date(),
-            deviceTimestamp: new Date(event.createdAt),
-          },
-        });
+
+        if (deviceRecordId) {
+          // Record the sync event when the device is registered
+          await this.prisma.syncEvent.create({
+            data: {
+              deviceId: deviceRecordId,
+              branchId,
+              userId,
+              eventId: event.eventId,
+              eventType: event.eventType as unknown as PrismaSyncEventType,
+              payload: event.payload,
+              entityId: result.serverId,
+              entityType: this.getEntityType(event.eventType),
+              status: SyncEventStatus.PROCESSED,
+              processedAt: new Date(),
+              deviceTimestamp: new Date(event.createdAt),
+            },
+          });
+        }
 
         results.push({
           eventId: event.eventId,
@@ -96,45 +114,48 @@ export class SyncService {
         successCount++;
       } catch (error) {
         this.logger.error(`Failed to process event ${event.eventId}:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown sync processing error';
         
         // Get userId from payload or use default
         const errorUserId = event.payload.cashierId || event.payload.createdById || event.payload.userId || '';
-        
-        // Record failed event for retry using eventId for uniqueness
-        await this.prisma.syncEvent.upsert({
-          where: { 
-            deviceId_eventId: { deviceId, eventId: event.eventId }
-          },
-          create: {
-            deviceId,
-            branchId,
-            userId: errorUserId,
-            eventId: event.eventId,
-            eventType: event.eventType as unknown as PrismaSyncEventType,
-            payload: event.payload,
-            entityType: this.getEntityType(event.eventType),
-            status: SyncEventStatus.FAILED,
-            errorMessage: error.message,
-            deviceTimestamp: new Date(event.createdAt),
-          },
-          update: {
-            status: SyncEventStatus.FAILED,
-            errorMessage: error.message,
-            retryCount: { increment: 1 },
-          },
-        });
+
+        if (deviceRecordId) {
+          // Record failed event for retry using eventId for uniqueness
+          await this.prisma.syncEvent.upsert({
+            where: {
+              deviceId_eventId: { deviceId: deviceRecordId, eventId: event.eventId }
+            },
+            create: {
+              deviceId: deviceRecordId,
+              branchId,
+              userId: errorUserId,
+              eventId: event.eventId,
+              eventType: event.eventType as unknown as PrismaSyncEventType,
+              payload: event.payload,
+              entityType: this.getEntityType(event.eventType),
+              status: SyncEventStatus.FAILED,
+              errorMessage,
+              deviceTimestamp: new Date(event.createdAt),
+            },
+            update: {
+              status: SyncEventStatus.FAILED,
+              errorMessage,
+              retryCount: { increment: 1 },
+            },
+          });
+        }
 
         results.push({
           eventId: event.eventId,
           success: false,
-          error: error.message,
+          error: errorMessage,
         });
         failureCount++;
       }
     }
 
     // Update device last sync timestamp
-    await this.updateDeviceSyncStatus(deviceId, 'push');
+    await this.updateDeviceSyncStatus(normalizedDeviceUuid, 'push');
 
     return {
       results,
@@ -148,7 +169,7 @@ export class SyncService {
    * Pull events from server for offline device
    */
   async pullEvents(
-    deviceId: string,
+    deviceUuid: string | undefined,
     branchId: string,
     dto: PullSyncRequestDto,
   ): Promise<PullSyncResponseDto> {
@@ -263,7 +284,7 @@ export class SyncService {
     const limitedEvents = events.slice(0, limit);
 
     // Update device last sync timestamp
-    await this.updateDeviceSyncStatus(deviceId, 'pull');
+    await this.updateDeviceSyncStatus(deviceUuid, 'pull');
 
     return {
       events: limitedEvents,
@@ -278,31 +299,48 @@ export class SyncService {
   /**
    * Get sync status for a device
    */
-  async getSyncStatus(deviceId: string): Promise<SyncStatusDto> {
+  async getSyncStatus(deviceUuid: string | undefined): Promise<SyncStatusDto> {
+    const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
+    if (!normalizedDeviceUuid) {
+      return {
+        deviceId: '',
+        lastPushAt: new Date(0),
+        lastPullAt: new Date(0),
+        pendingEvents: 0,
+        isOnline: false,
+      };
+    }
+
     const device = await this.prisma.device.findUnique({
-      where: { id: deviceId },
+      where: { deviceUuid: normalizedDeviceUuid },
     });
 
     if (!device) {
-      throw new BadRequestException('Device not found');
+      return {
+        deviceId: normalizedDeviceUuid,
+        lastPushAt: new Date(0),
+        lastPullAt: new Date(0),
+        pendingEvents: 0,
+        isOnline: false,
+      };
     }
 
     // Get pending events count
     const pendingEvents = await this.prisma.syncEvent.count({
       where: {
-        deviceId,
+        deviceId: device.id,
         status: SyncEventStatus.PENDING,
       },
     });
 
     // Check if device is online (pinged in last 5 minutes)
-    const lastPing = await this.redis.get(`device:ping:${deviceId}`);
+    const lastPing = await this.redis.get(`device:ping:${normalizedDeviceUuid}`);
     const isOnline = lastPing
       ? Date.now() - parseInt(lastPing) < 5 * 60 * 1000
       : false;
 
     return {
-      deviceId,
+      deviceId: normalizedDeviceUuid,
       lastPushAt: device.lastSyncAt || new Date(0),
       lastPullAt: device.lastSyncAt || new Date(0),
       pendingEvents,
@@ -394,22 +432,37 @@ export class SyncService {
   /**
    * Register device heartbeat
    */
-  async registerHeartbeat(deviceId: string): Promise<void> {
-    await this.redis.set(`device:ping:${deviceId}`, Date.now().toString(), 600);
-    
-    await this.prisma.device.update({
-      where: { id: deviceId },
+  async registerHeartbeat(deviceUuid: string | undefined): Promise<void> {
+    const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
+    if (!normalizedDeviceUuid) {
+      this.logger.warn('Skipping heartbeat registration because the request has no device UUID.');
+      return;
+    }
+
+    await this.redis.set(`device:ping:${normalizedDeviceUuid}`, Date.now().toString(), 600);
+
+    const result = await this.prisma.device.updateMany({
+      where: { deviceUuid: normalizedDeviceUuid },
       data: { lastActiveAt: new Date() },
     });
+
+    if (result.count === 0) {
+      this.logger.warn(`Heartbeat received for unregistered device UUID ${normalizedDeviceUuid}.`);
+    }
   }
 
   /**
    * Get failed events for retry
    */
-  async getFailedEvents(deviceId: string): Promise<any[]> {
+  async getFailedEvents(deviceUuid: string | undefined): Promise<any[]> {
+    const device = await this.findDeviceByUuid(deviceUuid);
+    if (!device) {
+      return [];
+    }
+
     return this.prisma.syncEvent.findMany({
       where: {
-        deviceId,
+        deviceId: device.id,
         status: SyncEventStatus.FAILED,
         retryCount: { lt: 5 }, // Max 5 retries
       },
@@ -420,8 +473,8 @@ export class SyncService {
   /**
    * Retry failed events
    */
-  async retryFailedEvents(deviceId: string, branchId: string): Promise<PushSyncResponseDto> {
-    const failedEvents = await this.getFailedEvents(deviceId);
+  async retryFailedEvents(deviceUuid: string | undefined, branchId: string): Promise<PushSyncResponseDto> {
+    const failedEvents = await this.getFailedEvents(deviceUuid);
     
     if (failedEvents.length === 0) {
       return {
@@ -436,11 +489,11 @@ export class SyncService {
       eventId: e.id,
       eventType: e.eventType as SyncEventType,
       payload: e.payload as Record<string, any>,
-      deviceId: e.deviceId,
+      deviceId: this.normalizeDeviceUuid(deviceUuid) || '',
       createdAt: e.createdAt.toISOString(),
     }));
 
-    return this.pushEvents(deviceId, branchId, { events });
+    return this.pushEvents(deviceUuid, branchId, { events });
   }
 
   // Private helper methods
@@ -524,15 +577,46 @@ export class SyncService {
   }
 
   private async updateDeviceSyncStatus(
-    deviceId: string,
+    deviceUuid: string | undefined,
     type: 'push' | 'pull',
   ): Promise<void> {
-    await this.prisma.device.update({
-      where: { id: deviceId },
+    const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
+    if (!normalizedDeviceUuid) {
+      this.logger.warn(`Skipping ${type} sync status update because the request has no device UUID.`);
+      return;
+    }
+
+    const result = await this.prisma.device.updateMany({
+      where: { deviceUuid: normalizedDeviceUuid },
       data: {
         lastSyncAt: new Date(),
         lastActiveAt: new Date(),
       },
+    });
+
+    if (result.count === 0) {
+      this.logger.warn(`Skipping ${type} sync status update because device UUID ${normalizedDeviceUuid} is not registered.`);
+    }
+  }
+
+  private normalizeDeviceUuid(deviceUuid: string | undefined): string | null {
+    if (typeof deviceUuid !== 'string') {
+      return null;
+    }
+
+    const trimmedDeviceUuid = deviceUuid.trim();
+    return trimmedDeviceUuid.length > 0 ? trimmedDeviceUuid : null;
+  }
+
+  private async findDeviceByUuid(deviceUuid: string | undefined) {
+    const normalizedDeviceUuid = this.normalizeDeviceUuid(deviceUuid);
+    if (!normalizedDeviceUuid) {
+      return null;
+    }
+
+    return this.prisma.device.findUnique({
+      where: { deviceUuid: normalizedDeviceUuid },
+      select: { id: true, deviceUuid: true },
     });
   }
 

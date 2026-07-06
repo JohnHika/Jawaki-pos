@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   HttpCode,
@@ -16,6 +17,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { BranchesService } from './branches.service';
 import {
@@ -173,6 +175,23 @@ export class BranchesController {
   @ApiResponse({ status: 200, description: 'Device details', type: DeviceResponseDto })
   async getDevice(@Param('deviceId') deviceId: string) {
     return this.branchesService.getDevice(deviceId);
+  }
+
+  @Get(':branchId/devices/outdated')
+  @ApiOperation({ summary: 'Get outdated devices for a branch' })
+  @ApiResponse({ status: 200, description: 'List of outdated devices', type: [DeviceResponseDto] })
+  @ApiQuery({
+    name: 'minVersion',
+    required: true,
+    description: 'Minimum required app version (e.g., "1.0.4+2006")',
+    example: '1.0.4+2006',
+  })
+  async getOutdatedDevices(
+    @Param('branchId') branchId: string,
+    @Query('minVersion') minVersion: string,
+    @Request() req: any,
+  ) {
+    return this.branchesService.getOutdatedDevices(branchId, req.user.tenantId, minVersion);
   }
 
   @Patch('devices/:deviceId')

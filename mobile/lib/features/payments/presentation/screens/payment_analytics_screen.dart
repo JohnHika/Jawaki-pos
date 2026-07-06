@@ -207,7 +207,7 @@ class _PaymentAnalyticsScreenState
                   title: 'Transactions',
                   value: transactionCount.toString(),
                   icon: Icons.receipt_long_rounded,
-                  color: DesignColors.teal,
+                  color: Colors.teal,
                 ),
               ),
             ],

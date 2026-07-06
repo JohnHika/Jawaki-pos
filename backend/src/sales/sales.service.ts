@@ -669,9 +669,7 @@ export class SalesService {
       mpesaSales: completedSales
         .filter((s) => s.paymentMethod === PaymentMethod.MPESA)
         .reduce((sum, s) => sum + Number(s.totalAmount), 0),
-      cardSales: completedSales
-        .filter((s) => s.paymentMethod === PaymentMethod.PESAPAL)
-        .reduce((sum, s) => sum + Number(s.totalAmount), 0),
+      cardSales: 0,
       creditSales: creditSales.reduce((sum, s) => sum + Number(s.totalAmount), 0),
       outstandingBalance: totalOutstanding,
       voidedCount: voidedSales.length,

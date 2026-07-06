@@ -1,226 +1,83 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// ═══════════════════════════════════════════════════════════════
-/// LEVISA ADVENTURES — PREMIUM DESIGN SYSTEM
-/// A sophisticated, visually rich design language for the POS app
+/// AXON POS PROFESSIONAL DESIGN SYSTEM
+/// Clean, modern, professional UI patterns for POS applications
 /// ═══════════════════════════════════════════════════════════════
 
-// ─── Premium Color Palette ─────────────────────────────────────
+// ─── Axon Brand Color Palette ─────────────────────────────────────
+// Derived from the Arche Axon Intelligence brand mark: an indigo
+// neural-node hex icon on near-black. Functional colors (success,
+// error, warning) stay conventional so their meaning reads instantly
+// at the till; only brand and surface tones carry the Axon identity.
 class DesignColors {
-  // Brand - Levisa forest green with warm travel accents.
-  static const Color brand = Color(0xFF1F7A4D);
-  static const Color brandLight = Color(0xFF4CAF7B);
-  static const Color brandDark = Color(0xFF0B3D2E);
-  static const Color brandSubtle = Color(0xFFEAF6EF);
+  // Brand - Axon indigo (from arche_axon_logo.svg mark)
+  static const Color brand = Color(0xFF6B7BFF);
+  static const Color brandLight = Color(0xFF8B9BFF);
+  static const Color brandDark = Color(0xFF4A5AE8);
+  static const Color brandSubtle = Color(0xFFEEF0FF);
 
-  // Accent — Warm Amber/Gold for highlights
-  static const Color accent = Color(0xFFD99A2B);
-  static const Color accentLight = Color(0xFFF2C45B);
-  static const Color accentSubtle = Color(0xFFFFF6DD);
+  // Accent — violet, the secondary branch color in the logo mark
+  static const Color accent = Color(0xFFA78BFA);
+  static const Color accentLight = Color(0xFFC4B5FD);
+  static const Color accentSubtle = Color(0xFFF3EFFF);
 
-  // Secondary — Teal for positive actions
-  static const Color teal = Color(0xFF148C88);
-  static const Color tealLight = Color(0xFF63C6BE);
-  static const Color tealSubtle = Color(0xFFE6F7F5);
-  static const Color terracotta = Color(0xFFC65F3A);
-  static const Color terracottaSubtle = Color(0xFFFFECE5);
+  // Success
+  static const Color success = Color(0xFF22A06B);
+  static const Color successLight = Color(0xFF4CBF8A);
+  static const Color successSubtle = Color(0xFFE3F6EC);
 
-  // Surface tones - warm, clean, and less clinical.
+  // Error
+  static const Color error = Color(0xFFE5484D);
+  static const Color errorSubtle = Color(0xFFFDECEC);
+
+  // Warning
+  static const Color warning = Color(0xFFDC9421);
+  static const Color warningSubtle = Color(0xFFFDF3E0);
+
+  // Info
+  static const Color info = Color(0xFF6B7BFF);
+  static const Color infoSubtle = Color(0xFFEEF0FF);
+
+  // Surface tones
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFF7F6F1);
-  static const Color surfaceSubtle = Color(0xFFF0EFE7);
-  static const Color surfaceBorder = Color(0xFFE1DED2);
-  static const Color surfaceBorderLight = Color(0xFFF0EFE7);
+  static const Color surfaceMuted = Color(0xFFF6F6FB);
+  static const Color surfaceSubtle = Color(0xFFEFEFF7);
+  static const Color surfaceBorder = Color(0xFFDDDDE8);
+  static const Color surfaceBorderLight = Color(0xFFE8E8F2);
 
   // Text — Excellent hierarchy
-  static const Color textPrimary = Color(0xFF14231C);
-  static const Color textSecondary = Color(0xFF4E5D55);
-  static const Color textTertiary = Color(0xFF8E9891);
+  static const Color textPrimary = Color(0xFF0A0C1F);
+  static const Color textSecondary = Color(0xFF5B5D72);
+  static const Color textTertiary = Color(0xFF9698AB);
   static const Color textInverse = Color(0xFFFFFFFF);
   static const Color textOnBrand = Color(0xFFFFFFFF);
-
-  // Status — Vibrant but not harsh
-  static const Color success = Color(0xFF198754);
-  static const Color successSubtle = Color(0xFFDFF3E8);
-  static const Color warning = Color(0xFFD99A2B);
-  static const Color warningSubtle = Color(0xFFFFF0C2);
-  static const Color error = Color(0xFFD94435);
-  static const Color errorSubtle = Color(0xFFFFE3DF);
-  static const Color info = Color(0xFF2F80A7);
-  static const Color infoSubtle = Color(0xFFE2F1F7);
 
   // Payment method colors
   static const Color mpesa = Color(0xFF4CAF50);
   static const Color pesapal = Color(0xFF2196F3);
-  static const Color touristtap = Color(0xFFC65F3A);
-  static const Color cash = Color(0xFF607D8B);
-  static const Color credit = Color(0xFFF97316);
+  static const Color touristtap = Color(0xFFFF9800);
+  static const Color cash = Color(0xFF795548);
+  static const Color credit = Color(0xFF673AB7);
 
-  // Dark mode
-  static const Color darkBg = Color(0xFF08140F);
-  static const Color darkSurface = Color(0xFF10221A);
-  static const Color darkSurfaceElevated = Color(0xFF173126);
-  static const Color darkBorder = Color(0xFF254A3A);
-  static const Color darkTextPrimary = Color(0xFFF4F7F2);
-  static const Color darkTextSecondary = Color(0xFFBBC8BE);
-  static const Color darkTextTertiary = Color(0xFF7E9288);
+  // Dark mode — near-black from the logo's dark canvas (#0A0C18 / #070910)
+  static const Color darkBg = Color(0xFF0A0C18);
+  static const Color darkSurface = Color(0xFF13152A);
+  static const Color darkSurfaceElevated = Color(0xFF1C1F3B);
+  static const Color darkBorder = Color(0xFF2E3155);
+  static const Color darkTextPrimary = Color(0xFFEEF0FF);
+  static const Color darkTextSecondary = Color(0xFFAEB1D4);
+  static const Color darkTextTertiary = Color(0xFF6E7196);
 
-  // Glass (using hex alpha = 0x2E for 18%, 0x40 for 25%, 0x14 for 8%)
+  // Glass (using hex alpha)
   static const Color glassWhite = Color(0x2EFFFFFF);
   static const Color glassBorder = Color(0x40FFFFFF);
-  static const Color glassDark = Color(0x2A131C31);
-  static const Color glassDarkBorder = Color(0x14FFFFFF);
+  static const Color glassDark = Color(0x2A0A0C18);
+  static const Color glassDarkBorder = Color(0x146B7BFF);
 }
 
-class DesignGradients {
-  static const LinearGradient brand = LinearGradient(
-    colors: [DesignColors.brandDark, DesignColors.brand, DesignColors.accent],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const LinearGradient surface = LinearGradient(
-    colors: [Color(0xFFFAF9F4), Color(0xFFEAF6EF)],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
-
-  static const LinearGradient darkSurface = LinearGradient(
-    colors: [DesignColors.darkBg, DesignColors.darkSurface],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
-}
-
-// ─── Spacing & Sizing Scale ────────────────────────────────────
-class LevisaLogoTitle extends StatelessWidget {
-  final double logoSize;
-  final bool showText;
-
-  const LevisaLogoTitle({
-    super.key,
-    this.logoSize = 34,
-    this.showText = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: logoSize,
-          height: logoSize,
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-            border: Border.all(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/levisa_adventures_logo.png',
-              fit: BoxFit.cover,
-              semanticLabel: 'Levisa Adventures logo',
-            ),
-          ),
-        ),
-        if (showText) ...[
-          const SizedBox(width: 10),
-          Text(
-            'Levisa Adventures',
-            style: TextStyle(
-              color: isDark
-                  ? DesignColors.darkTextPrimary
-                  : DesignColors.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final String title;
-  final List<Widget>? actions;
-  final Widget? leading;
-  final bool showLogo;
-
-  const BrandedAppBar({
-    super.key,
-    required this.title,
-    this.actions,
-    this.leading,
-    this.showLogo = true,
-  });
-
-  @override
-  Size get preferredSize => const Size.fromHeight(62);
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return AppBar(
-      automaticallyImplyLeading: leading == null,
-      leading: leading,
-      centerTitle: false,
-      titleSpacing: leading == null ? 16 : 0,
-      toolbarHeight: preferredSize.height,
-      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      foregroundColor:
-          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showLogo) ...[
-            const LevisaLogoTitle(logoSize: 32),
-            const SizedBox(width: 10),
-          ],
-          Flexible(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isDark
-                    ? DesignColors.darkTextPrimary
-                    : DesignColors.textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-      actions: actions,
-      shape: Border(
-        bottom: BorderSide(
-          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-          width: 0.75,
-        ),
-      ),
-    );
-  }
-}
-
+// ─── Spacing & Sizing Scale ──────────────────────────────────────
 class DesignSpacing {
   static const double xs = 4;
   static const double sm = 8;
@@ -245,7 +102,7 @@ class DesignSpacing {
   static const EdgeInsets paddingCardLg = EdgeInsets.all(20);
 }
 
-// ─── Animations ────────────────────────────────────────────────
+// ─── Animations ───────────────────────────────────────────────────
 class DesignAnimation {
   static const Duration fastest = Duration(milliseconds: 150);
   static const Duration fast = Duration(milliseconds: 250);
@@ -420,8 +277,8 @@ class GlassCard extends StatelessWidget {
     required this.child,
     this.padding,
     this.margin,
-    this.borderRadius = 20,
-    this.blur = 15,
+    this.borderRadius = 12,
+    this.blur = 8,
     this.tint,
     this.borderColor,
     this.boxShadow,
@@ -504,7 +361,7 @@ class GradientButton extends StatefulWidget {
     this.height = 56,
     this.gradient,
     this.textColor,
-    this.borderRadius = 16,
+    this.borderRadius = 12,
   });
 
   const GradientButton.icon({
@@ -517,7 +374,7 @@ class GradientButton extends StatefulWidget {
     this.height = 56,
     this.gradient,
     this.textColor,
-    this.borderRadius = 16,
+    this.borderRadius = 12,
   });
 
   @override
@@ -574,14 +431,14 @@ class _GradientButtonState extends State<GradientButton>
         ),
         boxShadow: [
           BoxShadow(
-            color: gradient.first.withValues(alpha: _isPressed ? 0.2 : 0.4),
-            blurRadius: _isPressed ? 8 : 16,
-            offset: const Offset(0, 4),
+            color: gradient.first.withValues(alpha: _isPressed ? 0.2 : 0.3),
+            blurRadius: _isPressed ? 6 : 12,
+            offset: const Offset(0, 2),
           ),
           BoxShadow(
-            color: gradient.first.withValues(alpha: _isPressed ? 0.1 : 0.2),
-            blurRadius: _isPressed ? 4 : 8,
-            offset: const Offset(0, 8),
+            color: gradient.first.withValues(alpha: _isPressed ? 0.1 : 0.15),
+            blurRadius: _isPressed ? 3 : 6,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -947,6 +804,136 @@ class SectionHeader extends StatelessWidget {
             ),
           ),
           if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+class JawakiScreenHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Widget? trailing;
+
+  const JawakiScreenHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
+      borderRadius: 18,
+      blur: 10,
+      tint: isDark
+          ? DesignColors.darkSurfaceElevated.withValues(alpha: 0.55)
+          : Colors.white.withValues(alpha: 0.82),
+      borderColor:
+          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight,
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          DesignColors.brand.withValues(alpha: 0.08),
+          DesignColors.success.withValues(alpha: 0.04),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  DesignColors.brandDark,
+                  DesignColors.brand,
+                  DesignColors.accent
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+class JawakiStatusPill extends StatelessWidget {
+  final String label;
+  final Color color;
+  final IconData? icon;
+
+  const JawakiStatusPill({
+    super.key,
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -1749,6 +1736,148 @@ class GlassBottomSheet {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GRADIENT DEFINITIONS
+// ═══════════════════════════════════════════════════════════════
+class DesignGradients {
+  static const LinearGradient brand = LinearGradient(
+    colors: [DesignColors.brandDark, DesignColors.brand, DesignColors.accent],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient surface = LinearGradient(
+    colors: [Color(0xFFFAF9F4), Color(0xFFEAF6EF)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  static const LinearGradient darkSurface = LinearGradient(
+    colors: [DesignColors.darkBg, DesignColors.darkSurface],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AXON LOGO MARK
+//  Renders the Arche Axon Intelligence hex/node brand mark from
+//  assets/images/axon_logo_mark(.svg|_light.svg).
+// ═══════════════════════════════════════════════════════════════
+class AxonLogoTitle extends StatelessWidget {
+  final double logoSize;
+  final bool showText;
+
+  const AxonLogoTitle({
+    super.key,
+    this.logoSize = 34,
+    this.showText = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final asset = isDark
+        ? 'assets/images/axon_logo_mark.svg'
+        : 'assets/images/axon_logo_mark_light.svg';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SvgPicture.asset(
+          asset,
+          width: logoSize,
+          height: logoSize,
+          semanticsLabel: 'Axon POS logo',
+        ),
+        if (showText) ...[
+          const SizedBox(width: 10),
+          Text(
+            'Axon POS',
+            style: TextStyle(
+              color: isDark
+                  ? DesignColors.darkTextPrimary
+                  : DesignColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BRANDED APP BAR
+// ═══════════════════════════════════════════════════════════════
+class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String title;
+  final List<Widget>? actions;
+  final Widget? leading;
+  final bool showLogo;
+
+  const BrandedAppBar({
+    super.key,
+    required this.title,
+    this.actions,
+    this.leading,
+    this.showLogo = true,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(62);
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AppBar(
+      automaticallyImplyLeading: leading == null,
+      leading: leading,
+      centerTitle: false,
+      titleSpacing: leading == null ? 16 : 0,
+      toolbarHeight: preferredSize.height,
+      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+      foregroundColor:
+          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showLogo) ...[
+            const AxonLogoTitle(logoSize: 32),
+            const SizedBox(width: 10),
+          ],
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: actions,
+      shape: Border(
+        bottom: BorderSide(
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          width: 0.75,
         ),
       ),
     );

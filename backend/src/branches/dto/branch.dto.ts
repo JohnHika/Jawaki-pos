@@ -34,6 +34,12 @@ export class CreateTenantDto {
   @Matches(/^https?:\/\/.+/i, { message: 'Logo must be a valid URL' })
   logo?: string;
 
+  @ApiPropertyOptional({ description: 'Cloudinary public ID for the tenant logo' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255, { message: 'Logo public ID must not exceed 255 characters' })
+  logoPublicId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsObject()

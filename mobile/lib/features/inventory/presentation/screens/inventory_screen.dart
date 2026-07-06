@@ -26,8 +26,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _stockSearchQuery = '';
   String? _transferProductId;
   String? _transferToBranchId;
-  final TextEditingController _transferQtyController =
-      TextEditingController(text: '1');
+  final TextEditingController _transferQtyController = TextEditingController(
+    text: '1',
+  );
 
   @override
   void initState() {
@@ -74,8 +75,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       debugPrint('Error loading inventory data: $e');
       if (mounted) {
         setState(() => _isLoading = false);
-        showGlassSnackBar(context, 'Failed to load inventory data',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
+        showGlassSnackBar(
+          context,
+          'Failed to load inventory data',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
     }
   }
@@ -127,8 +132,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   color: DesignColors.brand.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.assignment_outlined,
-                    color: DesignColors.brand, size: 20),
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  color: DesignColors.brand,
+                  size: 20,
+                ),
               ),
               tooltip: 'Stock Requests',
               onPressed: () => context.push('/inventory/stock-requests'),
@@ -140,8 +148,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.refresh_rounded,
-                  color: DesignColors.textSecondary, size: 20),
+              child: const Icon(
+                Icons.refresh_rounded,
+                color: DesignColors.textSecondary,
+                size: 20,
+              ),
             ),
             onPressed: _loadData,
           ),
@@ -179,10 +190,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     Expanded(
                       child: MetricCard(
                         title: 'Total Value',
-                        value:
-                            _isLoading ? '...' : _formatCurrency(_totalValue),
+                        value: _isLoading
+                            ? '...'
+                            : _formatCurrency(_totalValue),
                         icon: Icons.account_balance_wallet_rounded,
-                        color: DesignColors.teal,
+                        color: Colors.teal,
                       ),
                     ),
                   ],
@@ -211,9 +223,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   dividerColor: Colors.transparent,
                   indicatorPadding: const EdgeInsets.all(4),
                   labelStyle: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                   unselectedLabelStyle: const TextStyle(
-                      fontWeight: FontWeight.w500, fontSize: 13),
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
                   tabs: const [
                     Tab(text: 'Stock'),
                     Tab(text: 'Low Stock'),
@@ -250,8 +266,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           backgroundColor: DesignColors.warning,
           onPressed: () => context.push('/inventory/request-stock'),
           tooltip: 'Request Stock',
-          child:
-              const Icon(Icons.add_shopping_cart_rounded, color: Colors.white),
+          child: const Icon(
+            Icons.add_shopping_cart_rounded,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(height: 10),
         if (role.isAtLeast(AppRole.stockKeeper))
@@ -261,8 +279,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content:
-                      Text('Select a product from Stock tab, then tap Receive'),
+                  content: Text(
+                    'Select a product from Stock tab, then tap Receive',
+                  ),
                   duration: Duration(seconds: 2),
                 ),
               );
@@ -275,7 +294,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Widget _buildStockTab(
-      BuildContext context, RolePermissions permissions, AppRole role) {
+    BuildContext context,
+    RolePermissions permissions,
+    AppRole role,
+  ) {
     if (_isLoading) {
       return _buildLoadingList();
     }
@@ -296,16 +318,25 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               onChanged: (value) => setState(() => _stockSearchQuery = value),
               decoration: InputDecoration(
                 hintText: 'Search products, SKU, category...',
-                hintStyle:
-                    TextStyle(color: DesignColors.textTertiary, fontSize: 14),
-                prefixIcon: Icon(Icons.search_rounded,
-                    color: DesignColors.textTertiary, size: 20),
+                hintStyle: TextStyle(
+                  color: DesignColors.textTertiary,
+                  fontSize: 14,
+                ),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: DesignColors.textTertiary,
+                  size: 20,
+                ),
                 border: InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
               style: const TextStyle(
-                  fontSize: 14, color: DesignColors.textPrimary),
+                fontSize: 14,
+                color: DesignColors.textPrimary,
+              ),
             ),
           ),
         ),
@@ -349,7 +380,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Widget _buildStockItemCard(
-      Map<String, dynamic> item, RolePermissions permissions, AppRole role) {
+    Map<String, dynamic> item,
+    RolePermissions permissions,
+    AppRole role,
+  ) {
     final name = item['name'] as String? ?? 'Unknown';
     final sku = item['sku'] as String? ?? '';
     final price = (item['price'] as double?) ?? 0.0;
@@ -378,11 +412,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   decoration: BoxDecoration(
                     color: stockColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: stockColor.withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: stockColor.withValues(alpha: 0.2),
+                    ),
                   ),
-                  child: Icon(Icons.inventory_2_outlined,
-                      color: stockColor, size: 22),
+                  child: Icon(
+                    Icons.inventory_2_outlined,
+                    color: stockColor,
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 // Name + SKU + category
@@ -412,10 +450,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                           ),
                           if (sku.isNotEmpty) ...[
-                            Text(' · ',
-                                style: TextStyle(
-                                    color: DesignColors.textTertiary,
-                                    fontSize: 11)),
+                            Text(
+                              ' · ',
+                              style: TextStyle(
+                                color: DesignColors.textTertiary,
+                                fontSize: 11,
+                              ),
+                            ),
                           ],
                           Text(
                             category,
@@ -446,13 +487,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               children: [
                 // Stock count badge
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: stockColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border:
-                        Border.all(color: stockColor.withValues(alpha: 0.25)),
+                    border: Border.all(
+                      color: stockColor.withValues(alpha: 0.25),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -475,7 +519,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   Text(
                     'Min: $minStock',
                     style: TextStyle(
-                        fontSize: 11, color: DesignColors.textTertiary),
+                      fontSize: 11,
+                      color: DesignColors.textTertiary,
+                    ),
                   ),
                 ],
                 const Spacer(),
@@ -488,7 +534,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       label: 'Receive',
                       icon: Icons.add_box_outlined,
                       onPressed: () => context.push(
-                          '/inventory/batch-receive?productId=$productId'),
+                        '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(name)}',
+                      ),
                       gradient: [DesignColors.brand, DesignColors.brandDark],
                       height: 34,
                       expanded: false,
@@ -548,25 +595,30 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     color: DesignColors.success.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(Icons.check_circle_outline_rounded,
-                      size: 48, color: DesignColors.success),
+                  child: const Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 48,
+                    color: DesignColors.success,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const Text(
                   'All Stocked Up',
                   style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: DesignColors.textPrimary),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: DesignColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'No items are currently low in stock. Everything looks good!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 14,
-                      color: DesignColors.textSecondary,
-                      height: 1.4),
+                    fontSize: 14,
+                    color: DesignColors.textSecondary,
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
@@ -654,8 +706,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
-  Widget _buildLowStockCard(Map<String, dynamic> item, Color severityColor,
-      RolePermissions permissions) {
+  Widget _buildLowStockCard(
+    Map<String, dynamic> item,
+    Color severityColor,
+    RolePermissions permissions,
+  ) {
     final name = item['name'] as String? ?? 'Unknown';
     final sku = item['sku'] as String? ?? '';
     final quantity = (item['quantity'] as int?) ?? 0;
@@ -676,8 +731,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               decoration: BoxDecoration(
                 color: severityColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
-                border:
-                    Border.all(color: severityColor.withValues(alpha: 0.15)),
+                border: Border.all(
+                  color: severityColor.withValues(alpha: 0.15),
+                ),
               ),
               child: Icon(
                 quantity == 0
@@ -695,27 +751,39 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   Text(
                     name,
                     style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: DesignColors.textPrimary),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: DesignColors.textPrimary,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(sku,
-                          style: TextStyle(
-                              fontSize: 11, color: DesignColors.textTertiary)),
+                      Text(
+                        sku,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: DesignColors.textTertiary,
+                        ),
+                      ),
                       if (sku.isNotEmpty) ...[
-                        Text(' · ',
-                            style: TextStyle(
-                                color: DesignColors.textTertiary,
-                                fontSize: 11)),
-                      ],
-                      Text(category,
+                        Text(
+                          ' · ',
                           style: TextStyle(
-                              fontSize: 11, color: DesignColors.textTertiary)),
+                            color: DesignColors.textTertiary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                      Text(
+                        category,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: DesignColors.textTertiary,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -727,8 +795,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               decoration: BoxDecoration(
                 color: severityColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: severityColor.withValues(alpha: 0.25)),
+                border: Border.all(
+                  color: severityColor.withValues(alpha: 0.25),
+                ),
               ),
               child: Text(
                 quantity == 0 ? 'OUT' : '$quantity left',
@@ -746,8 +815,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 child: GradientButton(
                   label: 'Request',
                   icon: Icons.add_shopping_cart_rounded,
-                  onPressed: () => context
-                      .push('/inventory/request-stock?productId=$productId'),
+                  onPressed: () => context.push(
+                    '/inventory/request-stock?productId=$productId',
+                  ),
                   gradient: [DesignColors.warning, const Color(0xFFD97706)],
                   height: 32,
                   expanded: false,
@@ -769,8 +839,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       future: getIt<AppDatabase>().getBranches(),
       builder: (context, snapshot) {
         final branches = snapshot.data ?? const <Map<String, dynamic>>[];
-        final destinationBranches =
-            branches.where((b) => b['id'] != fromBranchId).toList();
+        final destinationBranches = branches
+            .where((b) => b['id'] != fromBranchId)
+            .toList();
         final products = _inventoryItems
             .where((item) => (item['stock'] as int? ?? 0) > 0)
             .toList();
@@ -849,7 +920,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     icon: Icons.swap_horiz_rounded,
                     height: 50,
                     borderRadius: 14,
-                    gradient: const [DesignColors.info, DesignColors.teal],
+                    gradient: const [DesignColors.info, Colors.teal],
                     onPressed: destinationBranches.isEmpty || products.isEmpty
                         ? null
                         : () => _submitStockTransfer(fromBranchId),
@@ -961,10 +1032,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const ShimmerWidget(
-                          width: 160, height: 14, borderRadius: 4),
+                        width: 160,
+                        height: 14,
+                        borderRadius: 4,
+                      ),
                       const SizedBox(height: 6),
                       const ShimmerWidget(
-                          width: 100, height: 10, borderRadius: 4),
+                        width: 100,
+                        height: 10,
+                        borderRadius: 4,
+                      ),
                     ],
                   ),
                 ),

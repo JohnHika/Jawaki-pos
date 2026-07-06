@@ -1,12 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/design_system.dart';
@@ -15,11 +13,9 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
-import '../../../../core/services/local_server_service.dart';
 import '../../../../core/services/update_check_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 // Settings keys for SharedPreferences
@@ -30,8 +26,6 @@ class _SettingsKeys {
   static const notifySales = 'setting_notify_sales';
   static const notifyInventory = 'setting_notify_inventory';
   static const notifySync = 'setting_notify_sync';
-  static const biometricEnabled = 'setting_biometric_enabled';
-  static const autoLockMinutes = 'setting_auto_lock_minutes';
 }
 
 class SettingsScreen extends ConsumerWidget {
@@ -112,25 +106,6 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
-
-          // ═══════ PHONE SERVER MODE (always at top) ═══════
-          const SizedBox(height: 8),
-          Text(
-            'Phone Server Mode',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: DesignColors.textSecondary,
-                ),
-          ),
-          const SizedBox(height: 8),
-          _ServerModeTile(),
-          _SettingsTile(
-            icon: Icons.dns,
-            title: 'Backend Server',
-            subtitle: 'Set this device as a client of another phone server',
-            onTap: () => _showBackendServerSettings(context),
-          ),
-
           const SizedBox(height: 24),
 
           // Sync Status (manager+)
@@ -234,11 +209,17 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'See if a newer version is available',
             onTap: () => _checkForUpdates(context),
           ),
-          _SettingsTile(
-            icon: Icons.info,
-            title: 'About',
-            subtitle: 'Version 1.0.0',
-            onTap: () => _showAboutInfo(context),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.data?.version ?? '1.0.3';
+              return _SettingsTile(
+                icon: Icons.info,
+                title: 'About',
+                subtitle: 'Version $version',
+                onTap: () => _showAboutInfo(context),
+              );
+            },
           ),
 
           // Admin-only section
@@ -605,24 +586,34 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== SECURITY SETTINGS =====
   void _showSecuritySettings(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final biometricEnabled =
-        prefs.getBool(_SettingsKeys.biometricEnabled) ?? false;
-    final autoLockMinutes = prefs.getInt(_SettingsKeys.autoLockMinutes) ?? 5;
+    final storage = getIt<StorageService>();
+    final biometricEnabled = storage.isBiometricEnabled();
+    final requireUnlockOnResume = storage.requireUnlockOnResume();
+    final autoLockMinutes = storage.getAutoLockMinutes();
     final authService = getIt<AuthService>();
-    final biometricAvailable = await authService.isBiometricAvailable();
+    final biometricAvailable =
+        await authService.isDeviceAuthenticationAvailable();
 
     if (!context.mounted) return;
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => _SecuritySettingsSheet(
-        biometricEnabled: biometricEnabled,
-        biometricAvailable: biometricAvailable,
-        autoLockMinutes: autoLockMinutes,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 1.0,
+        minChildSize: 0.45,
+        builder: (_, scrollController) => _SecuritySettingsSheet(
+          biometricEnabled: biometricEnabled,
+          biometricAvailable: biometricAvailable,
+          requireUnlockOnResume: requireUnlockOnResume,
+          autoLockMinutes: autoLockMinutes,
+          scrollController: scrollController,
+        ),
       ),
     );
   }
@@ -651,11 +642,10 @@ class SettingsScreen extends ConsumerWidget {
             Text('Help & Support',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
-            ListTile(
-              leading:
-                  const Icon(Icons.email_outlined, color: DesignColors.brand),
-              title: const Text('Email Support'),
-              subtitle: const Text('johnkimani576@gmail.com'),
+            const ListTile(
+              leading: Icon(Icons.email_outlined, color: DesignColors.brand),
+              title: Text('Email Support'),
+              subtitle: Text('johnkimani576@gmail.com'),
             ),
             ListTile(
               leading:
@@ -786,14 +776,16 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== ABOUT =====
-  void _showAboutInfo(BuildContext context) {
+  void _showAboutInfo(BuildContext context) async {
+    final info = await PackageInfo.fromPlatform();
+    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (context) => AboutDialog(
-        applicationName: 'Levisa Adventures POS',
-        applicationVersion: '1.0.0 (Build 1)',
+        applicationName: 'Point of Sale',
+        applicationVersion: _formatReleaseName(info.version),
         applicationLegalese:
-            'Licensed for Levisa Adventures. Licence documents: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
+            'Licensed for your company workspace. Contact your administrator for licence documents.',
         applicationIcon: Container(
           width: 48,
           height: 48,
@@ -815,7 +807,7 @@ class SettingsScreen extends ConsumerWidget {
             'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
             style: TextStyle(color: DesignColors.textSecondary, fontSize: 12),
           ),
-          Text('© 2026 Levisa Adventures',
+          Text('© 2026 POS Platform',
               style:
                   TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
         ],
@@ -834,6 +826,18 @@ class SettingsScreen extends ConsumerWidget {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  String _formatReleaseName(String version) {
+    final parts = version.split('.');
+    if (parts.length >= 2) {
+      final marketingVersion = parts.length >= 3 && parts[2] != '0'
+          ? parts.take(3).join('.')
+          : parts.take(2).join('.');
+      return 'Axon POS $marketingVersion';
+    }
+
+    return 'Axon POS $version';
   }
 
   // ===== ADMIN-ONLY: USER MANAGEMENT =====
@@ -898,16 +902,15 @@ class SettingsScreen extends ConsumerWidget {
                     _RoleAccessSummary(),
                     const SizedBox(height: 12),
                     // Placeholder for additional users
-                    Card(
+                    const Card(
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: DesignColors.surfaceSubtle,
-                          child: const Icon(Icons.person_add,
+                          child: Icon(Icons.person_add,
                               color: DesignColors.textSecondary),
                         ),
-                        title: const Text('No other users yet'),
-                        subtitle:
-                            const Text('Tap + Add to create staff accounts'),
+                        title: Text('No other users yet'),
+                        subtitle: Text('Tap + Add to create staff accounts'),
                       ),
                     ),
                   ],
@@ -965,7 +968,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   decoration: const InputDecoration(
                     labelText: 'Role',
                     prefixIcon: Icon(Icons.badge),
@@ -1220,7 +1223,7 @@ class SettingsScreen extends ConsumerWidget {
               Expanded(
                 child: ListView(
                   controller: scrollController,
-                  children: [
+                  children: const [
                     _AuditEntry(
                       icon: Icons.login,
                       title: 'Session Started',
@@ -1247,10 +1250,17 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== UPDATE CHECK =====
-  void _checkForUpdates(BuildContext context) {
+  Future<void> _checkForUpdates(BuildContext context) async {
+    // Capture navigator & messenger BEFORE any await so they remain valid
+    // even if this widget is unmounted while the network call is in-flight.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final updateService = getIt<UpdateCheckService>();
+
     showDialog(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: false,
       builder: (ctx) => const AlertDialog(
         title: Text('Checking for Updates'),
         content: Row(
@@ -1267,161 +1277,32 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
 
-    getIt<UpdateCheckService>().checkForUpdates(
-      force: true, // Force check since user manually initiated it
-    ).then((wasUpdateShown) {
-      // Close the loading dialog before showing the result.
-      if (context.mounted) {
-        Navigator.of(context).pop(); // close the loading dialog
-        if (wasUpdateShown) {
-          getIt<UpdateCheckService>().showUpdateDialogFromCache(context);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('You\'re on the latest version! ✅'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    });
-  }
+    bool wasUpdateShown = false;
+    try {
+      wasUpdateShown = await updateService.checkForUpdates(force: true);
+    } catch (_) {
+      wasUpdateShown = false;
+    } finally {
+      // Always dismiss the loading dialog — even if context was unmounted or an
+      // exception was thrown.  Using the captured NavigatorState is reliable
+      // because it doesn't require context.mounted to be true.
+      try {
+        navigator.pop();
+      } catch (_) {}
+    }
 
-  // ===== BACKEND SERVER SETTINGS (Client Mode) =====
-  void _showBackendServerSettings(BuildContext context) {
-    final storage = getIt<StorageService>();
-    final serverIpController =
-        TextEditingController(text: storage.getBackendServerIp() ?? '');
-    final serverPortController =
-        TextEditingController(text: storage.getBackendServerPort().toString());
+    if (!context.mounted) return;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+    if (updateService.hasOptionalUpdateAvailable) {
+      updateService.showCachedOptionalUpdateDialog(context);
+    } else if (!wasUpdateShown) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('You\'re on the latest version! ✅'),
+          duration: Duration(seconds: 2),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: DesignColors.surfaceBorder,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Backend Server', style: Theme.of(ctx).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text('Point this device to a phone server on your network',
-                style: const TextStyle(
-                    color: DesignColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 20),
-            TextField(
-              controller: serverIpController,
-              decoration: const InputDecoration(
-                labelText: 'Server IP Address',
-                hintText: 'e.g. 192.168.1.50',
-                prefixIcon: Icon(Icons.dns),
-              ),
-              keyboardType: TextInputType.url,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: serverPortController,
-              decoration: const InputDecoration(
-                labelText: 'Port',
-                hintText: '3000',
-                prefixIcon: Icon(Icons.settings_ethernet),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () async {
-                  final ip = serverIpController.text.trim();
-                  final port =
-                      int.tryParse(serverPortController.text.trim()) ?? 3000;
-                  if (ip.isEmpty) {
-                    _showSnack(context, 'Please enter a server IP address',
-                        isError: true);
-                    return;
-                  }
-                  await storage.setBackendServerIp(ip);
-                  await storage.setBackendServerPort(port);
-
-                  // Update the API client base URL
-                  final apiClient = getIt<ApiClient>();
-                  apiClient.setBaseUrl('http://$ip:$port/api/v1');
-
-                  if (!context.mounted || !ctx.mounted) return;
-                  Navigator.pop(ctx);
-                  _showSnack(context, 'Server set to http://$ip:$port');
-                },
-                icon: const Icon(Icons.link),
-                label: const Text('Connect'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Test connection button
-            if (storage.getBackendServerIp() != null)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final ip = serverIpController.text.trim();
-                    final port =
-                        int.tryParse(serverPortController.text.trim()) ?? 3000;
-                    _showSnack(context, 'Testing connection...');
-                    try {
-                      final client = getIt<ApiClient>();
-                      client.setBaseUrl('http://$ip:$port/api/v1');
-                      await client.getDashboard();
-                      if (!context.mounted) return;
-                      _showSnack(context, '✅ Connected! Server is online.');
-                    } catch (e) {
-                      if (!context.mounted) return;
-                      _showSnack(context, '❌ Connection failed: $e',
-                          isError: true);
-                    }
-                  },
-                  icon: const Icon(Icons.network_check),
-                  label: const Text('Test Connection'),
-                ),
-              ),
-            // Clear server setting
-            if (storage.getBackendServerIp() != null)
-              TextButton.icon(
-                onPressed: () async {
-                  await storage.setBackendServerIp('');
-                  await storage.setBackendServerPort(3000);
-                  // Reset to built-in URL
-                  final apiClient = getIt<ApiClient>();
-                  apiClient.setBaseUrl('http://192.168.100.47:3000/api/v1');
-                  if (!context.mounted || !ctx.mounted) return;
-                  Navigator.pop(ctx);
-                  _showSnack(context,
-                      'Cleared server setting — using default backend');
-                },
-                icon: const Icon(Icons.clear, color: DesignColors.error),
-                label: const Text('Clear & Use Default',
-                    style: TextStyle(color: DesignColors.error)),
-              ),
-          ],
-        ),
-      ),
-    );
+      );
+    }
   }
 }
 
@@ -1494,7 +1375,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _paperWidth,
+            initialValue: _paperWidth,
             decoration: const InputDecoration(
               labelText: 'Paper Width',
               prefixIcon: Icon(Icons.straighten),
@@ -1668,12 +1549,16 @@ class _NotificationSettingsSheetState
 class _SecuritySettingsSheet extends StatefulWidget {
   final bool biometricEnabled;
   final bool biometricAvailable;
+  final bool requireUnlockOnResume;
   final int autoLockMinutes;
+  final ScrollController scrollController;
 
   const _SecuritySettingsSheet({
     required this.biometricEnabled,
     required this.biometricAvailable,
+    required this.requireUnlockOnResume,
     required this.autoLockMinutes,
+    required this.scrollController,
   });
 
   @override
@@ -1682,6 +1567,7 @@ class _SecuritySettingsSheet extends StatefulWidget {
 
 class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   late bool _biometricEnabled;
+  late bool _requireUnlockOnResume;
   late int _autoLockMinutes;
   bool _fingerprintEnabled = true;
   bool _faceRecognitionEnabled = true;
@@ -1690,6 +1576,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   void initState() {
     super.initState();
     _biometricEnabled = widget.biometricEnabled;
+    _requireUnlockOnResume = widget.requireUnlockOnResume;
     _autoLockMinutes = widget.autoLockMinutes;
     _loadBiometricPrefs();
   }
@@ -1706,101 +1593,122 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-              child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Theme.of(context).dividerColor,
-                      borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Text('Security', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 20),
-          SwitchListTile(
-            title: const Text('Biometric Login'),
-            subtitle: Text(widget.biometricAvailable
-                ? 'Enable biometric authentication'
-                : 'Not available on this device'),
-            secondary: const Icon(Icons.security),
-            value: _biometricEnabled && widget.biometricAvailable,
-            onChanged: widget.biometricAvailable
-                ? (v) => setState(() => _biometricEnabled = v)
-                : null,
-          ),
-          if (_biometricEnabled && widget.biometricAvailable) ...[
+    return SingleChildScrollView(
+      controller: widget.scrollController,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Theme.of(context).dividerColor,
+                        borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            Text('Security', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 20),
+            SwitchListTile(
+              title: const Text('Biometric Login'),
+              subtitle: Text(widget.biometricAvailable
+                  ? 'Use device fingerprint, face, PIN, or pattern to unlock'
+                  : 'Not available on this device'),
+              secondary: const Icon(Icons.security),
+              value: _biometricEnabled && widget.biometricAvailable,
+              onChanged: widget.biometricAvailable
+                  ? (v) => setState(() => _biometricEnabled = v)
+                  : null,
+            ),
+            SwitchListTile(
+              title: const Text('Require unlock when app reopens'),
+              subtitle:
+                  const Text('Ask for authentication after leaving the app'),
+              secondary: const Icon(Icons.lock_clock_rounded),
+              value: _requireUnlockOnResume,
+              onChanged: (v) => setState(() => _requireUnlockOnResume = v),
+            ),
+            if (_biometricEnabled && widget.biometricAvailable) ...[
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: Text('Biometric Methods',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        )),
+              ),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                title: const Text('Fingerprint'),
+                subtitle: const Text('Use fingerprint to sign in'),
+                secondary: const Icon(Icons.fingerprint),
+                value: _fingerprintEnabled,
+                onChanged: (v) => setState(() => _fingerprintEnabled = v),
+              ),
+              SwitchListTile(
+                title: const Text('Face Recognition'),
+                subtitle: const Text('Use face recognition to sign in'),
+                secondary: const Icon(Icons.face),
+                value: _faceRecognitionEnabled,
+                onChanged: (v) => setState(() => _faceRecognitionEnabled = v),
+              ),
+            ],
             const Divider(),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: Text('Biometric Methods',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      )),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Auto-lock after'),
+              enabled: _requireUnlockOnResume,
+              trailing: DropdownButton<int>(
+                value: _autoLockMinutes,
+                underline: const SizedBox(),
+                onChanged: _requireUnlockOnResume
+                    ? (v) => setState(() => _autoLockMinutes = v ?? -1)
+                    : null,
+                items: const [
+                  DropdownMenuItem(value: -1, child: Text('Immediately')),
+                  DropdownMenuItem(value: 1, child: Text('1 min')),
+                  DropdownMenuItem(value: 5, child: Text('5 min')),
+                  DropdownMenuItem(value: 15, child: Text('15 min')),
+                  DropdownMenuItem(value: 30, child: Text('30 min')),
+                  DropdownMenuItem(value: 0, child: Text('Never')),
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              title: const Text('Fingerprint'),
-              subtitle: const Text('Use fingerprint to sign in'),
-              secondary: const Icon(Icons.fingerprint),
-              value: _fingerprintEnabled,
-              onChanged: (v) => setState(() => _fingerprintEnabled = v),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () async {
+                  final storage = getIt<StorageService>();
+                  final prefs = await SharedPreferences.getInstance();
+                  await storage.setBiometricEnabled(_biometricEnabled);
+                  await storage
+                      .setRequireUnlockOnResume(_requireUnlockOnResume);
+                  await storage.setAutoLockMinutes(_autoLockMinutes);
+                  await prefs.setBool(
+                      'setting_fingerprint_enabled', _fingerprintEnabled);
+                  await prefs.setBool('setting_face_recognition_enabled',
+                      _faceRecognitionEnabled);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Security settings saved')),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
             ),
-            SwitchListTile(
-              title: const Text('Face Recognition'),
-              subtitle: const Text('Use face recognition to sign in'),
-              secondary: const Icon(Icons.face),
-              value: _faceRecognitionEnabled,
-              onChanged: (v) => setState(() => _faceRecognitionEnabled = v),
-            ),
+            const SizedBox(height: 8),
           ],
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.timer_outlined),
-            title: const Text('Auto-lock after'),
-            trailing: DropdownButton<int>(
-              value: _autoLockMinutes,
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('1 min')),
-                DropdownMenuItem(value: 5, child: Text('5 min')),
-                DropdownMenuItem(value: 15, child: Text('15 min')),
-                DropdownMenuItem(value: 30, child: Text('30 min')),
-                DropdownMenuItem(value: 0, child: Text('Never')),
-              ],
-              onChanged: (v) => setState(() => _autoLockMinutes = v ?? 5),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool(
-                    _SettingsKeys.biometricEnabled, _biometricEnabled);
-                await prefs.setInt(
-                    _SettingsKeys.autoLockMinutes, _autoLockMinutes);
-                await prefs.setBool(
-                    'setting_fingerprint_enabled', _fingerprintEnabled);
-                await prefs.setBool('setting_face_recognition_enabled',
-                    _faceRecognitionEnabled);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Security settings saved')),
-                  );
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
+        ),
       ),
     );
   }
@@ -2094,433 +2002,6 @@ class _AuditEntry extends StatelessWidget {
   }
 }
 
-// ═══════ SERVER MODE TILE ═══════
-class _ServerModeTile extends ConsumerStatefulWidget {
-  @override
-  ConsumerState<_ServerModeTile> createState() => _ServerModeTileState();
-}
-
-class _ServerModeTileState extends ConsumerState<_ServerModeTile> {
-  bool _serverRunning = false;
-  List<String> _localIps = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStatus();
-  }
-
-  Future<void> _loadStatus() async {
-    final server = getIt<LocalServerService>();
-    final ips = await LocalServerService.getLocalIpAddresses();
-    setState(() {
-      _serverRunning = server.isRunning;
-      _localIps = ips;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final server = getIt<LocalServerService>();
-    final storage = getIt<StorageService>();
-    final serverMode = storage.isServerModeEnabled();
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        children: [
-          ListTile(
-            leading: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: _serverRunning
-                    ? DesignColors.success.withValues(alpha: 0.1)
-                    : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                _serverRunning ? Icons.dns : Icons.dns_outlined,
-                color: _serverRunning
-                    ? DesignColors.success
-                    : DesignColors.textSecondary,
-                size: 20,
-              ),
-            ),
-            title: const Text('Server Mode'),
-            subtitle: Text(
-              _serverRunning
-                  ? 'Running on port ${server.port}'
-                  : serverMode
-                      ? 'Tap to start'
-                      : 'Turn on to start the phone server',
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_serverRunning)
-                  const _StatusBadge(
-                      text: 'RUNNING', color: DesignColors.success),
-                Switch(
-                  value: serverMode,
-                  onChanged: (v) async {
-                    if (v) {
-                      final port = storage.getServerPort();
-                      final started = await server.start(port: port);
-                      if (started) {
-                        await storage.setServerModeEnabled(true);
-                        _loadStatus();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Server mode started')),
-                          );
-                        }
-                      } else {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  'Failed to start server. Try a different port.'),
-                              backgroundColor: DesignColors.error,
-                            ),
-                          );
-                        }
-                      }
-                    } else {
-                      await server.stop();
-                      await storage.setServerModeEnabled(false);
-                      _loadStatus();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Server mode stopped')),
-                        );
-                      }
-                    }
-                    setState(() {});
-                  },
-                ),
-              ],
-            ),
-          ),
-          if (_serverRunning && _localIps.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Divider(),
-                  const SizedBox(height: 4),
-                  const Text('Connect from other devices:',
-                      style: TextStyle(
-                          fontSize: 12, color: DesignColors.textSecondary)),
-                  const SizedBox(height: 4),
-                  ..._localIps.map((ip) => Text(
-                        'http://$ip:${server.port}',
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.brand),
-                      )),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showServerUserManagement(context),
-                      icon: const Icon(Icons.people, size: 16),
-                      label: const Text('Manage Server Users'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showServerUserManagement(BuildContext context) {
-    final db = getIt<AppDatabase>();
-
-    Future<List<Map<String, dynamic>>> _getUsers() async {
-      try {
-        final result = await db
-            .customSelect('SELECT * FROM server_users ORDER BY created_at DESC')
-            .get();
-        return result
-            .map((r) => {
-                  'id': r.read<String>('id'),
-                  'email': r.read<String>('email'),
-                  'firstName': r.read<String>('first_name'),
-                  'lastName': r.read<String>('last_name'),
-                  'role': r.read<String>('role'),
-                  'isActive': r.read<int>('is_active') == 1,
-                  'lastLoginAt': r.readNullable<String>('last_login_at'),
-                })
-            .toList();
-      } catch (_) {
-        return [];
-      }
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        builder: (ctx, scrollController) =>
-            FutureBuilder<List<Map<String, dynamic>>>(
-          future: _getUsers(),
-          builder: (ctx, snapshot) {
-            final users = snapshot.data ?? [];
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                      child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                              color: DesignColors.surfaceBorder,
-                              borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Server Users',
-                          style: Theme.of(ctx).textTheme.titleLarge),
-                      FilledButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _showAddServerUserDialog(context);
-                        },
-                        icon: const Icon(Icons.person_add, size: 18),
-                        label: const Text('Add'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text('Activate or deactivate user accounts',
-                      style: TextStyle(
-                          color: DesignColors.textSecondary, fontSize: 13)),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: users.isEmpty
-                        ? const Center(
-                            child: Text('No users yet. Add your first user.'))
-                        : ListView.builder(
-                            controller: scrollController,
-                            itemCount: users.length,
-                            itemBuilder: (ctx, i) {
-                              final u = users[i];
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: u['isActive'] == true
-                                        ? DesignColors.brand
-                                            .withValues(alpha: 0.1)
-                                        : DesignColors.surfaceSubtle,
-                                    child: Text(
-                                      (u['firstName'] as String).isNotEmpty
-                                          ? (u['firstName'] as String)[0]
-                                              .toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                        color: u['isActive'] == true
-                                            ? DesignColors.brand
-                                            : DesignColors.textTertiary,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  title: Text(
-                                      '${u['firstName']} ${u['lastName']}'),
-                                  subtitle:
-                                      Text('${u['email']}  •  ${u['role']}'),
-                                  trailing: Switch(
-                                    value: u['isActive'] == true,
-                                    onChanged: (active) async {
-                                      await db.customStatement(
-                                        'UPDATE server_users SET is_active = ? WHERE id = ?',
-                                        [
-                                          Variable.withInt(active ? 1 : 0),
-                                          Variable.withString(u['id'] as String)
-                                        ],
-                                      );
-                                      setState(() {});
-                                      if (ctx.mounted) {
-                                        ScaffoldMessenger.of(ctx).showSnackBar(
-                                          SnackBar(
-                                            content: Text(active
-                                                ? '${u['firstName']} activated'
-                                                : '${u['firstName']} deactivated'),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  void _showAddServerUserDialog(BuildContext context) {
-    final emailController = TextEditingController();
-    final firstNameController = TextEditingController();
-    final lastNameController = TextEditingController();
-    final passwordController = TextEditingController();
-    final pinController = TextEditingController();
-    String selectedRole = 'CASHIER';
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Server User'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: firstNameController,
-                  decoration: const InputDecoration(
-                      labelText: 'First Name', prefixIcon: Icon(Icons.person)),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: lastNameController,
-                  decoration: const InputDecoration(
-                      labelText: 'Last Name', prefixIcon: Icon(Icons.person)),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                      labelText: 'Email', prefixIcon: Icon(Icons.email)),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Password', prefixIcon: Icon(Icons.lock)),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: pinController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                      labelText: 'PIN (4 digits)',
-                      prefixIcon: Icon(Icons.lock),
-                      counterText: ''),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                      labelText: 'Role', prefixIcon: Icon(Icons.badge)),
-                  items: const [
-                    DropdownMenuItem(value: 'ADMIN', child: Text('Admin')),
-                    DropdownMenuItem(value: 'MANAGER', child: Text('Manager')),
-                    DropdownMenuItem(
-                        value: 'SUPERVISOR', child: Text('Supervisor')),
-                    DropdownMenuItem(value: 'CASHIER', child: Text('Cashier')),
-                  ],
-                  onChanged: (v) =>
-                      setDialogState(() => selectedRole = v ?? 'CASHIER'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () async {
-                if (emailController.text.isEmpty ||
-                    passwordController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Email and password are required'),
-                        backgroundColor: DesignColors.error),
-                  );
-                  return;
-                }
-                final db = getIt<AppDatabase>();
-                final passwordHash = sha256
-                    .convert(utf8.encode(passwordController.text))
-                    .toString();
-                final pinHash = pinController.text.length == 4
-                    ? sha256.convert(utf8.encode(pinController.text)).toString()
-                    : null;
-                final id = const Uuid().v4();
-
-                try {
-                  await db.customInsert(
-                    'INSERT INTO server_users (id, email, password_hash, pin_hash, first_name, last_name, role, is_active, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
-                    variables: [
-                      Variable.withString(id),
-                      Variable.withString(emailController.text.trim()),
-                      Variable.withString(passwordHash),
-                      pinHash != null
-                          ? Variable.withString(pinHash)
-                          : Variable.withString(''),
-                      Variable.withString(firstNameController.text.trim()),
-                      Variable.withString(lastNameController.text.trim()),
-                      Variable.withString(selectedRole),
-                      Variable.withString(DateTime.now().toIso8601String()),
-                      Variable.withString(DateTime.now().toIso8601String()),
-                    ],
-                  );
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(
-                              'User ${firstNameController.text.trim()} added as $selectedRole')),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('Error: $e'),
-                          backgroundColor: DesignColors.error),
-                    );
-                  }
-                }
-              },
-              child: const Text('Add User'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ═══════ BRANCH MANAGEMENT SHEET ═══════
 class _BranchManagementSheet extends StatefulWidget {
   final ScrollController scrollController;
@@ -2749,9 +2230,9 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
-                          leading: CircleAvatar(
+                          leading: const CircleAvatar(
                             backgroundColor: DesignColors.brand,
-                            child: const Icon(Icons.store,
+                            child: Icon(Icons.store,
                                 color: Colors.white, size: 20),
                           ),
                           title: Text(branch['name'] as String),
@@ -2763,9 +2244,12 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                                   text: 'Active', color: DesignColors.success),
                               PopupMenuButton<String>(
                                 onSelected: (value) {
-                                  if (value == 'edit')
+                                  if (value == 'edit') {
                                     _showEditBranchDialog(branch);
-                                  if (value == 'delete') _deleteBranch(branch);
+                                  }
+                                  if (value == 'delete') {
+                                    _deleteBranch(branch);
+                                  }
                                 },
                                 itemBuilder: (ctx) => [
                                   const PopupMenuItem(

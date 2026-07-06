@@ -17,6 +17,7 @@ model Tenant {
   name        String
   slug        String   @unique
   logo        String?
+  logoPublicId String?
   isActive    Boolean  @default(true)
   settings    Json     @default("{}")
   createdAt   DateTime @default(now())
@@ -33,6 +34,7 @@ model Tenant {
 model Branch {
   id          String   @id @default(uuid())
   tenantId    String
+  posClientId String?
   name        String
   code        String
   address     String?
@@ -45,6 +47,7 @@ model Branch {
   updatedAt   DateTime @updatedAt
 
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  posClient   PosClient? @relation(fields: [posClientId], references: [id])
   devices     Device[]
   users       UserBranch[]
   stock       Stock[]
@@ -54,6 +57,7 @@ model Branch {
   stockRequests  StockRequest[]
   expenses    Expense[]
   manualPaymentRequests ManualPaymentRequest[]
+  aiSubscription AiSubscription?
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -160,6 +164,7 @@ model Category {
   slug        String
   description String?
   image       String?
+  imagePublicId String?
   sortOrder   Int      @default(0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -181,6 +186,7 @@ model Product {
   name            String
   description     String?
   image           String?
+  imagePublicId   String?
   basePrice       Decimal  @db.Decimal(10, 2)
   costPrice       Decimal? @db.Decimal(10, 2)
   taxRate         Decimal  @default(0) @db.Decimal(5, 2)
@@ -830,4 +836,79 @@ model ConflictLog {
   @@index([conflictType])
   @@index([createdAt])
   @@map("conflict_logs")
+}
+
+// ==================== AI SUBSCRIPTIONS & BILLING ====================
+
+model PosClient {
+  id          String   @id @default(uuid())
+  name        String   // e.g., 'Levisa', 'TSL', 'Kate'
+  slug        String   @unique
+  logo        String?
+  isActive    Boolean  @default(true)
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branches    Branch[]
+
+  @@map("pos_clients")
+}
+
+enum AiSubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model AiSubscription {
+  id              String                @id @default(uuid())
+  branchId        String                @unique
+  status          AiSubscriptionStatus  @default(TRIAL)
+  trialStartedAt  DateTime              @default(now())
+  trialEndsAt     DateTime
+  subscribedAt    DateTime?
+  expiresAt       DateTime?
+  autoRenew       Boolean               @default(false)
+  price           Decimal               @default(600.00) @db.Decimal(10, 2)
+  mpesaPhone      String?               // Store owner's M-Pesa phone
+  smsPermission   Boolean               @default(false)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  payments        AiPayment[]
+
+  @@index([status])
+  @@index([expiresAt])
+  @@map("ai_subscriptions")
+}
+
+enum AiPaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model AiPayment {
+  id                String            @id @default(uuid())
+  subscriptionId    String
+  mpesaCode         String            @unique
+  amount            Decimal           @db.Decimal(10, 2)
+  senderPhone       String?
+  recipientPhone    String            @default("0742126582")
+  smsRaw            String?
+  verified          Boolean           @default(false)
+  status            AiPaymentStatus   @default(PENDING)
+  verifiedAt        DateTime?
+  verifiedBy        String?           // 'auto_sms' or 'admin_manual'
+  adminNotes        String?
+  createdAt         DateTime          @default(now())
+
+  subscription      AiSubscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("ai_payments")
 }

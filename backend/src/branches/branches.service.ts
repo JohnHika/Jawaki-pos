@@ -402,4 +402,41 @@ export class BranchesService {
       data: { isActive: false },
     });
   }
+
+  async getOutdatedDevices(
+    branchId: string,
+    tenantId: string,
+    minVersion: string,
+  ) {
+    // Verify branch belongs to tenant
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+    });
+
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+
+    return this.prisma.device.findMany({
+      where: {
+        branchId,
+        appVersion: {
+          not: minVersion,
+        },
+      },
+      orderBy: { lastActiveAt: 'desc' },
+      select: {
+        id: true,
+        deviceUuid: true,
+        name: true,
+        model: true,
+        osVersion: true,
+        appVersion: true,
+        lastActiveAt: true,
+        lastSyncAt: true,
+        isActive: true,
+      },
+    });
+  }
+
 }
