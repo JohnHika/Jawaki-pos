@@ -50,11 +50,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.17"
+        value: "1.0.20"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.2"
+        value: "Axon POS 1.0.20"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2019"
+        value: "2025"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -64,4 +64,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Axon POS 1.0.2 links POS selling to inventory stock, restores receive-stock routing, adds unit-tier selling from product setup, and adds dashboard company/AI summaries."
+        value: "Adds supplier restocking and cash-flow tracking with AI-powered restock suggestions; fixes a login lockout on devices with no PIN configured; makes the Settings biometric toggle verify real device biometrics before enabling."
