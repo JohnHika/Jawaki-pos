@@ -42,7 +42,14 @@ class ApiClient {
     });
     return response.data;
   }
-  
+
+  /// Sets/updates the account's server-side PIN, so [loginWithPin] can
+  /// authenticate this user even on a device that has never stored a
+  /// local PIN hash (e.g. after a reinstall, or on a brand-new device).
+  Future<void> setPin(String pin) async {
+    await _dio.post('/auth/set-pin', data: {'pin': pin});
+  }
+
   Future<Map<String, dynamic>> refreshToken(String refreshToken) async {
     final response = await _dio.post('/auth/refresh', data: {
       'refreshToken': refreshToken,
@@ -112,6 +119,64 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getProfile() async {
     final response = await _dio.get('/auth/profile');
+    return response.data as Map<String, dynamic>;
+  }
+
+  // Branch endpoints
+  Future<List<dynamic>> getBranches() async {
+    final response = await _dio.get('/branches');
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createBranch({
+    required String name,
+    required String code,
+    String? address,
+    String? phone,
+    String? email,
+  }) async {
+    final response = await _dio.post('/branches', data: {
+      'name': name,
+      'code': code,
+      if (address != null) 'address': address,
+      if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateBranch(
+    String id, {
+    String? name,
+    String? code,
+    String? address,
+    String? phone,
+    String? email,
+    bool? isActive,
+  }) async {
+    final response = await _dio.patch('/branches/$id', data: {
+      if (name != null) 'name': name,
+      if (code != null) 'code': code,
+      if (address != null) 'address': address,
+      if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
+      if (isActive != null) 'isActive': isActive,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteBranch(String id) async {
+    await _dio.delete('/branches/$id');
+  }
+
+  /// Admin-only. Returns recent tenant activity (logins, branch/PIN
+  /// changes, etc.) — the actual data behind the Settings > Audit Trail
+  /// screen.
+  Future<Map<String, dynamic>> getAuditLog({int page = 1, int limit = 50}) async {
+    final response = await _dio.get('/audit-log', queryParameters: {
+      'page': page,
+      'limit': limit,
+    });
     return response.data as Map<String, dynamic>;
   }
 

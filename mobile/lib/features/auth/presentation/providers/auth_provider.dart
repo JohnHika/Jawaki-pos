@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,12 +11,14 @@ import '../../../../core/auth/app_roles.dart';
 class AuthState {
   final bool isLoading;
   final bool isAuthenticated;
+  final bool isLocked;
   final String? error;
   final Map<String, dynamic>? user;
 
   const AuthState({
     this.isLoading = false,
     this.isAuthenticated = false,
+    this.isLocked = false,
     this.error,
     this.user,
   });
@@ -22,12 +26,14 @@ class AuthState {
   AuthState copyWith({
     bool? isLoading,
     bool? isAuthenticated,
+    bool? isLocked,
     String? error,
     Map<String, dynamic>? user,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      isLocked: isLocked ?? this.isLocked,
       error: error,
       user: user ?? this.user,
     );
@@ -37,15 +43,26 @@ class AuthState {
 // Auth controller
 class AuthController extends StateNotifier<AuthState> {
   final AuthService _authService;
+  StreamSubscription<AuthStatus>? _authStatusSubscription;
 
   AuthController(this._authService) : super(const AuthState()) {
     _initAuth();
+    _authStatusSubscription =
+        _authService.authStatusStream.listen((_) => _syncFromService());
   }
 
-  void _initAuth() {
-    final isAuthenticated = _authService.isAuthenticated;
+  @override
+  void dispose() {
+    _authStatusSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _initAuth() => _syncFromService();
+
+  void _syncFromService() {
     state = state.copyWith(
-      isAuthenticated: isAuthenticated,
+      isAuthenticated: _authService.isAuthenticated,
+      isLocked: _authService.isLocked,
       user: _authService.currentUser,
     );
   }
@@ -86,6 +103,7 @@ class AuthController extends StateNotifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         isAuthenticated: true,
+        isLocked: false,
         user: _authService.currentUser,
       );
       return true;
@@ -96,6 +114,34 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return false;
     }
+  }
+
+  Future<bool> hasLocalPinSet() => _authService.hasLocalPinSet();
+
+  Future<void> setLocalPin(String pin) => _authService.setLocalPin(pin);
+
+  /// Local, offline PIN unlock for an already-locked session — tries this
+  /// first from the PIN screen; only falls back to the network-dependent
+  /// [loginWithPin] if this device has no local PIN configured yet.
+  Future<bool> unlockWithPin(String pin) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    final unlocked = await _authService.unlockWithPin(pin);
+    if (unlocked) {
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        isLocked: false,
+        user: _authService.currentUser,
+      );
+      return true;
+    }
+
+    state = state.copyWith(
+      isLoading: false,
+      error: 'Incorrect PIN. Try again.',
+    );
+    return false;
   }
 
   Future<void> logout() async {
@@ -175,6 +221,10 @@ final currentUserProvider = Provider<Map<String, dynamic>?>((ref) {
 
 final isAuthenticatedProvider = Provider<bool>((ref) {
   return ref.watch(authControllerProvider).isAuthenticated;
+});
+
+final isLockedProvider = Provider<bool>((ref) {
+  return ref.watch(authControllerProvider).isLocked;
 });
 
 final userRoleProvider = Provider<String?>((ref) {

@@ -18,6 +18,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { AppUpdatesModule } from './app-updates/app-updates.module';
 import { ApiV1Module } from './api-v1/api-v1.module';
 import { PaymentsModule } from './payments/payments.module';
+import { AuditModule } from './audit/audit.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -58,6 +59,7 @@ import { AppController } from './app.controller';
     AppUpdatesModule,
     ApiV1Module,
     PaymentsModule,
+    AuditModule,
   ],
   controllers: [AppController],
 })

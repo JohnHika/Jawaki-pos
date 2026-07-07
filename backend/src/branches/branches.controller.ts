@@ -82,7 +82,7 @@ export class BranchesController {
   @ApiOperation({ summary: 'Create a new branch' })
   @ApiResponse({ status: 201, description: 'Branch created', type: BranchResponseDto })
   async createBranch(@Request() req: any, @Body() dto: CreateBranchDto) {
-    return this.branchesService.createBranch(req.user.tenantId, dto);
+    return this.branchesService.createBranch(req.user.tenantId, dto, req.user.sub);
   }
 
   @Get()
@@ -109,7 +109,7 @@ export class BranchesController {
     @Request() req: any,
     @Body() dto: UpdateBranchDto,
   ) {
-    return this.branchesService.updateBranch(id, req.user.tenantId, dto);
+    return this.branchesService.updateBranch(id, req.user.tenantId, dto, req.user.sub);
   }
 
   @Delete(':id')
@@ -119,7 +119,7 @@ export class BranchesController {
   @ApiOperation({ summary: 'Delete branch (if no sales history)' })
   @ApiResponse({ status: 204, description: 'Branch deleted' })
   async deleteBranch(@Param('id') id: string, @Request() req: any) {
-    await this.branchesService.deleteBranch(id, req.user.tenantId);
+    await this.branchesService.deleteBranch(id, req.user.tenantId, req.user.sub);
   }
 
   // ==================== BULK BRANCH ENDPOINTS ====================

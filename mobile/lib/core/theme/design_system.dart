@@ -1357,6 +1357,335 @@ class ListCard extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  GROUPED SETTINGS CARD
+//  A single rounded surface holding several related rows separated by
+//  thin dividers, instead of each row being its own separately-boxed
+//  card — the pattern modern iOS/Android settings screens use to signal
+//  "these options belong together."
+// ═══════════════════════════════════════════════════════════════
+class GroupedCard extends StatelessWidget {
+  final List<Widget> children;
+  final EdgeInsetsGeometry margin;
+
+  const GroupedCard({
+    super.key,
+    required this.children,
+    this.margin = const EdgeInsets.only(bottom: 20),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
+      margin: margin,
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            children[i],
+            if (i != children.length - 1)
+              Divider(
+                height: 1,
+                thickness: 1,
+                indent: 60,
+                color: border.withValues(alpha: 0.6),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A single row inside a [GroupedCard]: rounded icon badge, title/subtitle,
+/// and a trailing widget or chevron. Distinct from [ListCard] (which is a
+/// separately-boxed standalone row used elsewhere in the app) — this one
+/// is meant to sit flush against its siblings inside the same card.
+class SettingsRow extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool isDestructive;
+  final bool enabled;
+
+  const SettingsRow({
+    super.key,
+    required this.icon,
+    this.iconColor,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+    this.isDestructive = false,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final resolvedIconColor =
+        iconColor ?? (isDestructive ? DesignColors.error : DesignColors.accent);
+    final titleColor = isDestructive
+        ? DesignColors.error
+        : (isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary);
+    final subtitleColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final chevronColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: resolvedIconColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: resolvedIconColor, size: 18),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(fontSize: 12.5, color: subtitleColor),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  trailing!,
+                ] else if (onTap != null)
+                  Icon(Icons.chevron_right_rounded,
+                      color: chevronColor, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Header used above a [GroupedCard] to label the section it belongs to —
+/// smaller and more subdued than a screen title, matching the native
+/// settings-app convention of quiet all-caps or semi-bold section labels.
+class SettingsGroupLabel extends StatelessWidget {
+  final String label;
+  final EdgeInsetsGeometry padding;
+
+  const SettingsGroupLabel(
+    this.label, {
+    super.key,
+    this.padding = const EdgeInsets.fromLTRB(4, 0, 4, 10),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: padding,
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: isDark
+              ? DesignColors.darkTextTertiary
+              : DesignColors.textTertiary,
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MODAL SHEET SCAFFOLD (compact)
+//  Drag handle + title + content, for the smaller bottom sheets that
+//  don't need GlassBottomSheet's fixed-height/back-button treatment.
+// ═══════════════════════════════════════════════════════════════
+class SettingsSheetScaffold extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const SettingsSheetScaffold({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.child,
+    this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final subtitleColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
+    return Padding(
+      padding: padding,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(subtitle!, style: TextStyle(color: subtitleColor)),
+          ],
+          const SizedBox(height: 18),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SETTINGS-STYLE ALERT DIALOG SHELL
+//  A rounded, theme-aware AlertDialog wrapper matching the app's radius
+//  scale (16 for the shell, 12 for buttons) instead of the sharp-cornered
+//  Material default.
+// ═══════════════════════════════════════════════════════════════
+class SettingsDialog extends StatelessWidget {
+  final String title;
+  final Widget content;
+  final List<Widget> actions;
+
+  const SettingsDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AlertDialog(
+      backgroundColor: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 4),
+      contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+        ),
+      ),
+      content: content,
+      actions: actions,
+    );
+  }
+}
+
+/// A dialog/sheet's primary (filled, accent) action button — matches the
+/// rest of the app's single-accent-color convention instead of Material's
+/// default `FilledButton` color.
+class SettingsPrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+  final Color? color;
+
+  const SettingsPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.isLoading = false,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = color ?? DesignColors.accent;
+    return FilledButton(
+      onPressed: isLoading ? null : onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: fill,
+        foregroundColor:
+            fill.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: isLoading
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: fill.computeLuminance() > 0.5
+                    ? Colors.black
+                    : Colors.white,
+              ),
+            )
+          : Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  DIVIDER WITH LABEL
 // ═══════════════════════════════════════════════════════════════
 class LabelDivider extends StatelessWidget {

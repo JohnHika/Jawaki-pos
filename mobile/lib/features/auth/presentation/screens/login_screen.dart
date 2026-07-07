@@ -610,13 +610,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: _rememberMe
-                                ? DesignColors.brand
+                                ? DesignColors.accent
                                 : isDark
                                     ? DesignColors.darkSurfaceElevated
                                     : Colors.white,
                             border: Border.all(
                               color: _rememberMe
-                                  ? DesignColors.brand
+                                  ? DesignColors.accent
                                   : isDark
                                       ? DesignColors.darkBorder
                                       : DesignColors.surfaceBorder,
@@ -624,10 +624,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             ),
                           ),
                           child: _rememberMe
-                              ? Icon(
+                              ? const Icon(
                                   Icons.check_rounded,
                                   size: 16,
-                                  color: Colors.white,
+                                  color: Colors.black,
                                 )
                               : null,
                         ),
@@ -639,7 +639,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             const SizedBox(
                                 height: 2), // Adjust vertical alignment
                             Text(
-                              'Remember me',
+                              'Stay signed in',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: isDark

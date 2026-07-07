@@ -90,8 +90,15 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   Future<void> _handlePinLogin() async {
-    final result =
-        await ref.read(authControllerProvider.notifier).loginWithPin(_pin);
+    final controller = ref.read(authControllerProvider.notifier);
+
+    // A device with a local PIN configured can unlock entirely offline,
+    // matching biometric unlock. Only fall back to the server-authenticated
+    // PIN login for a device that has never set one up locally.
+    final hasLocalPin = await controller.hasLocalPinSet();
+    final result = hasLocalPin
+        ? await controller.unlockWithPin(_pin)
+        : await controller.loginWithPin(_pin);
 
     if (result && mounted) {
       context.go('/');
@@ -125,6 +132,22 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       _pin = '';
     });
     _shakeController.forward(from: 0);
+  }
+
+  /// Leaves quick-unlock for the full email login form. When this screen
+  /// was pushed on top of /login (the user chose PIN from there), simply
+  /// popping returns them. But a locked session lands here directly as the
+  /// router's root screen with nothing to pop to — in that case, "use
+  /// email instead" means the user doesn't want to unlock this session at
+  /// all, so it must log out first (clearing the lock) or the router's
+  /// locked-session guard would just bounce them straight back here.
+  Future<void> _useEmailInstead() async {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    await ref.read(authControllerProvider.notifier).logout();
+    if (mounted) context.go('/login');
   }
 
   @override
@@ -231,10 +254,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   Future<void> _checkBiometric() async {
-    final available =
+    final ready =
         await ref.read(authControllerProvider.notifier).isBiometricAvailable();
+    final enabled = getIt<StorageService>().isBiometricEnabled();
     if (mounted) {
-      setState(() => _biometricAvailable = available);
+      setState(() => _biometricAvailable = ready && enabled);
     }
   }
 
@@ -284,7 +308,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: () => context.pop(),
+                      onTap: _useEmailInstead,
                       child: Container(
                         width: 36,
                         height: 36,
@@ -800,7 +824,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ],
         // Back to email login
         GestureDetector(
-          onTap: () => context.pop(),
+          onTap: _useEmailInstead,
           child: Text(
             'Use email instead',
             style: TextStyle(

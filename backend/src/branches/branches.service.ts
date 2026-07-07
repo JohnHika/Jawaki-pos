@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateTenantDto,
   UpdateTenantDto,
@@ -20,6 +21,7 @@ export class BranchesService {
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
+    private auditService: AuditService,
   ) {}
 
   // ==================== TENANT OPERATIONS ====================
@@ -125,7 +127,7 @@ export class BranchesService {
 
   // ==================== BRANCH OPERATIONS ====================
 
-  async createBranch(tenantId: string, dto: CreateBranchDto) {
+  async createBranch(tenantId: string, dto: CreateBranchDto, userId?: string) {
     const existing = await this.prisma.branch.findFirst({
       where: { tenantId, code: dto.code },
     });
@@ -142,6 +144,13 @@ export class BranchesService {
     });
 
     await this.redisService.del(`branches:${tenantId}`);
+    await this.auditService.record({
+      userId,
+      action: 'CREATE',
+      entityType: 'branch',
+      entityId: branch.id,
+      newValues: { name: branch.name, code: branch.code },
+    });
     return branch;
   }
 
@@ -204,7 +213,12 @@ export class BranchesService {
     };
   }
 
-  async updateBranch(branchId: string, tenantId: string, dto: UpdateBranchDto) {
+  async updateBranch(
+    branchId: string,
+    tenantId: string,
+    dto: UpdateBranchDto,
+    userId?: string,
+  ) {
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, tenantId },
     });
@@ -219,10 +233,18 @@ export class BranchesService {
     });
 
     await this.redisService.del(`branches:${tenantId}`);
+    await this.auditService.record({
+      userId,
+      action: 'UPDATE',
+      entityType: 'branch',
+      entityId: branchId,
+      oldValues: { name: branch.name, code: branch.code, isActive: branch.isActive },
+      newValues: dto as Record<string, unknown>,
+    });
     return updated;
   }
 
-  async deleteBranch(branchId: string, tenantId: string) {
+  async deleteBranch(branchId: string, tenantId: string, userId?: string) {
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, tenantId },
       include: {
@@ -247,6 +269,13 @@ export class BranchesService {
     });
 
     await this.redisService.del(`branches:${tenantId}`);
+    await this.auditService.record({
+      userId,
+      action: 'DELETE',
+      entityType: 'branch',
+      entityId: branchId,
+      oldValues: { name: branch.name, code: branch.code },
+    });
   }
 
   // ==================== BULK BRANCH OPERATIONS ====================

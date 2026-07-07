@@ -16,6 +16,13 @@ interface NvidiaResponse {
   error?: { message?: string };
 }
 
+interface AxonGatewayResponse {
+  model?: string;
+  plan?: string;
+  response?: string;
+  detail?: string;
+}
+
 interface BusinessResponse {
   summary: string;
   key_insights: string[];
@@ -36,11 +43,21 @@ interface BusinessResponse {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
+  // Axon Gateway (arche-axon.xyz) — primary provider. Own org/tier, routes to
+  // whichever model that tier maps to; falls back to NVIDIA direct, then to
+  // the local rule-based analysis if neither provider is reachable/configured.
+  private readonly gatewayApiKey: string;
+  private readonly gatewayBaseUrl: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private model: string;
 
   constructor(private readonly configService: ConfigService) {
+    this.gatewayApiKey = this.configService.get<string>('AXON_GATEWAY_API_KEY') || '';
+    this.gatewayBaseUrl =
+      this.configService.get<string>('AXON_GATEWAY_BASE_URL') ||
+      'https://api.arche-axon.xyz/v1';
+
     this.apiKey = this.configService.get<string>('NVIDIA_API_KEY') || '';
     this.baseUrl =
       this.configService.get<string>('NVIDIA_API_BASE_URL') ||
@@ -49,13 +66,22 @@ export class AiService {
       this.configService.get<string>('NVIDIA_MODEL') ||
       'nvidia/nemotron-3-super-120b-a12b';
 
-    if (!this.apiKey) {
-      this.logger.warn('NVIDIA_API_KEY not set - AI endpoints will use local business responses');
+    if (!this.gatewayApiKey && !this.apiKey) {
+      this.logger.warn('Neither AXON_GATEWAY_API_KEY nor NVIDIA_API_KEY set - AI endpoints will use local business responses');
     }
   }
 
   async chat(dto: ChatRequestDto): Promise<{ reply: string; model: string }> {
     const normalized = this.normalizeRequest(dto);
+
+    if (this.gatewayApiKey) {
+      const gatewayResult = await this.chatViaAxonGateway(normalized);
+      if (gatewayResult) return gatewayResult;
+      // Gateway configured but the call failed — fall through to NVIDIA
+      // direct (if configured) rather than jumping straight to the local
+      // canned response, so a transient gateway outage doesn't degrade
+      // answer quality more than necessary.
+    }
 
     if (!this.apiKey) {
       return this.localBusinessResponse(normalized, 'local-business-ai');
@@ -113,6 +139,77 @@ export class AiService {
       this.logger.error(`AI chat error: ${error instanceof Error ? error.message : String(error)}`);
       return this.localBusinessResponse(normalized, `${this.model} fallback`);
     }
+  }
+
+  /// Calls the Axon Gateway's chat endpoint. Returns null (not a thrown
+  /// error) on any failure so `chat()` can fall through to the next
+  /// provider tier — a gateway hiccup should never surface as a hard
+  /// error to the POS app when NVIDIA or the local fallback can still
+  /// answer.
+  private async chatViaAxonGateway(
+    dto: ChatRequestDto,
+  ): Promise<{ reply: string; model: string } | null> {
+    try {
+      const response = await fetch(`${this.gatewayBaseUrl}/chat/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.gatewayApiKey}`,
+        },
+        body: JSON.stringify({
+          // The gateway strips any client-supplied `system` message and
+          // replaces it with its own mandatory Axon-identity prompt, so
+          // the POS business-analysis instructions are sent as the first
+          // user message instead — the one role it won't override.
+          messages: this.buildGatewayMessages(dto),
+          cache: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        this.logger.error(`Axon Gateway error: ${response.status} - ${errorBody}`);
+        return null;
+      }
+
+      const data = (await response.json()) as AxonGatewayResponse;
+      const reply = data.response?.trim();
+      if (!reply) {
+        this.logger.error('Axon Gateway returned an empty response');
+        return null;
+      }
+
+      return { reply, model: data.model || 'axon-gateway' };
+    } catch (error) {
+      this.logger.error(`Axon Gateway request failed: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  private buildGatewayMessages(dto: ChatRequestDto): Array<{ role: string; content: string }> {
+    const systemPrompt = this.buildSystemPrompt(dto);
+    const conversation = (dto.messages || [])
+      .filter((message) => Boolean(message?.content) && message.role !== 'system')
+      .map((message) => ({
+        role: ['user', 'assistant'].includes(message.role) ? message.role : 'user',
+        content: message.content,
+      }));
+
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'user', content: systemPrompt },
+    ];
+
+    if (conversation.length > 0) {
+      messages.push(...conversation);
+    } else {
+      messages.push({ role: 'user', content: this.buildStructuredUserMessage(dto) });
+    }
+
+    if (dto.data_context || dto.business_context) {
+      messages.push({ role: 'user', content: this.buildStructuredUserMessage(dto) });
+    }
+
+    return messages;
   }
 
   async listAvailableModels(): Promise<{ models: string[]; currentModel: string }> {

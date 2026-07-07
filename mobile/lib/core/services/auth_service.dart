@@ -8,6 +8,14 @@ import '../network/api_client.dart';
 enum AuthStatus {
   unknown,
   authenticated,
+  // A previously-authenticated session that background/foreground auto-lock
+  // (or a fresh app launch with "remember me" on) has soft-locked: the
+  // stored session is still intact, but the user must pass PIN or biometric
+  // before the app trusts it again. Distinct from `unauthenticated`, which
+  // means there is no session to unlock at all (never logged in, or fully
+  // logged out) — this distinction is what lets the router send returning
+  // users to the fast /pin-login screen instead of the full /login form.
+  locked,
   unauthenticated,
 }
 
@@ -56,6 +64,7 @@ class AuthService {
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get accessToken => _accessToken;
   bool get isAuthenticated => _currentStatus == AuthStatus.authenticated;
+  bool get isLocked => _currentStatus == AuthStatus.locked;
 
   String? get userId => _currentUser?['id'];
   String? get branchId => _storage.getBranchId();
@@ -94,9 +103,23 @@ class AuthService {
     _currentUser = _storage.getUser();
 
     if (_accessToken?.isNotEmpty == true && _currentUser != null) {
+      // "Remember me" was off at the last login: a stored session surviving
+      // to a fresh cold start means the app was fully closed and reopened
+      // (not just backgrounded — resume-locking is handled separately by
+      // lockIfRequiredAfterResume while the process stays alive), so this
+      // is exactly the point where an opted-out user should be required to
+      // log in again rather than quick-unlock.
+      if (!_storage.isRememberLoginEnabled()) {
+        await _storage.clearSession();
+        _accessToken = null;
+        _currentUser = null;
+        _updateStatus(AuthStatus.unauthenticated);
+        return;
+      }
+
       if (_storage.requireUnlockOnResume() && _storage.isAuthLocked()) {
         _accessToken = null;
-        _updateStatus(AuthStatus.unauthenticated);
+        _updateStatus(AuthStatus.locked);
         return;
       }
 
@@ -131,6 +154,10 @@ class AuthService {
     await _handleAuthResponse(response);
   }
 
+  /// Authenticates with a PIN via the server. Used the first time a device
+  /// enters a PIN (before a local PIN has ever been configured on it) — a
+  /// real network round-trip against the account's server-side PIN, just
+  /// like email/password login.
   Future<void> loginWithPin(String pin) async {
     final resolvedDeviceId = await _storage.ensureDeviceId();
 
@@ -141,6 +168,34 @@ class AuthService {
     );
 
     await _applyAuthResponse(response);
+  }
+
+  /// Whether this device has a local quick-unlock PIN configured, i.e.
+  /// whether [unlockWithPin] can be used instead of the network-dependent
+  /// [loginWithPin].
+  Future<bool> hasLocalPinSet() => _storage.hasLocalPinSet();
+
+  /// Sets (or replaces) this device's local quick-unlock PIN. Only call
+  /// this while already authenticated — it does not itself grant access,
+  /// it just configures the fast path for future unlocks.
+  Future<void> setLocalPin(String pin) => _storage.setLocalPin(pin);
+
+  /// Verifies a PIN entirely on-device against the already-stored session,
+  /// with no network call — the PIN equivalent of [loginWithBiometrics].
+  /// This is what actually re-enters an app that's merely locked (session
+  /// still present in storage), so it works offline exactly like biometric
+  /// unlock does, instead of re-authenticating against the server.
+  Future<bool> unlockWithPin(String pin) async {
+    final validPin = await _storage.verifyLocalPin(pin);
+    if (!validPin) return false;
+
+    _accessToken = await _storage.getAccessToken();
+    _currentUser = _storage.getUser();
+    if (_currentUser == null || _accessToken == null) return false;
+
+    await _storage.setAuthLocked(false);
+    _updateStatus(AuthStatus.authenticated);
+    return true;
   }
 
   Future<void> refreshTokens() async {
@@ -305,7 +360,7 @@ class AuthService {
     await _storage.setAuthLocked(true);
     _accessToken = null;
     _currentUser = _storage.getUser();
-    _updateStatus(AuthStatus.unauthenticated);
+    _updateStatus(AuthStatus.locked);
   }
 
   // Hierarchical role checks (higher inherits lower)

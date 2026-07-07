@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -20,6 +22,7 @@ class StorageService {
   static const String keyTenantSlug = 'tenant_slug';
   static const String keyLastSyncAt = 'last_sync_at';
   static const String keyPinHash = 'pin_hash';
+  static const String keyPinSalt = 'pin_salt';
   static const String keyFavoriteProducts = 'favorite_products';
   static const String keyRememberLogin = 'remember_login';
   static const String keyRememberedEmail = 'remembered_email';
@@ -74,21 +77,60 @@ class StorageService {
     return await _secureStorage!.read(key: keyRefreshToken);
   }
 
-  Future<void> savePinHash(String hash) async {
+  /// Sets (or replaces) the on-device quick-unlock PIN. Stores a salted
+  /// SHA-256 hash, never the raw digits — a PIN only has 10,000 possible
+  /// values, so a per-device random salt is what stops the stored value
+  /// from being trivially reversed via a precomputed table.
+  Future<void> setLocalPin(String pin) async {
     _checkInitialized();
+    final salt = _generateSalt();
+    final hash = _hashPin(pin, salt);
+    await _secureStorage!.write(key: keyPinSalt, value: salt);
     await _secureStorage!.write(key: keyPinHash, value: hash);
   }
 
-  Future<String?> getPinHash() async {
+  Future<bool> hasLocalPinSet() async {
     _checkInitialized();
-    return await _secureStorage!.read(key: keyPinHash);
+    final hash = await _secureStorage!.read(key: keyPinHash);
+    return hash != null && hash.isNotEmpty;
   }
 
+  /// Verifies a PIN entirely on-device — no network call, matching how
+  /// biometric unlock already works — by re-hashing the input with the
+  /// stored salt and comparing against the stored hash.
+  Future<bool> verifyLocalPin(String pin) async {
+    _checkInitialized();
+    final salt = await _secureStorage!.read(key: keyPinSalt);
+    final storedHash = await _secureStorage!.read(key: keyPinHash);
+    if (salt == null || storedHash == null) return false;
+    return _hashPin(pin, salt) == storedHash;
+  }
+
+  Future<void> clearLocalPin() async {
+    _checkInitialized();
+    await _secureStorage!.delete(key: keyPinHash);
+    await _secureStorage!.delete(key: keyPinSalt);
+  }
+
+  String _generateSalt() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    return base64Url.encode(bytes);
+  }
+
+  String _hashPin(String pin, String salt) {
+    final digest = sha256.convert(utf8.encode('$salt:$pin'));
+    return digest.toString();
+  }
+
+  // Deliberately does not delete keyPinHash/keyPinSalt — this is called
+  // from clearSession() (logout keeps the device's local PIN so the same
+  // person doesn't have to reconfigure quick-unlock next time they log
+  // in). clearAll() removes the PIN explicitly via clearLocalPin().
   Future<void> clearSecureStorage() async {
     _checkInitialized();
     await _secureStorage!.delete(key: keyAccessToken);
     await _secureStorage!.delete(key: keyRefreshToken);
-    await _secureStorage!.delete(key: keyPinHash);
   }
 
   // Shared Preferences Methods (for non-sensitive data)
@@ -317,6 +359,7 @@ class StorageService {
   // Clear all data
   Future<void> clearAll() async {
     await clearSecureStorage();
+    await clearLocalPin();
     _checkInitialized();
     await _prefs!.clear();
   }

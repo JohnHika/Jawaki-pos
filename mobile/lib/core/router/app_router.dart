@@ -49,6 +49,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   if (authService.isAuthenticated) {
     // Returning user with a valid token → go straight to the POS screen.
     initialLocation = '/';
+  } else if (authService.isLocked) {
+    // Session exists but is soft-locked (backgrounded past the auto-lock
+    // window, or "remember me" kept it across a relaunch) — send them to
+    // the fast PIN/biometric unlock instead of making them retype a
+    // password they already gave us this session.
+    initialLocation = '/pin-login';
   } else if (storageService.getTenantSlug()?.isNotEmpty == true) {
     // Company is already set up; user just needs to log in.
     initialLocation = '/login';
@@ -63,6 +69,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: GoRouterRefreshStream(authService.authStatusStream),
     redirect: (context, state) {
       final isLoggedIn = authService.isAuthenticated;
+      final isLocked = authService.isLocked;
       final path = state.matchedLocation;
 
       // Setup routes (company-choice, company-setup) are always accessible
@@ -72,7 +79,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Login routes
       final isLoginRoute = path == '/login' || path == '/pin-login';
 
-      // If user is not logged in
+      // A locked session should only ever see the fast-unlock screen —
+      // not the full login form, and not setup/onboarding, and not the
+      // main app until it unlocks.
+      if (isLocked) {
+        return path == '/pin-login' ? null : '/pin-login';
+      }
+
+      // If user is not logged in (and not merely locked)
       if (!isLoggedIn) {
         // Allow setup and login routes
         if (isSetupRoute || isLoginRoute) {

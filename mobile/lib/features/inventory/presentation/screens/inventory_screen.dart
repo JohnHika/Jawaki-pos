@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
@@ -793,10 +794,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final authService = getIt<AuthService>();
     final fromBranchId = authService.branchId ?? 'branch-main';
 
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: getIt<AppDatabase>().getBranches(),
+    return FutureBuilder<List<dynamic>>(
+      future: getIt<ApiClient>().getBranches(),
       builder: (context, snapshot) {
-        final branches = snapshot.data ?? const <Map<String, dynamic>>[];
+        final branches = (snapshot.data ?? const [])
+            .cast<Map<String, dynamic>>();
         final destinationBranches = branches
             .where((b) => b['id'] != fromBranchId)
             .toList();

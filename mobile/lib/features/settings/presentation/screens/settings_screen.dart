@@ -1,11 +1,12 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:uuid/uuid.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/theme_provider.dart';
@@ -43,31 +44,53 @@ class SettingsScreen extends ConsumerWidget {
     final perms = ref.watch(permissionsProvider);
     final syncService = getIt<SyncService>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
+    final hasPreferencesSection =
+        perms.canConfigureSync || perms.canConfigurePrinter ||
+            perms.canConfigureNotifications || perms.canSeeAppearance;
 
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
-          // User Profile Card
-          GlassCard(
-            padding: const EdgeInsets.all(16),
-            borderRadius: 12,
-            blur: 10,
-            tint: Colors.transparent,
-            borderColor:
-                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          // ── Profile header ──
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: DesignColors.accent.withValues(alpha: isDark ? 0.1 : 0.07),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: DesignColors.accent.withValues(alpha: 0.18)),
+            ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: DesignColors.accent.withValues(alpha: 0.15),
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: DesignColors.accent,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: DesignColors.accent.withValues(alpha: 0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
                   child: Text(
                     _initialFor(user?['name'] ?? user?['email']),
                     style: const TextStyle(
-                      color: DesignColors.accent,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -78,32 +101,38 @@ class SettingsScreen extends ConsumerWidget {
                     children: [
                       Text(
                         user?['name'] ?? user?['email'] ?? 'User',
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: titleColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         user?['email'] ?? '',
-                        style: TextStyle(
-                          color: isDark
-                              ? DesignColors.darkTextSecondary
-                              : DesignColors.textSecondary,
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: secondaryColor, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                            horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
-                          color: DesignColors.accent.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
+                          color: isDark ? DesignColors.darkBg : Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                              color: DesignColors.accent.withValues(alpha: 0.3)),
                         ),
                         child: Text(
                           (user?['role'] ?? 'CASHIER').toString().toUpperCase(),
                           style: const TextStyle(
                             color: DesignColors.accent,
                             fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
                           ),
                         ),
                       ),
@@ -113,171 +142,166 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
-          // Sync Status (manager+)
-          if (perms.canConfigureSync)
-            FutureBuilder(
-              future: syncService.getStats(),
+          // ── Preferences ──
+          if (hasPreferencesSection) ...[
+            const SettingsGroupLabel('Preferences'),
+            GroupedCard(children: [
+              if (perms.canConfigureSync)
+                FutureBuilder(
+                  future: syncService.getStats(),
+                  builder: (context, snapshot) {
+                    final stats = snapshot.data;
+                    return SettingsRow(
+                      icon: Icons.sync_rounded,
+                      title: 'Sync Status',
+                      subtitle: stats?.hasPendingSync == true
+                          ? '${stats?.pendingEvents ?? 0} pending events'
+                          : 'All synced',
+                      trailing: stats?.isOnline == true
+                          ? const _StatusBadge(
+                              text: 'Online', color: DesignColors.success)
+                          : const _StatusBadge(
+                              text: 'Offline', color: DesignColors.warning),
+                      onTap: () => _showSyncSettings(context, syncService),
+                    );
+                  },
+                ),
+              if (perms.canConfigurePrinter)
+                SettingsRow(
+                  icon: Icons.print_rounded,
+                  title: 'Printer Settings',
+                  subtitle: 'Configure receipt printer',
+                  onTap: () => _showPrinterSettings(context),
+                ),
+              if (perms.canConfigureNotifications)
+                SettingsRow(
+                  icon: Icons.notifications_rounded,
+                  title: 'Notifications',
+                  subtitle: 'Manage notification preferences',
+                  onTap: () => _showNotificationSettings(context),
+                ),
+              if (perms.canSeeAppearance)
+                SettingsRow(
+                  icon: Icons.dark_mode_rounded,
+                  title: 'Appearance',
+                  subtitle: 'Light / Dark mode',
+                  onTap: () => _showAppearanceSettings(context),
+                ),
+            ]),
+          ],
+
+          // ── Account ──
+          const SettingsGroupLabel('Account'),
+          GroupedCard(children: [
+            SettingsRow(
+              icon: Icons.lock_rounded,
+              title: 'Change PIN',
+              subtitle: 'Update your quick login PIN',
+              onTap: () => _showChangePinDialog(context),
+            ),
+            SettingsRow(
+              icon: Icons.security_rounded,
+              title: 'Security',
+              subtitle: 'Biometrics & auto-lock',
+              onTap: () => _showSecuritySettings(context),
+            ),
+          ]),
+
+          // ── Support ──
+          const SettingsGroupLabel('Support'),
+          GroupedCard(children: [
+            SettingsRow(
+              icon: Icons.help_rounded,
+              title: 'Help & Support',
+              subtitle: 'Get help with the app',
+              onTap: () => _showHelpSupport(context),
+            ),
+            SettingsRow(
+              icon: Icons.system_update_rounded,
+              title: 'Check for Updates',
+              subtitle: 'See if a newer version is available',
+              onTap: () => _checkForUpdates(context),
+            ),
+            FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
               builder: (context, snapshot) {
-                final stats = snapshot.data;
-                return _SettingsTile(
-                  icon: Icons.sync,
-                  title: 'Sync Status',
-                  subtitle: stats?.hasPendingSync == true
-                      ? '${stats?.pendingEvents ?? 0} pending events'
-                      : 'All synced',
-                  trailing: stats?.isOnline == true
-                      ? const _StatusBadge(
-                          text: 'Online', color: DesignColors.success)
-                      : const _StatusBadge(
-                          text: 'Offline', color: DesignColors.warning),
-                  onTap: () => _showSyncSettings(context, syncService),
+                final version = snapshot.data?.version ?? '1.0.3';
+                return SettingsRow(
+                  icon: Icons.info_rounded,
+                  title: 'About',
+                  subtitle: 'Version $version',
+                  onTap: () => _showAboutInfo(context),
                 );
               },
             ),
+          ]),
 
-          if (perms.canConfigurePrinter || perms.canSeeAppearance) ...[
-            const SizedBox(height: 16),
-            const _SettingsSectionLabel('Preferences'),
-            const SizedBox(height: 8),
-          ],
-
-          // Printer — manager+
-          if (perms.canConfigurePrinter)
-            _SettingsTile(
-              icon: Icons.print,
-              title: 'Printer Settings',
-              subtitle: 'Configure receipt printer',
-              onTap: () => _showPrinterSettings(context),
-            ),
-          // Notifications — manager+
-          if (perms.canConfigureNotifications)
-            _SettingsTile(
-              icon: Icons.notifications,
-              title: 'Notifications',
-              subtitle: 'Manage notification preferences',
-              onTap: () => _showNotificationSettings(context),
-            ),
-          // Appearance — everyone
-          if (perms.canSeeAppearance)
-            _SettingsTile(
-              icon: Icons.dark_mode,
-              title: 'Appearance',
-              subtitle: 'Light / Dark mode',
-              onTap: () => _showAppearanceSettings(context),
-            ),
-
-          const SizedBox(height: 16),
-          const _SettingsSectionLabel('Account'),
-          const SizedBox(height: 8),
-
-          _SettingsTile(
-            icon: Icons.lock,
-            title: 'Change PIN',
-            subtitle: 'Update your quick login PIN',
-            onTap: () => _showChangePinDialog(context),
-          ),
-          _SettingsTile(
-            icon: Icons.security,
-            title: 'Security',
-            subtitle: 'Biometrics & auto-lock',
-            onTap: () => _showSecuritySettings(context),
-          ),
-
-          const SizedBox(height: 16),
-          const _SettingsSectionLabel('Support'),
-          const SizedBox(height: 8),
-
-          _SettingsTile(
-            icon: Icons.help,
-            title: 'Help & Support',
-            subtitle: 'Get help with the app',
-            onTap: () => _showHelpSupport(context),
-          ),
-          _SettingsTile(
-            icon: Icons.system_update,
-            title: 'Check for Updates',
-            subtitle: 'See if a newer version is available',
-            onTap: () => _checkForUpdates(context),
-          ),
-          FutureBuilder<PackageInfo>(
-            future: PackageInfo.fromPlatform(),
-            builder: (context, snapshot) {
-              final version = snapshot.data?.version ?? '1.0.3';
-              return _SettingsTile(
-                icon: Icons.info,
-                title: 'About',
-                subtitle: 'Version $version',
-                onTap: () => _showAboutInfo(context),
-              );
-            },
-          ),
-
-          // Admin-only section
+          // ── Administration (admin-only) ──
           if (perms.canManageUsers) ...[
-            const SizedBox(height: 16),
-            const _SettingsSectionLabel('Administration'),
-            const SizedBox(height: 8),
-            _SettingsTile(
-              icon: Icons.people,
-              title: 'User Management',
-              subtitle: 'Manage staff & roles',
-              onTap: () => _showUserManagement(context),
-            ),
-            _SettingsTile(
-              icon: Icons.store,
-              title: 'Branch Management',
-              subtitle: 'Manage store locations',
-              onTap: () => _showBranchManagement(context),
-            ),
-            _SettingsTile(
-              icon: Icons.percent_rounded,
-              title: 'Tax Rate',
-              subtitle: getIt<AuthService>().taxRatePercent > 0
-                  ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% applied to every sale'
-                  : 'No tax applied to sales',
-              onTap: () => _showTaxRateDialog(context),
-            ),
-            _SettingsTile(
-              icon: Icons.download,
-              title: 'Data Export',
-              subtitle: 'Export sales & reports',
-              onTap: () => _showDataExport(context),
-            ),
-            _SettingsTile(
-              icon: Icons.history,
-              title: 'Audit Trail',
-              subtitle: 'View system activity log',
-              onTap: () => _showAuditTrail(context),
-            ),
+            const SettingsGroupLabel('Administration'),
+            GroupedCard(children: [
+              SettingsRow(
+                icon: Icons.people_rounded,
+                title: 'User Management',
+                subtitle: 'Manage staff & roles',
+                onTap: () => _showUserManagement(context),
+              ),
+              SettingsRow(
+                icon: Icons.store_rounded,
+                title: 'Branch Management',
+                subtitle: 'Manage store locations',
+                onTap: () => _showBranchManagement(context),
+              ),
+              SettingsRow(
+                icon: Icons.percent_rounded,
+                title: 'Tax Rate',
+                subtitle: getIt<AuthService>().taxRatePercent > 0
+                    ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% applied to every sale'
+                    : 'No tax applied to sales',
+                onTap: () => _showTaxRateDialog(context),
+              ),
+              SettingsRow(
+                icon: Icons.download_rounded,
+                title: 'Data Export',
+                subtitle: 'Export sales & reports',
+                onTap: () => _showDataExport(context),
+              ),
+              SettingsRow(
+                icon: Icons.history_rounded,
+                title: 'Audit Trail',
+                subtitle: 'View system activity log',
+                onTap: () => _showAuditTrail(context),
+              ),
+            ]),
           ],
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
 
-          // Logout Button
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: () => _showLogoutDialog(context, ref),
-              icon: const Icon(Icons.logout, color: DesignColors.error),
-              label: const Text(
-                'Logout',
-                style: TextStyle(
-                  color: DesignColors.error,
-                  fontWeight: FontWeight.w600,
-                ),
+          // ── Logout ──
+          GroupedCard(
+            margin: EdgeInsets.zero,
+            children: [
+              SettingsRow(
+                icon: Icons.logout_rounded,
+                title: 'Logout',
+                isDestructive: true,
+                onTap: () => _showLogoutDialog(context, ref),
               ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: DesignColors.error),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: Text(
+              'Axon POS',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: border,
               ),
             ),
           ),
-          const SizedBox(height: 16),
         ],
       ),
     );
@@ -309,36 +333,21 @@ class SettingsScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        return Padding(
-        padding: const EdgeInsets.all(20),
+      builder: (context) => SettingsSheetScaffold(
+        title: 'Sync Settings',
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: isDark
-                            ? DesignColors.darkBorder
-                            : DesignColors.surfaceBorder,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Sync Settings',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 20),
             FutureBuilder(
               future: syncService.getStats(),
               builder: (context, snapshot) {
                 final stats = snapshot.data;
                 final storage = getIt<StorageService>();
                 final lastSync = storage.getLastSyncAt();
-                return Column(
+                return GroupedCard(
+                  margin: EdgeInsets.zero,
                   children: [
                     _InfoRow('Status',
                         stats?.isOnline == true ? 'Online' : 'Offline'),
@@ -352,25 +361,19 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
+              child: SettingsPrimaryButton(
+                label: 'Sync Now',
                 onPressed: () {
                   syncService.syncPendingEvents();
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Syncing...'),
-                        duration: Duration(seconds: 2)),
-                  );
+                  showGlassSnackBar(context, 'Syncing...',
+                      icon: Icons.sync_rounded, color: DesignColors.info);
                 },
-                icon: const Icon(Icons.sync),
-                label: const Text('Sync Now'),
               ),
             ),
-            const SizedBox(height: 8),
           ],
         ),
-        );
-      },
+      ),
     );
   }
 
@@ -387,7 +390,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => _PrinterSettingsSheet(
         autoPrint: autoPrint,
@@ -410,7 +413,7 @@ class SettingsScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => _NotificationSettingsSheet(
         notifySales: notifySales,
@@ -425,31 +428,23 @@ class SettingsScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => Consumer(builder: (ctx, ref, _) {
         final currentMode = ref.watch(themeModeProvider);
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return SettingsSheetScaffold(
+          title: 'Appearance',
+          child: GroupedCard(
+            margin: EdgeInsets.zero,
             children: [
-              Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: Theme.of(ctx).dividerColor,
-                          borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Text('Appearance', style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.light_mode),
-                title: const Text('Light Mode'),
+              SettingsRow(
+                icon: Icons.light_mode_rounded,
+                iconColor: currentMode == ThemeMode.light
+                    ? DesignColors.accent
+                    : null,
+                title: 'Light Mode',
                 trailing: currentMode == ThemeMode.light
-                    ? const Icon(Icons.check_circle,
+                    ? const Icon(Icons.check_circle_rounded,
                         color: DesignColors.accent)
                     : null,
                 onTap: () {
@@ -459,11 +454,14 @@ class SettingsScreen extends ConsumerWidget {
                   Navigator.pop(ctx);
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.dark_mode),
-                title: const Text('Dark Mode'),
+              SettingsRow(
+                icon: Icons.dark_mode_rounded,
+                iconColor: currentMode == ThemeMode.dark
+                    ? DesignColors.accent
+                    : null,
+                title: 'Dark Mode',
                 trailing: currentMode == ThemeMode.dark
-                    ? const Icon(Icons.check_circle,
+                    ? const Icon(Icons.check_circle_rounded,
                         color: DesignColors.accent)
                     : null,
                 onTap: () {
@@ -473,12 +471,15 @@ class SettingsScreen extends ConsumerWidget {
                   Navigator.pop(ctx);
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.phone_android),
-                title: const Text('System Default'),
-                subtitle: const Text('Follow device theme'),
+              SettingsRow(
+                icon: Icons.phone_android_rounded,
+                iconColor: currentMode == ThemeMode.system
+                    ? DesignColors.accent
+                    : null,
+                title: 'System Default',
+                subtitle: 'Follow device theme',
                 trailing: currentMode == ThemeMode.system
-                    ? const Icon(Icons.check_circle,
+                    ? const Icon(Icons.check_circle_rounded,
                         color: DesignColors.accent)
                     : null,
                 onTap: () {
@@ -488,7 +489,6 @@ class SettingsScreen extends ConsumerWidget {
                   Navigator.pop(ctx);
                 },
               ),
-              const SizedBox(height: 8),
             ],
           ),
         );
@@ -497,89 +497,138 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== CHANGE PIN =====
-  void _showChangePinDialog(BuildContext context) {
+  void _showChangePinDialog(BuildContext context) async {
+    final storage = getIt<StorageService>();
+    final hasExistingPin = await storage.hasLocalPinSet();
+    if (!context.mounted) return;
+
     final currentPinController = TextEditingController();
     final newPinController = TextEditingController();
     final confirmPinController = TextEditingController();
+    String? error;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Change PIN'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentPinController,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Current PIN',
-                hintText: '****',
-                counterText: '',
-              ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return SettingsDialog(
+            title: hasExistingPin ? 'Change PIN' : 'Set Quick-Unlock PIN',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hasExistingPin) ...[
+                  TextField(
+                    controller: currentPinController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Current PIN',
+                      hintText: '****',
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'This PIN unlocks the app quickly without needing a '
+                      'network connection.',
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                  ),
+                TextField(
+                  controller: newPinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'New PIN',
+                    hintText: '****',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmPinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm New PIN',
+                    hintText: '****',
+                    counterText: '',
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(error!,
+                      style: const TextStyle(
+                          color: DesignColors.error, fontSize: 12)),
+                ],
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: newPinController,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'New PIN',
-                hintText: '****',
-                counterText: '',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: confirmPinController,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Confirm New PIN',
-                hintText: '****',
-                counterText: '',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final currentPin = currentPinController.text;
-              final newPin = newPinController.text;
-              final confirmPin = confirmPinController.text;
+              SettingsPrimaryButton(
+                label: 'Change PIN',
+                onPressed: () async {
+                  final newPin = newPinController.text;
+                  final confirmPin = confirmPinController.text;
 
-              if (currentPin.length != 4) {
-                _showSnack(context, 'Enter your current 4-digit PIN',
-                    isError: true);
-                return;
-              }
-              if (newPin.length != 4) {
-                _showSnack(context, 'New PIN must be 4 digits', isError: true);
-                return;
-              }
-              if (newPin != confirmPin) {
-                _showSnack(context, 'PINs do not match', isError: true);
-                return;
-              }
+                  if (hasExistingPin) {
+                    final currentPin = currentPinController.text;
+                    if (currentPin.length != 4) {
+                      setDialogState(
+                          () => error = 'Enter your current 4-digit PIN');
+                      return;
+                    }
+                    final isCorrect = await storage.verifyLocalPin(currentPin);
+                    if (!isCorrect) {
+                      setDialogState(() => error = 'Current PIN is incorrect');
+                      return;
+                    }
+                  }
+                  if (newPin.length != 4) {
+                    setDialogState(() => error = 'New PIN must be 4 digits');
+                    return;
+                  }
+                  if (newPin != confirmPin) {
+                    setDialogState(() => error = 'PINs do not match');
+                    return;
+                  }
 
-              final storage = getIt<StorageService>();
-              await storage.savePinHash(newPin);
-              if (!context.mounted || !dialogContext.mounted) return;
-              Navigator.pop(dialogContext);
-              _showSnack(context, 'PIN changed successfully');
-            },
-            child: const Text('Change PIN'),
-          ),
-        ],
+                  await storage.setLocalPin(newPin);
+
+                  // Also push the PIN to the server so it works via the
+                  // network fallback on a device that has never stored a
+                  // local PIN hash (e.g. a fresh install, or a different
+                  // device for the same account) — without this, only the
+                  // device where the PIN was set could ever unlock with it.
+                  var serverSyncFailed = false;
+                  try {
+                    await getIt<ApiClient>().setPin(newPin);
+                  } catch (_) {
+                    serverSyncFailed = true;
+                  }
+
+                  if (!context.mounted || !dialogContext.mounted) return;
+                  Navigator.pop(dialogContext);
+                  _showSnack(
+                    context,
+                    serverSyncFailed
+                        ? 'PIN changed on this device. Reconnect to sync it to your account.'
+                        : 'PIN changed successfully',
+                  );
+                },
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -600,7 +649,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
@@ -623,64 +672,56 @@ class SettingsScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        return Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: isDark
-                            ? DesignColors.darkBorder
-                            : DesignColors.surfaceBorder,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Help & Support',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 20),
-            const ListTile(
-              leading:
-                  Icon(Icons.email_outlined, color: DesignColors.accent),
-              title: Text('Email Support'),
-              subtitle: Text('johnkimani576@gmail.com'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.phone_outlined,
-                  color: DesignColors.accent),
-              title: const Text('Phone Support'),
-              subtitle: const Text('0742126582'),
-              onTap: () {},
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.quiz_outlined),
-              title: const Text('FAQ'),
-              subtitle: const Text('Frequently asked questions'),
-              onTap: () {
-                Navigator.pop(context);
-                _showFAQ(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.description_outlined),
-              title: const Text('User Guide'),
-              subtitle: const Text('How to use the POS system'),
-              onTap: () {
-                Navigator.pop(context);
-                _showUserGuide(context);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
+        return SettingsSheetScaffold(
+          title: 'Help & Support',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SettingsGroupLabel('Contact'),
+              GroupedCard(
+                children: [
+                  const SettingsRow(
+                    icon: Icons.email_outlined,
+                    title: 'Email Support',
+                    subtitle: 'johnkimani576@gmail.com',
+                  ),
+                  SettingsRow(
+                    icon: Icons.phone_outlined,
+                    title: 'Phone Support',
+                    subtitle: '0742126582',
+                    onTap: () {},
+                  ),
+                ],
+              ),
+              const SettingsGroupLabel('Resources'),
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: Icons.quiz_outlined,
+                    title: 'FAQ',
+                    subtitle: 'Frequently asked questions',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showFAQ(context);
+                    },
+                  ),
+                  SettingsRow(
+                    icon: Icons.description_outlined,
+                    title: 'User Guide',
+                    subtitle: 'How to use the POS system',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showUserGuide(context);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
         );
       },
     );
@@ -689,8 +730,8 @@ class SettingsScreen extends ConsumerWidget {
   void _showFAQ(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('FAQ'),
+      builder: (context) => SettingsDialog(
+        title: 'FAQ',
         content: const SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,8 +780,8 @@ class SettingsScreen extends ConsumerWidget {
   void _showUserGuide(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('User Guide'),
+      builder: (context) => SettingsDialog(
+        title: 'User Guide',
         content: const SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,9 +830,14 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
+        final titleColor =
+            isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
         final secondaryColor = isDark
             ? DesignColors.darkTextSecondary
             : DesignColors.textSecondary;
+        final border =
+            isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+        final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
         return AboutDialog(
         applicationName: 'Point of Sale',
         applicationVersion: _formatReleaseName(info.version),
@@ -807,18 +853,38 @@ class SettingsScreen extends ConsumerWidget {
           child: const Icon(Icons.storefront, color: Colors.white, size: 28),
         ),
         children: [
-          const Text(
-              'A complete point-of-sale system for managing sales, inventory, and business operations.'),
-          const SizedBox(height: 12),
-          Text('Built by Arche Axon Intelligence',
-              style: TextStyle(color: secondaryColor, fontSize: 12)),
-          const SizedBox(height: 8),
-          SelectableText(
-            'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
-            style: TextStyle(color: secondaryColor, fontSize: 12),
+          Text(
+            'A complete point-of-sale system for managing sales, inventory, and business operations.',
+            style: TextStyle(color: titleColor),
           ),
-          Text('© 2026 POS Platform',
-              style: TextStyle(color: secondaryColor, fontSize: 12)),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Built by Arche Axon Intelligence',
+                    style: TextStyle(
+                        color: secondaryColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                SelectableText(
+                  'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
+                  style: TextStyle(color: secondaryColor, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Text('© 2026 POS Platform',
+                    style: TextStyle(color: secondaryColor, fontSize: 12)),
+              ],
+            ),
+          ),
         ],
         );
       },
@@ -856,7 +922,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
@@ -864,8 +930,10 @@ class SettingsScreen extends ConsumerWidget {
         maxChildSize: 0.9,
         builder: (context, scrollController) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
+          final border =
+              isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
           return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -874,27 +942,36 @@ class SettingsScreen extends ConsumerWidget {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: isDark
-                              ? DesignColors.darkBorder
-                              : DesignColors.surfaceBorder,
+                          color: border,
                           borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('User Management',
-                      style: Theme.of(context).textTheme.titleLarge),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800)),
                   FilledButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
                       _showAddUserDialog(context);
                     },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DesignColors.accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
                     icon: const Icon(Icons.person_add, size: 18),
                     label: const Text('Add'),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               Expanded(
                 child: ListView(
                   controller: scrollController,
@@ -916,21 +993,15 @@ class SettingsScreen extends ConsumerWidget {
                     _RoleAccessSummary(),
                     const SizedBox(height: 12),
                     // Placeholder for additional users
-                    Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isDark
-                              ? DesignColors.darkSurfaceElevated
-                              : DesignColors.surfaceSubtle,
-                          child: Icon(Icons.person_add,
-                              color: isDark
-                                  ? DesignColors.darkTextSecondary
-                                  : DesignColors.textSecondary),
+                    const GroupedCard(
+                      margin: EdgeInsets.zero,
+                      children: [
+                        SettingsRow(
+                          icon: Icons.person_add_rounded,
+                          title: 'No other users yet',
+                          subtitle: 'Tap + Add to create staff accounts',
                         ),
-                        title: const Text('No other users yet'),
-                        subtitle:
-                            const Text('Tap + Add to create staff accounts'),
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -952,8 +1023,8 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add New User'),
+        builder: (context, setDialogState) => SettingsDialog(
+          title: 'Add New User',
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1012,7 +1083,8 @@ class SettingsScreen extends ConsumerWidget {
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
-            FilledButton(
+            SettingsPrimaryButton(
+              label: 'Add User',
               onPressed: () {
                 if (nameController.text.isEmpty ||
                     pinController.text.length != 4) {
@@ -1024,7 +1096,6 @@ class SettingsScreen extends ConsumerWidget {
                 _showSnack(context,
                     '${nameController.text} added as ${AppRole.fromString(selectedRole).label}');
               },
-              child: const Text('Add User'),
             ),
           ],
         ),
@@ -1049,8 +1120,8 @@ class SettingsScreen extends ConsumerWidget {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
-          return AlertDialog(
-          title: const Text('Tax Rate'),
+          return SettingsDialog(
+          title: 'Tax Rate',
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1076,17 +1147,23 @@ class SettingsScreen extends ConsumerWidget {
                   border: const OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Show tax on receipt'),
-                subtitle: const Text(
-                  'Print the tax amount as its own line on printed receipts',
-                  style: TextStyle(fontSize: 12),
-                ),
-                value: showOnReceipt,
-                onChanged: (value) =>
-                    setDialogState(() => showOnReceipt = value),
+              const SizedBox(height: 14),
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: Icons.receipt_rounded,
+                    title: 'Show tax on receipt',
+                    subtitle:
+                        'Print the tax amount as its own line on printed receipts',
+                    trailing: Switch(
+                      value: showOnReceipt,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (value) =>
+                          setDialogState(() => showOnReceipt = value),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1097,60 +1174,53 @@ class SettingsScreen extends ConsumerWidget {
                   : () => Navigator.of(dialogContext).pop(),
               child: const Text('Cancel'),
             ),
-            FilledButton(
-              onPressed: isSaving
-                  ? null
-                  : () async {
-                      final text = controller.text.trim();
-                      final rate = text.isEmpty ? 0.0 : double.tryParse(text);
-                      if (rate == null || rate < 0 || rate > 100) {
-                        setDialogState(
-                            () => error = 'Enter a number between 0 and 100');
-                        return;
-                      }
-                      setDialogState(() {
-                        isSaving = true;
-                        error = null;
-                      });
-                      try {
-                        final apiClient = getIt<ApiClient>();
-                        final authService = getIt<AuthService>();
-                        final updated = await apiClient.updateCurrentTenant(
-                          taxRatePercent: rate,
-                          showTaxOnReceipt: showOnReceipt,
-                        );
-                        await authService.updateTenantSession({
-                          'id': updated['id'],
-                          'name': updated['name'],
-                          'settings': updated['settings'],
-                        });
-                        if (dialogContext.mounted) {
-                          Navigator.of(dialogContext).pop();
-                        }
-                        if (context.mounted) {
-                          showGlassSnackBar(
-                            context,
-                            rate > 0
-                                ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
-                                : 'Tax removed — sales will not be taxed',
-                            icon: Icons.check_circle_rounded,
-                            color: DesignColors.success,
-                          );
-                        }
-                      } catch (e) {
-                        setDialogState(() {
-                          isSaving = false;
-                          error = 'Could not save. Check your connection.';
-                        });
-                      }
-                    },
-              child: isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save'),
+            SettingsPrimaryButton(
+              label: 'Save',
+              isLoading: isSaving,
+              onPressed: () async {
+                final text = controller.text.trim();
+                final rate = text.isEmpty ? 0.0 : double.tryParse(text);
+                if (rate == null || rate < 0 || rate > 100) {
+                  setDialogState(
+                      () => error = 'Enter a number between 0 and 100');
+                  return;
+                }
+                setDialogState(() {
+                  isSaving = true;
+                  error = null;
+                });
+                try {
+                  final apiClient = getIt<ApiClient>();
+                  final authService = getIt<AuthService>();
+                  final updated = await apiClient.updateCurrentTenant(
+                    taxRatePercent: rate,
+                    showTaxOnReceipt: showOnReceipt,
+                  );
+                  await authService.updateTenantSession({
+                    'id': updated['id'],
+                    'name': updated['name'],
+                    'settings': updated['settings'],
+                  });
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                  if (context.mounted) {
+                    showGlassSnackBar(
+                      context,
+                      rate > 0
+                          ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
+                          : 'Tax removed — sales will not be taxed',
+                      icon: Icons.check_circle_rounded,
+                      color: DesignColors.success,
+                    );
+                  }
+                } catch (e) {
+                  setDialogState(() {
+                    isSaving = false;
+                    error = 'Could not save. Check your connection.';
+                  });
+                }
+              },
             ),
           ],
           );
@@ -1164,7 +1234,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
@@ -1181,56 +1251,40 @@ class SettingsScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (context) => SettingsSheetScaffold(
+        title: 'Data Export',
+        child: GroupedCard(
+          margin: EdgeInsets.zero,
           children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: Theme.of(context).dividerColor,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Data Export', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 20),
-            ListTile(
-              leading:
-                  const Icon(Icons.receipt_long, color: DesignColors.accent),
-              title: const Text('Export Sales Data'),
-              subtitle: const Text('CSV format'),
-              trailing: const Icon(Icons.chevron_right),
+            SettingsRow(
+              icon: Icons.receipt_long_rounded,
+              title: 'Export Sales Data',
+              subtitle: 'CSV format',
               onTap: () async {
                 Navigator.pop(context);
                 await _exportSalesData(context);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.inventory, color: DesignColors.accent),
-              title: const Text('Export Inventory'),
-              subtitle: const Text('CSV format'),
-              trailing: const Icon(Icons.chevron_right),
+            SettingsRow(
+              icon: Icons.inventory_rounded,
+              title: 'Export Inventory',
+              subtitle: 'CSV format',
               onTap: () async {
                 Navigator.pop(context);
                 await _exportInventory(context);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.category, color: DesignColors.accent),
-              title: const Text('Export Products'),
-              subtitle: const Text('CSV format'),
-              trailing: const Icon(Icons.chevron_right),
+            SettingsRow(
+              icon: Icons.category_rounded,
+              title: 'Export Products',
+              subtitle: 'CSV format',
               onTap: () async {
                 Navigator.pop(context);
                 await _exportProducts(context);
               },
             ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1259,10 +1313,8 @@ class SettingsScreen extends ConsumerWidget {
       }
 
       final path = await _saveExportFile('sales_export', buffer.toString());
-      if (context.mounted) {
-        _showSnack(
-            context, 'Sales exported (${sales.length} records) to $path');
-      }
+      if (!context.mounted) return;
+      await _shareExportFile(context, path, '${sales.length} sales records');
     } catch (e) {
       if (context.mounted) _showSnack(context, 'Export failed: $e');
     }
@@ -1285,10 +1337,8 @@ class SettingsScreen extends ConsumerWidget {
       }
 
       final path = await _saveExportFile('inventory_export', buffer.toString());
-      if (context.mounted) {
-        _showSnack(
-            context, 'Inventory exported (${data.length} items) to $path');
-      }
+      if (!context.mounted) return;
+      await _shareExportFile(context, path, '${data.length} inventory items');
     } catch (e) {
       if (context.mounted) _showSnack(context, 'Export failed: $e');
     }
@@ -1310,12 +1360,30 @@ class SettingsScreen extends ConsumerWidget {
       }
 
       final path = await _saveExportFile('products_export', buffer.toString());
-      if (context.mounted) {
-        _showSnack(
-            context, 'Products exported (${products.length} items) to $path');
-      }
+      if (!context.mounted) return;
+      await _shareExportFile(context, path, '${products.length} products');
     } catch (e) {
       if (context.mounted) _showSnack(context, 'Export failed: $e');
+    }
+  }
+
+  /// Opens the OS share sheet for a generated export file. Exports are
+  /// written to app-private storage (invisible to the user's Files app),
+  /// so a raw success message with a filesystem path would be a dead end —
+  /// sharing is the only way the user can actually get the file out to
+  /// email, WhatsApp, Drive, etc.
+  Future<void> _shareExportFile(
+      BuildContext context, String path, String description) async {
+    try {
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: 'Axon POS export',
+        text: 'Exported $description',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        _showSnack(context, 'Export saved but could not open share sheet: $e');
+      }
     }
   }
 
@@ -1341,7 +1409,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
@@ -1349,49 +1417,114 @@ class SettingsScreen extends ConsumerWidget {
         maxChildSize: 0.9,
         builder: (context, scrollController) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
+          final border =
+              isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+          final secondaryColor = isDark
+              ? DesignColors.darkTextSecondary
+              : DesignColors.textSecondary;
           return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: isDark
-                              ? DesignColors.darkBorder
-                              : DesignColors.surfaceBorder,
-                          borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Text('Audit Trail',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text('Recent system activity',
-                  style: TextStyle(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary)),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: const [
-                    _AuditEntry(
-                      icon: Icons.login,
-                      title: 'Session Started',
-                      subtitle: 'Logged in successfully',
-                      time: 'Just now',
-                    ),
-                  ],
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                    child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            color: border,
+                            borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 18),
+                Text('Audit Trail',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('Recent system activity',
+                    style: TextStyle(color: secondaryColor)),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: FutureBuilder<Map<String, dynamic>>(
+                    future: getIt<ApiClient>().getAuditLog(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) {
+                        return EmptyState(
+                          icon: Icons.error_outline_rounded,
+                          title: 'Couldn\'t load audit trail',
+                          subtitle: 'Check your connection and try again.',
+                          iconColor: DesignColors.error,
+                        );
+                      }
+                      final items = (snapshot.data?['items'] as List? ?? [])
+                          .cast<Map<String, dynamic>>();
+                      if (items.isEmpty) {
+                        return EmptyState(
+                          icon: Icons.history_rounded,
+                          title: 'No activity yet',
+                          subtitle: 'Actions like logins and branch changes will appear here.',
+                        );
+                      }
+                      return ListView(
+                        controller: scrollController,
+                        children: [
+                          GroupedCard(
+                            margin: EdgeInsets.zero,
+                            children: items
+                                .map((entry) => _AuditEntry(
+                                      icon: _auditIconFor(
+                                          entry['action'] as String? ?? '',
+                                          entry['entityType'] as String? ?? ''),
+                                      title: _auditTitleFor(
+                                          entry['action'] as String? ?? '',
+                                          entry['entityType'] as String? ?? ''),
+                                      subtitle: entry['userName'] as String? ??
+                                          'System',
+                                      time: entry['createdAt'] != null
+                                          ? _formatDateTime(DateTime.parse(
+                                              entry['createdAt'] as String))
+                                          : '',
+                                    ))
+                                .toList(),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           );
         },
       ),
     );
+  }
+
+  IconData _auditIconFor(String action, String entityType) {
+    if (entityType == 'session') return Icons.login_rounded;
+    if (entityType == 'pin') return Icons.lock_rounded;
+    if (entityType == 'branch') return Icons.store_rounded;
+    if (action == 'DELETE') return Icons.delete_outline_rounded;
+    return Icons.history_rounded;
+  }
+
+  String _auditTitleFor(String action, String entityType) {
+    if (entityType == 'session') return 'Logged in';
+    if (entityType == 'pin') return 'PIN changed';
+    if (entityType == 'branch') {
+      switch (action) {
+        case 'CREATE':
+          return 'Branch created';
+        case 'UPDATE':
+          return 'Branch updated';
+        case 'DELETE':
+          return 'Branch deleted';
+      }
+    }
+    return '$action $entityType'.trim();
   }
 
   String _formatDateTime(DateTime dt) {
@@ -1497,99 +1630,99 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-              child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: isDark
-                          ? DesignColors.darkBorder
-                          : DesignColors.surfaceBorder,
-                      borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Text('Printer Settings',
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _printerNameController,
-            decoration: const InputDecoration(
-              labelText: 'Printer Name / Address',
-              hintText: 'e.g. BT_Printer_58mm',
-              prefixIcon: Icon(Icons.print),
-            ),
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _paperWidth,
-            decoration: const InputDecoration(
-              labelText: 'Paper Width',
-              prefixIcon: Icon(Icons.straighten),
-            ),
-            items: const [
-              DropdownMenuItem(value: '58mm', child: Text('58mm (Small)')),
-              DropdownMenuItem(value: '80mm', child: Text('80mm (Standard)')),
-            ],
-            onChanged: (v) => setState(() => _paperWidth = v ?? '58mm'),
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            title: const Text('Auto-print receipts'),
-            subtitle: const Text('Print receipt after each sale'),
-            value: _autoPrint,
-            onChanged: (v) => setState(() => _autoPrint = v),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Searching for Bluetooth printers...')),
-                    );
-                  },
-                  child: const Text('Scan Printers'),
-                ),
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SettingsSheetScaffold(
+        title: 'Printer Settings',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _printerNameController,
+              decoration: InputDecoration(
+                labelText: 'Printer Name / Address',
+                hintText: 'e.g. BT_Printer_58mm',
+                prefixIcon: const Icon(Icons.print_rounded),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool(
-                        _SettingsKeys.autoPrintReceipt, _autoPrint);
-                    await prefs.setString(
-                        _SettingsKeys.printerName, _printerNameController.text);
-                    await prefs.setString(
-                        _SettingsKeys.paperWidth, _paperWidth);
-                    if (context.mounted) {
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: _paperWidth,
+              decoration: InputDecoration(
+                labelText: 'Paper Width',
+                prefixIcon: const Icon(Icons.straighten_rounded),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              items: const [
+                DropdownMenuItem(value: '58mm', child: Text('58mm (Small)')),
+                DropdownMenuItem(value: '80mm', child: Text('80mm (Standard)')),
+              ],
+              onChanged: (v) => setState(() => _paperWidth = v ?? '58mm'),
+            ),
+            const SizedBox(height: 14),
+            GroupedCard(
+              margin: EdgeInsets.zero,
+              children: [
+                SettingsRow(
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Auto-print receipts',
+                  subtitle: 'Print receipt after each sale',
+                  trailing: Switch(
+                    value: _autoPrint,
+                    activeThumbColor: DesignColors.accent,
+                    onChanged: (v) => setState(() => _autoPrint = v),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Printer settings saved')),
-                      );
-                    }
-                  },
-                  child: const Text('Save'),
+                      showGlassSnackBar(
+                          context, 'Searching for Bluetooth printers...',
+                          icon: Icons.bluetooth_searching_rounded,
+                          color: DesignColors.info);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Scan Printers'),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SettingsPrimaryButton(
+                    label: 'Save',
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool(
+                          _SettingsKeys.autoPrintReceipt, _autoPrint);
+                      await prefs.setString(_SettingsKeys.printerName,
+                          _printerNameController.text);
+                      await prefs.setString(
+                          _SettingsKeys.paperWidth, _paperWidth);
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        showGlassSnackBar(context, 'Printer settings saved',
+                            icon: Icons.check_circle_rounded,
+                            color: DesignColors.success);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1628,77 +1761,80 @@ class _NotificationSettingsSheetState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           20,
+          12,
           20,
-          20,
-          24 + MediaQuery.of(context).padding.bottom,
+          20 + MediaQuery.of(context).padding.bottom,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: isDark
-                            ? DesignColors.darkBorder
-                            : DesignColors.surfaceBorder,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Notifications',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 20),
-            SwitchListTile(
-              title: const Text('Sales Alerts'),
-              subtitle: const Text('Get notified for completed sales'),
-              secondary: const Icon(Icons.point_of_sale),
-              value: _notifySales,
-              onChanged: (v) => setState(() => _notifySales = v),
-            ),
-            SwitchListTile(
-              title: const Text('Inventory Alerts'),
-              subtitle: const Text('Low stock and reorder reminders'),
-              secondary: const Icon(Icons.inventory),
-              value: _notifyInventory,
-              onChanged: (v) => setState(() => _notifyInventory = v),
-            ),
-            SwitchListTile(
-              title: const Text('Sync Alerts'),
-              subtitle: const Text('Notify when sync completes or fails'),
-              secondary: const Icon(Icons.sync),
-              value: _notifySync,
-              onChanged: (v) => setState(() => _notifySync = v),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool(_SettingsKeys.notifySales, _notifySales);
-                  await prefs.setBool(
-                      _SettingsKeys.notifyInventory, _notifyInventory);
-                  await prefs.setBool(_SettingsKeys.notifySync, _notifySync);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Notification settings saved')),
-                    );
-                  }
-                },
-                child: const Text('Save'),
+        child: SettingsSheetScaffold(
+          title: 'Notifications',
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: Icons.point_of_sale_rounded,
+                    title: 'Sales Alerts',
+                    subtitle: 'Get notified for completed sales',
+                    trailing: Switch(
+                      value: _notifySales,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) => setState(() => _notifySales = v),
+                    ),
+                  ),
+                  SettingsRow(
+                    icon: Icons.inventory_rounded,
+                    title: 'Inventory Alerts',
+                    subtitle: 'Low stock and reorder reminders',
+                    trailing: Switch(
+                      value: _notifyInventory,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) => setState(() => _notifyInventory = v),
+                    ),
+                  ),
+                  SettingsRow(
+                    icon: Icons.sync_rounded,
+                    title: 'Sync Alerts',
+                    subtitle: 'Notify when sync completes or fails',
+                    trailing: Switch(
+                      value: _notifySync,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) => setState(() => _notifySync = v),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: SettingsPrimaryButton(
+                  label: 'Save',
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool(
+                        _SettingsKeys.notifySales, _notifySales);
+                    await prefs.setBool(
+                        _SettingsKeys.notifyInventory, _notifyInventory);
+                    await prefs.setBool(_SettingsKeys.notifySync, _notifySync);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Notification settings saved')),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1753,13 +1889,15 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     return SingleChildScrollView(
       controller: widget.scrollController,
       child: Padding(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
-          top: 20,
+          top: 12,
           bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Column(
@@ -1771,80 +1909,104 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: Theme.of(context).dividerColor,
+                        color: border,
                         borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Security', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 20),
-            SwitchListTile(
-              title: const Text('Biometric Login'),
-              subtitle: Text(widget.biometricAvailable
-                  ? 'Use device fingerprint, face, PIN, or pattern to unlock'
-                  : 'Not available on this device'),
-              secondary: const Icon(Icons.security),
-              value: _biometricEnabled && widget.biometricAvailable,
-              onChanged: widget.biometricAvailable
-                  ? (v) => setState(() => _biometricEnabled = v)
-                  : null,
-            ),
-            SwitchListTile(
-              title: const Text('Require unlock when app reopens'),
-              subtitle:
-                  const Text('Ask for authentication after leaving the app'),
-              secondary: const Icon(Icons.lock_clock_rounded),
-              value: _requireUnlockOnResume,
-              onChanged: (v) => setState(() => _requireUnlockOnResume = v),
+            const SizedBox(height: 18),
+            Text('Security',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 18),
+            GroupedCard(
+              children: [
+                SettingsRow(
+                  icon: Icons.security_rounded,
+                  title: 'Biometric Login',
+                  subtitle: widget.biometricAvailable
+                      ? 'Use device fingerprint, face, PIN, or pattern to unlock'
+                      : 'Not available on this device',
+                  enabled: widget.biometricAvailable,
+                  trailing: Switch(
+                    value: _biometricEnabled && widget.biometricAvailable,
+                    activeThumbColor: DesignColors.accent,
+                    onChanged: widget.biometricAvailable
+                        ? (v) => setState(() => _biometricEnabled = v)
+                        : null,
+                  ),
+                ),
+                SettingsRow(
+                  icon: Icons.lock_clock_rounded,
+                  title: 'Require unlock when app reopens',
+                  subtitle: 'Ask for authentication after leaving the app',
+                  trailing: Switch(
+                    value: _requireUnlockOnResume,
+                    activeThumbColor: DesignColors.accent,
+                    onChanged: (v) =>
+                        setState(() => _requireUnlockOnResume = v),
+                  ),
+                ),
+              ],
             ),
             if (_biometricEnabled && widget.biometricAvailable) ...[
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.only(left: 16),
-                child: Text('Biometric Methods',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        )),
-              ),
-              const SizedBox(height: 4),
-              SwitchListTile(
-                title: const Text('Fingerprint'),
-                subtitle: const Text('Use fingerprint to sign in'),
-                secondary: const Icon(Icons.fingerprint),
-                value: _fingerprintEnabled,
-                onChanged: (v) => setState(() => _fingerprintEnabled = v),
-              ),
-              SwitchListTile(
-                title: const Text('Face Recognition'),
-                subtitle: const Text('Use face recognition to sign in'),
-                secondary: const Icon(Icons.face),
-                value: _faceRecognitionEnabled,
-                onChanged: (v) => setState(() => _faceRecognitionEnabled = v),
-              ),
-            ],
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.timer_outlined),
-              title: const Text('Auto-lock after'),
-              enabled: _requireUnlockOnResume,
-              trailing: DropdownButton<int>(
-                value: _autoLockMinutes,
-                underline: const SizedBox(),
-                onChanged: _requireUnlockOnResume
-                    ? (v) => setState(() => _autoLockMinutes = v ?? -1)
-                    : null,
-                items: const [
-                  DropdownMenuItem(value: -1, child: Text('Immediately')),
-                  DropdownMenuItem(value: 1, child: Text('1 min')),
-                  DropdownMenuItem(value: 5, child: Text('5 min')),
-                  DropdownMenuItem(value: 15, child: Text('15 min')),
-                  DropdownMenuItem(value: 30, child: Text('30 min')),
-                  DropdownMenuItem(value: 0, child: Text('Never')),
+              const SettingsGroupLabel('Biometric Methods'),
+              GroupedCard(
+                children: [
+                  SettingsRow(
+                    icon: Icons.fingerprint_rounded,
+                    title: 'Fingerprint',
+                    subtitle: 'Use fingerprint to sign in',
+                    trailing: Switch(
+                      value: _fingerprintEnabled,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) =>
+                          setState(() => _fingerprintEnabled = v),
+                    ),
+                  ),
+                  SettingsRow(
+                    icon: Icons.face_rounded,
+                    title: 'Face Recognition',
+                    subtitle: 'Use face recognition to sign in',
+                    trailing: Switch(
+                      value: _faceRecognitionEnabled,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) =>
+                          setState(() => _faceRecognitionEnabled = v),
+                    ),
+                  ),
                 ],
               ),
+            ],
+            GroupedCard(
+              margin: EdgeInsets.zero,
+              children: [
+                SettingsRow(
+                  icon: Icons.timer_outlined,
+                  title: 'Auto-lock after',
+                  enabled: _requireUnlockOnResume,
+                  trailing: DropdownButton<int>(
+                    value: _autoLockMinutes,
+                    underline: const SizedBox(),
+                    onChanged: _requireUnlockOnResume
+                        ? (v) => setState(() => _autoLockMinutes = v ?? -1)
+                        : null,
+                    items: const [
+                      DropdownMenuItem(value: -1, child: Text('Immediately')),
+                      DropdownMenuItem(value: 1, child: Text('1 min')),
+                      DropdownMenuItem(value: 5, child: Text('5 min')),
+                      DropdownMenuItem(value: 15, child: Text('15 min')),
+                      DropdownMenuItem(value: 30, child: Text('30 min')),
+                      DropdownMenuItem(value: 0, child: Text('Never')),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(
+              child: SettingsPrimaryButton(
+                label: 'Save',
                 onPressed: () async {
                   final storage = getIt<StorageService>();
                   final prefs = await SharedPreferences.getInstance();
@@ -1863,10 +2025,8 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     );
                   }
                 },
-                child: const Text('Save'),
               ),
             ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1875,61 +2035,6 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
 }
 
 // ===== SHARED WIDGETS =====
-class _SettingsSectionLabel extends StatelessWidget {
-  final String label;
-
-  const _SettingsSectionLabel(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Text(
-      label,
-      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: isDark
-                ? DesignColors.darkTextSecondary
-                : DesignColors.textSecondary,
-            fontWeight: FontWeight.w700,
-          ),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Widget? trailing;
-  final VoidCallback onTap;
-
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.trailing,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListCard(
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: DesignColors.accent.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: DesignColors.accent, size: 20),
-      ),
-      title: title,
-      subtitle: subtitle,
-      trailing: trailing,
-      onTap: onTap,
-    );
-  }
-}
-
 class _StatusBadge extends StatelessWidget {
   final String text;
   final Color color;
@@ -1964,25 +2069,29 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
             flex: 2,
             child: Text(label,
-                style: TextStyle(
-                    color: isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary),
+                style: TextStyle(color: secondaryColor, fontSize: 13.5),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
           Flexible(
             flex: 3,
             child: Text(value,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: titleColor),
                 textAlign: TextAlign.end,
                 overflow: TextOverflow.ellipsis),
           ),
@@ -2007,7 +2116,14 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: border),
+      ),
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: DesignColors.accent.withValues(alpha: 0.1),
@@ -2065,7 +2181,15 @@ class _RoleAccessSummary extends StatelessWidget {
       ),
     ];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -2147,7 +2271,7 @@ class _AuditEntry extends StatelessWidget {
         ? DesignColors.darkTextSecondary
         : DesignColors.textSecondary;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2199,6 +2323,7 @@ class _BranchManagementSheet extends StatefulWidget {
 class _BranchManagementSheetState extends State<_BranchManagementSheet> {
   List<Map<String, dynamic>> _branches = [];
   bool _loading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -2207,148 +2332,237 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
   }
 
   Future<void> _loadBranches() async {
-    final db = getIt<AppDatabase>();
-    await db.createBranchesTable();
-    final branches = await db.getBranches();
     setState(() {
-      // Always include Main Branch as default
-      if (branches.isEmpty) {
-        _branches = [
-          {
-            'id': 'branch-main',
-            'name': 'Main Branch',
-            'location': 'Kamukunji, Nairobi',
-            'phone': '',
-            'isActive': true,
-            'createdAt': DateTime.now().toIso8601String(),
-          },
-        ];
-      } else {
-        _branches = branches;
-      }
-      _loading = false;
+      _loading = true;
+      _loadError = null;
     });
+    try {
+      final branches = await getIt<ApiClient>().getBranches();
+      if (!mounted) return;
+      setState(() {
+        _branches = branches.cast<Map<String, dynamic>>();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load branches. Check your connection.';
+        _loading = false;
+      });
+    }
+  }
+
+  String? _apiErrorMessage(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['message'] != null) {
+        final message = data['message'];
+        if (message is List && message.isNotEmpty) return message.first.toString();
+        return message.toString();
+      }
+    }
+    return null;
   }
 
   void _showAddBranchDialog() {
     final nameController = TextEditingController();
-    final locationController = TextEditingController();
+    final codeController = TextEditingController();
+    final addressController = TextEditingController();
     final phoneController = TextEditingController();
+    bool isSaving = false;
+    String? error;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Branch'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Branch Name',
-                hintText: 'e.g. Downtown Branch',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => SettingsDialog(
+          title: 'Add Branch',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Branch Name',
+                  hintText: 'e.g. Downtown Branch',
+                ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: codeController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Branch Code',
+                  hintText: 'e.g. DWT001',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Address (optional)',
+                  hintText: 'e.g. CBD, Nairobi',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone (optional)',
+                  hintText: 'e.g. +254 700 000 000',
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!,
+                    style: const TextStyle(
+                        color: DesignColors.error, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: locationController,
-              decoration: const InputDecoration(
-                labelText: 'Location',
-                hintText: 'e.g. CBD, Nairobi',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone (optional)',
-                hintText: 'e.g. +254 700 000 000',
-              ),
+            SettingsPrimaryButton(
+              label: 'Add',
+              isLoading: isSaving,
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Branch name is required');
+                  return;
+                }
+                if (codeController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Branch code is required');
+                  return;
+                }
+                setDialogState(() {
+                  isSaving = true;
+                  error = null;
+                });
+                try {
+                  await getIt<ApiClient>().createBranch(
+                    name: nameController.text.trim(),
+                    code: codeController.text.trim(),
+                    address: addressController.text.trim().isEmpty
+                        ? null
+                        : addressController.text.trim(),
+                    phone: phoneController.text.trim().isEmpty
+                        ? null
+                        : phoneController.text.trim(),
+                  );
+                  if (!mounted || !ctx.mounted) return;
+                  Navigator.pop(ctx);
+                  _loadBranches();
+                } catch (e) {
+                  setDialogState(() {
+                    isSaving = false;
+                    error = _apiErrorMessage(e) ??
+                        'Could not add branch. Check your connection.';
+                  });
+                }
+              },
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty ||
-                  locationController.text.trim().isEmpty) {
-                return;
-              }
-              final db = getIt<AppDatabase>();
-              final id = const Uuid().v4();
-              await db.insertBranch(
-                id,
-                nameController.text.trim(),
-                locationController.text.trim(),
-                phoneController.text.trim(),
-              );
-              if (!mounted || !ctx.mounted) return;
-              Navigator.pop(ctx);
-              _loadBranches();
-            },
-            child: const Text('Add'),
-          ),
-        ],
       ),
     );
   }
 
   void _showEditBranchDialog(Map<String, dynamic> branch) {
     final nameController =
-        TextEditingController(text: branch['name'] as String);
-    final locationController =
-        TextEditingController(text: branch['location'] as String);
+        TextEditingController(text: branch['name'] as String? ?? '');
+    final codeController =
+        TextEditingController(text: branch['code'] as String? ?? '');
+    final addressController =
+        TextEditingController(text: branch['address'] as String? ?? '');
     final phoneController =
-        TextEditingController(text: branch['phone'] as String);
+        TextEditingController(text: branch['phone'] as String? ?? '');
+    bool isSaving = false;
+    String? error;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Branch'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Branch Name')),
-            const SizedBox(height: 12),
-            TextField(
-                controller: locationController,
-                decoration: const InputDecoration(labelText: 'Location')),
-            const SizedBox(height: 12),
-            TextField(
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Phone')),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => SettingsDialog(
+          title: 'Edit Branch',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: nameController,
+                  decoration:
+                      const InputDecoration(labelText: 'Branch Name')),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: codeController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration:
+                      const InputDecoration(labelText: 'Branch Code')),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: addressController,
+                  decoration: const InputDecoration(labelText: 'Address')),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Phone')),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!,
+                    style: const TextStyle(
+                        color: DesignColors.error, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            SettingsPrimaryButton(
+              label: 'Save',
+              isLoading: isSaving,
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Branch name is required');
+                  return;
+                }
+                setDialogState(() {
+                  isSaving = true;
+                  error = null;
+                });
+                try {
+                  await getIt<ApiClient>().updateBranch(
+                    branch['id'] as String,
+                    name: nameController.text.trim(),
+                    code: codeController.text.trim().isEmpty
+                        ? null
+                        : codeController.text.trim(),
+                    address: addressController.text.trim().isEmpty
+                        ? null
+                        : addressController.text.trim(),
+                    phone: phoneController.text.trim().isEmpty
+                        ? null
+                        : phoneController.text.trim(),
+                  );
+                  if (!mounted || !ctx.mounted) return;
+                  Navigator.pop(ctx);
+                  _loadBranches();
+                } catch (e) {
+                  setDialogState(() {
+                    isSaving = false;
+                    error = _apiErrorMessage(e) ??
+                        'Could not save changes. Check your connection.';
+                  });
+                }
+              },
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty) return;
-              final db = getIt<AppDatabase>();
-              await db.updateBranch(
-                branch['id'] as String,
-                nameController.text.trim(),
-                locationController.text.trim(),
-                phoneController.text.trim(),
-              );
-              if (!mounted || !ctx.mounted) return;
-              Navigator.pop(ctx);
-              _loadBranches();
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -2356,32 +2570,44 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
   Future<void> _deleteBranch(Map<String, dynamic> branch) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Branch'),
+      builder: (ctx) => SettingsDialog(
+        title: 'Delete Branch',
         content: Text('Are you sure you want to delete "${branch['name']}"?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: DesignColors.error),
+          SettingsPrimaryButton(
+            label: 'Delete',
+            color: DesignColors.error,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
           ),
         ],
       ),
     );
-    if (confirm == true) {
-      await getIt<AppDatabase>().deleteBranch(branch['id'] as String);
+    if (confirm != true) return;
+    try {
+      await getIt<ApiClient>().deleteBranch(branch['id'] as String);
       if (!mounted) return;
       _loadBranches();
+    } catch (e) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        _apiErrorMessage(e) ??
+            'Could not delete branch. It may have existing sales history.',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2390,65 +2616,90 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: Theme.of(context).dividerColor,
+                      color: border,
                       borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Branch Management',
-                  style: Theme.of(context).textTheme.titleLarge),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800)),
               Text(
                   '${_branches.length} branch${_branches.length == 1 ? '' : 'es'}',
                   style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    controller: widget.scrollController,
-                    itemCount: _branches.length,
-                    itemBuilder: (context, index) {
-                      final branch = _branches[index];
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: DesignColors.accent,
-                            child: Icon(Icons.store,
-                                color: Colors.white, size: 20),
-                          ),
-                          title: Text(branch['name'] as String),
-                          subtitle: Text(branch['location'] as String),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const _StatusBadge(
-                                  text: 'Active', color: DesignColors.success),
-                              PopupMenuButton<String>(
-                                onSelected: (value) {
-                                  if (value == 'edit') {
-                                    _showEditBranchDialog(branch);
-                                  }
-                                  if (value == 'delete') {
-                                    _deleteBranch(branch);
-                                  }
-                                },
-                                itemBuilder: (ctx) => [
-                                  const PopupMenuItem(
-                                      value: 'edit', child: Text('Edit')),
-                                  const PopupMenuItem(
-                                      value: 'delete', child: Text('Delete')),
+                : _loadError != null
+                    ? EmptyState(
+                        icon: Icons.error_outline_rounded,
+                        title: 'Couldn\'t load branches',
+                        subtitle: _loadError!,
+                        iconColor: DesignColors.error,
+                        actionLabel: 'Retry',
+                        onAction: _loadBranches,
+                      )
+                    : _branches.isEmpty
+                        ? EmptyState(
+                            icon: Icons.store_outlined,
+                            title: 'No branches yet',
+                            subtitle: 'Tap "Add Branch" to create your first one',
+                          )
+                        : ListView.builder(
+                            controller: widget.scrollController,
+                            itemCount: _branches.length,
+                            itemBuilder: (context, index) {
+                              final branch = _branches[index];
+                              final isActive = branch['isActive'] as bool? ?? true;
+                              return GroupedCard(
+                                children: [
+                                  SettingsRow(
+                                    icon: Icons.store_rounded,
+                                    title: branch['name'] as String,
+                                    subtitle: (branch['address'] as String?)
+                                                ?.isNotEmpty ==
+                                            true
+                                        ? branch['address'] as String
+                                        : (branch['code'] as String? ?? ''),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _StatusBadge(
+                                            text: isActive ? 'Active' : 'Inactive',
+                                            color: isActive
+                                                ? DesignColors.success
+                                                : DesignColors.textTertiary),
+                                        PopupMenuButton<String>(
+                                          onSelected: (value) {
+                                            if (value == 'edit') {
+                                              _showEditBranchDialog(branch);
+                                            }
+                                            if (value == 'delete') {
+                                              _deleteBranch(branch);
+                                            }
+                                          },
+                                          itemBuilder: (ctx) => [
+                                            const PopupMenuItem(
+                                                value: 'edit',
+                                                child: Text('Edit')),
+                                            const PopupMenuItem(
+                                                value: 'delete',
+                                                child: Text('Delete')),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
-                              ),
-                            ],
+                              );
+                            },
                           ),
-                        ),
-                      );
-                    },
-                  ),
           ),
           const SizedBox(height: 8),
           SizedBox(

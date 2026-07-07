@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { AuditService } from '../audit/audit.service';
 import {
   LoginDto,
   PinLoginDto,
@@ -41,6 +42,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private redisService: RedisService,
+    private auditService: AuditService,
   ) {}
 
   async validateUser(email: string, password: string, tenantId?: string) {
@@ -89,6 +91,11 @@ export class AuthService {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
+    await this.auditService.record({
+      userId: user.id,
+      action: 'LOGIN',
+      entityType: 'session',
+    });
 
     return this.generateTokens(user, branchId, loginDto.deviceId);
   }
@@ -119,6 +126,11 @@ export class AuthService {
           await this.prisma.user.update({
             where: { id: ub.user.id },
             data: { lastLoginAt: new Date() },
+          });
+          await this.auditService.record({
+            userId: ub.user.id,
+            action: 'LOGIN',
+            entityType: 'session',
           });
           return this.generateTokens(ub.user, branchId, pinLoginDto.deviceId);
         }
@@ -461,6 +473,12 @@ export class AuthService {
     await this.prisma.user.update({
       where: { id: userId },
       data: { pin: pinHash },
+    });
+    await this.auditService.record({
+      userId,
+      action: 'UPDATE',
+      entityType: 'pin',
+      entityId: userId,
     });
   }
 
