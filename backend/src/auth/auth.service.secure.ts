@@ -516,6 +516,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         tenantId: user.tenantId,
+        hasPinSet: Boolean(user.pin),
         branches: user.branches?.map((ub: any) => ({
           id: ub.branch?.id || ub.branchId,
           name: ub.branch?.name || '',

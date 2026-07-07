@@ -32,6 +32,7 @@ class StorageService {
       'setting_require_unlock_on_resume';
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
   static const String keyAuthLocked = 'auth_locked';
+  static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -302,6 +303,19 @@ class StorageService {
   Future<void> setAuthLocked(bool locked) async {
     _checkInitialized();
     await _prefs!.setBool(keyAuthLocked, locked);
+  }
+
+  /// Whether this device's pre-existing local supplier invoices/payments
+  /// (from the old device-local Finance screen) have already been pushed
+  /// to the backend. Guards the one-time migration so it only runs once
+  /// per device, not on every login.
+  bool isSupplierDataMigrated() {
+    return _prefs?.getBool(keySupplierDataMigrated) ?? false;
+  }
+
+  Future<void> setSupplierDataMigrated(bool migrated) async {
+    _checkInitialized();
+    await _prefs!.setBool(keySupplierDataMigrated, migrated);
   }
 
   // Server mode keys

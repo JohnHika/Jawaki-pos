@@ -29,6 +29,8 @@ import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
 import '../../features/finance/presentation/screens/finance_screen.dart';
+import '../../features/finance/presentation/screens/cash_flow_screen.dart';
+import '../../features/inventory/presentation/screens/restock_suggestions_screen.dart';
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_subscribe_screen.dart';
@@ -258,6 +260,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   branchId: state.uri.queryParameters['branchId'],
                 ),
               ),
+              // AI-powered, cash-budget-aware restock suggestions (stock keeper+)
+              GoRoute(
+                path: 'restock-suggestions',
+                name: 'restock-suggestions',
+                builder: (context, state) => const RestockSuggestionsScreen(),
+              ),
             ],
           ),
 
@@ -323,7 +331,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance',
             name: 'finance',
-            builder: (context, state) => const FinanceScreen(),
+            builder: (context, state) => FinanceScreen(
+              prefill: state.extra as RestockPrefill?,
+            ),
+          ),
+
+          // Cash Flow Screen (store manager+)
+          GoRoute(
+            path: '/cash-flow',
+            name: 'cash-flow',
+            builder: (context, state) => const CashFlowScreen(),
           ),
 
           // AI Chat Screen

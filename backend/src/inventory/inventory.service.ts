@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { CashFlowService } from '../cash-flow/cash-flow.service';
+import { AiService } from '../ai/ai.service';
 import {
   StockAdjustmentDto,
   CreateTransferDto,
@@ -25,6 +27,8 @@ export class InventoryService {
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
+    private cashFlowService: CashFlowService,
+    private aiService: AiService,
   ) {}
 
   async getStock(branchId: string, tenantId: string, query: StockQueryDto) {
@@ -594,6 +598,102 @@ export class InventoryService {
     }
 
     return alerts.sort((a, b) => b.shortfall - a.shortfall);
+  }
+
+  /**
+   * Budget-aware restock suggestions: start from the same low-stock alerts
+   * as getLowStockAlerts(), estimate a reorder quantity from each product's
+   * recent sales velocity (units sold over the trailing 14 days), then trim
+   * the list to fit whatever cash the branch currently has available —
+   * fastest-selling items (soonest to stock out) are kept first since
+   * they're the ones most likely to cause a lost sale.
+   */
+  async getRestockSuggestions(tenantId: string, branchId: string) {
+    const alerts = await this.getLowStockAlerts(tenantId, branchId);
+    if (alerts.length === 0) {
+      return { branchId, availableCash: 0, items: [], trimmedCount: 0, aiRationale: null };
+    }
+
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - 14);
+
+    const productIds = alerts.map((a) => a.productId);
+    const [velocity, products, cash, branch] = await Promise.all([
+      this.prisma.saleItem.groupBy({
+        by: ['productId'],
+        where: {
+          productId: { in: productIds },
+          sale: { branchId, status: 'COMPLETED', createdAt: { gte: windowStart } },
+        },
+        _sum: { quantity: true },
+      }),
+      this.prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, costPrice: true, basePrice: true },
+      }),
+      this.cashFlowService.getAvailableCash(branchId),
+      this.prisma.branch.findUnique({ where: { id: branchId }, select: { name: true } }),
+    ]);
+
+    const velocityMap = new Map(velocity.map((v) => [v.productId, Number(v._sum.quantity) || 0]));
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    const candidates = alerts
+      .map((alert) => {
+        const soldLast14Days = velocityMap.get(alert.productId) || 0;
+        const dailyVelocity = soldLast14Days / 14;
+        // Reorder enough to cover 14 days of typical demand plus the current
+        // shortfall; fall back to just covering the shortfall when a product
+        // hasn't sold recently (velocity data can't justify buying more).
+        const suggestedQty = Math.max(alert.shortfall, Math.ceil(dailyVelocity * 14));
+        const unitCost = Number(productMap.get(alert.productId)?.costPrice ?? productMap.get(alert.productId)?.basePrice ?? 0);
+        const daysOfStockRemaining = dailyVelocity > 0 ? Math.floor(alert.currentStock / dailyVelocity) : 999;
+
+        return {
+          productId: alert.productId,
+          productName: alert.productName,
+          sku: alert.sku,
+          currentStock: alert.currentStock,
+          minStock: alert.minStock,
+          suggestedQty,
+          unitCost,
+          estimatedCost: Math.round(suggestedQty * unitCost * 100) / 100,
+          dailyVelocity,
+          daysOfStockRemaining,
+        };
+      })
+      // Fastest-selling / soonest-to-stock-out first — these cause the most
+      // immediate lost sales if left unfunded.
+      .sort((a, b) => a.daysOfStockRemaining - b.daysOfStockRemaining);
+
+    const budget = Math.max(cash.availableCash, 0);
+    let remainingBudget = budget;
+    const items: typeof candidates = [];
+    let trimmedCount = 0;
+
+    for (const candidate of candidates) {
+      if (candidate.estimatedCost <= 0) continue;
+      if (candidate.estimatedCost <= remainingBudget) {
+        items.push(candidate);
+        remainingBudget -= candidate.estimatedCost;
+      } else {
+        trimmedCount += 1;
+      }
+    }
+
+    const aiRationale = await this.aiService.explainRestockPlan({
+      branchName: branch?.name || 'this branch',
+      availableCash: budget,
+      items: items.map((i) => ({
+        productName: i.productName,
+        suggestedQty: i.suggestedQty,
+        estimatedCost: i.estimatedCost,
+        daysOfStockRemaining: i.daysOfStockRemaining,
+      })),
+      trimmedCount,
+    });
+
+    return { branchId, availableCash: budget, items, trimmedCount, aiRationale };
   }
 
   async bulkAdjustStock(

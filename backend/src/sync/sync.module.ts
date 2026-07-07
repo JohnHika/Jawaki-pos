@@ -5,6 +5,7 @@ import { PrismaModule } from '../common/prisma/prisma.module';
 import { RedisModule } from '../common/redis/redis.module';
 import { SalesModule } from '../sales/sales.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { SuppliersModule } from '../suppliers/suppliers.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { InventoryModule } from '../inventory/inventory.module';
     RedisModule,
     SalesModule,
     InventoryModule,
+    SuppliersModule,
   ],
   controllers: [SyncController],
   providers: [SyncService],

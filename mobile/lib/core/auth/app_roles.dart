@@ -86,4 +86,8 @@ class RolePermissions {
   bool get canSeeAuditTrail         => role.isAtLeast(AppRole.admin);
   bool get canExportData            => role.isAtLeast(AppRole.admin);
   bool get canConfigureSystemSecurity => role.isAtLeast(AppRole.admin);
+
+  // ── Cash flow & restocking ───────────────────
+  bool get canViewCashFlow   => role.isAtLeast(AppRole.storeManager);
+  bool get canRecordRestock  => role.isAtLeast(AppRole.stockKeeper);
 }

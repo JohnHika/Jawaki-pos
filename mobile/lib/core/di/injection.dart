@@ -110,6 +110,7 @@ Future<void> configureDependencies() async {
       database: getIt<AppDatabase>(),
       apiClient: getIt<ApiClient>(),
       connectivity: getIt<ConnectivityService>(),
+      storage: getIt<StorageService>(),
     );
     getIt.registerSingleton<SyncService>(syncService);
     debugPrint('[DI] SyncService registered');

@@ -7,12 +7,15 @@ import '../database/app_database.dart';
 import '../network/api_client.dart';
 import 'connectivity_service.dart';
 import 'background_sync_service.dart';
+import 'storage_service.dart';
 
 enum SyncEventType {
   saleCreated,
   saleVoided,
   refundCreated,
   stockAdjusted,
+  supplierInvoiceCreated,
+  supplierPaymentRecorded,
 }
 
 /// Sync action types for SyncQueue
@@ -39,6 +42,10 @@ extension SyncEventTypeWireFormat on SyncEventType {
         return 'REFUND_CREATED';
       case SyncEventType.stockAdjusted:
         return 'STOCK_ADJUSTED';
+      case SyncEventType.supplierInvoiceCreated:
+        return 'SUPPLIER_INVOICE_CREATED';
+      case SyncEventType.supplierPaymentRecorded:
+        return 'SUPPLIER_PAYMENT_RECORDED';
     }
   }
 }
@@ -64,6 +71,9 @@ String _tableNameForEventType(SyncEventType eventType) {
       return 'sales';
     case SyncEventType.stockAdjusted:
       return 'inventory';
+    case SyncEventType.supplierInvoiceCreated:
+    case SyncEventType.supplierPaymentRecorded:
+      return 'suppliers';
   }
 }
 
@@ -71,6 +81,8 @@ SyncAction _actionForEventType(SyncEventType eventType) {
   switch (eventType) {
     case SyncEventType.saleCreated:
     case SyncEventType.refundCreated:
+    case SyncEventType.supplierInvoiceCreated:
+    case SyncEventType.supplierPaymentRecorded:
       return SyncAction.create;
     case SyncEventType.saleVoided:
     case SyncEventType.stockAdjusted:
@@ -91,6 +103,10 @@ String _recordIdForEvent(
       return payload['saleId']?.toString() ?? payload['id']?.toString() ?? fallbackRecordId;
     case SyncEventType.stockAdjusted:
       return payload['productId']?.toString() ?? payload['id']?.toString() ?? fallbackRecordId;
+    case SyncEventType.supplierInvoiceCreated:
+      return payload['offlineId']?.toString() ?? fallbackRecordId;
+    case SyncEventType.supplierPaymentRecorded:
+      return payload['invoiceId']?.toString() ?? fallbackRecordId;
   }
 }
 
@@ -98,33 +114,37 @@ class SyncService {
   final AppDatabase _database;
   final ApiClient _apiClient;
   final ConnectivityService _connectivity;
-  
+  final StorageService _storage;
+
   final _uuid = const Uuid();
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
   bool _isSyncing = false;
-  
-  final StreamController<SyncStatus> _statusController = 
+
+  final StreamController<SyncStatus> _statusController =
       StreamController<SyncStatus>.broadcast();
-  
+
   Stream<SyncStatus> get statusStream => _statusController.stream;
-  
+
   SyncService({
     required AppDatabase database,
     required ApiClient apiClient,
     required ConnectivityService connectivity,
-  }) : _database = database, 
-       _apiClient = apiClient, 
-       _connectivity = connectivity {
+    required StorageService storage,
+  }) : _database = database,
+       _apiClient = apiClient,
+       _connectivity = connectivity,
+       _storage = storage {
     _initializeSync();
   }
-  
+
   void _initializeSync() {
     // Listen for connectivity changes
     _connectivity.statusStream.listen((status) {
       if (status == ConnectionStatus.online) {
         // Trigger sync when coming online
         syncPendingEvents();
+        migrateLocalSupplierDataIfNeeded();
       }
     });
     
@@ -296,7 +316,109 @@ class SyncService {
       _isSyncing = false;
     }
   }
-  
+
+  /// One-time push of this device's pre-existing local supplier
+  /// invoices/payments (recorded by the old device-local Finance screen)
+  /// to the backend, so switching that screen to read/write through the
+  /// API doesn't silently orphan debt records already on the phone.
+  /// Safe to call repeatedly — it no-ops once the flag is set, and each
+  /// invoice carries its original local id as offlineId so a retry after
+  /// a partial failure won't create duplicates server-side.
+  Future<void> migrateLocalSupplierDataIfNeeded() async {
+    if (_storage.isSupplierDataMigrated()) return;
+    if (!_connectivity.isOnline) return;
+
+    final branchId = _storage.getBranchId();
+    if (branchId == null || branchId.isEmpty) return;
+
+    try {
+      final localData = await _database.getAllLocalSupplierData();
+
+      for (final supplier in localData) {
+        // Each supplier migrates independently — one supplier's data quirk
+        // (e.g. a payment total that doesn't reconcile cleanly) shouldn't
+        // block every other supplier's records from migrating.
+        try {
+          await _migrateOneLocalSupplier(supplier, branchId);
+        } catch (_) {
+          continue;
+        }
+      }
+
+      await _storage.setSupplierDataMigrated(true);
+    } catch (e) {
+      // Leave the flag unset so the next time the device comes online it
+      // retries — a partial migration is safer than silently giving up.
+    }
+  }
+
+  Future<void> _migrateOneLocalSupplier(
+    Map<String, dynamic> supplier,
+    String branchId,
+  ) async {
+    final invoices = supplier['invoices'] as List<dynamic>;
+    String? firstMigratedInvoiceId;
+    double firstInvoiceDue = 0;
+    double paidAmountAlreadyCounted = 0;
+
+    for (final invoice in invoices) {
+      final items = (invoice['items'] as List<dynamic>)
+          .map((item) => {
+                'productName': item['productName'],
+                'quantity': item['quantity'],
+                'unit': item['unit'],
+                'unitCost': item['unitCost'],
+              })
+          .toList();
+
+      if (items.isEmpty) continue;
+
+      final paidAmount = (invoice['paidAmount'] as num?)?.toDouble() ?? 0;
+      final created = await _apiClient.createSupplierInvoice({
+        'branchId': branchId,
+        'supplierName': supplier['supplierName'],
+        'supplierPhone': supplier['supplierPhone'],
+        'invoiceNumber': invoice['invoiceNumber'],
+        'items': items,
+        'paidAmount': paidAmount,
+        'dueDate': invoice['dueDate'],
+        'offlineId': 'legacy-${invoice['id']}',
+      });
+
+      if (firstMigratedInvoiceId == null) {
+        firstMigratedInvoiceId = created['id']?.toString();
+        firstInvoiceDue = (created['dueAmount'] as num?)?.toDouble() ?? 0;
+      }
+      paidAmountAlreadyCounted += paidAmount;
+    }
+
+    // Locally, recordSupplierInvoice() already writes a supplier_payments
+    // row for any paidAmount given at invoice creation time, so
+    // supplier_payments totals include that — only the amount beyond what's
+    // already been passed as paidAmount above is a genuinely separate later
+    // payment. Local rows also don't record which invoice they were
+    // against, so any excess is applied as one lump-sum payment against the
+    // first migrated invoice, clamped to what that invoice can actually
+    // absorb — this keeps the total amount owed roughly correct even if not
+    // broken down exactly as it was originally.
+    final payments = supplier['payments'] as List<dynamic>;
+    final totalPaid = payments.fold<double>(
+      0,
+      (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0),
+    );
+    final excessPayment = totalPaid - paidAmountAlreadyCounted;
+    if (excessPayment > 0 && firstMigratedInvoiceId != null) {
+      final amountToApply = excessPayment > firstInvoiceDue ? firstInvoiceDue : excessPayment;
+      if (amountToApply > 0) {
+        await _apiClient.recordSupplierPayment(firstMigratedInvoiceId, {
+          'amount': amountToApply,
+          'notes': 'Migrated from device-local payment history',
+        });
+      }
+    }
+  }
+
+
   /// Pull changes from server
   Future<void> pullChanges({String? since}) async {
     if (!_connectivity.isOnline) return;

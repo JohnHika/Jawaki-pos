@@ -645,6 +645,7 @@ export class AuthService {
         tenantSlug: user.tenant?.slug,
         branchId: activeBranch?.id,
         branchName: activeBranch?.name,
+        hasPinSet: Boolean(user.pin),
         tenant: user.tenant
           ? {
               id: user.tenant.id,

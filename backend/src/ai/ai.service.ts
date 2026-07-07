@@ -249,6 +249,99 @@ export class AiService {
     }
   }
 
+  /**
+   * Produces a short natural-language rationale for an already-computed
+   * restock plan. Unlike `chat()`, this never asks the model to invent
+   * numbers — the quantities/costs/budget are computed deterministically
+   * by InventoryService.getRestockSuggestions() first and just passed in
+   * as context for the model to explain in plain language. If every
+   * provider tier fails, a templated local rationale is returned instead
+   * of blocking the suggestion list from being useful.
+   */
+  async explainRestockPlan(plan: {
+    branchName: string;
+    availableCash: number;
+    items: Array<{ productName: string; suggestedQty: number; estimatedCost: number; daysOfStockRemaining: number }>;
+    trimmedCount: number;
+  }): Promise<string> {
+    const prompt = this.buildRestockPrompt(plan);
+
+    if (this.gatewayApiKey) {
+      const result = await this.chatViaAxonGateway({
+        messages: [{ role: 'user', content: prompt }],
+      } as ChatRequestDto);
+      if (result?.reply) return result.reply;
+    }
+
+    if (this.apiKey) {
+      try {
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+          body: JSON.stringify({
+            model: this.model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.2,
+            max_tokens: 220,
+            stream: false,
+          }),
+        });
+        if (response.ok) {
+          const data = (await response.json()) as NvidiaResponse;
+          const reply = data.choices?.[0]?.message?.content?.trim();
+          if (reply) return reply;
+        }
+      } catch (error) {
+        this.logger.error(`explainRestockPlan NVIDIA call failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return this.localRestockRationale(plan);
+  }
+
+  private buildRestockPrompt(plan: {
+    branchName: string;
+    availableCash: number;
+    items: Array<{ productName: string; suggestedQty: number; estimatedCost: number; daysOfStockRemaining: number }>;
+    trimmedCount: number;
+  }): string {
+    const itemLines = plan.items
+      .map(
+        (item) =>
+          `- ${item.productName}: buy ${item.suggestedQty} units (~KES ${item.estimatedCost.toLocaleString('en-KE')}), currently about ${item.daysOfStockRemaining} day(s) of stock left`,
+      )
+      .join('\n');
+
+    return `You are explaining a restock plan to a shop owner in Kenya. Do not invent any numbers — only reference the figures given below.
+
+Branch: ${plan.branchName}
+Available cash to restock: KES ${plan.availableCash.toLocaleString('en-KE')}
+Suggested purchases (already capped to fit available cash, fastest-selling items prioritized):
+${itemLines || '- (none — no items fit within available cash right now)'}
+${plan.trimmedCount > 0 ? `${plan.trimmedCount} additional low-stock item(s) were left out because there wasn't enough cash left.` : ''}
+
+In 2-3 short sentences, explain why this plan makes sense and what to prioritize first if cash is tight. Plain business language, no headings.`;
+  }
+
+  private localRestockRationale(plan: {
+    branchName: string;
+    availableCash: number;
+    items: Array<{ productName: string; suggestedQty: number; estimatedCost: number; daysOfStockRemaining: number }>;
+    trimmedCount: number;
+  }): string {
+    if (plan.items.length === 0) {
+      return `There isn't enough available cash at ${plan.branchName} right now to safely restock anything — wait for more cash sales to come in before buying.`;
+    }
+
+    const first = plan.items[0];
+    const trimmedNote =
+      plan.trimmedCount > 0
+        ? ` ${plan.trimmedCount} other low-stock item(s) will have to wait until more cash is available.`
+        : '';
+
+    return `These ${plan.items.length} item(s) fit within the KES ${plan.availableCash.toLocaleString('en-KE')} available at ${plan.branchName}, prioritized by how soon they'd run out. Start with ${first.productName} (about ${first.daysOfStockRemaining} day(s) of stock left) since it's closest to stocking out.${trimmedNote}`;
+  }
+
   setCurrentModel(model: string): void {
     if (!model?.trim()) {
       throw new HttpException('Model is required', HttpStatus.BAD_REQUEST);

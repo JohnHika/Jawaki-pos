@@ -113,6 +113,16 @@ export class InventoryController {
     return this.inventoryService.getLowStockAlerts(req.user.tenantId, branchId);
   }
 
+  @Get('restock-suggestions/:branchId')
+  @ApiOperation({ summary: 'Get AI-powered, cash-budget-aware restock suggestions for a branch' })
+  @ApiResponse({ status: 200, description: 'Restock suggestions capped to available cash' })
+  async getRestockSuggestions(
+    @Param('branchId') branchId: string,
+    @Request() req: any,
+  ) {
+    return this.inventoryService.getRestockSuggestions(req.user.tenantId, branchId);
+  }
+
   // ==================== TRANSFERS ====================
 
   @Post('transfers')

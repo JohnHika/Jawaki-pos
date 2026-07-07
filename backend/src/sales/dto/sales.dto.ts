@@ -11,6 +11,8 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ArrayMinSize,
+  ArrayMaxSize,
   IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -67,8 +69,8 @@ export class CreateSaleDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateSaleItemDto)
-  @MinLength(1, { message: 'Sale must have at least one item' })
-  @MaxLength(500, { message: 'Sale cannot exceed 500 items' })
+  @ArrayMinSize(1, { message: 'Sale must have at least one item' })
+  @ArrayMaxSize(500, { message: 'Sale cannot exceed 500 items' })
   items: CreateSaleItemDto[];
 
   @ApiPropertyOptional({ description: 'Overall discount amount' })
@@ -143,7 +145,7 @@ export class CreateRefundDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => RefundItemDto)
-  @MinLength(1, { message: 'Refund must have at least one item' })
+  @ArrayMinSize(1, { message: 'Refund must have at least one item' })
   items: RefundItemDto[];
 }
 

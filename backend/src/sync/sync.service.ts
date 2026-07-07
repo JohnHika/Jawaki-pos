@@ -3,6 +3,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { SalesService } from '../sales/sales.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { SuppliersService } from '../suppliers/suppliers.service';
 import { SyncEventStatus, SyncEventType as PrismaSyncEventType } from '@prisma/client';
 import {
   SyncEventDto,
@@ -25,6 +26,7 @@ export class SyncService {
     private redis: RedisService,
     private salesService: SalesService,
     private inventoryService: InventoryService,
+    private suppliersService: SuppliersService,
   ) {}
 
   /**
@@ -556,6 +558,34 @@ export class SyncService {
         });
         return { serverId: transfer.id };
 
+      case SyncEventType.SUPPLIER_INVOICE_CREATED:
+        const invoice = await this.suppliersService.createInvoice(userId, tenantId, {
+          branchId,
+          supplierName: payload.supplierName,
+          supplierPhone: payload.supplierPhone,
+          invoiceNumber: payload.invoiceNumber,
+          receiptImageUrl: payload.receiptImageUrl,
+          items: payload.items,
+          paidAmount: payload.paidAmount,
+          fundingSource: payload.fundingSource,
+          dueDate: payload.dueDate,
+          offlineId: event.eventId,
+        });
+        return { serverId: invoice.id };
+
+      case SyncEventType.SUPPLIER_PAYMENT_RECORDED:
+        const payment = await this.suppliersService.recordPayment(
+          userId,
+          tenantId,
+          payload.invoiceId,
+          {
+            amount: payload.amount,
+            fundingSource: payload.fundingSource,
+            notes: payload.notes,
+          },
+        );
+        return { serverId: payment.id };
+
       default:
         throw new BadRequestException(`Unknown event type: ${event.eventType}`);
     }
@@ -572,6 +602,8 @@ export class SyncService {
       [SyncEventType.CATEGORY_UPDATED]: 'Category',
       [SyncEventType.PRICE_OVERRIDE_UPDATED]: 'BranchProductPrice',
       [SyncEventType.USER_UPDATED]: 'User',
+      [SyncEventType.SUPPLIER_INVOICE_CREATED]: 'SupplierInvoice',
+      [SyncEventType.SUPPLIER_PAYMENT_RECORDED]: 'SupplierPayment',
     };
     return mapping[eventType] || 'Unknown';
   }

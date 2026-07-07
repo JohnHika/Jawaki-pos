@@ -525,6 +525,69 @@ class ApiClient {
     return response.data;
   }
 
+  // Supplier endpoints
+  Future<List<dynamic>> getSuppliers() async {
+    final response = await _dio.get('/suppliers');
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getSupplierDebts() async {
+    final response = await _dio.get('/suppliers/debts');
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getSupplierInvoices(String supplierId) async {
+    final response = await _dio.get('/suppliers/$supplierId/invoices');
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createSupplierInvoice(Map<String, dynamic> data) async {
+    final response = await _dio.post('/suppliers/invoices', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> recordSupplierPayment(
+    String invoiceId,
+    Map<String, dynamic> data,
+  ) async {
+    final response = await _dio.post('/suppliers/invoices/$invoiceId/payments', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  // Cash flow endpoints
+  Future<Map<String, dynamic>> getCashFlowSettings(String branchId) async {
+    final response = await _dio.get('/cash-flow/settings/$branchId');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateCashFlowSettings(String branchId, String mode) async {
+    final response = await _dio.put('/cash-flow/settings/$branchId', data: {'mode': mode});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getAvailableCash(String branchId) async {
+    final response = await _dio.get('/cash-flow/available/$branchId');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCashLedger(
+    String branchId, {
+    int? page,
+    int? limit,
+  }) async {
+    final response = await _dio.get('/cash-flow/ledger/$branchId', queryParameters: {
+      if (page != null) 'page': page,
+      if (limit != null) 'limit': limit,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  // Restock suggestions
+  Future<Map<String, dynamic>> getRestockSuggestions(String branchId) async {
+    final response = await _dio.get('/inventory/restock-suggestions/$branchId');
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Upload an image file to Cloudinary via the backend.
   /// [type] must be one of: 'logo', 'category', 'product'
   /// Returns { url, publicId, width, height, format, bytes }

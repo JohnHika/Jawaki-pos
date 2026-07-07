@@ -1942,6 +1942,70 @@ class AppDatabase extends _$AppDatabase {
         .toList();
   }
 
+  /// Full snapshot of every locally-stored supplier + invoice (with line
+  /// items) + payment, used once by the local-to-backend migration so
+  /// pre-existing device-local debt records aren't silently dropped when
+  /// the Finance screen switches to reading/writing through the API.
+  Future<List<Map<String, dynamic>>> getAllLocalSupplierData() async {
+    await _createSupplierFinanceTables();
+
+    final suppliers = await customSelect('SELECT * FROM suppliers').get();
+    final result = <Map<String, dynamic>>[];
+
+    for (final supplierRow in suppliers) {
+      final supplierId = supplierRow.read<String>('id');
+
+      final invoiceRows = await customSelect(
+        'SELECT * FROM supplier_invoices WHERE supplier_id = ?',
+        variables: [Variable.withString(supplierId)],
+      ).get();
+
+      final invoices = <Map<String, dynamic>>[];
+      for (final invoiceRow in invoiceRows) {
+        final invoiceId = invoiceRow.read<String>('id');
+        final itemRows = await customSelect(
+          'SELECT * FROM supplier_invoice_items WHERE invoice_id = ?',
+          variables: [Variable.withString(invoiceId)],
+        ).get();
+
+        invoices.add({
+          'id': invoiceId,
+          'invoiceNumber': invoiceRow.read<String?>('invoice_number'),
+          'paidAmount': invoiceRow.read<double>('paid_amount'),
+          'dueDate': invoiceRow.read<String?>('due_date'),
+          'createdAt': invoiceRow.read<String>('created_at'),
+          'items': itemRows
+              .map((item) => {
+                    'productName': item.read<String>('product_name'),
+                    'quantity': item.read<double>('quantity'),
+                    'unit': item.read<String>('unit'),
+                    'unitCost': item.read<double>('unit_cost'),
+                  })
+              .toList(),
+        });
+      }
+
+      final paymentRows = await customSelect(
+        'SELECT * FROM supplier_payments WHERE supplier_id = ?',
+        variables: [Variable.withString(supplierId)],
+      ).get();
+
+      result.add({
+        'supplierName': supplierRow.read<String>('name'),
+        'supplierPhone': supplierRow.read<String?>('phone'),
+        'invoices': invoices,
+        'payments': paymentRows
+            .map((p) => {
+                  'amount': p.read<double>('amount'),
+                  'notes': p.read<String?>('notes'),
+                })
+            .toList(),
+      });
+    }
+
+    return result;
+  }
+
   Future<List<Map<String, dynamic>>> getSupplierInvoices(
     String supplierId,
   ) async {

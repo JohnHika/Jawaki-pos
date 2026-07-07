@@ -58,6 +58,9 @@ model Branch {
   expenses    Expense[]
   manualPaymentRequests ManualPaymentRequest[]
   aiSubscription AiSubscription?
+  supplierInvoices SupplierInvoice[]
+  cashSettings   BranchCashSettings?
+  cashLedgerEntries CashLedgerEntry[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -120,6 +123,8 @@ model User {
   expensesApproved      Expense[] @relation("ExpenseApprovedBy")
   manualPaymentsCreated ManualPaymentRequest[] @relation("ManualPaymentRequestedBy")
   manualPaymentsApproved ManualPaymentRequest[] @relation("ManualPaymentApprovedBy")
+  supplierInvoicesCreated SupplierInvoice[]
+  supplierPaymentsCreated SupplierPayment[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -212,6 +217,7 @@ model Product {
   priceOverrides  BranchPriceOverride[]
   stockMovements  StockMovement[]
   stockRequests   StockRequest[]
+  supplierInvoiceItems SupplierInvoiceItem[]
 
   @@unique([tenantId, sku])
   @@map("products")
@@ -754,6 +760,8 @@ enum SyncEventType {
   USER_UPDATED
   CUSTOMER_CREATE
   CUSTOMER_UPDATE
+  SUPPLIER_INVOICE_CREATED
+  SUPPLIER_PAYMENT_RECORDED
 }
 
 model SyncEvent {
@@ -928,4 +936,147 @@ model AiPayment {
   @@index([status])
   @@index([createdAt])
   @@map("ai_payments")
+}
+
+// ==================== SUPPLIERS & RESTOCKING ====================
+
+model Supplier {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoices    SupplierInvoice[]
+  payments    SupplierPayment[]
+
+  @@unique([tenantId, name])
+  @@map("suppliers")
+}
+
+enum SupplierInvoiceStatus {
+  OPEN
+  PARTIAL
+  PAID
+}
+
+enum CashFundingSource {
+  CASH_TILL
+  CREDIT_SUPPLIER
+}
+
+model SupplierInvoice {
+  id              String                @id @default(uuid())
+  tenantId        String
+  branchId        String
+  supplierId      String
+  invoiceNumber   String?
+  receiptImageUrl String?
+  subtotal        Decimal               @db.Decimal(10, 2)
+  paidAmount      Decimal               @default(0) @db.Decimal(10, 2)
+  totalAmount     Decimal               @db.Decimal(10, 2)
+  dueAmount       Decimal               @db.Decimal(10, 2)
+  dueDate         DateTime?
+  status          SupplierInvoiceStatus @default(OPEN)
+  fundingSource   CashFundingSource     @default(CASH_TILL)
+  offlineId       String?               @unique
+  createdById     String
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  branch          Branch                @relation(fields: [branchId], references: [id])
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  createdBy       User                  @relation(fields: [createdById], references: [id])
+  items           SupplierInvoiceItem[]
+  payments        SupplierPayment[]
+
+  @@index([branchId, status])
+  @@index([supplierId])
+  @@map("supplier_invoices")
+}
+
+model SupplierInvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  productId   String?
+  productName String
+  quantity    Decimal  @db.Decimal(10, 3)
+  unit        String   @default("piece")
+  unitCost    Decimal  @db.Decimal(10, 2)
+  lineTotal   Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  invoice     SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product     Product?        @relation(fields: [productId], references: [id])
+
+  @@index([invoiceId])
+  @@map("supplier_invoice_items")
+}
+
+model SupplierPayment {
+  id          String   @id @default(uuid())
+  supplierId  String
+  invoiceId   String?
+  amount      Decimal  @db.Decimal(10, 2)
+  notes       String?
+  paidAt      DateTime @default(now())
+  createdById String
+  createdAt   DateTime @default(now())
+
+  supplier    Supplier         @relation(fields: [supplierId], references: [id])
+  invoice     SupplierInvoice? @relation(fields: [invoiceId], references: [id])
+  createdBy   User             @relation(fields: [createdById], references: [id])
+
+  @@index([supplierId])
+  @@index([invoiceId])
+  @@map("supplier_payments")
+}
+
+// ==================== CASH FLOW ====================
+
+enum CashFlowMode {
+  CASH_ONLY
+  ALL_REVENUE
+  RUNNING_BALANCE
+}
+
+enum CashEntryType {
+  SALE_CASH_IN
+  RESTOCK_OUT
+  EXPENSE_OUT
+  MANUAL_ADJUSTMENT
+  OPENING_BALANCE
+}
+
+model BranchCashSettings {
+  branchId  String       @id
+  mode      CashFlowMode @default(CASH_ONLY)
+  updatedAt DateTime     @updatedAt
+
+  branch    Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@map("branch_cash_settings")
+}
+
+model CashLedgerEntry {
+  id            String        @id @default(uuid())
+  branchId      String
+  type          CashEntryType
+  amount        Decimal       @db.Decimal(10, 2)
+  balanceAfter  Decimal       @db.Decimal(10, 2)
+  referenceType String?
+  referenceId   String?
+  note          String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+
+  branch        Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, createdAt])
+  @@map("cash_ledger_entries")
 }

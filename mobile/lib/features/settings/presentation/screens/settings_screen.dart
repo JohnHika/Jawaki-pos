@@ -1865,8 +1865,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   late bool _biometricEnabled;
   late bool _requireUnlockOnResume;
   late int _autoLockMinutes;
-  bool _fingerprintEnabled = true;
-  bool _faceRecognitionEnabled = true;
+  bool _isConfirmingBiometric = false;
 
   @override
   void initState() {
@@ -1874,17 +1873,43 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
     _biometricEnabled = widget.biometricEnabled;
     _requireUnlockOnResume = widget.requireUnlockOnResume;
     _autoLockMinutes = widget.autoLockMinutes;
-    _loadBiometricPrefs();
   }
 
-  Future<void> _loadBiometricPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _fingerprintEnabled =
-          prefs.getBool('setting_fingerprint_enabled') ?? true;
-      _faceRecognitionEnabled =
-          prefs.getBool('setting_face_recognition_enabled') ?? true;
-    });
+  /// Turning biometric login on/off takes effect immediately (not deferred
+  /// to the Save button) because enabling it requires proving — right
+  /// then, with a real OS biometric prompt — that this device's
+  /// fingerprint/face actually works. There's no way to "preview" that
+  /// without invoking it, and deferring would let a user save a setting
+  /// that was never actually verified.
+  Future<void> _onBiometricToggled(bool enabling) async {
+    if (!enabling) {
+      setState(() => _biometricEnabled = false);
+      await getIt<StorageService>().setBiometricEnabled(false);
+      return;
+    }
+
+    setState(() => _isConfirmingBiometric = true);
+    try {
+      final confirmed = await getIt<AuthService>().confirmBiometricEnrollment();
+      setState(() {
+        _biometricEnabled = confirmed;
+        _isConfirmingBiometric = false;
+      });
+      await getIt<StorageService>().setBiometricEnabled(confirmed);
+      if (!confirmed && mounted) {
+        showGlassSnackBar(context, 'Biometric check failed or was cancelled',
+            icon: Icons.fingerprint_rounded, color: DesignColors.error);
+      }
+    } catch (e) {
+      setState(() {
+        _biometricEnabled = false;
+        _isConfirmingBiometric = false;
+      });
+      if (mounted) {
+        showGlassSnackBar(context, 'Could not verify biometrics: $e',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    }
   }
 
   @override
@@ -1926,14 +1951,19 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                   subtitle: widget.biometricAvailable
                       ? 'Use device fingerprint, face, PIN, or pattern to unlock'
                       : 'Not available on this device',
-                  enabled: widget.biometricAvailable,
-                  trailing: Switch(
-                    value: _biometricEnabled && widget.biometricAvailable,
-                    activeThumbColor: DesignColors.accent,
-                    onChanged: widget.biometricAvailable
-                        ? (v) => setState(() => _biometricEnabled = v)
-                        : null,
-                  ),
+                  enabled: widget.biometricAvailable && !_isConfirmingBiometric,
+                  trailing: _isConfirmingBiometric
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Switch(
+                          value: _biometricEnabled && widget.biometricAvailable,
+                          activeThumbColor: DesignColors.accent,
+                          onChanged: widget.biometricAvailable
+                              ? _onBiometricToggled
+                              : null,
+                        ),
                 ),
                 SettingsRow(
                   icon: Icons.lock_clock_rounded,
@@ -1948,35 +1978,6 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                 ),
               ],
             ),
-            if (_biometricEnabled && widget.biometricAvailable) ...[
-              const SettingsGroupLabel('Biometric Methods'),
-              GroupedCard(
-                children: [
-                  SettingsRow(
-                    icon: Icons.fingerprint_rounded,
-                    title: 'Fingerprint',
-                    subtitle: 'Use fingerprint to sign in',
-                    trailing: Switch(
-                      value: _fingerprintEnabled,
-                      activeThumbColor: DesignColors.accent,
-                      onChanged: (v) =>
-                          setState(() => _fingerprintEnabled = v),
-                    ),
-                  ),
-                  SettingsRow(
-                    icon: Icons.face_rounded,
-                    title: 'Face Recognition',
-                    subtitle: 'Use face recognition to sign in',
-                    trailing: Switch(
-                      value: _faceRecognitionEnabled,
-                      activeThumbColor: DesignColors.accent,
-                      onChanged: (v) =>
-                          setState(() => _faceRecognitionEnabled = v),
-                    ),
-                  ),
-                ],
-              ),
-            ],
             GroupedCard(
               margin: EdgeInsets.zero,
               children: [
@@ -2008,16 +2009,13 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
               child: SettingsPrimaryButton(
                 label: 'Save',
                 onPressed: () async {
+                  // Biometric is committed immediately by the toggle itself
+                  // (it needs a real, just-in-time authenticate() check) —
+                  // only the remaining two settings are deferred to Save.
                   final storage = getIt<StorageService>();
-                  final prefs = await SharedPreferences.getInstance();
-                  await storage.setBiometricEnabled(_biometricEnabled);
                   await storage
                       .setRequireUnlockOnResume(_requireUnlockOnResume);
                   await storage.setAutoLockMinutes(_autoLockMinutes);
-                  await prefs.setBool(
-                      'setting_fingerprint_enabled', _fingerprintEnabled);
-                  await prefs.setBool('setting_face_recognition_enabled',
-                      _faceRecognitionEnabled);
                   if (context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(

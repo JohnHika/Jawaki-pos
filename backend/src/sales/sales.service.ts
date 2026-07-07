@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { CashFlowService } from '../cash-flow/cash-flow.service';
+import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
 import {
   CreateSaleDto,
   CreateRefundDto,
@@ -18,6 +20,7 @@ export class SalesService {
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
+    private cashFlowService: CashFlowService,
   ) {}
 
   async createSale(userId: string, tenantId: string, dto: CreateSaleDto) {
@@ -326,6 +329,21 @@ export class SalesService {
       return newSale;
     });
 
+    // Cash-flow ledger only ever tracks physical cash movements — sales paid
+    // by M-Pesa/card/credit don't put cash in the till, so they're excluded
+    // here. ALL_REVENUE mode reads straight from Sale.totalAmount instead of
+    // this ledger for that reason (see CashFlowService.getAvailableCash).
+    if (sale.paymentMethod === PaymentMethod.CASH && Number(sale.paidAmount) > 0) {
+      await this.cashFlowService.recordEntry({
+        branchId: sale.branchId,
+        type: CashEntryType.SALE_CASH_IN,
+        amount: Number(sale.paidAmount) - Number(sale.changeAmount),
+        referenceType: 'sale',
+        referenceId: sale.id,
+        createdById: userId,
+      });
+    }
+
     return this.formatSale(sale);
   }
 
@@ -440,7 +458,7 @@ export class SalesService {
     }
 
     // Void sale and restore stock
-    return this.prisma.$transaction(async (tx) => {
+    const voided = await this.prisma.$transaction(async (tx) => {
       const voidedSale = await tx.sale.update({
         where: { id: saleId },
         data: {
@@ -493,6 +511,22 @@ export class SalesService {
 
       return voidedSale;
     });
+
+    // Reverse the cash that was originally logged in, so a voided cash sale
+    // doesn't keep inflating "available cash to restock."
+    if (sale.paymentMethod === PaymentMethod.CASH && Number(sale.paidAmount) > 0) {
+      await this.cashFlowService.recordEntry({
+        branchId: sale.branchId,
+        type: CashEntryType.SALE_CASH_IN,
+        amount: -(Number(sale.paidAmount) - Number(sale.changeAmount)),
+        referenceType: 'sale',
+        referenceId: sale.id,
+        note: `Voided: ${reason}`,
+        createdById: userId,
+      });
+    }
+
+    return voided;
   }
 
   async createRefund(userId: string, tenantId: string, dto: CreateRefundDto) {

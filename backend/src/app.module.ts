@@ -19,6 +19,8 @@ import { AppUpdatesModule } from './app-updates/app-updates.module';
 import { ApiV1Module } from './api-v1/api-v1.module';
 import { PaymentsModule } from './payments/payments.module';
 import { AuditModule } from './audit/audit.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { CashFlowModule } from './cash-flow/cash-flow.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -60,6 +62,8 @@ import { AppController } from './app.controller';
     ApiV1Module,
     PaymentsModule,
     AuditModule,
+    SuppliersModule,
+    CashFlowModule,
   ],
   controllers: [AppController],
 })

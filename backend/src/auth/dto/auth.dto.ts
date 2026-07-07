@@ -324,6 +324,7 @@ export class AuthResponseDto {
     tenantSlug?: string;
     branchId?: string;
     branchName?: string;
+    hasPinSet: boolean;
     tenant?: {
       id: string;
       name: string;

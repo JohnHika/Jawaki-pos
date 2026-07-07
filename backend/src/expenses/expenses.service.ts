@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { CashFlowService } from '../cash-flow/cash-flow.service';
+import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
 import {
   CreateExpenseDto,
   UpdateExpenseDto,
@@ -20,6 +22,7 @@ export class ExpensesService {
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
+    private cashFlowService: CashFlowService,
   ) {}
 
   async createExpense(userId: string, tenantId: string, dto: CreateExpenseDto) {
@@ -354,6 +357,21 @@ export class ExpensesService {
         createdBy: { select: { firstName: true, lastName: true } },
       },
     });
+
+    // Only cash-ish payment methods actually move physical cash out of the
+    // till; M-Pesa/bank transfer expenses don't affect "available cash."
+    const method = (expense.paymentMethod || '').toLowerCase();
+    if (method === 'cash' || method === '') {
+      await this.cashFlowService.recordEntry({
+        branchId: expense.branchId,
+        type: CashEntryType.EXPENSE_OUT,
+        amount: -Number(expense.amount),
+        referenceType: 'expense',
+        referenceId: expense.id,
+        note: expense.description,
+        createdById: userId,
+      });
+    }
 
     return this.formatExpense(updated);
   }

@@ -73,6 +73,14 @@ class AuthService {
   String? get tenantSlug => _storage.getTenantSlug();
   String? get userRole => _currentUser?['role'];
 
+  /// Whether this account has a PIN set server-side — refreshed on every
+  /// login and token refresh, so it stays current even on a device that
+  /// never locally stored a PIN itself (e.g. the account's PIN was set
+  /// from a different device). Combined with the local check in
+  /// [lockSession], this is what lets a synced-but-not-local PIN still
+  /// unlock correctly here instead of the app assuming no PIN exists.
+  bool get hasServerPinSet => _currentUser?['hasPinSet'] == true;
+
   /// VAT/sales tax percentage configured by the business admin. Defaults
   /// to 0 (no tax) when nothing has been set — tax is opt-in, not assumed.
   double get taxRatePercent {
@@ -355,8 +363,21 @@ class AuthService {
     }
   }
 
+  /// Locks the session into the PIN/biometric unlock screen — but only if
+  /// the user actually has a way to unlock it. A device with no local PIN,
+  /// no biometric enabled, and no server-side PIN on the account has no
+  /// working unlock path (PIN screen's fallbacks — local unlock and server
+  /// PIN login — would both fail), so locking would strand the user on a
+  /// numpad that can never succeed. In that case the session simply stays
+  /// authenticated, same as an app with no lock feature configured at all.
   Future<void> lockSession() async {
     if (!isAuthenticated) return;
+
+    final hasUnlockMethod = await _storage.hasLocalPinSet() ||
+        _storage.isBiometricEnabled() ||
+        hasServerPinSet;
+    if (!hasUnlockMethod) return;
+
     await _storage.setAuthLocked(true);
     _accessToken = null;
     _currentUser = _storage.getUser();
@@ -382,6 +403,31 @@ class AuthService {
       return canCheck && isSupported;
     } catch (e) {
       debugPrint('[AuthService] Device auth availability check failed: $e');
+      return false;
+    }
+  }
+
+  /// Runs a real OS biometric/device-credential prompt to confirm the
+  /// device's fingerprint/face actually works, before the "Biometric
+  /// Login" setting is turned on. Distinct from [loginWithBiometrics] (used
+  /// to unlock a locked session) — this is the one-time enrollment check
+  /// invoked from Settings > Security when the toggle is flipped on. A
+  /// cancelled or failed prompt means the setting must NOT be enabled.
+  Future<bool> confirmBiometricEnrollment() async {
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      if (!canCheck || !isSupported) return false;
+
+      return await _localAuth.authenticate(
+        localizedReason: 'Confirm your fingerprint or face to enable biometric login',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: false,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[AuthService] Biometric enrollment confirmation failed: $e');
       return false;
     }
   }

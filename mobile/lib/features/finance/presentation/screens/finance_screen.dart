@@ -5,23 +5,47 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
+import '../../../../core/services/sync_service.dart';
 import '../../../../core/theme/design_system.dart';
+
+/// Cash till vs credit — mirrors CashFundingSource on the backend.
+enum FundingSource { cashTill, creditSupplier }
+
+extension FundingSourceWireFormat on FundingSource {
+  String get wireName => switch (this) {
+        FundingSource.cashTill => 'CASH_TILL',
+        FundingSource.creditSupplier => 'CREDIT_SUPPLIER',
+      };
+
+  String get label => switch (this) {
+        FundingSource.cashTill => 'Cash till',
+        FundingSource.creditSupplier => 'Credit (pay later)',
+      };
+}
 
 final _supplierBalancesProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
   try {
-    return await getIt<AppDatabase>().getSupplierDebts();
+    final debts = await getIt<ApiClient>().getSupplierDebts();
+    return debts.cast<Map<String, dynamic>>();
   } catch (e) {
-    debugPrint('Finance: supplier tables not available ($e)');
+    debugPrint('Finance: could not load supplier debts ($e)');
     return [];
   }
 });
 
 class FinanceScreen extends ConsumerStatefulWidget {
-  const FinanceScreen({super.key});
+  /// Optional single-item prefill, e.g. from tapping "Buy" on a restock
+  /// suggestion — opens the manual invoice dialog pre-populated instead of
+  /// making the user re-type what the suggestion already computed.
+  final RestockPrefill? prefill;
+
+  const FinanceScreen({super.key, this.prefill});
 
   static final currencyFmt =
       NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
@@ -30,10 +54,60 @@ class FinanceScreen extends ConsumerStatefulWidget {
   ConsumerState<FinanceScreen> createState() => _FinanceScreenState();
 }
 
+/// Data carried from the Restock Suggestions screen into the Finance
+/// screen's manual invoice dialog.
+class RestockPrefill {
+  final String productName;
+  final double quantity;
+  final double unitCost;
+
+  const RestockPrefill({
+    required this.productName,
+    required this.quantity,
+    required this.unitCost,
+  });
+}
+
 class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   final _picker = ImagePicker();
   final _ocr = SupplierReceiptOcrService();
   bool _isScanning = false;
+  bool _prefillHandled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_prefillHandled && widget.prefill != null) {
+      _prefillHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showPrefilledInvoiceDialog(widget.prefill!);
+      });
+    }
+  }
+
+  Future<void> _showPrefilledInvoiceDialog(RestockPrefill prefill) async {
+    await _showInvoiceReviewDialog(
+      scan: SupplierReceiptScan(
+        imagePath: '',
+        rawText: '',
+        suggestedSupplierName: '',
+        invoiceNumber: null,
+        totalAmount: prefill.quantity * prefill.unitCost,
+        items: [
+          SupplierReceiptLineItem(
+            name: prefill.productName,
+            quantity: prefill.quantity,
+            unit: 'piece',
+            unitCost: prefill.unitCost,
+            lineTotal: prefill.quantity * prefill.unitCost,
+            confidence: 1,
+            rawText: '',
+          ),
+        ],
+        summary: 'Prefilled from a restock suggestion.',
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -226,6 +300,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final paidController = TextEditingController(text: '0');
     final termsController = TextEditingController(text: 'Pay later');
     DateTime? dueDate = DateTime.now().add(const Duration(days: 30));
+    FundingSource fundingSource = FundingSource.cashTill;
     final itemRows = scan.items.isEmpty
         ? [_InvoiceItemDraft()]
         : scan.items.map((item) => _InvoiceItemDraft.fromScan(item)).toList();
@@ -332,6 +407,30 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    Text('Funding source',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: dialogSecondary)),
+                    const SizedBox(height: 6),
+                    SegmentedButton<FundingSource>(
+                      segments: const [
+                        ButtonSegment(
+                          value: FundingSource.cashTill,
+                          label: Text('Cash till'),
+                          icon: Icon(Icons.payments_outlined),
+                        ),
+                        ButtonSegment(
+                          value: FundingSource.creditSupplier,
+                          label: Text('Credit'),
+                          icon: Icon(Icons.schedule_outlined),
+                        ),
+                      ],
+                      selected: {fundingSource},
+                      onSelectionChanged: (selection) =>
+                          setDialogState(() => fundingSource = selection.first),
+                    ),
                     const SizedBox(height: 16),
                     const Text('Items',
                         style: TextStyle(fontWeight: FontWeight.w700)),
@@ -372,31 +471,65 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     );
 
     if (saved == true && mounted) {
+      final branchId = getIt<AuthService>().branchId;
+      if (branchId == null) {
+        showGlassSnackBar(context, 'No branch selected — cannot save invoice',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+        return;
+      }
+
+      final items = itemRows
+          .where((item) => item.name.trim().isNotEmpty)
+          .map((item) => {
+                'productName': item.name,
+                'quantity': item.quantity,
+                'unit': 'piece',
+                'unitCost': item.unitCost,
+              })
+          .toList();
+
+      final payload = {
+        'branchId': branchId,
+        'supplierName': supplierController.text.trim(),
+        'invoiceNumber': invoiceController.text.trim().isEmpty
+            ? null
+            : invoiceController.text.trim(),
+        'receiptImageUrl': scan.imagePath.isEmpty ? null : scan.imagePath,
+        'items': items,
+        'paidAmount': double.tryParse(paidController.text) ?? 0,
+        'fundingSource': fundingSource.wireName,
+        'dueDate': dueDate?.toIso8601String(),
+      };
+
       try {
-        await getIt<AppDatabase>().recordSupplierInvoice(
-          supplierName: supplierController.text.trim(),
-          invoiceNumber: invoiceController.text.trim().isEmpty
-              ? null
-              : invoiceController.text.trim(),
-          receiptImagePath: scan.imagePath.isEmpty ? null : scan.imagePath,
-          ocrText: scan.rawText.isEmpty ? null : scan.rawText,
-          summary: scan.summary,
-          terms: termsController.text.trim().isEmpty
-              ? 'Pay later'
-              : termsController.text.trim(),
-          paidAmount: double.tryParse(paidController.text) ?? 0,
-          dueDate: dueDate,
-          items: itemRows
-              .where((item) => item.name.trim().isNotEmpty)
-              .map((item) => item.toMap())
-              .toList(),
-        );
-        ref.invalidate(_supplierBalancesProvider);
-        if (mounted) {
-          showGlassSnackBar(
-              context, 'Supplier invoice saved and catalog updated',
-              icon: Icons.check_circle_rounded, color: DesignColors.success);
+        if (getIt<ConnectivityService>().isOnline) {
+          await getIt<ApiClient>().createSupplierInvoice(payload);
+          if (mounted) {
+            showGlassSnackBar(
+                context, 'Supplier invoice saved and stock updated',
+                icon: Icons.check_circle_rounded, color: DesignColors.success);
+          }
+        } else {
+          final authService = getIt<AuthService>();
+          await getIt<SyncService>().queueSyncItem(
+            tableName: 'suppliers',
+            recordId: 'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
+            action: SyncAction.create,
+            eventType: SyncEventType.supplierInvoiceCreated,
+            data: {
+              ...payload,
+              'offlineId': 'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
+            },
+            deviceId: authService.deviceId ?? '',
+            userId: authService.userId ?? '',
+          );
+          if (mounted) {
+            showGlassSnackBar(context,
+                'Offline — invoice will sync once you\'re back online',
+                icon: Icons.cloud_off_rounded, color: DesignColors.warning);
+          }
         }
+        ref.invalidate(_supplierBalancesProvider);
       } catch (e) {
         if (mounted) {
           showGlassSnackBar(context, 'Could not save invoice: $e',
@@ -482,20 +615,56 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     if (confirmed == true && mounted) {
       final amount = double.tryParse(controller.text) ?? 0;
       if (amount > 0) {
-        await getIt<AppDatabase>().recordSupplierPayment(supplierId, amount);
-        ref.invalidate(_supplierBalancesProvider);
-        if (mounted) {
-          showGlassSnackBar(context,
-              'Payment of ${FinanceScreen.currencyFmt.format(amount)} recorded',
-              icon: Icons.check_circle_rounded, color: DesignColors.success);
+        try {
+          await _applyPaymentAcrossInvoices(supplierId, amount);
+          ref.invalidate(_supplierBalancesProvider);
+          if (mounted) {
+            showGlassSnackBar(context,
+                'Payment of ${FinanceScreen.currencyFmt.format(amount)} recorded',
+                icon: Icons.check_circle_rounded, color: DesignColors.success);
+          }
+        } catch (e) {
+          if (mounted) {
+            showGlassSnackBar(context, 'Could not record payment: $e',
+                icon: Icons.error_outline_rounded, color: DesignColors.error);
+          }
         }
       }
     }
   }
 
+  /// A supplier balance is the sum of several invoices, but a payment must
+  /// be recorded against one specific invoice server-side. Applies [amount]
+  /// oldest-invoice-first until it's exhausted, matching how the old
+  /// device-local screen always showed one aggregate balance per supplier
+  /// rather than per invoice.
+  Future<void> _applyPaymentAcrossInvoices(
+      String supplierId, double amount) async {
+    final invoices = await getIt<ApiClient>().getSupplierInvoices(supplierId);
+    final openInvoices = invoices
+        .cast<Map<String, dynamic>>()
+        .where((inv) => ((inv['dueAmount'] as num?)?.toDouble() ?? 0) > 0)
+        .toList()
+      ..sort((a, b) =>
+          (a['createdAt'] as String).compareTo(b['createdAt'] as String));
+
+    var remaining = amount;
+    for (final invoice in openInvoices) {
+      if (remaining <= 0) break;
+      final due = (invoice['dueAmount'] as num).toDouble();
+      final toApply = remaining < due ? remaining : due;
+      await getIt<ApiClient>().recordSupplierPayment(
+        invoice['id'] as String,
+        {'amount': toApply},
+      );
+      remaining -= toApply;
+    }
+  }
+
   Future<void> _showSupplierInvoices(
       String supplierId, String supplierName) async {
-    final invoices = await getIt<AppDatabase>().getSupplierInvoices(supplierId);
+    final invoices = (await getIt<ApiClient>().getSupplierInvoices(supplierId))
+        .cast<Map<String, dynamic>>();
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
@@ -534,14 +703,15 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                                 true
                             ? invoice['invoiceNumber'] as String
                             : 'Supplier invoice',
-                    subtitle: invoice['summary'] as String? ?? '',
+                    subtitle:
+                        '${(invoice['items'] as List?)?.length ?? 0} item(s)',
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                            FinanceScreen.currencyFmt.format(
-                                (invoice['totalAmount'] as num).toDouble()),
+                            FinanceScreen.currencyFmt
+                                .format((invoice['totalAmount'] as num).toDouble()),
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
                         Text(invoice['status'] as String,
