@@ -91,6 +91,11 @@ class _StockRequestsListScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
     return Scaffold(
       appBar: const BrandedAppBar(
         title: 'Stock Requests',
@@ -103,22 +108,17 @@ class _StockRequestsListScreenState
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(14),
+                color: isDark
+                    ? DesignColors.darkSurfaceElevated
+                    : DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                border: Border.all(color: border),
               ),
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
-                labelColor: DesignColors.textOnBrand,
-                unselectedLabelColor: DesignColors.textSecondary,
-                indicator: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: const LinearGradient(
-                    colors: [DesignColors.brand, DesignColors.brandDark],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
+                labelColor: Colors.black,
+                unselectedLabelColor: secondaryColor,
+                indicator: const BoxDecoration(color: DesignColors.accent),
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 indicatorPadding: const EdgeInsets.all(4),
@@ -168,7 +168,6 @@ class _StockRequestsListScreenState
         icon: Icons.inbox_outlined,
         title: 'No ${status.toLowerCase()} requests',
         subtitle: 'All caught up! No requests to review.',
-        iconColor: DesignColors.textTertiary,
       );
     }
 
@@ -199,14 +198,28 @@ class _StockRequestsListScreenState
     final reason = request['reason'] as String?;
     final createdAt = request['createdAt'] as DateTime? ?? DateTime.now();
     final currentStock = request['currentStock'] as num? ?? 0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final panelFill =
+        isDark ? DesignColors.darkSurface : DesignColors.surfaceBorder.withValues(alpha: 0.25);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: GlassCard(
-        onTap: () => _showRequestDetails(request),
-        padding: const EdgeInsets.all(16),
-        borderRadius: 14,
-        child: Column(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showRequestDetails(request),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header Row
@@ -224,19 +237,16 @@ class _StockRequestsListScreenState
                     children: [
                       Text(
                         productName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: DesignColors.textPrimary,
+                          color: titleColor,
                         ),
                       ),
                       if (productSku.isNotEmpty)
                         Text(
                           'SKU: $productSku',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: DesignColors.textTertiary,
-                          ),
+                          style: TextStyle(fontSize: 11, color: tertiaryColor),
                         ),
                     ],
                   ),
@@ -253,7 +263,7 @@ class _StockRequestsListScreenState
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha: 0.25),
+                color: panelFill,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -262,40 +272,36 @@ class _StockRequestsListScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Requested',
                           style: TextStyle(
                             fontSize: 11,
-                            color: DesignColors.textSecondary,
+                            color: secondaryColor,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           '$quantity $unit',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
-                            color: DesignColors.textPrimary,
+                            color: titleColor,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    width: 1,
-                    height: 44,
-                    color: DesignColors.surfaceBorder,
-                  ),
+                  Container(width: 1, height: 44, color: border),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Current Stock',
                           style: TextStyle(
                             fontSize: 11,
-                            color: DesignColors.textSecondary,
+                            color: secondaryColor,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -325,7 +331,7 @@ class _StockRequestsListScreenState
                 reason,
                 style: TextStyle(
                   fontSize: 13,
-                  color: DesignColors.textSecondary,
+                  color: secondaryColor,
                   fontStyle: FontStyle.italic,
                   height: 1.3,
                 ),
@@ -337,41 +343,23 @@ class _StockRequestsListScreenState
             // Footer Row
             Row(
               children: [
-                Icon(Icons.person_outline_rounded,
-                    size: 14, color: DesignColors.textTertiary),
+                Icon(Icons.person_outline_rounded, size: 14, color: tertiaryColor),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     requesterName,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: DesignColors.textTertiary,
-                    ),
+                    style: TextStyle(fontSize: 11, color: tertiaryColor),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 12),
-                Icon(Icons.store_outlined,
-                    size: 14, color: DesignColors.textTertiary),
+                Icon(Icons.store_outlined, size: 14, color: tertiaryColor),
                 const SizedBox(width: 4),
-                Text(
-                  branchName,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: DesignColors.textTertiary,
-                  ),
-                ),
+                Text(branchName, style: TextStyle(fontSize: 11, color: tertiaryColor)),
                 const SizedBox(width: 12),
-                Icon(Icons.access_time_rounded,
-                    size: 14, color: DesignColors.textTertiary),
+                Icon(Icons.access_time_rounded, size: 14, color: tertiaryColor),
                 const SizedBox(width: 4),
-                Text(
-                  _formatDate(createdAt),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: DesignColors.textTertiary,
-                  ),
-                ),
+                Text(_formatDate(createdAt), style: TextStyle(fontSize: 11, color: tertiaryColor)),
               ],
             ),
 
@@ -401,10 +389,7 @@ class _StockRequestsListScreenState
                       label: 'Approve',
                       icon: Icons.check_rounded,
                       onPressed: () => _approveRequest(id),
-                      gradient: [
-                        DesignColors.success,
-                        const Color(0xFF059669),
-                      ],
+                      gradient: const [DesignColors.success],
                       height: 44,
                       borderRadius: 12,
                     ),
@@ -422,16 +407,15 @@ class _StockRequestsListScreenState
                   label: 'Mark as Fulfilled',
                   icon: Icons.done_all_rounded,
                   onPressed: () => _fulfillRequest(id),
-                  gradient: [
-                    Colors.teal,
-                    const Color(0xFF0F766E),
-                  ],
+                  gradient: const [DesignColors.info],
                   height: 44,
                   borderRadius: 12,
                 ),
               ),
             ],
           ],
+            ),
+          ),
         ),
       ),
     );
@@ -455,7 +439,7 @@ class _StockRequestsListScreenState
         icon = Icons.arrow_downward_rounded;
         break;
       default:
-        color = DesignColors.textTertiary;
+        color = DesignColors.brand;
         icon = Icons.remove_rounded;
     }
 
@@ -507,7 +491,7 @@ class _StockRequestsListScreenState
         icon = Icons.cancel_outlined;
         break;
       default:
-        color = DesignColors.textTertiary;
+        color = DesignColors.brand;
         icon = Icons.help_outline_rounded;
     }
 
@@ -545,7 +529,21 @@ class _StockRequestsListScreenState
       context,
       initialSize: 0.6,
       maxSize: 0.9,
-      child: Padding(
+      child: Builder(builder: (sheetContext) {
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final titleColor =
+            isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+        final secondaryColor = isDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
+        final tertiaryColor = isDark
+            ? DesignColors.darkTextTertiary
+            : DesignColors.textTertiary;
+        final panelFill = isDark
+            ? DesignColors.darkSurfaceElevated
+            : DesignColors.surfaceBorder.withValues(alpha: 0.2);
+
+        return Padding(
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,26 +551,26 @@ class _StockRequestsListScreenState
             const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Request Details',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: DesignColors.textPrimary,
+                      color: titleColor,
                       letterSpacing: -0.3,
                     ),
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => Navigator.pop(context),
+                  onTap: () => Navigator.pop(sheetContext),
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                      color: panelFill,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.close, size: 18),
+                    child: Icon(Icons.close, size: 18, color: titleColor),
                   ),
                 ),
               ],
@@ -597,18 +595,15 @@ class _StockRequestsListScreenState
                   children: [
                     Text(
                       request['productName'] ?? '',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
-                        color: DesignColors.textPrimary,
+                        color: titleColor,
                       ),
                     ),
                     Text(
                       'SKU: ${request['productSku'] ?? ''}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: DesignColors.textTertiary,
-                      ),
+                      style: TextStyle(fontSize: 12, color: tertiaryColor),
                     ),
                   ],
                 ),
@@ -622,18 +617,30 @@ class _StockRequestsListScreenState
               Icons.numbers_rounded,
               'Requested Quantity',
               '${request['quantity']} ${request['unit']}',
+              secondaryColor,
+              tertiaryColor,
+              titleColor,
+              panelFill,
             ),
             const SizedBox(height: 10),
             _detailRow(
               Icons.store_rounded,
               'Branch',
               request['branchName'] ?? '',
+              secondaryColor,
+              tertiaryColor,
+              titleColor,
+              panelFill,
             ),
             const SizedBox(height: 10),
             _detailRow(
               Icons.person_rounded,
               'Requested By',
               request['requestedByName'] ?? '',
+              secondaryColor,
+              tertiaryColor,
+              titleColor,
+              panelFill,
             ),
             const SizedBox(height: 10),
             _detailRow(
@@ -642,6 +649,10 @@ class _StockRequestsListScreenState
               DateFormat('MMM d, yyyy - hh:mm a').format(
                 request['createdAt'] as DateTime? ?? DateTime.now(),
               ),
+              secondaryColor,
+              tertiaryColor,
+              titleColor,
+              panelFill,
             ),
 
             if (request['reason'] != null &&
@@ -653,35 +664,40 @@ class _StockRequestsListScreenState
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
+                  color: panelFill,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   request['reason'] as String,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: DesignColors.textSecondary,
-                    height: 1.4,
-                  ),
+                  style: TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
                 ),
               ),
             ],
           ],
         ),
-      ),
+        );
+      }),
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value) {
+  Widget _detailRow(
+    IconData icon,
+    String label,
+    String value,
+    Color secondaryColor,
+    Color tertiaryColor,
+    Color titleColor,
+    Color panelFill,
+  ) {
     return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
+            color: panelFill,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, size: 18, color: DesignColors.textSecondary),
+          child: Icon(icon, size: 18, color: secondaryColor),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -690,19 +706,19 @@ class _StockRequestsListScreenState
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: DesignColors.textTertiary,
+                  color: tertiaryColor,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],

@@ -94,6 +94,7 @@ class _PaymentAnalyticsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Payment Analytics',
@@ -105,7 +106,7 @@ class _PaymentAnalyticsScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
           : RefreshIndicator(
               onRefresh: _loadPaymentData,
               child: PageContainer(
@@ -114,7 +115,7 @@ class _PaymentAnalyticsScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Period Selector
-                    _buildPeriodSelector(),
+                    _buildPeriodSelector(isDark),
                     const SizedBox(height: 24),
 
                     // Payment Summary Cards
@@ -122,15 +123,15 @@ class _PaymentAnalyticsScreenState
                     const SizedBox(height: 24),
 
                     // Payment Method Breakdown
-                    _buildPaymentMethodBreakdown(),
+                    _buildPaymentMethodBreakdown(isDark),
                     const SizedBox(height: 24),
 
                     // Transaction Trend Chart
-                    _buildTransactionTrendChart(),
+                    _buildTransactionTrendChart(isDark),
                     const SizedBox(height: 24),
 
                     // Peak Hours Analysis
-                    _buildPeakHoursAnalysis(),
+                    _buildPeakHoursAnalysis(isDark),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -139,15 +140,17 @@ class _PaymentAnalyticsScreenState
     );
   }
 
-  Widget _buildPeriodSelector() {
+  Widget _buildPeriodSelector(bool isDark) {
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        borderRadius: 14,
-        blur: 10,
-        tint: Colors.transparent,
-        borderColor: DesignColors.surfaceBorder,
+        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           children: _periods.asMap().entries.map((entry) {
@@ -166,7 +169,7 @@ class _PaymentAnalyticsScreenState
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? DesignColors.brand.withValues(alpha: 0.12)
+                        ? DesignColors.accent.withValues(alpha: 0.15)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -178,8 +181,8 @@ class _PaymentAnalyticsScreenState
                       fontWeight:
                           isSelected ? FontWeight.w700 : FontWeight.w500,
                       color: isSelected
-                          ? DesignColors.brand
-                          : DesignColors.textSecondary,
+                          ? DesignColors.accent
+                          : secondaryColor,
                     ),
                   ),
                 ),
@@ -216,7 +219,7 @@ class _PaymentAnalyticsScreenState
                   title: 'Transactions',
                   value: transactionCount.toString(),
                   icon: Icons.receipt_long_rounded,
-                  color: Colors.teal,
+                  color: DesignColors.info,
                 ),
               ),
             ],
@@ -248,41 +251,28 @@ class _PaymentAnalyticsScreenState
     );
   }
 
-  Widget _buildPaymentMethodBreakdown() {
-    return GlassCard(
+  Widget _buildPaymentMethodBreakdown(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: DesignColors.info.withValues(alpha: 0.05),
-      borderColor: DesignColors.info.withValues(alpha: 0.12),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DesignColors.info.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.payment_rounded,
-                  color: DesignColors.info,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.payment_rounded, color: DesignColors.info, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Payment Method Breakdown',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -325,18 +315,15 @@ class _PaymentAnalyticsScreenState
                         const SizedBox(width: 10),
                         Text(
                           _formatPaymentMethod(method),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: DesignColors.textPrimary,
-                          ),
+                          style: TextStyle(fontSize: 14, color: titleColor),
                         ),
                         const Spacer(),
                         Text(
                           '$count transactions',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: DesignColors.textPrimary,
+                            color: titleColor,
                           ),
                         ),
                       ],
@@ -351,7 +338,7 @@ class _PaymentAnalyticsScreenState
                               value: share,
                               valueColor: AlwaysStoppedAnimation<Color>(color),
                               minHeight: 10,
-                              backgroundColor: DesignColors.surfaceBorder,
+                              backgroundColor: border,
                             ),
                           ),
                         ),
@@ -369,47 +356,36 @@ class _PaymentAnalyticsScreenState
                   ],
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );
   }
 
-  Widget _buildTransactionTrendChart() {
-    return GlassCard(
+  Widget _buildTransactionTrendChart(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: DesignColors.brand.withValues(alpha: 0.05),
-      borderColor: DesignColors.brand.withValues(alpha: 0.12),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DesignColors.brand.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.trending_up_rounded,
-                  color: DesignColors.brand,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.trending_up_rounded, color: DesignColors.brand, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Transaction Trends',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -474,8 +450,8 @@ class _PaymentAnalyticsScreenState
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               time,
-                              style: const TextStyle(
-                                color: DesignColors.textTertiary,
+                              style: TextStyle(
+                                color: tertiaryColor,
                                 fontSize: 11,
                               ),
                             ),
@@ -494,7 +470,7 @@ class _PaymentAnalyticsScreenState
                           child: Text(
                             'KSh ${(value as num).toInt() ~/ 1000}k',
                             style: TextStyle(
-                              color: DesignColors.textTertiary,
+                              color: tertiaryColor,
                               fontSize: 11,
                             ),
                           ),
@@ -520,10 +496,7 @@ class _PaymentAnalyticsScreenState
                           .toDouble() /
                       5,
                   getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: DesignColors.surfaceBorder.withValues(alpha: 0.5),
-                      strokeWidth: 1,
-                    );
+                    return FlLine(color: border, strokeWidth: 1);
                   },
                 ),
                 borderData: FlBorderData(show: false),
@@ -535,41 +508,30 @@ class _PaymentAnalyticsScreenState
     );
   }
 
-  Widget _buildPeakHoursAnalysis() {
-    return GlassCard(
+  Widget _buildPeakHoursAnalysis(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: DesignColors.accent.withValues(alpha: 0.05),
-      borderColor: DesignColors.accent.withValues(alpha: 0.12),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DesignColors.accent.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.access_time_rounded,
-                  color: DesignColors.accent,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.access_time_rounded, color: DesignColors.accent, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Peak Hours Analysis',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -586,6 +548,12 @@ class _PaymentAnalyticsScreenState
               final count = hour['transactionCount'] ?? 0;
               final total = hour['totalAmount'] ?? 0.0;
               final color = _getPeakHourColor(hourNum);
+              final totalTraffic = _peakHours.fold<int>(
+                0,
+                (sum, h) => sum + ((h['transactionCount'] ?? 0) as int),
+              );
+              final trafficShare =
+                  totalTraffic > 0 ? (count / totalTraffic * 100) : 0.0;
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 14),
@@ -622,26 +590,20 @@ class _PaymentAnalyticsScreenState
                             children: [
                               Icon(
                                 Icons.access_time_rounded,
-                                color: DesignColors.textSecondary,
+                                color: secondaryColor,
                                 size: 14,
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 _formatHourLabel(hourNum),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: DesignColors.textPrimary,
-                                ),
+                                style: TextStyle(fontSize: 13, color: titleColor),
                               ),
                             ],
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '$count transactions',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: DesignColors.textSecondary,
-                            ),
+                            style: TextStyle(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -659,11 +621,8 @@ class _PaymentAnalyticsScreenState
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${(count / (_peakHours.fold(0, (sum, h) => sum + ((h['transactionCount'] ?? 0) as int))) * 100).toStringAsFixed(1)}% of traffic',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: DesignColors.textSecondary,
-                          ),
+                          '${trafficShare.toStringAsFixed(1)}% of traffic',
+                          style: TextStyle(fontSize: 11, color: secondaryColor),
                         ),
                       ],
                     ),

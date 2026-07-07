@@ -51,22 +51,15 @@ class CartSummaryBar extends ConsumerWidget {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          DesignColors.brand.withValues(alpha:0.15),
-                          DesignColors.brandLight.withValues(alpha:0.08),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: DesignColors.accent.withValues(alpha:0.12),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: DesignColors.brand.withValues(alpha:0.2),
+                        color: DesignColors.accent.withValues(alpha:0.3),
                       ),
                     ),
                     child: const Icon(
                       Icons.shopping_cart_rounded,
-                      color: DesignColors.brand,
+                      color: DesignColors.accent,
                       size: 22,
                     ),
                   ),
@@ -83,15 +76,11 @@ class CartSummaryBar extends ConsumerWidget {
                         return Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [DesignColors.brand, DesignColors.brandDark],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            color: DesignColors.accent,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: DesignColors.brand.withValues(alpha:0.4),
+                                color: DesignColors.accent.withValues(alpha:0.4),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
@@ -102,7 +91,7 @@ class CartSummaryBar extends ConsumerWidget {
                           child: Text(
                             '$value',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: Colors.black,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -126,13 +115,13 @@ class CartSummaryBar extends ConsumerWidget {
                   if (cartState.customerName != null)
                     Row(
                       children: [
-                        Icon(Icons.person_rounded,
-                            size: 12, color: Colors.teal),
+                        const Icon(Icons.person_rounded,
+                            size: 12, color: DesignColors.accent),
                         const SizedBox(width: 4),
                         Text(
                           cartState.customerName!,
                           style: const TextStyle(
-                            color: Colors.teal,
+                            color: DesignColors.accent,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -155,13 +144,12 @@ class CartSummaryBar extends ConsumerWidget {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'KES ${cartState.total.toStringAsFixed(0)}',
-                      style: TextStyle(
+                      style: DesignType.numeric(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: isDark
                             ? DesignColors.darkTextPrimary
                             : DesignColors.textPrimary,
-                        letterSpacing: -0.3,
                       ),
                       maxLines: 1,
                     ),
@@ -177,7 +165,6 @@ class CartSummaryBar extends ConsumerWidget {
               onPressed: () => context.push('/cart'),
               height: 44,
               borderRadius: 12,
-              gradient: const [DesignColors.brand, DesignColors.brandDark],
             ),
           ],
         ),

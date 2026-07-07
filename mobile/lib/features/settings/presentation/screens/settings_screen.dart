@@ -42,9 +42,10 @@ class SettingsScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final perms = ref.watch(permissionsProvider);
     final syncService = getIt<SyncService>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: const BrandedAppBar(title: 'Settings'),
+      appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -54,16 +55,17 @@ class SettingsScreen extends ConsumerWidget {
             borderRadius: 12,
             blur: 10,
             tint: Colors.transparent,
-            borderColor: DesignColors.surfaceBorder,
+            borderColor:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundColor: DesignColors.brand.withValues(alpha: 0.15),
+                  backgroundColor: DesignColors.accent.withValues(alpha: 0.15),
                   child: Text(
                     _initialFor(user?['name'] ?? user?['email']),
                     style: const TextStyle(
-                      color: DesignColors.brand,
+                      color: DesignColors.accent,
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
                     ),
@@ -81,8 +83,10 @@ class SettingsScreen extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Text(
                         user?['email'] ?? '',
-                        style: const TextStyle(
-                          color: DesignColors.textSecondary,
+                        style: TextStyle(
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
                           fontSize: 13,
                         ),
                       ),
@@ -91,13 +95,13 @@ class SettingsScreen extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: DesignColors.brand.withValues(alpha: 0.1),
+                          color: DesignColors.accent.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           (user?['role'] ?? 'CASHIER').toString().toUpperCase(),
                           style: const TextStyle(
-                            color: DesignColors.brand,
+                            color: DesignColors.accent,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -307,7 +311,9 @@ class SettingsScreen extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => Padding(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -318,7 +324,9 @@ class SettingsScreen extends ConsumerWidget {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: DesignColors.surfaceBorder,
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorder,
                         borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Text('Sync Settings',
@@ -361,7 +369,8 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+        );
+      },
     );
   }
 
@@ -440,7 +449,8 @@ class SettingsScreen extends ConsumerWidget {
                 leading: const Icon(Icons.light_mode),
                 title: const Text('Light Mode'),
                 trailing: currentMode == ThemeMode.light
-                    ? const Icon(Icons.check_circle, color: DesignColors.brand)
+                    ? const Icon(Icons.check_circle,
+                        color: DesignColors.accent)
                     : null,
                 onTap: () {
                   ref
@@ -453,7 +463,8 @@ class SettingsScreen extends ConsumerWidget {
                 leading: const Icon(Icons.dark_mode),
                 title: const Text('Dark Mode'),
                 trailing: currentMode == ThemeMode.dark
-                    ? const Icon(Icons.check_circle, color: DesignColors.brand)
+                    ? const Icon(Icons.check_circle,
+                        color: DesignColors.accent)
                     : null,
                 onTap: () {
                   ref
@@ -467,7 +478,8 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('System Default'),
                 subtitle: const Text('Follow device theme'),
                 trailing: currentMode == ThemeMode.system
-                    ? const Icon(Icons.check_circle, color: DesignColors.brand)
+                    ? const Icon(Icons.check_circle,
+                        color: DesignColors.accent)
                     : null,
                 onTap: () {
                   ref
@@ -613,7 +625,9 @@ class SettingsScreen extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => Padding(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -624,20 +638,23 @@ class SettingsScreen extends ConsumerWidget {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: DesignColors.surfaceBorder,
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorder,
                         borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Text('Help & Support',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
             const ListTile(
-              leading: Icon(Icons.email_outlined, color: DesignColors.brand),
+              leading:
+                  Icon(Icons.email_outlined, color: DesignColors.accent),
               title: Text('Email Support'),
               subtitle: Text('johnkimani576@gmail.com'),
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.phone_outlined, color: DesignColors.brand),
+              leading: const Icon(Icons.phone_outlined,
+                  color: DesignColors.accent),
               title: const Text('Phone Support'),
               subtitle: const Text('0742126582'),
               onTap: () {},
@@ -664,7 +681,8 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+        );
+      },
     );
   }
 
@@ -769,7 +787,12 @@ class SettingsScreen extends ConsumerWidget {
     if (!context.mounted) return;
     showDialog(
       context: context,
-      builder: (context) => AboutDialog(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final secondaryColor = isDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
+        return AboutDialog(
         applicationName: 'Point of Sale',
         applicationVersion: _formatReleaseName(info.version),
         applicationLegalese:
@@ -783,23 +806,22 @@ class SettingsScreen extends ConsumerWidget {
           ),
           child: const Icon(Icons.storefront, color: Colors.white, size: 28),
         ),
-        children: const [
-          Text(
+        children: [
+          const Text(
               'A complete point-of-sale system for managing sales, inventory, and business operations.'),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Text('Built by Arche Axon Intelligence',
-              style:
-                  TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
-          SizedBox(height: 8),
+              style: TextStyle(color: secondaryColor, fontSize: 12)),
+          const SizedBox(height: 8),
           SelectableText(
             'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
-            style: TextStyle(color: DesignColors.textSecondary, fontSize: 12),
+            style: TextStyle(color: secondaryColor, fontSize: 12),
           ),
           Text('© 2026 POS Platform',
-              style:
-                  TextStyle(color: DesignColors.textSecondary, fontSize: 12)),
+              style: TextStyle(color: secondaryColor, fontSize: 12)),
         ],
-      ),
+        );
+      },
     );
   }
 
@@ -840,7 +862,9 @@ class SettingsScreen extends ConsumerWidget {
         expand: false,
         initialChildSize: 0.7,
         maxChildSize: 0.9,
-        builder: (context, scrollController) => Padding(
+        builder: (context, scrollController) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -850,7 +874,9 @@ class SettingsScreen extends ConsumerWidget {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: DesignColors.surfaceBorder,
+                          color: isDark
+                              ? DesignColors.darkBorder
+                              : DesignColors.surfaceBorder,
                           borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
               Row(
@@ -890,15 +916,20 @@ class SettingsScreen extends ConsumerWidget {
                     _RoleAccessSummary(),
                     const SizedBox(height: 12),
                     // Placeholder for additional users
-                    const Card(
+                    Card(
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: DesignColors.surfaceSubtle,
+                          backgroundColor: isDark
+                              ? DesignColors.darkSurfaceElevated
+                              : DesignColors.surfaceSubtle,
                           child: Icon(Icons.person_add,
-                              color: DesignColors.textSecondary),
+                              color: isDark
+                                  ? DesignColors.darkTextSecondary
+                                  : DesignColors.textSecondary),
                         ),
-                        title: Text('No other users yet'),
-                        subtitle: Text('Tap + Add to create staff accounts'),
+                        title: const Text('No other users yet'),
+                        subtitle:
+                            const Text('Tap + Add to create staff accounts'),
                       ),
                     ),
                   ],
@@ -906,7 +937,8 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1015,16 +1047,21 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
+        builder: (dialogContext, setDialogState) {
+          final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+          return AlertDialog(
           title: const Text('Tax Rate'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Set the VAT/sales tax percentage applied to every sale. Leave at 0 to charge no tax.',
                 style: TextStyle(
-                    fontSize: 13, color: DesignColors.textSecondary),
+                    fontSize: 13,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -1116,7 +1153,8 @@ class SettingsScreen extends ConsumerWidget {
                   : const Text('Save'),
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -1163,7 +1201,7 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 20),
             ListTile(
               leading:
-                  const Icon(Icons.receipt_long, color: DesignColors.brand),
+                  const Icon(Icons.receipt_long, color: DesignColors.accent),
               title: const Text('Export Sales Data'),
               subtitle: const Text('CSV format'),
               trailing: const Icon(Icons.chevron_right),
@@ -1173,7 +1211,7 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.inventory, color: DesignColors.brand),
+              leading: const Icon(Icons.inventory, color: DesignColors.accent),
               title: const Text('Export Inventory'),
               subtitle: const Text('CSV format'),
               trailing: const Icon(Icons.chevron_right),
@@ -1183,7 +1221,7 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.category, color: DesignColors.brand),
+              leading: const Icon(Icons.category, color: DesignColors.accent),
               title: const Text('Export Products'),
               subtitle: const Text('CSV format'),
               trailing: const Icon(Icons.chevron_right),
@@ -1309,7 +1347,9 @@ class SettingsScreen extends ConsumerWidget {
         expand: false,
         initialChildSize: 0.6,
         maxChildSize: 0.9,
-        builder: (context, scrollController) => Padding(
+        builder: (context, scrollController) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1319,14 +1359,19 @@ class SettingsScreen extends ConsumerWidget {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: DesignColors.surfaceBorder,
+                          color: isDark
+                              ? DesignColors.darkBorder
+                              : DesignColors.surfaceBorder,
                           borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
               Text('Audit Trail',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
-              const Text('Recent system activity',
-                  style: TextStyle(color: DesignColors.textSecondary)),
+              Text('Recent system activity',
+                  style: TextStyle(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary)),
               const SizedBox(height: 16),
               Expanded(
                 child: ListView(
@@ -1343,7 +1388,8 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1451,6 +1497,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -1467,7 +1514,9 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: DesignColors.surfaceBorder,
+                      color: isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder,
                       borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 16),
           Text('Printer Settings',
@@ -1579,6 +1628,7 @@ class _NotificationSettingsSheetState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
@@ -1597,7 +1647,9 @@ class _NotificationSettingsSheetState
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: DesignColors.surfaceBorder,
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorder,
                         borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Text('Notifications',
@@ -1830,10 +1882,13 @@ class _SettingsSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Text(
       label,
       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: DesignColors.textSecondary,
+            color: isDark
+                ? DesignColors.darkTextSecondary
+                : DesignColors.textSecondary,
             fontWeight: FontWeight.w700,
           ),
     );
@@ -1862,10 +1917,10 @@ class _SettingsTile extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: DesignColors.brandSubtle,
+          color: DesignColors.accent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: DesignColors.brand, size: 20),
+        child: Icon(icon, color: DesignColors.accent, size: 20),
       ),
       title: title,
       subtitle: subtitle,
@@ -1908,6 +1963,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -1916,7 +1972,10 @@ class _InfoRow extends StatelessWidget {
           Flexible(
             flex: 2,
             child: Text(label,
-                style: const TextStyle(color: DesignColors.textSecondary),
+                style: TextStyle(
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
@@ -1951,11 +2010,11 @@ class _UserTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: DesignColors.brand.withValues(alpha: 0.1),
+          backgroundColor: DesignColors.accent.withValues(alpha: 0.1),
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : '?',
             style: const TextStyle(
-                color: DesignColors.brand, fontWeight: FontWeight.bold),
+                color: DesignColors.accent, fontWeight: FontWeight.bold),
           ),
         ),
         title: Row(
@@ -1966,13 +2025,13 @@ class _UserTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha: 0.1),
+                  color: DesignColors.accent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text('You',
                     style: TextStyle(
                         fontSize: 10,
-                        color: DesignColors.brand,
+                        color: DesignColors.accent,
                         fontWeight: FontWeight.w600)),
               ),
             ],
@@ -2017,11 +2076,11 @@ class _RoleAccessSummary extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha: 0.1),
+                    color: DesignColors.accent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.admin_panel_settings_rounded,
-                      color: DesignColors.brand, size: 18),
+                      color: DesignColors.accent, size: 18),
                 ),
                 const SizedBox(width: 10),
                 Text(
@@ -2083,6 +2142,10 @@ class _AuditEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor = isDark
+        ? DesignColors.darkTextSecondary
+        : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -2092,10 +2155,12 @@ class _AuditEntry extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: DesignColors.surfaceSubtle,
+              color: isDark
+                  ? DesignColors.darkSurfaceElevated
+                  : DesignColors.surfaceSubtle,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: DesignColors.textSecondary),
+            child: Icon(icon, size: 18, color: secondaryColor),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -2106,14 +2171,16 @@ class _AuditEntry extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(subtitle,
-                    style: const TextStyle(
-                        fontSize: 12, color: DesignColors.textSecondary)),
+                    style: TextStyle(fontSize: 12, color: secondaryColor)),
               ],
             ),
           ),
           Text(time,
-              style: const TextStyle(
-                  fontSize: 11, color: DesignColors.textTertiary)),
+              style: TextStyle(
+                  fontSize: 11,
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary)),
         ],
       ),
     );
@@ -2349,7 +2416,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: const CircleAvatar(
-                            backgroundColor: DesignColors.brand,
+                            backgroundColor: DesignColors.accent,
                             child: Icon(Icons.store,
                                 color: Colors.white, size: 20),
                           ),

@@ -120,41 +120,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final authService = getIt<AuthService>();
     final role = AppRole.fromString(authService.userRole);
     final permissions = RolePermissions(role);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Inventory',
+        showBackButton: false,
         actions: [
           if (permissions.canManageStock && role.isAtLeast(AppRole.stockKeeper))
             IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.assignment_outlined,
-                  color: DesignColors.brand,
-                  size: 20,
-                ),
-              ),
+              icon: const Icon(Icons.assignment_outlined, size: 20),
               tooltip: 'Stock Requests',
               onPressed: () => context.push('/inventory/stock-requests'),
             ),
           IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.refresh_rounded,
-                color: DesignColors.textSecondary,
-                size: 20,
-              ),
-            ),
+            icon: const Icon(Icons.refresh_rounded, size: 20),
             onPressed: _loadData,
           ),
         ],
@@ -195,7 +178,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ? '...'
                             : _formatCurrency(_totalValue),
                         icon: Icons.account_balance_wallet_rounded,
-                        color: Colors.teal,
+                        color: DesignColors.info,
                       ),
                     ),
                   ],
@@ -205,16 +188,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(14),
+                  color: isDark
+                      ? DesignColors.darkSurfaceElevated
+                      : DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                  border: Border.all(color: border),
                 ),
                 child: TabBar(
-                  labelColor: DesignColors.textOnBrand,
-                  unselectedLabelColor: DesignColors.textSecondary,
-                  indicator: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: DesignColors.brand,
-                  ),
+                  labelColor: Colors.black,
+                  unselectedLabelColor: secondaryColor,
+                  indicator: const BoxDecoration(color: DesignColors.accent),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
                   indicatorPadding: const EdgeInsets.all(4),
@@ -298,6 +280,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     }
 
     final items = _filteredInventoryItems;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
 
     return Column(
       children: [
@@ -306,32 +293,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Container(
             decoration: BoxDecoration(
-              color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
+              color: isDark
+                  ? DesignColors.darkSurfaceElevated
+                  : DesignColors.surfaceBorder.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: TextField(
               onChanged: (value) => setState(() => _stockSearchQuery = value),
               decoration: InputDecoration(
                 hintText: 'Search products, SKU, category...',
-                hintStyle: TextStyle(
-                  color: DesignColors.textTertiary,
-                  fontSize: 14,
-                ),
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: DesignColors.textTertiary,
-                  size: 20,
-                ),
+                hintStyle: TextStyle(color: tertiaryColor, fontSize: 14),
+                prefixIcon: Icon(Icons.search_rounded, color: tertiaryColor, size: 20),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
                 ),
               ),
-              style: const TextStyle(
-                fontSize: 14,
-                color: DesignColors.textPrimary,
-              ),
+              style: TextStyle(fontSize: 14, color: titleColor),
             ),
           ),
         ),
@@ -359,7 +338,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   subtitle: _stockSearchQuery.isNotEmpty
                       ? 'Try a different search term'
                       : 'Products will appear here once added to inventory.',
-                  iconColor: DesignColors.textTertiary,
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -388,12 +366,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final productId = item['id'] as String? ?? '';
     final stockColor = _stockColor(stock, minStock);
     final stockIcon = _stockIcon(stock, minStock);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.all(14),
-        borderRadius: 14,
+        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -425,10 +410,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     children: [
                       Text(
                         name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: DesignColors.textPrimary,
+                          color: titleColor,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -440,26 +425,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             sku,
                             style: TextStyle(
                               fontSize: 11,
-                              color: DesignColors.textTertiary,
+                              color: tertiaryColor,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                           if (sku.isNotEmpty) ...[
-                            Text(
-                              ' · ',
-                              style: TextStyle(
-                                color: DesignColors.textTertiary,
-                                fontSize: 11,
-                              ),
-                            ),
+                            Text(' · ', style: TextStyle(color: tertiaryColor, fontSize: 11)),
                           ],
-                          Text(
-                            category,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: DesignColors.textTertiary,
-                            ),
-                          ),
+                          Text(category, style: TextStyle(fontSize: 11, color: tertiaryColor)),
                         ],
                       ),
                     ],
@@ -511,13 +484,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
                 if (minStock > 0) ...[
                   const SizedBox(width: 8),
-                  Text(
-                    'Min: $minStock',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: DesignColors.textTertiary,
-                    ),
-                  ),
+                  Text('Min: $minStock', style: TextStyle(fontSize: 11, color: tertiaryColor)),
                 ],
                 const Spacer(),
                 // Receive button
@@ -531,7 +498,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       onPressed: () => context.push(
                         '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(name)}',
                       ),
-                      gradient: const [DesignColors.brand, DesignColors.brand],
                       height: 34,
                       expanded: false,
                       borderRadius: 8,
@@ -579,45 +545,53 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
         if (_lowStockItems.isEmpty)
-          GlassCard(
-            padding: const EdgeInsets.all(24),
-            borderRadius: 16,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: DesignColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
+          Builder(builder: (context) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final titleColor =
+                isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+            final secondaryColor = isDark
+                ? DesignColors.darkTextSecondary
+                : DesignColors.textSecondary;
+            final border =
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+            final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration:
+                  BoxDecoration(color: surface, border: Border.all(color: border)),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: DesignColors.success.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 48,
+                      color: DesignColors.success,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.check_circle_outline_rounded,
-                    size: 48,
-                    color: DesignColors.success,
+                  const SizedBox(height: 16),
+                  Text(
+                    'All Stocked Up',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: titleColor,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'All Stocked Up',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: DesignColors.textPrimary,
+                  const SizedBox(height: 8),
+                  Text(
+                    'No items are currently low in stock. Everything looks good!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'No items are currently low in stock. Everything looks good!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: DesignColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          )
+                ],
+              ),
+            );
+          })
         else ...[
           if (critical.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -711,13 +685,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final quantity = (item['quantity'] as int?) ?? 0;
     final category = item['categoryName'] as String? ?? 'Uncategorised';
     final productId = item['id'] as String? ?? '';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.all(12),
-        borderRadius: 12,
-        borderColor: severityColor.withValues(alpha: 0.2),
+        decoration: BoxDecoration(
+          color: surface,
+          border: Border.all(color: severityColor.withValues(alpha: 0.3)),
+        ),
         child: Row(
           children: [
             Container(
@@ -745,10 +727,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: DesignColors.textPrimary,
+                      color: titleColor,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -756,29 +738,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(
-                        sku,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: DesignColors.textTertiary,
-                        ),
-                      ),
+                      Text(sku, style: TextStyle(fontSize: 11, color: tertiaryColor)),
                       if (sku.isNotEmpty) ...[
-                        Text(
-                          ' · ',
-                          style: TextStyle(
-                            color: DesignColors.textTertiary,
-                            fontSize: 11,
-                          ),
-                        ),
+                        Text(' · ', style: TextStyle(color: tertiaryColor, fontSize: 11)),
                       ],
-                      Text(
-                        category,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: DesignColors.textTertiary,
-                        ),
-                      ),
+                      Text(category, style: TextStyle(fontSize: 11, color: tertiaryColor)),
                     ],
                   ),
                 ],
@@ -813,7 +777,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   onPressed: () => context.push(
                     '/inventory/request-stock?productId=$productId',
                   ),
-                  gradient: const [DesignColors.warning, DesignColors.warning],
                   height: 32,
                   expanded: false,
                   borderRadius: 8,
@@ -850,18 +813,26 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               icon: Icons.swap_horiz_rounded,
             ),
             const SizedBox(height: 8),
-            GlassCard(
+            Builder(builder: (context) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final secondaryColor = isDark
+                  ? DesignColors.darkTextSecondary
+                  : DesignColors.textSecondary;
+              final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+              return Container(
               padding: const EdgeInsets.all(16),
-              borderRadius: 16,
-              tint: DesignColors.info.withValues(alpha: 0.05),
-              borderColor: DesignColors.info.withValues(alpha: 0.16),
+              decoration: BoxDecoration(
+                color: surface,
+                border: Border.all(color: DesignColors.info.withValues(alpha: 0.3)),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<String>(
-                    value: _transferProductId,
+                    initialValue: _transferProductId,
                     isExpanded: true,
                     decoration: _transferInputDecoration(
+                      context,
                       label: 'Product',
                       icon: Icons.inventory_2_rounded,
                     ),
@@ -882,9 +853,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: _transferToBranchId,
+                    initialValue: _transferToBranchId,
                     isExpanded: true,
                     decoration: _transferInputDecoration(
+                      context,
                       label: 'Destination branch',
                       icon: Icons.store_mall_directory_rounded,
                     ),
@@ -905,6 +877,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     controller: _transferQtyController,
                     keyboardType: TextInputType.number,
                     decoration: _transferInputDecoration(
+                      context,
                       label: 'Quantity',
                       icon: Icons.numbers_rounded,
                     ),
@@ -915,39 +888,38 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     icon: Icons.swap_horiz_rounded,
                     height: 50,
                     borderRadius: 14,
-                    gradient: const [DesignColors.info, Colors.teal],
                     onPressed: destinationBranches.isEmpty || products.isEmpty
                         ? null
                         : () => _submitStockTransfer(fromBranchId),
                   ),
                   if (destinationBranches.isEmpty) ...[
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       'Add another branch in Settings before making a transfer.',
-                      style: TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: secondaryColor, fontSize: 13),
                     ),
                   ],
                 ],
               ),
-            ),
+              );
+            }),
           ],
         );
       },
     );
   }
 
-  InputDecoration _transferInputDecoration({
+  InputDecoration _transferInputDecoration(
+    BuildContext context, {
     required String label,
     required IconData icon,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon, size: 20),
       filled: true,
-      fillColor: DesignColors.surfaceMuted,
+      fillColor: isDark ? DesignColors.darkSurface : DesignColors.surfaceMuted,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -1010,14 +982,18 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Widget _buildLoadingList() {
-    return ListView(
+    return Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+      final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+      return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
       children: List.generate(5, (index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: GlassCard(
+          child: Container(
             padding: const EdgeInsets.all(14),
-            borderRadius: 14,
+            decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
             child: Row(
               children: [
                 const ShimmerWidget(width: 42, height: 42, borderRadius: 12),
@@ -1046,6 +1022,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         );
       }),
-    );
+      );
+    });
   }
 }

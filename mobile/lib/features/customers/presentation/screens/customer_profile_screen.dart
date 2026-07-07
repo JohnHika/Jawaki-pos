@@ -92,36 +92,45 @@ class _CustomerProfileScreenState
                   ),
                 ),
                 const SizedBox(height: 12),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetContext,
-                      initialDate: DateTime.now().add(const Duration(days: 1)),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) {
-                      setSheetState(() => dueDate = picked);
-                    }
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Due date',
-                      prefixIcon: Icon(Icons.event_outlined),
-                    ),
-                    child: Text(
-                      dueDate == null
-                          ? 'Select a date'
-                          : '${dueDate!.day}/${dueDate!.month}/${dueDate!.year}',
-                      style: TextStyle(
-                        color: dueDate == null
-                            ? DesignColors.textTertiary
-                            : DesignColors.textPrimary,
+                Builder(builder: (dateFieldContext) {
+                  final isDark =
+                      Theme.of(dateFieldContext).brightness == Brightness.dark;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: sheetContext,
+                        initialDate:
+                            DateTime.now().add(const Duration(days: 1)),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setSheetState(() => dueDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Due date',
+                        prefixIcon: Icon(Icons.event_outlined),
+                      ),
+                      child: Text(
+                        dueDate == null
+                            ? 'Select a date'
+                            : '${dueDate!.day}/${dueDate!.month}/${dueDate!.year}',
+                        style: TextStyle(
+                          color: dueDate == null
+                              ? (isDark
+                                  ? DesignColors.darkTextTertiary
+                                  : DesignColors.textTertiary)
+                              : (isDark
+                                  ? DesignColors.darkTextPrimary
+                                  : DesignColors.textPrimary),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                }),
                 const SizedBox(height: 12),
                 TextField(
                   controller: noteCtrl,
@@ -188,13 +197,23 @@ class _CustomerProfileScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Customer Profile',
         actions: [
           IconButton(
             icon: const Icon(Icons.shopping_cart_rounded,
-                color: DesignColors.brand),
+                color: DesignColors.accent),
             tooltip: 'Start Sale with this customer',
             onPressed: _customer == null
                 ? null
@@ -220,16 +239,16 @@ class _CustomerProfileScreenState
             : _customer == null
                 ? const EmptyState(
                     icon: Icons.person_off_rounded,
-                    title: 'Customer not found',
-                    iconColor: DesignColors.textTertiary)
+                    title: 'Customer not found')
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 8),
                       // Profile header
-                      GlassCard(
+                      Container(
                         padding: const EdgeInsets.all(20),
-                        borderRadius: 20,
+                        decoration: BoxDecoration(
+                            color: surface, border: Border.all(color: border)),
                         child: Row(
                           children: [
                             CircleAvatar(
@@ -250,38 +269,35 @@ class _CustomerProfileScreenState
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(_customer!['name'],
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 20,
                                           fontWeight: FontWeight.w800,
-                                          letterSpacing: -0.5)),
+                                          letterSpacing: -0.5,
+                                          color: titleColor)),
                                   if ((_customer!['phone'] ?? '')
                                       .toString()
                                       .isNotEmpty)
                                     Row(children: [
-                                      const Icon(Icons.phone_outlined,
-                                          size: 14,
-                                          color: DesignColors.textSecondary),
+                                      Icon(Icons.phone_outlined,
+                                          size: 14, color: secondaryColor),
                                       const SizedBox(width: 4),
                                       Text(_customer!['phone'],
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               fontSize: 13,
-                                              color:
-                                                  DesignColors.textSecondary))
+                                              color: secondaryColor))
                                     ]),
                                   if ((_customer!['location'] ?? '')
                                       .toString()
                                       .isNotEmpty)
                                     Row(children: [
-                                      const Icon(Icons.location_on_outlined,
-                                          size: 14,
-                                          color: DesignColors.textSecondary),
+                                      Icon(Icons.location_on_outlined,
+                                          size: 14, color: secondaryColor),
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(_customer!['location'],
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 fontSize: 13,
-                                                color: DesignColors
-                                                    .textSecondary)),
+                                                color: secondaryColor)),
                                       ),
                                     ]),
                                 ],
@@ -325,7 +341,7 @@ class _CustomerProfileScreenState
                                 icon: Icons.account_balance_wallet_rounded,
                                 color: (_customer!['balance'] as num? ?? 0) > 0
                                     ? DesignColors.error
-                                    : Colors.teal)),
+                                    : DesignColors.success)),
                       ]),
                       const SizedBox(height: 20),
                       // Payment schedule (installments)
@@ -340,13 +356,12 @@ class _CustomerProfileScreenState
                       ),
                       const SizedBox(height: 4),
                       if (_installments.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 12),
                           child: Text(
                             'No scheduled payments. Add one when this customer takes stock on credit.',
-                            style: TextStyle(
-                                fontSize: 13, color: DesignColors.textTertiary),
+                            style: TextStyle(fontSize: 13, color: tertiaryColor),
                           ),
                         )
                       else
@@ -362,10 +377,13 @@ class _CustomerProfileScreenState
                                   : DesignColors.warning;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: GlassCard(
+                            child: Container(
                               padding: const EdgeInsets.all(12),
-                              borderRadius: 12,
-                              borderColor: statusColor.withValues(alpha: 0.3),
+                              decoration: BoxDecoration(
+                                color: surface,
+                                border: Border.all(
+                                    color: statusColor.withValues(alpha: 0.4)),
+                              ),
                               child: Row(
                                 children: [
                                   Icon(
@@ -385,9 +403,10 @@ class _CustomerProfileScreenState
                                       children: [
                                         Text(
                                           'KES ${(inst['amount'] as num).toStringAsFixed(0)}',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 14),
+                                              fontSize: 14,
+                                              color: titleColor),
                                         ),
                                         Text(
                                           isPaid
@@ -421,18 +440,19 @@ class _CustomerProfileScreenState
                         const SizedBox(height: 8),
                         ...(_topProducts.take(5).map((p) => Padding(
                               padding: const EdgeInsets.only(bottom: 6),
-                              child: GlassCard(
+                              child: Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 14, vertical: 10),
-                                borderRadius: 12,
-                                tint: Colors.transparent,
+                                decoration: BoxDecoration(
+                                    border: Border.all(color: border)),
                                 child: Row(children: [
                                   const Icon(Icons.inventory_2_outlined,
                                       size: 16, color: DesignColors.brand),
                                   const SizedBox(width: 10),
                                   Expanded(
                                       child: Text(p['productName'] ?? '',
-                                          style: const TextStyle(fontSize: 13))),
+                                          style: TextStyle(
+                                              fontSize: 13, color: titleColor))),
                                   Text('${p['timesBought'] ?? 0}x',
                                       style: const TextStyle(
                                           fontWeight: FontWeight.bold,
@@ -450,49 +470,56 @@ class _CustomerProfileScreenState
                       const SizedBox(height: 8),
                       ...(_purchases.isEmpty
                           ? [
-                              const Padding(
-                                  padding: EdgeInsets.all(24),
+                              Padding(
+                                  padding: const EdgeInsets.all(24),
                                   child: Center(
                                       child: Text('No purchases yet',
-                                          style: TextStyle(
-                                              color:
-                                                  DesignColors.textTertiary))))
+                                          style:
+                                              TextStyle(color: tertiaryColor))))
                             ]
                           : _purchases.map((s) => Padding(
                                 padding: const EdgeInsets.only(bottom: 6),
-                                child: GlassCard(
-                                  padding: const EdgeInsets.all(12),
-                                  borderRadius: 12,
-                                  onTap: () =>
-                                      context.push('/receipt/${s['id']}'),
-                                  child: Row(children: [
-                                    Expanded(
-                                        child: Text(
-                                            'Receipt #${(s['id'] as String).substring(0, 8).toUpperCase()}',
-                                            style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600))),
-                                    Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                              'KES ${(s['total'] as num).toStringAsFixed(0)}',
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  color: DesignColors.brand)),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () =>
+                                        context.push('/receipt/${s['id']}'),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                          color: surface,
+                                          border: Border.all(color: border)),
+                                      child: Row(children: [
+                                        Expanded(
+                                            child: Text(
+                                                'Receipt #${(s['id'] as String).substring(0, 8).toUpperCase()}',
+                                                style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: titleColor))),
+                                        Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                  'KES ${(s['total'] as num).toStringAsFixed(0)}',
+                                                  style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 14,
+                                                      color: DesignColors.brand)),
                                           Text(
                                               s['createdAt']
                                                       ?.toString()
                                                       .substring(0, 10) ??
                                                   '',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                   fontSize: 11,
-                                                  color: DesignColors
-                                                      .textTertiary)),
+                                                  color: tertiaryColor)),
                                         ]),
-                                  ]),
+                                      ]),
+                                    ),
+                                  ),
                                 ),
                               ))),
                       const SizedBox(height: 32),

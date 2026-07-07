@@ -149,20 +149,32 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
           child: TextField(
             controller: _searchController,
             autofocus: false,
+            style: TextStyle(
+              color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+            ),
             decoration: InputDecoration(
               hintText: 'Search by name or SKU...',
-              hintStyle: TextStyle(color: DesignColors.textTertiary),
-              prefixIcon: const Icon(Icons.search_rounded,
-                  color: DesignColors.textTertiary),
+              hintStyle: TextStyle(
+                color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+              ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+              ),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear_rounded,
-                          color: DesignColors.textTertiary),
+                      icon: Icon(
+                        Icons.clear_rounded,
+                        color:
+                            isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+                      ),
                       onPressed: () => _searchController.clear(),
                     )
                   : null,
               filled: true,
-              fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.2),
+              fillColor: isDark
+                  ? DesignColors.darkSurfaceElevated
+                  : DesignColors.surfaceBorder.withValues(alpha: 0.2),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
@@ -228,7 +240,6 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                       onAction: _searchController.text.isNotEmpty
                           ? () => _searchController.clear()
                           : null,
-                      iconColor: DesignColors.textTertiary,
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -252,7 +263,9 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                 : Colors.transparent,
                             borderColor: isSelected
                                 ? DesignColors.brand.withValues(alpha: 0.3)
-                                : DesignColors.surfaceBorder,
+                                : (isDark
+                                    ? DesignColors.darkBorder
+                                    : DesignColors.surfaceBorder),
                             child: Row(
                               children: [
                                 Container(
@@ -313,8 +326,11 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: product.isActive
-                                                  ? DesignColors.successSubtle
-                                                  : DesignColors.surfaceBorder,
+                                                  ? DesignColors.success
+                                                      .withValues(alpha: 0.14)
+                                                  : (isDark
+                                                      ? DesignColors.darkSurfaceElevated
+                                                      : DesignColors.surfaceBorder),
                                               borderRadius:
                                                   BorderRadius.circular(4),
                                             ),
@@ -326,7 +342,9 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                                 fontSize: 9,
                                                 color: product.isActive
                                                     ? DesignColors.success
-                                                    : DesignColors.textTertiary,
+                                                    : (isDark
+                                                        ? DesignColors.darkTextTertiary
+                                                        : DesignColors.textTertiary),
                                                 fontWeight: FontWeight.w600,
                                               ),
                                             ),
@@ -372,10 +390,12 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: DesignColors.surfaceBorder),
                     ),
-                    side: const BorderSide(color: DesignColors.surfaceBorder),
-                    foregroundColor: DesignColors.textSecondary,
+                    side: BorderSide(
+                      color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                    ),
+                    foregroundColor:
+                        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary,
                   ),
                   child: const Text('Cancel'),
                 ),

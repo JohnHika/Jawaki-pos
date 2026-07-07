@@ -51,6 +51,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'POS',
+        showBackButton: false,
         actions: [
           _topAction(Icons.person_add_alt_1_rounded, 'Customer',
               () => _showCustomerDialog(context), isDark),
@@ -79,17 +80,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     constraints:
                         const BoxConstraints(minWidth: 15, minHeight: 15),
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [DesignColors.brand, DesignColors.brandDark],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: DesignColors.accent,
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       '${cart.itemCount}',
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Colors.black,
                         fontSize: 8,
                         fontWeight: FontWeight.bold,
                       ),
@@ -182,17 +179,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: DesignColors.textPrimary,
+                          color: isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
                         _showFavorites
                             ? 'Favorite products only'
                             : 'Sales, cart, and checkout operations',
                         style: TextStyle(
                           fontSize: 12,
-                          color: DesignColors.textSecondary,
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
                         ),
                       ),
                     ],
@@ -242,7 +243,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             : const ProductGrid(),
                         loading: () => const Center(
                             child: CircularProgressIndicator(
-                                color: DesignColors.brand)),
+                                color: DesignColors.accent)),
                         error: (e, _) => EmptyState(
                             icon: Icons.error_outline_rounded,
                             title: 'Error loading favorites',
@@ -291,6 +292,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   Widget _topAction(
       IconData icon, String tooltip, VoidCallback onTap, bool isDark,
       {bool active = false}) {
+    final secondaryColor = isDark
+        ? DesignColors.darkTextSecondary
+        : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: InkWell(
@@ -301,11 +305,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           decoration: BoxDecoration(
             color: active
                 ? DesignColors.error.withValues(alpha: 0.1)
-                : DesignColors.brand.withValues(alpha: 0.06),
+                : DesignColors.accent.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon,
-              color: active ? DesignColors.error : DesignColors.textSecondary,
+              color: active ? DesignColors.error : secondaryColor,
               size: 20),
         ),
       ),
@@ -326,7 +330,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     GlassBottomSheet.show(context,
         scrollable: true,
         child: StatefulBuilder(
-          builder: (ctx, setSheet) => Padding(
+          builder: (ctx, setSheet) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            final secondaryColor = isDark
+                ? DesignColors.darkTextSecondary
+                : DesignColors.textSecondary;
+            return Padding(
             padding: EdgeInsets.fromLTRB(
               20,
               0,
@@ -338,13 +347,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 8),
-                  Text('Customer',
-                      style: const TextStyle(
+                  const Text('Customer',
+                      style: TextStyle(
                           fontSize: 20, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
-                  const Text('Set or search for a customer',
+                  Text('Set or search for a customer',
                       style: TextStyle(
-                          fontSize: 13, color: DesignColors.textSecondary)),
+                          fontSize: 13, color: secondaryColor)),
                   const SizedBox(height: 14),
                   TextField(
                     controller: nameCtrl,
@@ -438,7 +447,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             borderRadius: 12)),
                   ]),
                 ]),
-          ),
+            );
+          },
         ));
   }
 
@@ -482,12 +492,14 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                               : DesignColors.textPrimary)),
                 ]),
                 if (parked.isEmpty)
-                  const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
                       child: Center(
                           child: Text('No parked sales',
-                              style:
-                                  TextStyle(color: DesignColors.textTertiary))))
+                              style: TextStyle(
+                                  color: isDark
+                                      ? DesignColors.darkTextTertiary
+                                      : DesignColors.textTertiary))))
                 else
                   ...parked.map((s) {
                     final elapsed = DateTime.now().difference(s.parkedAt);

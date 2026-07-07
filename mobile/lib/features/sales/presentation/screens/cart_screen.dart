@@ -51,13 +51,13 @@ class CartScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.1),
+                color: DesignColors.accent.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '${cart.itemCount}',
                 style: const TextStyle(
-                  color: DesignColors.brand,
+                  color: DesignColors.accent,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
@@ -96,25 +96,25 @@ class CartScreen extends ConsumerWidget {
                         horizontal: 14, vertical: 10),
                     borderRadius: 12,
                     blur: 4,
-                    tint: Colors.teal.withValues(alpha:0.06),
-                    borderColor: Colors.teal.withValues(alpha:0.15),
+                    tint: DesignColors.accent.withValues(alpha:0.06),
+                    borderColor: DesignColors.accent.withValues(alpha:0.15),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: Colors.teal.withValues(alpha:0.12),
+                            color: DesignColors.accent.withValues(alpha:0.12),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.person_rounded,
-                              size: 16, color: Colors.teal),
+                              size: 16, color: DesignColors.accent),
                         ),
                         const SizedBox(width: 10),
                         Text(
                           cart.customerName!,
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: Colors.teal,
+                            color: DesignColors.accent,
                             fontSize: 14,
                           ),
                         ),
@@ -173,7 +173,6 @@ class CartScreen extends ConsumerWidget {
       title: 'Your cart is empty',
       subtitle: 'Add items from the POS screen',
       actionLabel: 'Start Shopping',
-      iconColor: DesignColors.textTertiary,
       onAction: () => context.pop(),
     );
   }
@@ -210,11 +209,12 @@ class CartScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
           ],
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Divider(
               height: 1,
-              color: DesignColors.surfaceBorder,
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
             ),
           ),
           _buildSummaryRow(
@@ -222,11 +222,10 @@ class CartScreen extends ConsumerWidget {
             'Total',
             'KES ${cart.total.toStringAsFixed(0)}',
             isBold: true,
-            valueStyle: TextStyle(
+            valueStyle: DesignType.numeric(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: DesignColors.brand,
-              letterSpacing: -0.5,
+              color: DesignColors.accent,
             ),
           ),
         ],

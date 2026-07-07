@@ -58,11 +58,11 @@ class ReceiptScreen extends ConsumerWidget {
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.08),
+                color: DesignColors.accent.withValues(alpha:0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child:
-                  const Icon(Icons.share_outlined, size: 20, color: DesignColors.brand),
+                  const Icon(Icons.share_outlined, size: 20, color: DesignColors.accent),
             ),
             tooltip: 'Share receipt',
             onPressed: () {
@@ -83,11 +83,11 @@ class ReceiptScreen extends ConsumerWidget {
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.08),
+                color: DesignColors.accent.withValues(alpha:0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.print_outlined,
-                  size: 20, color: DesignColors.brand),
+                  size: 20, color: DesignColors.accent),
             ),
             tooltip: 'Set up a receipt printer',
             onPressed: () {
@@ -161,12 +161,12 @@ class ReceiptScreen extends ConsumerWidget {
       body: receiptAsync.when(
         data: (receipt) => _buildReceipt(context, receipt),
         loading: () => const Center(
-          child: CircularProgressIndicator(color: DesignColors.brand),
+          child: CircularProgressIndicator(color: DesignColors.accent),
         ),
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Failed to load receipt',
-          subtitle: e.toString(),
+          subtitle: 'Check your connection and try again.',
           actionLabel: 'Retry',
           iconColor: DesignColors.error,
           onAction: () => ref.refresh(receiptProvider(saleId)),
@@ -181,7 +181,6 @@ class ReceiptScreen extends ConsumerWidget {
             onPressed: () => context.go('/'),
             height: 56,
             borderRadius: 16,
-            gradient: const [DesignColors.brand, DesignColors.brandDark],
           ),
         ),
       ),
@@ -239,7 +238,7 @@ class ReceiptScreen extends ConsumerWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.08),
+                color: DesignColors.accent.withValues(alpha:0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -260,9 +259,11 @@ class ReceiptScreen extends ConsumerWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
-                    DesignColors.surfaceBorder,
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
+                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
                   ],
                 ),
               ),
@@ -301,8 +302,8 @@ class ReceiptScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(12),
                 borderRadius: 12,
                 blur: 4,
-                tint: Colors.teal.withValues(alpha:0.04),
-                borderColor: Colors.teal.withValues(alpha:0.12),
+                tint: DesignColors.accent.withValues(alpha:0.04),
+                borderColor: DesignColors.accent.withValues(alpha:0.12),
                 child: Column(
                   children: [
                     _buildReceiptRow(context,
@@ -344,9 +345,11 @@ class ReceiptScreen extends ConsumerWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
-                    DesignColors.surfaceBorder,
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
+                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
                   ],
                 ),
               ),
@@ -393,14 +396,14 @@ class ReceiptScreen extends ConsumerWidget {
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha:0.08),
+                        color: DesignColors.accent.withValues(alpha:0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
                         child: Text(
                           '${item['quantity']}x',
                           style: const TextStyle(
-                            color: DesignColors.brand,
+                            color: DesignColors.accent,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -461,9 +464,11 @@ class ReceiptScreen extends ConsumerWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
-                    DesignColors.surfaceBorder,
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
+                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
                   ],
                 ),
               ),
@@ -510,9 +515,11 @@ class ReceiptScreen extends ConsumerWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
-                    DesignColors.surfaceBorder,
-                    DesignColors.surfaceBorder.withValues(alpha:0.1),
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
+                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
+                        .withValues(alpha:0.1),
                   ],
                 ),
               ),
@@ -545,10 +552,10 @@ class ReceiptScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha:0.06),
+                color: DesignColors.accent.withValues(alpha:0.06),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: DesignColors.brand.withValues(alpha:0.12)),
+                    color: DesignColors.accent.withValues(alpha:0.12)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -629,14 +636,13 @@ class ReceiptScreen extends ConsumerWidget {
         ),
         Text(
           '${isDiscount ? '- ' : ''}KES ${amountValue.toStringAsFixed(2)}',
-          style: TextStyle(
+          style: DesignType.numeric(
             fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
             fontSize: isBold ? 20 : 14,
-            letterSpacing: isBold ? -0.3 : 0,
             color: isDiscount
                 ? DesignColors.success
                 : isPrimary
-                    ? DesignColors.brand
+                    ? DesignColors.accent
                     : (isDark
                         ? DesignColors.darkTextPrimary
                         : DesignColors.textPrimary),

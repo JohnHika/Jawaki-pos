@@ -235,6 +235,55 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     super.dispose();
   }
 
+  /// Shared field decoration so every TextFormField in this form picks up
+  /// the same theme-aware fill/label/hint colors instead of each one
+  /// hardcoding a light-only palette.
+  InputDecoration _fieldDecoration(
+    BuildContext context, {
+    required String labelText,
+    String? hintText,
+    String? prefixText,
+    IconData? prefixIcon,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final fill = isDark
+        ? DesignColors.darkSurfaceElevated
+        : DesignColors.surfaceBorder.withValues(alpha: 0.15);
+
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      hintStyle: TextStyle(color: tertiaryColor),
+      labelStyle: TextStyle(color: secondaryColor, fontWeight: FontWeight.w500),
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
+      prefixText: prefixText,
+      prefixStyle: prefixText != null
+          ? TextStyle(color: secondaryColor, fontWeight: FontWeight.w600)
+          : null,
+      prefixIcon:
+          prefixIcon != null ? Icon(prefixIcon, color: tertiaryColor, size: 20) : null,
+      filled: true,
+      fillColor: fill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: DesignColors.brand, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingConfig || _unitConfig == null) {
@@ -245,6 +294,13 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         ),
       );
     }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -276,11 +332,13 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
               // Product Info Header
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GlassCard(
+                child: Container(
                   padding: const EdgeInsets.all(16),
-                  borderRadius: 14,
-                  tint: DesignColors.brand.withValues(alpha: 0.05),
-                  borderColor: DesignColors.brand.withValues(alpha: 0.15),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    border:
+                        Border.all(color: DesignColors.brand.withValues(alpha: 0.25)),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -305,19 +363,16 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               children: [
                                 Text(
                                   _resolvedProductName ?? 'Selected Product',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
-                                    color: DesignColors.textPrimary,
+                                    color: titleColor,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: DesignColors.textSecondary,
-                                  ),
+                                  style: TextStyle(fontSize: 13, color: secondaryColor),
                                 ),
                               ],
                             ),
@@ -404,20 +459,20 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
+                              Text(
                                 'Total Batches:',
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: DesignColors.textSecondary,
+                                  color: secondaryColor,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                               Text(
                                 '${_batches.length}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
-                                  color: DesignColors.textPrimary,
+                                  color: titleColor,
                                 ),
                               ),
                             ],
@@ -447,12 +502,21 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
   Widget _buildBatchCard(int index) {
     final batch = _batches[index];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.all(16),
-        borderRadius: 14,
+        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -477,10 +541,10 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 const SizedBox(width: 10),
                 Text(
                   'Batch ${index + 1}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: DesignColors.textPrimary,
+                    color: titleColor,
                   ),
                 ),
                 const Spacer(),
@@ -508,41 +572,12 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
             // Batch Number
             TextFormField(
               controller: batch.batchNumberController,
-              decoration: InputDecoration(
+              style: TextStyle(color: titleColor),
+              decoration: _fieldDecoration(
+                context,
                 labelText: 'Batch Number *',
                 hintText: 'e.g., BTH-2024-001',
-                hintStyle: TextStyle(color: DesignColors.textTertiary),
-                labelStyle: const TextStyle(
-                  color: DesignColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-                floatingLabelBehavior: FloatingLabelBehavior.auto,
-                prefixIcon: const Icon(
-                  Icons.qr_code_rounded,
-                  color: DesignColors.textTertiary,
-                  size: 20,
-                ),
-                filled: true,
-                fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: DesignColors.brand,
-                    width: 1.5,
-                  ),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
+                prefixIcon: Icons.qr_code_rounded,
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -562,38 +597,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: batch.quantityController,
-                    decoration: InputDecoration(
-                      labelText: 'Quantity *',
-                      hintStyle: TextStyle(color: DesignColors.textTertiary),
-                      labelStyle: const TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      filled: true,
-                      fillColor: DesignColors.surfaceBorder.withValues(
-                        alpha: 0.15,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: DesignColors.brand,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                    ),
+                    style: TextStyle(color: titleColor),
+                    decoration:
+                        _fieldDecoration(context, labelText: 'Quantity *'),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -617,19 +623,18 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
-                      color: DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                      color: isDark
+                          ? DesignColors.darkSurfaceElevated
+                          : DesignColors.surfaceBorder.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: batch.selectedUnit,
                         isExpanded: true,
-                        dropdownColor:
-                            Theme.of(context).brightness == Brightness.dark
-                            ? DesignColors.darkSurface
-                            : Colors.white,
-                        style: const TextStyle(
-                          color: DesignColors.textPrimary,
+                        dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
+                        style: TextStyle(
+                          color: titleColor,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
@@ -670,26 +675,24 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  color: DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                  color: isDark
+                      ? DesignColors.darkSurfaceElevated
+                      : DesignColors.surfaceBorder.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.calendar_today_rounded,
-                      color: DesignColors.textTertiary,
-                      size: 20,
-                    ),
+                    Icon(Icons.calendar_today_rounded, color: tertiaryColor, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Expiry Date',
                             style: TextStyle(
                               fontSize: 12,
-                              color: DesignColors.textSecondary,
+                              color: secondaryColor,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -702,8 +705,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                   ).format(batch.expiryDate!),
                             style: TextStyle(
                               color: batch.expiryDate == null
-                                  ? DesignColors.textTertiary
-                                  : DesignColors.textPrimary,
+                                  ? tertiaryColor
+                                  : titleColor,
                               fontWeight: batch.expiryDate != null
                                   ? FontWeight.w600
                                   : FontWeight.normal,
@@ -713,11 +716,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         ],
                       ),
                     ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: DesignColors.textTertiary,
-                      size: 20,
-                    ),
+                    Icon(Icons.chevron_right_rounded, color: tertiaryColor, size: 20),
                   ],
                 ),
               ),
@@ -731,18 +730,18 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 context,
               ).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
-                title: const Text(
+                title: Text(
                   'Additional Details (Optional)',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: DesignColors.textSecondary,
+                    color: secondaryColor,
                   ),
                 ),
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(top: 12),
-                iconColor: DesignColors.textTertiary,
-                collapsedIconColor: DesignColors.textTertiary,
+                iconColor: tertiaryColor,
+                collapsedIconColor: tertiaryColor,
                 children: [
                   // Manufacture Date
                   InkWell(
@@ -753,28 +752,25 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         vertical: 14,
                       ),
                       decoration: BoxDecoration(
-                        color: DesignColors.surfaceBorder.withValues(
-                          alpha: 0.15,
-                        ),
+                        color: isDark
+                            ? DesignColors.darkSurfaceElevated
+                            : DesignColors.surfaceBorder.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.calendar_month_rounded,
-                            color: DesignColors.textTertiary,
-                            size: 20,
-                          ),
+                          Icon(Icons.calendar_month_rounded,
+                              color: tertiaryColor, size: 20),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Manufacture Date',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: DesignColors.textSecondary,
+                                    color: secondaryColor,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -787,8 +783,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                         ).format(batch.manufactureDate!),
                                   style: TextStyle(
                                     color: batch.manufactureDate == null
-                                        ? DesignColors.textTertiary
-                                        : DesignColors.textPrimary,
+                                        ? tertiaryColor
+                                        : titleColor,
                                     fontWeight: batch.manufactureDate != null
                                         ? FontWeight.w600
                                         : FontWeight.normal,
@@ -798,11 +794,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               ],
                             ),
                           ),
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            color: DesignColors.textTertiary,
-                            size: 20,
-                          ),
+                          Icon(Icons.chevron_right_rounded,
+                              color: tertiaryColor, size: 20),
                         ],
                       ),
                     ),
@@ -813,43 +806,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   // Cost Price
                   TextFormField(
                     controller: batch.costPriceController,
-                    decoration: InputDecoration(
-                      labelText:
-                          'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
-                      hintStyle: TextStyle(color: DesignColors.textTertiary),
-                      labelStyle: const TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.auto,
+                    style: TextStyle(color: titleColor),
+                    decoration: _fieldDecoration(
+                      context,
+                      labelText: 'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
                       prefixText: 'KES ',
-                      prefixStyle: const TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      filled: true,
-                      fillColor: DesignColors.surfaceBorder.withValues(
-                        alpha: 0.15,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: DesignColors.brand,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -861,43 +822,12 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   // Supplier Reference
                   TextFormField(
                     controller: batch.supplierRefController,
-                    decoration: InputDecoration(
+                    style: TextStyle(color: titleColor),
+                    decoration: _fieldDecoration(
+                      context,
                       labelText: 'Supplier Reference / Invoice #',
                       hintText: 'e.g., INV-001',
-                      hintStyle: TextStyle(color: DesignColors.textTertiary),
-                      labelStyle: const TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      prefixIcon: const Icon(
-                        Icons.receipt_rounded,
-                        color: DesignColors.textTertiary,
-                        size: 20,
-                      ),
-                      filled: true,
-                      fillColor: DesignColors.surfaceBorder.withValues(
-                        alpha: 0.15,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: DesignColors.brand,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
+                      prefixIcon: Icons.receipt_rounded,
                     ),
                   ),
 
@@ -906,43 +836,12 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   // Notes
                   TextFormField(
                     controller: batch.notesController,
-                    decoration: InputDecoration(
+                    style: TextStyle(color: titleColor),
+                    decoration: _fieldDecoration(
+                      context,
                       labelText: 'Notes',
                       hintText: 'Any additional notes...',
-                      hintStyle: TextStyle(color: DesignColors.textTertiary),
-                      labelStyle: const TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.auto,
-                      prefixIcon: const Icon(
-                        Icons.notes_rounded,
-                        color: DesignColors.textTertiary,
-                        size: 20,
-                      ),
-                      filled: true,
-                      fillColor: DesignColors.surfaceBorder.withValues(
-                        alpha: 0.15,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: DesignColors.brand,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
+                      prefixIcon: Icons.notes_rounded,
                     ),
                     maxLines: 2,
                   ),
@@ -969,16 +868,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            DesignColors.brand.withValues(alpha: 0.08),
-            DesignColors.brand.withValues(alpha: 0.03),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: DesignColors.brand.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: DesignColors.brand.withValues(alpha: 0.15)),
+        border: Border.all(color: DesignColors.brand.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -1010,6 +902,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   }) async {
     final initialDate = isExpiry ? batch.expiryDate : batch.manufactureDate;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final date = await showDatePicker(
       context: context,
       initialDate: initialDate ?? DateTime.now(),
@@ -1018,11 +911,17 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: DesignColors.brand,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-            ),
+            colorScheme: isDark
+                ? const ColorScheme.dark(
+                    primary: DesignColors.accent,
+                    onPrimary: Colors.black,
+                    surface: DesignColors.darkSurface,
+                  )
+                : const ColorScheme.light(
+                    primary: DesignColors.accent,
+                    onPrimary: Colors.white,
+                    surface: Colors.white,
+                  ),
           ),
           child: child!,
         );

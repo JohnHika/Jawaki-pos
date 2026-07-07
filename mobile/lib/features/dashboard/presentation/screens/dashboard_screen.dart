@@ -48,6 +48,7 @@ class DashboardScreen extends ConsumerWidget {
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Dashboard',
+        showBackButton: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -154,70 +155,71 @@ class DashboardScreen extends ConsumerWidget {
                       subtitle: 'Start selling to see transactions here',
                     );
                   }
-                  return Column(
-                    children: sales.take(10).map((sale) {
-                      return GlassCard(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        borderRadius: 12,
-                        blur: 8,
-                        tint: Colors.transparent,
-                        borderColor: DesignColors.surfaceBorder,
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: DesignColors.brand.withValues(
-                                  alpha: 0.1,
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
+                  final divider =
+                      isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+                  return Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: divider),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Column(
+                      children: sales.take(10).toList().asMap().entries.map((entry) {
+                        final isLast = entry.key == sales.take(10).length - 1;
+                        final sale = entry.value;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
+                          ),
+                          decoration: BoxDecoration(
+                            border: isLast
+                                ? null
+                                : Border(bottom: BorderSide(color: divider)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      sale.receiptNumber,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5,
+                                        color: isDark
+                                            ? DesignColors.darkTextPrimary
+                                            : DesignColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: isDark
+                                            ? DesignColors.darkTextTertiary
+                                            : DesignColors.textTertiary,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(
-                                Icons.receipt_rounded,
-                                color: DesignColors.brand,
-                                size: 20,
+                              Text(
+                                _currencyFmt.format(sale.total),
+                                style: DesignType.numeric(
+                                  fontSize: 15,
+                                  color: isDark
+                                      ? DesignColors.darkTextPrimary
+                                      : DesignColors.textPrimary,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    sale.receiptNumber,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                      color: DesignColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${sale.paymentMethod}  •  ${_timeFmt.format(sale.createdAt)}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: DesignColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              _currencyFmt.format(sale.total),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                                color: DesignColors.success,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   );
                 },
                 loading: () => const Padding(
@@ -347,37 +349,45 @@ class DashboardScreen extends ConsumerWidget {
           : 'Inventory and POS are linked, so received stock becomes sellable immediately.',
     ];
 
-    return GlassCard(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
       padding: const EdgeInsets.all(16),
-      borderRadius: 14,
-      tint: DesignColors.info.withValues(alpha: 0.05),
-      borderColor: DesignColors.info.withValues(alpha: 0.16),
+      decoration: BoxDecoration(
+        color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+        borderRadius: BorderRadius.circular(4),
+        border: Border(
+          left: const BorderSide(color: DesignColors.accent, width: 3),
+          top: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+          right: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+          bottom: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: DesignColors.info,
-                  size: 18,
-                ),
+              const Icon(
+                Icons.auto_awesome_rounded,
+                color: DesignColors.accent,
+                size: 16,
               ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'AI Brief',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: DesignColors.textPrimary,
-                  ),
+              const SizedBox(width: 8),
+              Text(
+                'AI BRIEF',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
                 ),
               ),
             ],
@@ -386,29 +396,15 @@ class DashboardScreen extends ConsumerWidget {
           ...snippets.map(
             (snippet) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 5),
-                    child: Icon(
-                      Icons.circle,
-                      size: 5,
-                      color: DesignColors.info,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      snippet,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.35,
-                        color: DesignColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ],
+              child: Text(
+                snippet,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  color: isDark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary,
+                ),
               ),
             ),
           ),
@@ -440,62 +436,80 @@ class DashboardScreen extends ConsumerWidget {
     bool isLoading = false,
   }) {
     final profit = revenue - cost;
-    return GlassCard(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
       padding: const EdgeInsets.all(16),
-      borderRadius: 14,
-      tint: DesignColors.success.withValues(alpha: 0.05),
-      borderColor: DesignColors.success.withValues(alpha: 0.16),
+      decoration: BoxDecoration(
+        color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+        borderRadius: BorderRadius.circular(4),
+        border: Border(
+          left: const BorderSide(color: DesignColors.success, width: 3),
+          top: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+          right: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+          bottom: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: DesignColors.success.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color: DesignColors.success,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  "Today's Cost & Profit",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: DesignColors.textPrimary,
-                  ),
+              Text(
+                "TODAY'S COST & PROFIT",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
                 ),
               ),
-              TextButton.icon(
-                onPressed: isLoading
+              const Spacer(),
+              InkWell(
+                onTap: isLoading
                     ? null
                     : () => _openProfitAdjustment(context, ref, revenue, cost),
-                icon: const Icon(Icons.tune_rounded, size: 16),
-                label: const Text('Adjust'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.tune_rounded,
+                        size: 14, color: DesignColors.accent),
+                    const SizedBox(width: 4),
+                    const Text('ADJUST',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          color: DesignColors.accent,
+                        )),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: _costMetric(
                   'Cost of Goods',
-                  isLoading ? '...' : 'KES ${cost.toStringAsFixed(0)}',
-                  DesignColors.textSecondary,
+                  isLoading ? '—' : 'KES ${cost.toStringAsFixed(0)}',
+                  isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
                 ),
               ),
               Expanded(
                 child: _costMetric(
                   'Profit',
-                  isLoading ? '...' : 'KES ${profit.toStringAsFixed(0)}',
+                  isLoading ? '—' : 'KES ${profit.toStringAsFixed(0)}',
                   DesignColors.success,
                 ),
               ),
@@ -511,20 +525,18 @@ class DashboardScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
+          label.toUpperCase(),
           style: const TextStyle(
-            fontSize: 12,
-            color: DesignColors.textSecondary,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            color: DesignColors.textTertiary,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: color,
-          ),
+          style: DesignType.numeric(fontSize: 17, color: color),
         ),
       ],
     );

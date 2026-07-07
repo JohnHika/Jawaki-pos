@@ -87,6 +87,16 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
   @override
   Widget build(BuildContext context) {
     final currencyFmt = NumberFormat.currency(locale: 'en_KE', symbol: 'KES ');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final fieldFill = isDark
+        ? DesignColors.darkSurfaceElevated
+        : DesignColors.surfaceSubtle;
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -110,62 +120,75 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                 const SizedBox(height: 8),
                 Text(
                   'Profit Adjustment',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  style: TextStyle(
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Adjust your cost of goods to match your accounting method',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: DesignColors.textSecondary,
-                  ),
+                  style: TextStyle(fontSize: 14, color: secondaryColor),
                 ),
                 const SizedBox(height: 20),
 
                 // Current calculation
-                GlassCard(
+                Container(
                   padding: const EdgeInsets.all(16),
-                  borderRadius: 12,
-                  blur: 8,
-                  tint: DesignColors.brand.withValues(alpha: 0.05),
-                  borderColor: DesignColors.brand.withValues(alpha: 0.1),
+                  decoration:
+                      BoxDecoration(color: surface, border: Border.all(color: border)),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Current Sales:', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          Text(currencyFmt.format(widget.currentRevenue)),
+                          Text('Current Sales:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, color: titleColor)),
+                          Text(currencyFmt.format(widget.currentRevenue),
+                              style: DesignType.numeric(
+                                  fontSize: 14, color: titleColor)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Auto-calculated Cost:', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          Text(currencyFmt.format(widget.currentCost)),
+                          Text('Auto-calculated Cost:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, color: titleColor)),
+                          Text(currencyFmt.format(widget.currentCost),
+                              style: DesignType.numeric(
+                                  fontSize: 14, color: titleColor)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Auto-calculated Profit:', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          Text(currencyFmt.format(widget.currentRevenue - widget.currentCost)),
+                          Text('Auto-calculated Profit:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, color: titleColor)),
+                          Text(
+                              currencyFmt.format(
+                                  widget.currentRevenue - widget.currentCost),
+                              style: DesignType.numeric(
+                                  fontSize: 14, color: titleColor)),
                         ],
                       ),
-                      const Divider(height: 24),
+                      Divider(height: 24, color: border),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Your Adjusted Cost:', style: TextStyle(
+                          const Text('Your Adjusted Cost:', style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: DesignColors.brand,
+                            color: DesignColors.accent,
                           )),
-                          Text(currencyFmt.format(_adjustedCost), style: TextStyle(
-                            color: DesignColors.brand,
-                            fontWeight: FontWeight.bold,
+                          Text(currencyFmt.format(_adjustedCost),
+                              style: DesignType.numeric(
+                            fontSize: 15,
+                            color: DesignColors.accent,
                           )),
                         ],
                       ),
@@ -173,13 +196,13 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Your Adjusted Profit:', style: TextStyle(
+                          const Text('Your Adjusted Profit:', style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: DesignColors.success,
                           )),
-                          Text(currencyFmt.format(_newProfit), style: TextStyle(
+                          Text(currencyFmt.format(_newProfit),
+                              style: DesignType.numeric(
                             color: DesignColors.success,
-                            fontWeight: FontWeight.bold,
                             fontSize: 18,
                           )),
                         ],
@@ -192,20 +215,23 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                 // Adjustment input
                 Text(
                   'Set Your Cost of Goods',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  style: TextStyle(
+                    fontSize: 16,
                     fontWeight: FontWeight.w600,
+                    color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _adjustmentController,
+                  style: TextStyle(color: titleColor),
                   decoration: InputDecoration(
                     labelText: 'Total cost of goods for today',
                     hintText: 'Enter your actual cost of goods',
                     prefixText: 'KES ',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
-                    fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.1),
+                    fillColor: fieldFill,
                   ),
                   keyboardType: TextInputType.number,
                   onChanged: (value) => _calculateProfit(),
@@ -221,12 +247,13 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                 // Reason (optional)
                 TextFormField(
                   controller: _reasonController,
+                  style: TextStyle(color: titleColor),
                   decoration: InputDecoration(
                     labelText: 'Reason for adjustment (optional)',
                     hintText: 'e.g., Included additional expenses, different accounting method',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
-                    fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.1),
+                    fillColor: fieldFill,
                   ),
                   maxLines: 2,
                 ),
@@ -239,23 +266,23 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                   onPressed: _saveAdjustment,
                   height: 52,
                   borderRadius: 12,
-                  gradient: [DesignColors.brand, DesignColors.brandDark],
                 ),
                 const SizedBox(height: 16),
 
                 // Info about simple calculation
-                GlassCard(
+                Container(
                   padding: const EdgeInsets.all(12),
-                  borderRadius: 12,
-                  tint: DesignColors.info.withValues(alpha: 0.05),
-                  borderColor: DesignColors.info.withValues(alpha: 0.1),
+                  decoration: BoxDecoration(
+                    color: DesignColors.info.withValues(alpha: 0.06),
+                    border: Border.all(color: DesignColors.info.withValues(alpha: 0.2)),
+                  ),
                   child: Column(
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 20),
+                          const Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 20),
                           const SizedBox(width: 8),
-                          Text(
+                          const Text(
                             'Simple Profit Formula',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
@@ -271,7 +298,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                           Expanded(
                             child: Text(
                               'Profit = Today\'s Sales - Today\'s Cost of Goods',
-                              style: TextStyle(color: DesignColors.textSecondary),
+                              style: TextStyle(color: secondaryColor),
                             ),
                           ),
                         ],
@@ -283,7 +310,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                           Expanded(
                             child: Text(
                               'No complex calculations - just clean, simple math!',
-                              style: TextStyle(color: DesignColors.textSecondary, fontSize: 12),
+                              style: TextStyle(color: secondaryColor, fontSize: 12),
                             ),
                           ),
                         ],
@@ -306,50 +333,57 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
       initialSize: 0.5,
       maxSize: 0.7,
       scrollable: true,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Use this screen to adjust your profit calculation when:',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: DesignColors.textPrimary,
+      child: Builder(builder: (sheetContext) {
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final titleColor =
+            isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+        final secondaryColor = isDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Use this screen to adjust your profit calculation when:',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: titleColor,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            ...[
-              'You use a different accounting method',
-              'You have additional expenses to include',
-              'You want to match your existing bookkeeping',
-              'The auto-calculation doesn\'t match your records',
-            ].map((item) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.check_circle_rounded,
-                      size: 16, color: DesignColors.success),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(item,
-                        style: const TextStyle(
-                            fontSize: 14, color: DesignColors.textPrimary)),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              ...[
+                'You use a different accounting method',
+                'You have additional expenses to include',
+                'You want to match your existing bookkeeping',
+                'The auto-calculation doesn\'t match your records',
+              ].map((item) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.check_circle_rounded,
+                        size: 16, color: DesignColors.success),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(item,
+                          style: TextStyle(fontSize: 14, color: titleColor)),
+                    ),
+                  ],
+                ),
+              )),
+              const SizedBox(height: 16),
+              Text(
+                'Your adjustment will be saved and used for all profit reports today.',
+                style: TextStyle(fontSize: 12, color: secondaryColor),
               ),
-            )),
-            const SizedBox(height: 16),
-            const Text(
-              'Your adjustment will be saved and used for all profit reports today.',
-              style: TextStyle(fontSize: 12, color: DesignColors.textSecondary),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      }),
     );
   }
 }

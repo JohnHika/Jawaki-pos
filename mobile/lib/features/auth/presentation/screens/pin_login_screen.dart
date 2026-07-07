@@ -263,19 +263,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
+      backgroundColor: DesignColors.darkBg,
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              DesignColors.brandDark,
-              DesignColors.brand,
-            ],
-          ),
-        ),
+        color: DesignColors.darkBg,
         child: SafeArea(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -383,25 +375,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             height: isSmallScreen ? 56 : 68,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [
-                  Colors.white.withValues(alpha: 0.2),
-                  Colors.white.withValues(alpha: 0.08),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: DesignColors.darkSurfaceElevated,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25),
+                color: DesignColors.accent.withValues(alpha: 0.5),
                 width: 2,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
             ),
             child: ClipOval(
               child: _buildWorkspaceMark(isSmallScreen ? 56 : 68),

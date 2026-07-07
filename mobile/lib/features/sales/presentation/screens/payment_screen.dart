@@ -83,22 +83,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               padding: const EdgeInsets.all(20),
               borderRadius: 20,
               blur: 8,
-              tint: DesignColors.brand.withValues(alpha: 0.08),
-              borderColor: DesignColors.brand.withValues(alpha: 0.15),
-              gradient: LinearGradient(
-                colors: [
-                  DesignColors.brand.withValues(alpha: 0.1),
-                  DesignColors.brandDark.withValues(alpha: 0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              tint: DesignColors.accent.withValues(alpha: 0.08),
+              borderColor: DesignColors.accent.withValues(alpha: 0.15),
               child: Column(
                 children: [
-                  const Text(
+                  Text(
                     'Total Amount',
                     style: TextStyle(
-                      color: DesignColors.textSecondary,
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -106,11 +100,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'KES ${cart.total.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: DesignColors.textPrimary,
+                    style: DesignType.numeric(
+                      color: isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary,
                       fontSize: 34,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: -1,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -129,21 +124,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.teal.withValues(alpha: 0.12),
+                        color: DesignColors.accent.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: Colors.teal.withValues(alpha: 0.25)),
+                            color: DesignColors.accent.withValues(alpha: 0.25)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.person_rounded,
-                              size: 15, color: Colors.teal),
+                              size: 15, color: DesignColors.accent),
                           const SizedBox(width: 6),
                           Text(
                             cart.customerName!,
                             style: const TextStyle(
-                                color: Colors.teal,
+                                color: DesignColors.accent,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600),
                           ),
@@ -265,7 +260,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             isLoading: paymentState.isProcessing,
             height: 56,
             borderRadius: 16,
-            gradient: const [DesignColors.brand, DesignColors.brandDark],
           ),
         ),
       ),

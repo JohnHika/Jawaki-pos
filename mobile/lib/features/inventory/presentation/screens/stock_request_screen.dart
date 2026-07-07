@@ -200,6 +200,49 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
     }
   }
 
+  InputDecoration _fieldDecoration(
+    BuildContext context, {
+    required String labelText,
+    String? hintText,
+    String? suffixText,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final fill = isDark
+        ? DesignColors.darkSurfaceElevated
+        : DesignColors.surfaceBorder.withValues(alpha: 0.15);
+
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      hintStyle: TextStyle(color: tertiaryColor),
+      labelStyle: TextStyle(color: secondaryColor, fontWeight: FontWeight.w500),
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
+      suffixText: suffixText,
+      suffixStyle: suffixText != null
+          ? const TextStyle(color: DesignColors.brand, fontWeight: FontWeight.w600)
+          : null,
+      filled: true,
+      fillColor: fill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: DesignColors.brand, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -212,7 +255,13 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
   }
 
   Widget _buildSuccessView() {
-    return Center(
+    return Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final titleColor =
+          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+      final secondaryColor =
+          isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+      return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
@@ -233,32 +282,40 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Request Submitted!',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
-                color: DesignColors.textPrimary,
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'Your stock request for $_selectedProductName has been sent to the manager for approval.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: DesignColors.textSecondary,
-                height: 1.4,
-              ),
+              style: TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
             ),
           ],
         ),
       ),
-    );
+      );
+    });
   }
 
   Widget _buildForm() {
-    return Form(
+    return Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final titleColor =
+          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+      final secondaryColor =
+          isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+      final tertiaryColor =
+          isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+      final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+      final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+      return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,31 +327,37 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           ),
 
           // Product Selection
-          GlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            borderRadius: 14,
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            onTap: () async {
-              final result = await showProductPicker(
-                context,
-                initialProductId: _selectedProductId,
-              );
-              if (result != null) {
-                setState(() {
-                  _selectedProductId = result['id'];
-                  _selectedProductName = result['name'];
-                  _unit = result['unit'] ?? 'piece';
-                });
-              }
-            },
-            child: Row(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () async {
+                  final result = await showProductPicker(
+                    context,
+                    initialProductId: _selectedProductId,
+                  );
+                  if (result != null) {
+                    setState(() {
+                      _selectedProductId = result['id'];
+                      _selectedProductName = result['name'];
+                      _unit = result['unit'] ?? 'piece';
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+                  child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: _selectedProductName != null
                         ? DesignColors.brand.withValues(alpha: 0.1)
-                        : DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                        : (isDark
+                            ? DesignColors.darkSurfaceElevated
+                            : DesignColors.surfaceBorder.withValues(alpha: 0.3)),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -303,7 +366,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                         : Icons.add_circle_outline_rounded,
                     color: _selectedProductName != null
                         ? DesignColors.brand
-                        : DesignColors.textTertiary,
+                        : tertiaryColor,
                     size: 22,
                   ),
                 ),
@@ -316,8 +379,8 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                         _selectedProductName ?? 'Select Product',
                         style: TextStyle(
                           color: _selectedProductName == null
-                              ? DesignColors.textTertiary
-                              : DesignColors.textPrimary,
+                              ? tertiaryColor
+                              : titleColor,
                           fontWeight: _selectedProductName != null
                               ? FontWeight.w600
                               : FontWeight.normal,
@@ -325,22 +388,18 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                         ),
                       ),
                       if (_selectedProductId == null)
-                        const Text(
+                        Text(
                           'Tap to select a product',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: DesignColors.textTertiary,
-                          ),
+                          style: TextStyle(fontSize: 12, color: tertiaryColor),
                         ),
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: DesignColors.textTertiary,
-                  size: 20,
-                ),
+                Icon(Icons.chevron_right_rounded, color: tertiaryColor, size: 20),
               ],
+                  ),
+                ),
+              ),
             ),
           ),
 
@@ -349,44 +408,17 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           // Quantity Input
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GlassCard(
+            child: Container(
               padding: const EdgeInsets.all(16),
-              borderRadius: 14,
-              tint: Colors.transparent,
-              borderColor: DesignColors.surfaceBorder,
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
               child: TextFormField(
                 controller: _quantityController,
-                decoration: InputDecoration(
+                style: TextStyle(color: titleColor),
+                decoration: _fieldDecoration(
+                  context,
                   labelText: 'Quantity',
                   hintText: 'Enter quantity needed',
-                  hintStyle: TextStyle(color: DesignColors.textTertiary),
-                  labelStyle: const TextStyle(
-                    color: DesignColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
                   suffixText: _unit,
-                  suffixStyle: const TextStyle(
-                    color: DesignColors.brand,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.brand, width: 1.5),
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -411,41 +443,14 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           // Priority Selection
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GlassCard(
+            child: Container(
               padding: const EdgeInsets.all(16),
-              borderRadius: 14,
-              tint: Colors.transparent,
-              borderColor: DesignColors.surfaceBorder,
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
               child: DropdownButtonFormField<String>(
-                value: _priority,
-                decoration: InputDecoration(
-                  labelText: 'Priority',
-                  labelStyle: const TextStyle(
-                    color: DesignColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
-                  filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.brand, width: 1.5),
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                ),
-                dropdownColor: Theme.of(context).brightness == Brightness.dark
-                    ? DesignColors.darkSurface
-                    : Colors.white,
+                initialValue: _priority,
+                decoration: _fieldDecoration(context, labelText: 'Priority'),
+                dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
+                style: TextStyle(color: titleColor, fontSize: 14),
                 items: const [
                   DropdownMenuItem(value: 'low', child: Text('Low')),
                   DropdownMenuItem(value: 'normal', child: Text('Normal')),
@@ -466,39 +471,16 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           // Reason Input
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GlassCard(
+            child: Container(
               padding: const EdgeInsets.all(16),
-              borderRadius: 14,
-              tint: Colors.transparent,
-              borderColor: DesignColors.surfaceBorder,
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
               child: TextFormField(
                 controller: _reasonController,
-                decoration: InputDecoration(
+                style: TextStyle(color: titleColor),
+                decoration: _fieldDecoration(
+                  context,
                   labelText: 'Reason (Optional)',
                   hintText: 'Why do you need this stock?',
-                  hintStyle: TextStyle(color: DesignColors.textTertiary),
-                  labelStyle: const TextStyle(
-                    color: DesignColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
-                  filled: true,
-                  fillColor: DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.brand, width: 1.5),
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,
@@ -511,9 +493,9 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           // Image Upload Section
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GlassCard(
+            child: Container(
               padding: const EdgeInsets.all(16),
-              borderRadius: 14,
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -531,10 +513,10 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                       const SizedBox(width: 10),
                       Text(
                         'Photos (${_images.length})',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: DesignColors.textPrimary,
+                          color: titleColor,
                         ),
                       ),
                       const Spacer(),
@@ -552,12 +534,9 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Optional: Add photos of empty shelves or low stock',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: DesignColors.textTertiary,
-                    ),
+                    style: TextStyle(fontSize: 12, color: tertiaryColor),
                   ),
                   const SizedBox(height: 14),
 
@@ -573,8 +552,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
-                                border: Border.all(
-                                    color: DesignColors.surfaceBorder),
+                                border: Border.all(color: border),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: ClipRRect(
@@ -616,8 +594,8 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      side: const BorderSide(color: DesignColors.surfaceBorder),
-                      foregroundColor: DesignColors.textSecondary,
+                      side: BorderSide(color: border),
+                      foregroundColor: secondaryColor,
                     ),
                   ),
                 ],
@@ -643,6 +621,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           const SizedBox(height: 32),
         ],
       ),
-    );
+      );
+    });
   }
 }

@@ -144,17 +144,15 @@ class _POSAppState extends ConsumerState<POSApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
-    final themeColors = ref.watch(themeColorsProvider);
 
     return MaterialApp.router(
-      title: 'POS System',
+      title: 'Axon POS',
       debugShowCheckedModeBanner: false,
       showPerformanceOverlay: false,
       checkerboardRasterCacheImages: false,
       checkerboardOffscreenLayers: false,
-      theme: AppTheme.dynamicLight(themeColors.primary, themeColors.secondary),
-      darkTheme:
-          AppTheme.dynamicDark(themeColors.primary, themeColors.secondary),
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
       routerConfig: router,
       builder: (context, child) {

@@ -78,7 +78,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
               builder: (context, child) => Icon(
                 _showClear ? Icons.search_rounded : Icons.search_rounded,
                 color: _showClear
-                    ? DesignColors.brand
+                    ? DesignColors.accent
                     : (isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
                 size: 20,
               ),
@@ -161,10 +161,10 @@ class SearchSuggestions extends ConsumerWidget {
               leading: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha:0.1),
+                  color: DesignColors.accent.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.search_rounded, size: 18, color: DesignColors.brand),
+                child: const Icon(Icons.search_rounded, size: 18, color: DesignColors.accent),
               ),
               title: Text(
                 product['name'] as String,

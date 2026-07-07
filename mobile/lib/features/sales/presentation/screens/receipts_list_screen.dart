@@ -120,7 +120,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       ),
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: DesignColors.brand))
+              child: CircularProgressIndicator(color: DesignColors.accent))
           : _error != null
               ? EmptyState(
                   icon: Icons.error_outline_rounded,
@@ -149,7 +149,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                       },
                     )
                   : RefreshIndicator(
-                      color: DesignColors.brand,
+                      color: DesignColors.accent,
                       onRefresh: _loadSales,
                       child: PageContainer(
                         withScroll: true,
@@ -195,33 +195,38 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       initialSize: 0.35,
       maxSize: 0.6,
       scrollable: true,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options.entries.map((entry) {
-            final selected = entry.value == _rangeDays;
-            return ListTile(
-              leading: Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                color:
-                    selected ? DesignColors.brand : DesignColors.textTertiary,
-              ),
-              title: Text(entry.key),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() {
-                  _rangeDays = entry.value;
-                  _isLoading = true;
-                });
-                _loadSales();
-              },
-            );
-          }).toList(),
-        ),
-      ),
+      child: Builder(builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final tertiaryColor = isDark
+            ? DesignColors.darkTextTertiary
+            : DesignColors.textTertiary;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: options.entries.map((entry) {
+              final selected = entry.value == _rangeDays;
+              return ListTile(
+                leading: Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: selected ? DesignColors.accent : tertiaryColor,
+                ),
+                title: Text(entry.key),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _rangeDays = entry.value;
+                    _isLoading = true;
+                  });
+                  _loadSales();
+                },
+              );
+            }).toList(),
+          ),
+        );
+      }),
     );
   }
 
@@ -231,6 +236,11 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
         : sale.id.toUpperCase();
     final methodColor = _paymentMethodColor(sale.paymentMethod);
     final methodIcon = _paymentMethodIcon(sale.paymentMethod);
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -240,7 +250,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
         borderRadius: 14,
         blur: 10,
         tint: Colors.transparent,
-        borderColor: DesignColors.surfaceBorder,
+        borderColor: border,
         child: Row(
           children: [
             // Leading icon
@@ -263,10 +273,10 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                     children: [
                       Text(
                         '#$receiptNumber',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: DesignColors.textPrimary,
+                          color: titleColor,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -279,14 +289,14 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                       Icon(
                         Icons.access_time_rounded,
                         size: 13,
-                        color: DesignColors.textTertiary,
+                        color: tertiaryColor,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         _formatDateTime(sale.createdAt),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: DesignColors.textTertiary,
+                          color: tertiaryColor,
                         ),
                       ),
                     ],
@@ -301,17 +311,16 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
               children: [
                 Text(
                   _formatCurrency(sale.total),
-                  style: const TextStyle(
+                  style: DesignType.numeric(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: DesignColors.textPrimary,
-                    letterSpacing: -0.3,
+                    color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: DesignColors.textTertiary,
+                  color: tertiaryColor,
                   size: 18,
                 ),
               ],

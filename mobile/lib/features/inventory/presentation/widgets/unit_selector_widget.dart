@@ -69,23 +69,17 @@ class UnitSelectorWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final units = unitConfig.availableUnits;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (units.length == 1) {
       // Only base unit available, show as premium badge
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              DesignColors.brand.withValues(alpha:0.1),
-              DesignColors.brand.withValues(alpha:0.05),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: DesignColors.brand.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: DesignColors.brand.withValues(alpha:0.15),
+            color: DesignColors.brand.withValues(alpha:0.2),
           ),
         ),
         child: Row(
@@ -114,7 +108,9 @@ class UnitSelectorWidget extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: DesignColors.surfaceBorder.withValues(alpha:0.3),
+            color: isDark
+                ? DesignColors.darkSurfaceElevated
+                : DesignColors.surfaceBorder.withValues(alpha:0.3),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -126,16 +122,7 @@ class UnitSelectorWidget extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? const LinearGradient(
-                            colors: [
-                              DesignColors.brand,
-                              DesignColors.brandDark,
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
+                    color: isSelected ? DesignColors.accent : null,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: GestureDetector(
@@ -149,8 +136,10 @@ class UnitSelectorWidget extends StatelessWidget {
                             ? FontWeight.w700
                             : FontWeight.w500,
                         color: isSelected
-                            ? Colors.white
-                            : DesignColors.textSecondary,
+                            ? Colors.black
+                            : (isDark
+                                ? DesignColors.darkTextSecondary
+                                : DesignColors.textSecondary),
                       ),
                     ),
                   ),
@@ -185,17 +174,10 @@ class UnitSelectorWidget extends StatelessWidget {
       padding:
           const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            DesignColors.brand.withValues(alpha:0.08),
-            DesignColors.brand.withValues(alpha:0.03),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: DesignColors.brand.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: DesignColors.brand.withValues(alpha:0.15),
+          color: DesignColors.brand.withValues(alpha:0.2),
         ),
       ),
       child: Row(
@@ -281,6 +263,17 @@ class _UnitConversionCalculatorState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final fieldFill = isDark
+        ? DesignColors.darkSurfaceElevated
+        : DesignColors.surfaceBorder.withValues(alpha: 0.15);
+
     return GlassCard(
       padding: const EdgeInsets.all(16),
       borderRadius: 14,
@@ -300,12 +293,12 @@ class _UnitConversionCalculatorState
                     size: 18, color: DesignColors.brand),
               ),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 'Unit Conversion',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -319,19 +312,18 @@ class _UnitConversionCalculatorState
                 flex: 2,
                 child: TextFormField(
                   controller: _quantityController,
+                  style: TextStyle(color: titleColor),
                   decoration: InputDecoration(
                     labelText: 'Quantity',
-                    hintStyle:
-                        TextStyle(color: DesignColors.textTertiary),
-                    labelStyle: const TextStyle(
-                      color: DesignColors.textSecondary,
+                    hintStyle: TextStyle(color: tertiaryColor),
+                    labelStyle: TextStyle(
+                      color: secondaryColor,
                       fontWeight: FontWeight.w500,
                     ),
                     floatingLabelBehavior:
                         FloatingLabelBehavior.auto,
                     filled: true,
-                    fillColor:
-                        DesignColors.surfaceBorder.withValues(alpha:0.15),
+                    fillColor: fieldFill,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -358,20 +350,16 @@ class _UnitConversionCalculatorState
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color:
-                        DesignColors.surfaceBorder.withValues(alpha:0.15),
+                    color: fieldFill,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _selectedUnit,
                       isExpanded: true,
-                      dropdownColor: Theme.of(context).brightness ==
-                              Brightness.dark
-                          ? DesignColors.darkSurface
-                          : Colors.white,
-                      style: const TextStyle(
-                        color: DesignColors.textPrimary,
+                      dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
+                      style: TextStyle(
+                        color: titleColor,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -404,17 +392,10 @@ class _UnitConversionCalculatorState
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    DesignColors.brand.withValues(alpha:0.08),
-                    DesignColors.brand.withValues(alpha:0.03),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: DesignColors.brand.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: DesignColors.brand.withValues(alpha:0.2),
+                  color: DesignColors.brand.withValues(alpha:0.25),
                   width: 1.5,
                 ),
               ),
@@ -457,12 +438,12 @@ class _UnitConversionCalculatorState
           // Quick reference
           if (widget.unitConfig.availableUnits.length > 1) ...[
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Quick Reference',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: DesignColors.textTertiary,
+                color: tertiaryColor,
                 letterSpacing: 0.5,
               ),
             ),
@@ -476,15 +457,12 @@ class _UnitConversionCalculatorState
                           Icon(
                             Icons.arrow_right_rounded,
                             size: 18,
-                            color: DesignColors.textTertiary,
+                            color: tertiaryColor,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             '1 ${unit.name} = ${unit.conversionFactor} ${widget.unitConfig.baseUnit}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: DesignColors.textSecondary,
-                            ),
+                            style: TextStyle(fontSize: 13, color: secondaryColor),
                           ),
                         ],
                       ),

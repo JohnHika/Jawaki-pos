@@ -18,6 +18,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
+    // AI Assistant — the app's primary destination, first in the row.
+    items.add(_NavItem(
+        icon: Icons.auto_awesome_outlined,
+        activeIcon: Icons.auto_awesome_rounded,
+        label: 'AI',
+        path: '/ai'));
     if (perms.canSeeDashboard) {
       items.add(_NavItem(
           icon: Icons.dashboard_outlined,
@@ -30,12 +36,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         activeIcon: Icons.point_of_sale_rounded,
         label: 'POS',
         path: '/'));
-    // AI Assistant — available to all users
-    items.add(_NavItem(
-        icon: Icons.auto_awesome_outlined,
-        activeIcon: Icons.auto_awesome_rounded,
-        label: 'AI',
-        path: '/ai'));
     items.add(_NavItem(
         icon: Icons.people_outlined,
         activeIcon: Icons.people_rounded,
@@ -253,52 +253,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.darkSurface.withValues(alpha: 0.96)
-              : Colors.white.withValues(alpha: 0.98),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(
-            color:
-                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-            width: 0.75,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-              blurRadius: 24,
-              offset: const Offset(0, -10),
+          color: isDark ? DesignColors.darkBg : DesignColors.surface,
+          border: Border(
+            top: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+              width: 1,
             ),
-          ],
+          ),
         ),
-        child: Container(
-          height: 72,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          child: Row(
-            children: [
-              ...visibleNavItems.asMap().entries.map((entry) {
-                final idx = entry.key;
-                final item = entry.value;
-                final isSelected = currentIndex == idx;
-                return Expanded(
-                    child: _NavItemWidget(
-                        item: item,
-                        isSelected: isSelected,
-                        onTap: () => context.go(item.path),
-                        isDark: isDark));
-              }),
-              if (hasMore)
-                Expanded(
-                    child: _NavItemWidget(
-                      item: _NavItem(
-                          icon: Icons.apps_outlined,
-                          activeIcon: Icons.apps_rounded,
-                          label: 'More',
-                          path: ''),
-                      isSelected: currentIndex >= maxVisible,
-                      onTap: () => _showMoreSheet(moreItems),
-                      isDark: isDark,
-                    )),
-            ],
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...visibleNavItems.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final item = entry.value;
+                  final isSelected = currentIndex == idx;
+                  return Expanded(
+                      child: _NavItemWidget(
+                          item: item,
+                          isSelected: isSelected,
+                          isPrimary: idx == 0,
+                          onTap: () => context.go(item.path),
+                          isDark: isDark));
+                }),
+                if (hasMore)
+                  Expanded(
+                      child: _NavItemWidget(
+                        item: _NavItem(
+                            icon: Icons.apps_outlined,
+                            activeIcon: Icons.apps_rounded,
+                            label: 'More',
+                            path: ''),
+                        isSelected: currentIndex >= maxVisible,
+                        isPrimary: false,
+                        onTap: () => _showMoreSheet(moreItems),
+                        isDark: isDark,
+                      )),
+              ],
+            ),
           ),
         ),
       ),
@@ -321,12 +318,14 @@ class _NavItem {
 class _NavItemWidget extends StatelessWidget {
   final _NavItem item;
   final bool isSelected;
+  final bool isPrimary;
   final VoidCallback onTap;
   final bool isDark;
 
   const _NavItemWidget(
       {required this.item,
       required this.isSelected,
+      required this.isPrimary,
       required this.onTap,
       required this.isDark});
 
@@ -335,40 +334,106 @@ class _NavItemWidget extends StatelessWidget {
     final inactiveColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
+    // The primary (AI) tab is a solid raised block that sits above the
+    // rest of the row instead of matching their pill highlight — it is
+    // meant to be found by shape alone, not just by color when active.
+    if (isPrimary) {
+      return GestureDetector(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: DesignAnimation.fast,
-          curve: DesignAnimation.smooth,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? DesignColors.brand.withValues(alpha: isDark ? 0.22 : 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(
-              isSelected ? item.activeIcon : item.icon,
-              color: isSelected ? DesignColors.brand : inactiveColor,
-              size: 23,
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topCenter,
+          children: [
+            Positioned(
+              top: -14,
+              child: AnimatedContainer(
+                duration: DesignAnimation.fast,
+                curve: DesignAnimation.smooth,
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? DesignColors.accent
+                      : (isDark
+                          ? DesignColors.darkSurfaceElevated
+                          : DesignColors.surfaceMuted),
+                  borderRadius: BorderRadius.circular(16),
+                  border: isSelected
+                      ? null
+                      : Border.all(
+                          color: isDark
+                              ? DesignColors.darkBorder
+                              : DesignColors.surfaceBorder,
+                          width: 1.2,
+                        ),
+                ),
+                child: Icon(
+                  isSelected ? item.activeIcon : item.icon,
+                  color: isSelected ? Colors.black : DesignColors.accent,
+                  size: 25,
+                ),
+              ),
             ),
-            const SizedBox(height: 3),
-            FittedBox(
-              fit: BoxFit.scaleDown,
+            Padding(
+              padding: const EdgeInsets.only(top: 42),
               child: Text(item.label,
                   style: TextStyle(
                     fontSize: 10,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? DesignColors.brand : inactiveColor,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                    color: isSelected ? DesignColors.accent : inactiveColor,
                   )),
             ),
-          ]),
+          ],
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: isSelected ? DesignColors.accent : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isSelected ? item.activeIcon : item.icon,
+                color: isSelected
+                    ? (isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary)
+                    : inactiveColor,
+                size: 22,
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(item.label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w600,
+                      color: isSelected
+                          ? (isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary)
+                          : inactiveColor,
+                    )),
+              ),
+            ],
+          ),
         ),
       ),
     );

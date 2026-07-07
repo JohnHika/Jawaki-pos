@@ -135,15 +135,15 @@ class _ProductCard extends ConsumerWidget {
       tint: isDark
           ? DesignColors.glassDark
           : (quantityInCart > 0
-                ? DesignColors.brand.withValues(alpha: 0.04)
+                ? DesignColors.accent.withValues(alpha: 0.04)
                 : DesignColors.glassWhite),
       borderColor: quantityInCart > 0
-          ? DesignColors.brand.withValues(alpha: 0.3)
+          ? DesignColors.accent.withValues(alpha: 0.3)
           : (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder),
       boxShadow: quantityInCart > 0
           ? [
               BoxShadow(
-                color: DesignColors.brand.withValues(alpha: 0.15),
+                color: DesignColors.accent.withValues(alpha: 0.15),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -210,18 +210,11 @@ class _ProductCard extends ConsumerWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                DesignColors.brand,
-                                DesignColors.brandDark,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            color: DesignColors.accent,
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: DesignColors.brand.withValues(
+                                color: DesignColors.accent.withValues(
                                   alpha: 0.4,
                                 ),
                                 blurRadius: 6,
@@ -232,7 +225,7 @@ class _ProductCard extends ConsumerWidget {
                           child: Text(
                             'x$value',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: Colors.black,
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
                             ),
@@ -272,11 +265,10 @@ class _ProductCard extends ConsumerWidget {
                     children: [
                       Text(
                         'KES ${price.toStringAsFixed(0)}',
-                        style: TextStyle(
+                        style: DesignType.numeric(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: DesignColors.brand,
-                          letterSpacing: -0.3,
+                          color: DesignColors.accent,
                         ),
                       ),
                     ],
@@ -290,7 +282,9 @@ class _ProductCard extends ConsumerWidget {
                       'KES ${secondaryUnitPriceDisplay.toStringAsFixed(0)}/unit ($secondaryUnit)',
                       style: TextStyle(
                         fontSize: 11,
-                        color: DesignColors.textSecondary,
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -303,7 +297,9 @@ class _ProductCard extends ConsumerWidget {
                       fontSize: 10,
                       color: isOutOfStock
                           ? DesignColors.error
-                          : DesignColors.textTertiary,
+                          : (isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary),
                       fontWeight: isOutOfStock
                           ? FontWeight.w700
                           : FontWeight.w500,
@@ -519,10 +515,10 @@ class _QuantitySheetState extends State<_QuantitySheet> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha: 0.06),
+                color: DesignColors.accent.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: DesignColors.brand.withValues(alpha: 0.12),
+                  color: DesignColors.accent.withValues(alpha: 0.12),
                 ),
               ),
               child: Column(
@@ -562,7 +558,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               children: [
                 Material(
                   color: _quantity > 1
-                      ? DesignColors.brand.withValues(alpha: 0.1)
+                      ? DesignColors.accent.withValues(alpha: 0.1)
                       : (isDark
                             ? DesignColors.darkSurfaceElevated
                             : DesignColors.surfaceSubtle),
@@ -578,7 +574,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       child: Icon(
                         Icons.remove_rounded,
                         color: _quantity > 1
-                            ? DesignColors.brand
+                            ? DesignColors.accent
                             : (isDark
                                   ? DesignColors.darkTextTertiary
                                   : DesignColors.textTertiary),
@@ -605,19 +601,23 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: DesignColors.surfaceBorder,
+                          color: isDark
+                              ? DesignColors.darkBorder
+                              : DesignColors.surfaceBorder,
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: DesignColors.surfaceBorder,
+                          color: isDark
+                              ? DesignColors.darkBorder
+                              : DesignColors.surfaceBorder,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                          color: DesignColors.brand,
+                          color: DesignColors.accent,
                           width: 2,
                         ),
                       ),
@@ -636,7 +636,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                 ),
                 const SizedBox(width: 12),
                 Material(
-                  color: DesignColors.brand.withValues(alpha: 0.15),
+                  color: DesignColors.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(14),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
@@ -646,13 +646,9 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       height: 48,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
-                        gradient: const LinearGradient(
-                          colors: [DesignColors.brand, DesignColors.brandDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        color: DesignColors.accent,
                       ),
-                      child: const Icon(Icons.add_rounded, color: Colors.white),
+                      child: const Icon(Icons.add_rounded, color: Colors.black),
                     ),
                   ),
                 ),
@@ -697,12 +693,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       _isCarton = false;
                       _updateQty(1);
                     },
-                    selectedColor: DesignColors.brand.withValues(alpha: 0.15),
+                    selectedColor: DesignColors.accent.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceMuted,
                     labelStyle: TextStyle(
-                      color: selected ? DesignColors.brand : null,
+                      color: selected ? DesignColors.accent : null,
                       fontWeight: selected
                           ? FontWeight.bold
                           : FontWeight.normal,
@@ -746,12 +742,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     label: Text('$n'),
                     selected: selected,
                     onSelected: (_) => _updateQty(n),
-                    selectedColor: DesignColors.brand.withValues(alpha: 0.15),
+                    selectedColor: DesignColors.accent.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceMuted,
                     labelStyle: TextStyle(
-                      color: selected ? DesignColors.brand : null,
+                      color: selected ? DesignColors.accent : null,
                       fontWeight: selected
                           ? FontWeight.bold
                           : FontWeight.normal,
@@ -760,7 +756,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       borderRadius: BorderRadius.circular(10),
                       side: BorderSide(
                         color: selected
-                            ? DesignColors.brand.withValues(alpha: 0.4)
+                            ? DesignColors.accent.withValues(alpha: 0.4)
                             : (isDark
                                   ? DesignColors.darkBorder
                                   : DesignColors.surfaceBorder),
@@ -781,12 +777,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     label: Text('$label ($qty)'),
                     selected: selected,
                     onSelected: (_) => _updateQty(qty),
-                    selectedColor: Colors.teal.withValues(alpha: 0.15),
+                    selectedColor: DesignColors.accent.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceMuted,
                     labelStyle: TextStyle(
-                      color: selected ? Colors.teal : null,
+                      color: selected ? DesignColors.accent : null,
                       fontWeight: selected
                           ? FontWeight.bold
                           : FontWeight.normal,
@@ -795,7 +791,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       borderRadius: BorderRadius.circular(10),
                       side: BorderSide(
                         color: selected
-                            ? Colors.teal.withValues(alpha: 0.4)
+                            ? DesignColors.accent.withValues(alpha: 0.4)
                             : (isDark
                                   ? DesignColors.darkBorder
                                   : DesignColors.surfaceBorder),
@@ -819,7 +815,9 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       size: 16,
                       color: exceedsStock
                           ? DesignColors.error
-                          : DesignColors.textSecondary,
+                          : (isDark
+                                ? DesignColors.darkTextSecondary
+                                : DesignColors.textSecondary),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -831,7 +829,9 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           fontSize: 12,
                           color: exceedsStock
                               ? DesignColors.error
-                              : DesignColors.textSecondary,
+                              : (isDark
+                                    ? DesignColors.darkTextSecondary
+                                    : DesignColors.textSecondary),
                           fontWeight: exceedsStock
                               ? FontWeight.w700
                               : FontWeight.w500,
@@ -847,8 +847,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               borderRadius: 14,
               blur: 6,
-              tint: DesignColors.brand.withValues(alpha: 0.06),
-              borderColor: DesignColors.brand.withValues(alpha: 0.12),
+              tint: DesignColors.accent.withValues(alpha: 0.06),
+              borderColor: DesignColors.accent.withValues(alpha: 0.12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -867,11 +867,10 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       const SizedBox(height: 2),
                       Text(
                         'KES ${total.toStringAsFixed(0)}',
-                        style: const TextStyle(
+                        style: DesignType.numeric(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
-                          color: DesignColors.brand,
-                          letterSpacing: -0.5,
+                          color: DesignColors.accent,
                         ),
                       ),
                     ],
@@ -942,10 +941,6 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           },
                     height: 48,
                     borderRadius: 12,
-                    gradient: const [
-                      DesignColors.brand,
-                      DesignColors.brandDark,
-                    ],
                   ),
                 ),
               ],
@@ -961,35 +956,41 @@ class _QuantitySheetState extends State<_QuantitySheet> {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: DesignAnimation.fast,
-        curve: DesignAnimation.smooth,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? DesignColors.brand.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
+    return Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final border =
+          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+      final secondaryColor = isDark
+          ? DesignColors.darkTextSecondary
+          : DesignColors.textSecondary;
+      return GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: DesignAnimation.fast,
+          curve: DesignAnimation.smooth,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
             color: selected
-                ? DesignColors.brand.withValues(alpha: 0.4)
-                : DesignColors.surfaceBorder,
-            width: selected ? 1.5 : 1,
+                ? DesignColors.accent.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected ? DesignColors.accent.withValues(alpha: 0.4) : border,
+              width: selected ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? DesignColors.brand : DesignColors.textSecondary,
-              fontSize: 13,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? DesignColors.accent : secondaryColor,
+                fontSize: 13,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 }

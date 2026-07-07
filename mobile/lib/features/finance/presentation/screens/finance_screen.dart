@@ -38,10 +38,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   @override
   Widget build(BuildContext context) {
     final balancesAsync = ref.watch(_supplierBalancesProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Finance',
+        showBackButton: false,
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -99,6 +101,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 isScanning: _isScanning,
                 onScan: _pickAndScanReceipt,
                 onManual: _showManualInvoiceDialog,
+                isDark: isDark,
               ),
               const SizedBox(height: 20),
               SectionHeader(
@@ -130,6 +133,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                           s['id'] as String, s['name'] as String, amount),
                       onViewInvoices: () => _showSupplierInvoices(
                           s['id'] as String, s['name'] as String),
+                      isDark: isDark,
                     )),
             ],
           );
@@ -235,6 +239,10 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               itemRows.fold<double>(0, (sum, item) => sum + item.lineTotal);
           final paid = double.tryParse(paidController.text) ?? 0;
           final due = (total - paid).clamp(0, double.infinity).toDouble();
+          final dialogIsDark = Theme.of(ctx).brightness == Brightness.dark;
+          final dialogSecondary = dialogIsDark
+              ? DesignColors.darkTextSecondary
+              : DesignColors.textSecondary;
 
           return AlertDialog(
             shape:
@@ -266,9 +274,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                             color: DesignColors.brand.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(12)),
                         child: Text(scan.summary,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: DesignColors.textSecondary)),
+                            style: TextStyle(
+                                fontSize: 12, color: dialogSecondary)),
                       ),
                     TextField(
                         controller: supplierController,
@@ -409,7 +416,13 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       initialSize: 0.42,
       maxSize: 0.6,
       scrollable: true,
-      child: Padding(
+      child: Builder(builder: (sheetContext) {
+        final sheetIsDark =
+            Theme.of(sheetContext).brightness == Brightness.dark;
+        final sheetSecondary = sheetIsDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
+        return Padding(
         padding: EdgeInsets.fromLTRB(
             20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(
@@ -418,8 +431,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           children: [
             Text(
                 'Current balance: ${FinanceScreen.currencyFmt.format(currentDebt)}',
-                style: const TextStyle(
-                    color: DesignColors.textSecondary, fontSize: 13)),
+                style: TextStyle(color: sheetSecondary, fontSize: 13)),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -463,7 +475,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             ),
           ],
         ),
-      ),
+        );
+      }),
     );
 
     if (confirmed == true && mounted) {
@@ -551,19 +564,28 @@ class _ReceiptCapturePanel extends StatelessWidget {
   final bool isScanning;
   final VoidCallback onScan;
   final VoidCallback onManual;
+  final bool isDark;
 
   const _ReceiptCapturePanel(
       {required this.totalInvoices,
       required this.overdueCount,
       required this.isScanning,
       required this.onScan,
-      required this.onManual});
+      required this.onManual,
+      required this.isDark});
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(14),
-      borderRadius: 14,
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -582,13 +604,14 @@ class _ReceiptCapturePanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Supplier Receipt Intake',
+                    Text('Supplier Receipt Intake',
                         style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w800)),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: titleColor)),
                     Text(
                         '$totalInvoices invoice${totalInvoices == 1 ? '' : 's'} tracked, $overdueCount overdue',
-                        style: const TextStyle(
-                            fontSize: 12, color: DesignColors.textSecondary)),
+                        style: TextStyle(fontSize: 12, color: secondaryColor)),
                   ],
                 ),
               ),
@@ -621,11 +644,13 @@ class _SupplierBalanceCard extends StatelessWidget {
   final Map<String, dynamic> supplier;
   final void Function(double amount) onRecordPayment;
   final VoidCallback onViewInvoices;
+  final bool isDark;
 
   const _SupplierBalanceCard(
       {required this.supplier,
       required this.onRecordPayment,
-      required this.onViewInvoices});
+      required this.onViewInvoices,
+      required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -639,12 +664,18 @@ class _SupplierBalanceCard extends StatelessWidget {
     final percentage = totalInvoiced > 0
         ? (totalPaid / totalInvoiced * 100).clamp(0, 100).toDouble()
         : 0.0;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.all(14),
-        borderRadius: 14,
+        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           children: [
             Row(
@@ -665,10 +696,10 @@ class _SupplierBalanceCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(supplier['name'] as String,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: DesignColors.textPrimary)),
+                              color: titleColor)),
                       const SizedBox(height: 2),
                       Wrap(
                         spacing: 10,
@@ -684,13 +715,11 @@ class _SupplierBalanceCard extends StatelessWidget {
                                   fontWeight: FontWeight.w600)),
                           Text(
                               'Paid: ${FinanceScreen.currencyFmt.format(totalPaid)}',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: DesignColors.textTertiary)),
+                              style: TextStyle(
+                                  fontSize: 12, color: tertiaryColor)),
                           Text('$invoices invoice${invoices == 1 ? '' : 's'}',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: DesignColors.textTertiary)),
+                              style: TextStyle(
+                                  fontSize: 12, color: tertiaryColor)),
                         ],
                       ),
                     ],
@@ -717,8 +746,7 @@ class _SupplierBalanceCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                     value: percentage / 100,
-                    backgroundColor:
-                        DesignColors.surfaceBorder.withValues(alpha: 0.4),
+                    backgroundColor: border,
                     valueColor: const AlwaysStoppedAnimation<Color>(
                         DesignColors.success),
                     minHeight: 6),
@@ -727,8 +755,7 @@ class _SupplierBalanceCard extends StatelessWidget {
               Row(
                 children: [
                   Text('${percentage.toStringAsFixed(0)}% paid',
-                      style: const TextStyle(
-                          fontSize: 10, color: DesignColors.textTertiary)),
+                      style: TextStyle(fontSize: 10, color: tertiaryColor)),
                   if (overdue > 0) ...[
                     const SizedBox(width: 8),
                     Text('$overdue overdue',
@@ -740,8 +767,7 @@ class _SupplierBalanceCard extends StatelessWidget {
                   const Spacer(),
                   if (lastPayment != null)
                     Text('Last: $lastPayment',
-                        style: const TextStyle(
-                            fontSize: 10, color: DesignColors.textTertiary)),
+                        style: TextStyle(fontSize: 10, color: tertiaryColor)),
                 ],
               ),
             ],
@@ -813,13 +839,14 @@ class _InvoiceItemEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-          border: Border.all(
-              color: DesignColors.surfaceBorder.withValues(alpha: 0.7)),
-          borderRadius: BorderRadius.circular(12)),
+      decoration:
+          BoxDecoration(border: Border.all(color: border), borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
           Row(
@@ -882,11 +909,14 @@ class _InvoiceTotals extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fill = isDark
+        ? DesignColors.darkSurfaceElevated
+        : DesignColors.surfaceBorder.withValues(alpha: 0.2);
+
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-          color: DesignColors.surfaceBorder.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(12)),
       child: Column(children: [
         _row('Total', total),
         _row('Paid', paid),

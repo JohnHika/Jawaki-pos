@@ -1,80 +1,128 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// ═══════════════════════════════════════════════════════════════
-/// AXON POS PROFESSIONAL DESIGN SYSTEM
-/// Clean, modern, professional UI patterns for POS applications
+/// AXON POS DESIGN SYSTEM — v2
+/// Near-black terminal aesthetic. One accent color used with intent,
+/// not painted across every surface. No default gradients — depth
+/// comes from elevation, borders and grain, not diagonal color washes.
 /// ═══════════════════════════════════════════════════════════════
+
+// ─── Typography ────────────────────────────────────────────────────
+// Sora: geometric, confident display face for headings and brand.
+// JetBrains Mono: every number in this app (prices, totals, metrics,
+// receipts) renders in monospace — tabular figures that align in a
+// column and read unambiguously at arm's length on a shop counter.
+class DesignType {
+  static TextTheme get textTheme => TextTheme(
+        displayLarge: GoogleFonts.sora(fontWeight: FontWeight.w800),
+        displayMedium: GoogleFonts.sora(fontWeight: FontWeight.w700),
+        headlineLarge: GoogleFonts.sora(fontWeight: FontWeight.w700),
+        headlineMedium: GoogleFonts.sora(fontWeight: FontWeight.w700),
+        headlineSmall: GoogleFonts.sora(fontWeight: FontWeight.w600),
+        titleLarge: GoogleFonts.sora(fontWeight: FontWeight.w700),
+        titleMedium: GoogleFonts.sora(fontWeight: FontWeight.w600),
+        titleSmall: GoogleFonts.sora(fontWeight: FontWeight.w600),
+        bodyLarge: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500),
+        bodyMedium: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500),
+        bodySmall: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w400),
+        labelLarge: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+        labelMedium: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+        labelSmall: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+      );
+
+  static TextStyle get display => GoogleFonts.sora();
+  static TextStyle get body => GoogleFonts.plusJakartaSans();
+
+  /// Every monetary or counted figure in the app uses this.
+  static TextStyle numeric({
+    double fontSize = 16,
+    FontWeight fontWeight = FontWeight.w700,
+    Color? color,
+    double? letterSpacing,
+  }) =>
+      GoogleFonts.jetBrainsMono(
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+        letterSpacing: letterSpacing ?? -0.2,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
+}
 
 // ─── Axon Brand Color Palette ─────────────────────────────────────
-// Derived from the Arche Axon Intelligence brand mark: an indigo
-// neural-node hex icon on near-black. Functional colors (success,
-// error, warning) stay conventional so their meaning reads instantly
-// at the till; only brand and surface tones carry the Axon identity.
+// Near-black canvas from the logo's own dark field. Signal orange is
+// the single accent — used for the one thing on a screen that should
+// pull the eye (a primary action, the active nav tab, a live total).
+// Indigo remains as the brand identifier (logo mark, splash) but does
+// not carry interactive weight the way orange does.
 class DesignColors {
-  // Brand - Axon indigo (from arche_axon_logo.svg mark)
-  static const Color brand = Color(0xFF6B7BFF);
-  static const Color brandLight = Color(0xFF8B9BFF);
-  static const Color brandDark = Color(0xFF4A5AE8);
-  static const Color brandSubtle = Color(0xFFEEF0FF);
+  // Brand mark — Axon indigo, identity only (logo, splash, About)
+  static const Color brand = Color(0xFF7C6CFF);
+  static const Color brandLight = Color(0xFF9C90FF);
+  static const Color brandDark = Color(0xFF5B4CD6);
+  static const Color brandSubtle = Color(0xFF1A1730);
 
-  // Accent — violet, the secondary branch color in the logo mark
-  static const Color accent = Color(0xFFA78BFA);
-  static const Color accentLight = Color(0xFFC4B5FD);
-  static const Color accentSubtle = Color(0xFFF3EFFF);
+  // Accent — signal orange, the app's one interactive color
+  static const Color accent = Color(0xFFFF7A33);
+  static const Color accentLight = Color(0xFFFFA166);
+  static const Color accentDark = Color(0xFFE0611E);
+  static const Color accentSubtle = Color(0xFF2A1B10);
 
   // Success
-  static const Color success = Color(0xFF22A06B);
-  static const Color successLight = Color(0xFF4CBF8A);
-  static const Color successSubtle = Color(0xFFE3F6EC);
+  static const Color success = Color(0xFF3DDC84);
+  static const Color successLight = Color(0xFF6BE6A3);
+  static const Color successSubtle = Color(0xFF102A1B);
 
   // Error
-  static const Color error = Color(0xFFE5484D);
-  static const Color errorSubtle = Color(0xFFFDECEC);
+  static const Color error = Color(0xFFFF5C5C);
+  static const Color errorSubtle = Color(0xFF2E1414);
 
   // Warning
-  static const Color warning = Color(0xFFDC9421);
-  static const Color warningSubtle = Color(0xFFFDF3E0);
+  static const Color warning = Color(0xFFFFC24B);
+  static const Color warningSubtle = Color(0xFF2E2410);
 
-  // Info
-  static const Color info = Color(0xFF6B7BFF);
-  static const Color infoSubtle = Color(0xFFEEF0FF);
+  // Info — kept distinct from both brand and accent
+  static const Color info = Color(0xFF4FC3F7);
+  static const Color infoSubtle = Color(0xFF102530);
 
-  // Surface tones
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceMuted = Color(0xFFF6F6FB);
-  static const Color surfaceSubtle = Color(0xFFEFEFF7);
-  static const Color surfaceBorder = Color(0xFFDDDDE8);
-  static const Color surfaceBorderLight = Color(0xFFE8E8F2);
+  // Light-mode surfaces (used only where a screen forces light mode,
+  // e.g. printable receipts) — warm paper, not cold gray.
+  static const Color surface = Color(0xFFFBF9F4);
+  static const Color surfaceMuted = Color(0xFFF3F0E8);
+  static const Color surfaceSubtle = Color(0xFFEDEADF);
+  static const Color surfaceBorder = Color(0xFFDDD8C8);
+  static const Color surfaceBorderLight = Color(0xFFE7E3D5);
 
-  // Text — Excellent hierarchy
-  static const Color textPrimary = Color(0xFF0A0C1F);
-  static const Color textSecondary = Color(0xFF5B5D72);
-  static const Color textTertiary = Color(0xFF9698AB);
-  static const Color textInverse = Color(0xFFFFFFFF);
+  // Light-mode text
+  static const Color textPrimary = Color(0xFF1A1610);
+  static const Color textSecondary = Color(0xFF6B6455);
+  static const Color textTertiary = Color(0xFF9A9280);
+  static const Color textInverse = Color(0xFF0B0A0F);
   static const Color textOnBrand = Color(0xFFFFFFFF);
 
-  // Payment method colors
-  static const Color mpesa = Color(0xFF4CAF50);
-  static const Color pesapal = Color(0xFF2196F3);
-  static const Color touristtap = Color(0xFFFF9800);
-  static const Color cash = Color(0xFF795548);
-  static const Color credit = Color(0xFF673AB7);
+  // Payment method colors — kept conventional, meaning must read instantly
+  static const Color mpesa = Color(0xFF3DDC84);
+  static const Color pesapal = Color(0xFF4FC3F7);
+  static const Color touristtap = Color(0xFFFFC24B);
+  static const Color cash = Color(0xFFC98A4B);
+  static const Color credit = Color(0xFF7C6CFF);
 
-  // Dark mode — near-black from the logo's dark canvas (#0A0C18 / #070910)
-  static const Color darkBg = Color(0xFF0A0C18);
-  static const Color darkSurface = Color(0xFF13152A);
-  static const Color darkSurfaceElevated = Color(0xFF1C1F3B);
-  static const Color darkBorder = Color(0xFF2E3155);
-  static const Color darkTextPrimary = Color(0xFFEEF0FF);
-  static const Color darkTextSecondary = Color(0xFFAEB1D4);
-  static const Color darkTextTertiary = Color(0xFF6E7196);
+  // Dark mode — true near-black, not navy. Flat, no gradient wash.
+  static const Color darkBg = Color(0xFF0B0A0F);
+  static const Color darkSurface = Color(0xFF15131C);
+  static const Color darkSurfaceElevated = Color(0xFF1F1C29);
+  static const Color darkBorder = Color(0xFF2E2A3D);
+  static const Color darkTextPrimary = Color(0xFFF5F3ED);
+  static const Color darkTextSecondary = Color(0xFFA8A3B8);
+  static const Color darkTextTertiary = Color(0xFF6E6A80);
 
-  // Glass (using hex alpha)
-  static const Color glassWhite = Color(0x2EFFFFFF);
-  static const Color glassBorder = Color(0x40FFFFFF);
-  static const Color glassDark = Color(0x2A0A0C18);
-  static const Color glassDarkBorder = Color(0x146B7BFF);
+  // Glass — flat translucent fills, no gradient
+  static const Color glassWhite = Color(0x1AFFFFFF);
+  static const Color glassBorder = Color(0x33FFFFFF);
+  static const Color glassDark = Color(0x1F15131C);
+  static const Color glassDarkBorder = Color(0x1DFF7A33);
 }
 
 // ─── Spacing & Sizing Scale ──────────────────────────────────────
@@ -415,8 +463,9 @@ class _GradientButtonState extends State<GradientButton>
 
   @override
   Widget build(BuildContext context) {
-    final gradient = widget.gradient ??
-        [DesignColors.brandDark, DesignColors.brand, DesignColors.accent];
+    final fill = widget.gradient?.first ?? DesignColors.accent;
+    final textColor = widget.textColor ??
+        (fill.computeLuminance() > 0.5 ? Colors.black : Colors.white);
 
     final btn = AnimatedContainer(
       duration: DesignAnimation.fast,
@@ -424,23 +473,7 @@ class _GradientButtonState extends State<GradientButton>
       width: widget.expanded ? double.infinity : null,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(widget.borderRadius),
-        gradient: LinearGradient(
-          colors: gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: gradient.first.withValues(alpha: _isPressed ? 0.2 : 0.3),
-            blurRadius: _isPressed ? 6 : 12,
-            offset: const Offset(0, 2),
-          ),
-          BoxShadow(
-            color: gradient.first.withValues(alpha: _isPressed ? 0.1 : 0.15),
-            blurRadius: _isPressed ? 3 : 6,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: _isPressed ? _darken(fill, 0.12) : fill,
       ),
       child: Material(
         color: Colors.transparent,
@@ -456,23 +489,22 @@ class _GradientButtonState extends State<GradientButton>
           borderRadius: BorderRadius.circular(widget.borderRadius),
           child: Center(
             child: widget.isLoading
-                ? _LoadingDots(color: widget.textColor ?? Colors.white)
+                ? _LoadingDots(color: textColor)
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (widget.icon != null) ...[
-                        Icon(widget.icon,
-                            color: widget.textColor ?? Colors.white, size: 20),
+                        Icon(widget.icon, color: textColor, size: 20),
                         const SizedBox(width: 10),
                       ],
                       Text(
                         widget.label,
                         style: TextStyle(
-                          color: widget.textColor ?? Colors.white,
+                          color: textColor,
                           fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.1,
                         ),
                       ),
                     ],
@@ -483,6 +515,13 @@ class _GradientButtonState extends State<GradientButton>
     );
 
     return btn;
+  }
+
+  Color _darken(Color color, double amount) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
+        .toColor();
   }
 }
 
@@ -574,99 +613,85 @@ class MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final trendColor = trendValue != null
         ? (trendValue! >= 0 ? DesignColors.success : DesignColors.error)
         : DesignColors.textTertiary;
+    final surface = isDark
+        ? DesignColors.darkSurfaceElevated
+        : Colors.white;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
-    return GlassCard(
-      padding: const EdgeInsets.all(16),
-      borderRadius: 16,
-      blur: 8,
-      tint: color.withValues(alpha: 0.12),
-      borderColor: color.withValues(alpha: 0.28),
-      gradient: LinearGradient(
-        colors: [
-          color.withValues(alpha: 0.15),
-          color.withValues(alpha: 0.05),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: color.withValues(alpha: 0.12),
-          blurRadius: 16,
-          offset: const Offset(0, 8),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border(
+          left: BorderSide(color: color, width: 3),
+          top: BorderSide(color: border, width: 1),
+          right: BorderSide(color: border, width: 1),
+          bottom: BorderSide(color: border, width: 1),
         ),
-      ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 18),
-              ),
+              Icon(icon, color: color, size: 16),
               const Spacer(),
               if (trend != null)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: trendColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        trendValue != null && trendValue! >= 0
-                            ? Icons.trending_up_rounded
-                            : Icons.trending_down_rounded,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      trendValue != null && trendValue! >= 0
+                          ? Icons.arrow_upward_rounded
+                          : Icons.arrow_downward_rounded,
+                      color: trendColor,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      trend!,
+                      style: DesignType.numeric(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
                         color: trendColor,
-                        size: 12,
                       ),
-                      const SizedBox(width: 2),
-                      Text(
-                        trend!,
-                        style: TextStyle(
-                          color: trendColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: color,
-                letterSpacing: -0.5,
+              style: DesignType.numeric(
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
+                letterSpacing: -0.4,
               ),
               maxLines: 1,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            title,
+            title.toUpperCase(),
             style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).textTheme.bodySmall?.color,
-              fontWeight: FontWeight.w500,
+              fontSize: 10.5,
+              color: isDark
+                  ? DesignColors.darkTextTertiary
+                  : DesignColors.textTertiary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
             ),
           ),
         ],
@@ -762,20 +787,19 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final subtitleColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Row(
         children: [
           if (icon != null) ...[
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: DesignColors.brandSubtle,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: DesignColors.brand, size: 18),
-            ),
-            const SizedBox(width: 12),
+            Icon(icon, color: DesignColors.accent, size: 18),
+            const SizedBox(width: 10),
           ],
           Expanded(
             child: Column(
@@ -783,21 +807,18 @@ class SectionHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 17,
+                  style: TextStyle(
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: DesignColors.textPrimary,
-                    letterSpacing: -0.3,
+                    color: titleColor,
+                    letterSpacing: -0.2,
                   ),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     subtitle!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: DesignColors.textTertiary,
-                    ),
+                    style: TextStyle(fontSize: 12, color: subtitleColor),
                   ),
                 ],
               ],
@@ -810,135 +831,6 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-class JawakiScreenHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Widget? trailing;
-
-  const JawakiScreenHeader({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GlassCard(
-      padding: const EdgeInsets.all(18),
-      borderRadius: 18,
-      blur: 10,
-      tint: isDark
-          ? DesignColors.darkSurfaceElevated.withValues(alpha: 0.55)
-          : Colors.white.withValues(alpha: 0.82),
-      borderColor:
-          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight,
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          DesignColors.brand.withValues(alpha: 0.08),
-          DesignColors.success.withValues(alpha: 0.04),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  DesignColors.brandDark,
-                  DesignColors.brand,
-                  DesignColors.accent
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (trailing != null) trailing!,
-        ],
-      ),
-    );
-  }
-}
-
-class JawakiStatusPill extends StatelessWidget {
-  final String label;
-  final Color color;
-  final IconData? icon;
-
-  const JawakiStatusPill({
-    super.key,
-    required this.label,
-    required this.color,
-    this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13, color: color),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════
 //  EMPTY STATE
@@ -963,7 +855,13 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = iconColor ?? DesignColors.textTertiary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = iconColor ??
+        (isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary);
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final subtitleColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
@@ -982,10 +880,10 @@ class EmptyState extends StatelessWidget {
             const SizedBox(height: 20),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w600,
-                color: DesignColors.textPrimary,
+                color: titleColor,
               ),
               textAlign: TextAlign.center,
             ),
@@ -993,10 +891,7 @@ class EmptyState extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 subtitle!,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: DesignColors.textTertiary,
-                ),
+                style: TextStyle(fontSize: 14, color: subtitleColor),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -1082,14 +977,10 @@ class PageContainer extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = backgroundColor ??
         (isDark ? DesignColors.darkBg : DesignColors.surfaceMuted);
-    final gradient =
-        isDark ? DesignGradients.darkSurface : DesignGradients.surface;
 
     if (withScroll) {
       return Container(
-        color: backgroundColor != null ? bg : null,
-        decoration:
-            BoxDecoration(gradient: backgroundColor == null ? gradient : null),
+        color: bg,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
@@ -1101,9 +992,7 @@ class PageContainer extends StatelessWidget {
     }
 
     return Container(
-      color: backgroundColor != null ? bg : null,
-      decoration:
-          BoxDecoration(gradient: backgroundColor == null ? gradient : null),
+      color: bg,
       padding: padding,
       child: child,
     );
@@ -1236,37 +1125,54 @@ class QuickActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(14),
-      borderRadius: 14,
-      blur: 10,
-      tint: color.withValues(alpha: 0.06),
-      borderColor: color.withValues(alpha: 0.12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 24),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final labelColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final subtitleColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: border),
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: DesignColors.textPrimary,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: labelColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle!,
+                  style: TextStyle(fontSize: 11, color: subtitleColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1384,55 +1290,67 @@ class ListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      borderRadius: 12,
-      blur: 8,
-      tint: Colors.transparent,
-      borderColor: DesignColors.surfaceBorder,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          leading,
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: DesignColors.textPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: DesignColors.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
-            ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final subtitleColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final chevronColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: surface,
+            border: Border.all(color: border),
           ),
-          if (trailing != null) ...[
-            const SizedBox(width: 8),
-            trailing!,
-          ],
-          if (onTap != null)
-            Icon(Icons.chevron_right_rounded,
-                color: DesignColors.textTertiary, size: 20),
-        ],
+          child: Row(
+            children: [
+              leading,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: titleColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(fontSize: 12, color: subtitleColor),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing!,
+              ],
+              if (onTap != null)
+                Icon(Icons.chevron_right_rounded,
+                    color: chevronColor, size: 20),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1453,48 +1371,29 @@ class LabelDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final line = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final textColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+
     return Padding(
       padding: padding ?? const EdgeInsets.symmetric(vertical: 16),
       child: Row(
         children: [
-          Expanded(
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    DesignColors.surfaceBorder,
-                    DesignColors.surfaceBorder.withValues(alpha: 0.2),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: Container(height: 1, color: line)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: DesignColors.textTertiary,
+                color: textColor,
                 letterSpacing: 0.5,
               ),
             ),
           ),
-          Expanded(
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    DesignColors.surfaceBorder.withValues(alpha: 0.2),
-                    DesignColors.surfaceBorder,
-                  ],
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: Container(height: 1, color: line)),
         ],
       ),
     );
@@ -1514,47 +1413,39 @@ Future<bool> showConfirmDialog(
 }) async {
   final result = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) {
+      final isDark = Theme.of(ctx).brightness == Brightness.dark;
+      final titleColor =
+          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+      final messageColor =
+          isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+      return AlertDialog(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(4),
       ),
-      backgroundColor: Theme.of(ctx).brightness == Brightness.dark
-          ? DesignColors.darkSurface
-          : Colors.white,
+      backgroundColor: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color:
-                  (confirmColor ?? DesignColors.error).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              Icons.warning_amber_rounded,
-              color: confirmColor ?? DesignColors.error,
-              size: 36,
-            ),
+          Icon(
+            Icons.warning_amber_rounded,
+            color: confirmColor ?? DesignColors.error,
+            size: 36,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: DesignColors.textPrimary,
+              color: titleColor,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
           Text(
             message,
-            style: const TextStyle(
-              fontSize: 14,
-              color: DesignColors.textSecondary,
-              height: 1.4,
-            ),
+            style: TextStyle(fontSize: 14, color: messageColor, height: 1.4),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1593,7 +1484,8 @@ Future<bool> showConfirmDialog(
           ],
         ),
       ],
-    ),
+      );
+    },
   );
 
   return result ?? false;
@@ -1623,8 +1515,10 @@ void showGlassSnackBar(
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(
-                color: DesignColors.textPrimary,
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
                 fontWeight: FontWeight.w500,
                 fontSize: 14,
               ),
@@ -1827,37 +1721,49 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? leading;
   final bool showLogo;
 
+  /// Root/tab screens (Dashboard, POS, AI, Customers, Settings) must pass
+  /// `false` explicitly. Leaving this to Flutter's automatic Navigator
+  /// detection is what previously caused a stray back arrow to appear on
+  /// Dashboard even though it's a bottom-nav root with nowhere to "go
+  /// back" to — this flag makes the decision explicit per screen instead.
+  final bool showBackButton;
+
   const BrandedAppBar({
     super.key,
     required this.title,
     this.actions,
     this.leading,
     this.showLogo = true,
+    this.showBackButton = true,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(62);
+  Size get preferredSize => const Size.fromHeight(60);
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final hasLeading = leading != null || showBackButton;
 
     return AppBar(
-      automaticallyImplyLeading: leading == null,
-      leading: leading,
+      automaticallyImplyLeading: false,
+      leading: leading ??
+          (showBackButton
+              ? _BackButton(color: fg, isDark: isDark)
+              : null),
       centerTitle: false,
-      titleSpacing: leading == null ? 16 : 0,
+      titleSpacing: hasLeading ? 4 : 20,
       toolbarHeight: preferredSize.height,
-      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      foregroundColor:
-          isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+      backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surface,
+      foregroundColor: fg,
       elevation: 0,
       scrolledUnderElevation: 0,
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showLogo) ...[
-            const AxonLogoTitle(logoSize: 32),
+            const AxonLogoTitle(logoSize: 28),
             const SizedBox(width: 10),
           ],
           Flexible(
@@ -1865,12 +1771,11 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isDark
-                    ? DesignColors.darkTextPrimary
-                    : DesignColors.textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
+              style: DesignType.display.copyWith(
+                color: fg,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
               ),
             ),
           ),
@@ -1880,7 +1785,38 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
       shape: Border(
         bottom: BorderSide(
           color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-          width: 0.75,
+          width: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _BackButton extends StatelessWidget {
+  final Color color;
+  final bool isDark;
+  const _BackButton({required this.color, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 12),
+      child: Material(
+        color: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => Navigator.of(context).maybePop(),
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(Icons.arrow_back_rounded, color: color, size: 19),
+          ),
         ),
       ),
     );

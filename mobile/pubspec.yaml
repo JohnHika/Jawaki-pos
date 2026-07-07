@@ -1,7 +1,7 @@
 name: axon_pos
 description: Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 publish_to: 'none'
-version: 1.0.16+2021
+version: 1.0.17+2022
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -70,6 +70,9 @@ dependencies:
   # Animations
   flutter_animate: ^4.3.0
   lottie: ^3.0.0
+
+  # Typography
+  google_fonts: ^6.2.1
 
   # Search
   easy_search_bar: ^2.5.0

@@ -21,6 +21,7 @@ class ReportsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Reports',
+        showBackButton: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -50,7 +51,7 @@ class ReportsScreen extends ConsumerWidget {
                 child: EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Could not load summary',
-                  subtitle: '$e',
+                  subtitle: 'Check your connection and try again.',
                   actionLabel: 'Retry',
                   onAction: () => ref.invalidate(dashboardSummaryProvider),
                 ),
@@ -81,7 +82,7 @@ class ReportsScreen extends ConsumerWidget {
               icon: Icons.pie_chart_rounded,
               title: 'Payment Methods',
               subtitle: 'Breakdown of payment methods used',
-              color: Colors.teal,
+              color: DesignColors.credit,
               onTap: () => _showPaymentMethodsReport(context, ref),
             ),
             _ReportTile(
@@ -142,7 +143,7 @@ class ReportsScreen extends ConsumerWidget {
               icon: Icons.trending_up_rounded,
               title: 'Inventory Forecast',
               subtitle: 'Predictive inventory analytics and demand forecasting',
-              color: Colors.teal,
+              color: DesignColors.credit,
               onTap: () => context.push('/reports/inventory-forecast'),
             ),
             _GlassCardTile(
@@ -204,7 +205,7 @@ class ReportsScreen extends ConsumerWidget {
                   title: 'Items Sold',
                   value: '${s['itemsSold'] ?? 0}',
                   icon: Icons.inventory_2_rounded,
-                  color: Colors.teal,
+                  color: DesignColors.accent,
                 ),
               ),
             ],
@@ -270,6 +271,10 @@ class ReportsScreen extends ConsumerWidget {
                     }
                     final totalRevenue =
                         sales.fold<double>(0, (a, s) => a + s.total);
+                    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+                    final titleColor = isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary;
                     return Column(
                       children: [
                         GlassCard(
@@ -283,8 +288,9 @@ class ReportsScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text('Total: ${sales.length} sales',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600)),
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: titleColor)),
                               Text(_currencyFmt.format(totalRevenue),
                                   style: const TextStyle(
                                       fontWeight: FontWeight.bold,
@@ -309,9 +315,9 @@ class ReportsScreen extends ConsumerWidget {
                                 subtitle:
                                     '${sale.paymentMethod}  ${DateFormat('d MMM, hh:mm a').format(sale.createdAt)}',
                                 trailing: Text(_currencyFmt.format(sale.total),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: DesignColors.textPrimary)),
+                                        color: titleColor)),
                               );
                             },
                           ),
@@ -359,7 +365,7 @@ class ReportsScreen extends ConsumerWidget {
                 children: [
                   Text('Payment Methods',
                       style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: Colors.teal),
+                  StatusBadge(label: range.label, color: DesignColors.accent),
                 ],
               ),
               const SizedBox(height: 12),
@@ -374,6 +380,11 @@ class ReportsScreen extends ConsumerWidget {
                     }
                     final total = data.fold<double>(
                         0, (a, d) => a + (d['totalAmount'] as double));
+                    final isDark =
+                        Theme.of(ctx).brightness == Brightness.dark;
+                    final titleColor = isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary;
                     return ListView.builder(
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
@@ -404,14 +415,14 @@ class ReportsScreen extends ConsumerWidget {
                                         size: 20),
                                     const SizedBox(width: 8),
                                     Text(d['paymentMethod'] as String,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             fontWeight: FontWeight.w600,
-                                            color: DesignColors.textPrimary)),
+                                            color: titleColor)),
                                   ]),
                                   Text(_currencyFmt.format(amount),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          color: DesignColors.textPrimary)),
+                                          color: titleColor)),
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -565,6 +576,11 @@ class ReportsScreen extends ConsumerWidget {
                     }
                     final total = data.fold<double>(
                         0, (a, d) => a + (d['totalRevenue'] as double));
+                    final isDark =
+                        Theme.of(ctx).brightness == Brightness.dark;
+                    final titleColor = isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary;
                     return ListView.builder(
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
@@ -576,7 +592,7 @@ class ReportsScreen extends ConsumerWidget {
                           DesignColors.success,
                           DesignColors.info,
                           DesignColors.warning,
-                          Colors.teal,
+                          DesignColors.accent,
                           DesignColors.error
                         ];
                         final color = colors[i % colors.length];
@@ -596,14 +612,13 @@ class ReportsScreen extends ConsumerWidget {
                                 children: [
                                   Expanded(
                                       child: Text(d['categoryName'] as String,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               fontWeight: FontWeight.w600,
-                                              color:
-                                                  DesignColors.textPrimary))),
+                                              color: titleColor))),
                                   Text(_currencyFmt.format(revenue),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          color: DesignColors.textPrimary)),
+                                          color: titleColor)),
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -825,6 +840,10 @@ class ReportsScreen extends ConsumerWidget {
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final db = getIt<AppDatabase>();
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final secondaryColor = isDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
@@ -839,7 +858,7 @@ class ReportsScreen extends ConsumerWidget {
                   // Add a close button for Customer Report
                   IconButton(
                     icon: const Icon(Icons.close_rounded, size: 20),
-                    color: DesignColors.textSecondary,
+                    color: secondaryColor,
                     onPressed: () => Navigator.pop(ctx),
                   ),
                 ],
@@ -886,13 +905,13 @@ class ReportsScreen extends ConsumerWidget {
                         return ListCard(
                           leading: CircleAvatar(
                             backgroundColor:
-                                Colors.teal.withValues(alpha: 0.1),
+                                DesignColors.accent.withValues(alpha: 0.1),
                             child: Text(
                               (c['name'] as String)
                                   .substring(0, 1)
                                   .toUpperCase(),
                               style: const TextStyle(
-                                  color: Colors.teal,
+                                  color: DesignColors.accent,
                                   fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -953,11 +972,11 @@ class ReportsScreen extends ConsumerWidget {
               children: [
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  backgroundColor: DesignColors.accent.withValues(alpha: 0.1),
                   child: Text(
                     (customer['name'] as String).substring(0, 1).toUpperCase(),
                     style: const TextStyle(
-                        color: Colors.teal,
+                        color: DesignColors.accent,
                         fontWeight: FontWeight.bold,
                         fontSize: 20),
                   ),
@@ -985,7 +1004,7 @@ class ReportsScreen extends ConsumerWidget {
                     title: 'Purchases',
                     value: '${customer['totalPurchases']}',
                     icon: Icons.shopping_bag_rounded,
-                    color: Colors.teal,
+                    color: DesignColors.accent,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1058,6 +1077,10 @@ class _GlassCardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor = isDark
+        ? DesignColors.darkTextSecondary
+        : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GlassCard(
@@ -1094,9 +1117,9 @@ class _GlassCardTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: DesignColors.textSecondary,
+                      color: secondaryColor,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1110,9 +1133,9 @@ class _GlassCardTile extends StatelessWidget {
                 color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.chevron_right_rounded,
-                color: DesignColors.textSecondary,
+                color: secondaryColor,
                 size: 20,
               ),
             ),
@@ -1194,15 +1217,23 @@ class _DateRangeSelector extends ConsumerWidget {
             range.label.contains('–') ? range.label : 'Custom',
             range.label.contains('–'),
             () async {
+              final isDark =
+                  Theme.of(context).brightness == Brightness.dark;
               final picked = await showDateRangePicker(
                 context: context,
                 firstDate: DateTime(2024),
                 lastDate: DateTime.now(),
                 builder: (ctx, child) => Theme(
                   data: Theme.of(context).copyWith(
-                    colorScheme: const ColorScheme.light(
-                      primary: DesignColors.brand,
-                    ),
+                    colorScheme: isDark
+                        ? const ColorScheme.dark(
+                            primary: DesignColors.accent,
+                            onPrimary: Colors.black,
+                            surface: DesignColors.darkSurface,
+                          )
+                        : const ColorScheme.light(
+                            primary: DesignColors.accent,
+                          ),
                   ),
                   child: child!,
                 ),
@@ -1221,6 +1252,11 @@ class _DateRangeSelector extends ConsumerWidget {
 
   Widget _buildPeriodChip(BuildContext context, WidgetRef ref, String label,
       bool selected, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final secondaryColor = isDark
+        ? DesignColors.darkTextSecondary
+        : DesignColors.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -1228,13 +1264,13 @@ class _DateRangeSelector extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: selected
-              ? DesignColors.brand.withValues(alpha: 0.12)
+              ? DesignColors.accent.withValues(alpha: 0.12)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected
-                ? DesignColors.brand.withValues(alpha: 0.3)
-                : DesignColors.surfaceBorder,
+                ? DesignColors.accent.withValues(alpha: 0.3)
+                : border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -1247,7 +1283,7 @@ class _DateRangeSelector extends ConsumerWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? DesignColors.brand : DesignColors.textSecondary,
+            color: selected ? DesignColors.accent : secondaryColor,
           ),
         ),
       ),
@@ -1258,6 +1294,10 @@ class _DateRangeSelector extends ConsumerWidget {
 // Helper method to build report navigation tabs
 Widget _buildReportNavTab(
     BuildContext context, String title, bool isActive, VoidCallback onTap) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+  final secondaryColor =
+      isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
   return GestureDetector(
     onTap: () {
       Navigator.pop(context);
@@ -1267,11 +1307,11 @@ Widget _buildReportNavTab(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: isActive
-            ? DesignColors.brand.withValues(alpha: 0.1)
+            ? DesignColors.accent.withValues(alpha: 0.1)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isActive ? DesignColors.brand : DesignColors.surfaceBorder,
+          color: isActive ? DesignColors.accent : border,
           width: isActive ? 1.5 : 1,
         ),
       ),
@@ -1280,7 +1320,7 @@ Widget _buildReportNavTab(
         style: TextStyle(
           fontSize: 13,
           fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-          color: isActive ? DesignColors.brand : DesignColors.textSecondary,
+          color: isActive ? DesignColors.accent : secondaryColor,
         ),
       ),
     ),

@@ -98,6 +98,7 @@ class _AnalyticsDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Analytics',
@@ -109,7 +110,7 @@ class _AnalyticsDashboardScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
           : RefreshIndicator(
               onRefresh: _loadAnalyticsData,
               child: PageContainer(
@@ -118,7 +119,7 @@ class _AnalyticsDashboardScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Date Period Selector
-                    _buildPeriodSelector(),
+                    _buildPeriodSelector(isDark),
                     const SizedBox(height: 24),
 
                     // Summary Cards with MetricCard
@@ -126,26 +127,26 @@ class _AnalyticsDashboardScreenState
                     const SizedBox(height: 24),
 
                     // Main Sales Chart
-                    _buildSalesTrendChart(),
+                    _buildSalesTrendChart(isDark),
                     const SizedBox(height: 24),
 
                     // Top Products & Payment Methods Row
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(flex: 2, child: _buildTopProducts()),
+                        Expanded(flex: 2, child: _buildTopProducts(isDark)),
                         const SizedBox(width: 16),
-                        Expanded(child: _buildPaymentMethods()),
+                        Expanded(child: _buildPaymentMethods(isDark)),
                       ],
                     ),
                     const SizedBox(height: 24),
 
                     // Category Breakdown
-                    _buildCategoryBreakdown(),
+                    _buildCategoryBreakdown(isDark),
                     const SizedBox(height: 24),
 
                     // Hourly Distribution
-                    _buildHourlyDistribution(),
+                    _buildHourlyDistribution(isDark),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -154,15 +155,17 @@ class _AnalyticsDashboardScreenState
     );
   }
 
-  Widget _buildPeriodSelector() {
+  Widget _buildPeriodSelector(bool isDark) {
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: GlassCard(
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        borderRadius: 14,
-        blur: 10,
-        tint: Colors.transparent,
-        borderColor: DesignColors.surfaceBorder,
+        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           children: _periods.asMap().entries.map((entry) {
@@ -181,7 +184,7 @@ class _AnalyticsDashboardScreenState
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? DesignColors.brand.withValues(alpha: 0.12)
+                        ? DesignColors.accent.withValues(alpha: 0.15)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -193,8 +196,8 @@ class _AnalyticsDashboardScreenState
                       fontWeight:
                           isSelected ? FontWeight.w700 : FontWeight.w500,
                       color: isSelected
-                          ? DesignColors.brand
-                          : DesignColors.textSecondary,
+                          ? DesignColors.accent
+                          : secondaryColor,
                     ),
                   ),
                 ),
@@ -264,41 +267,30 @@ class _AnalyticsDashboardScreenState
     );
   }
 
-  Widget _buildSalesTrendChart() {
-    return GlassCard(
+  Widget _buildSalesTrendChart(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: DesignColors.brand.withValues(alpha: 0.05),
-      borderColor: DesignColors.brand.withValues(alpha: 0.12),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DesignColors.brand.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.bar_chart_rounded,
-                  color: DesignColors.brand,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.bar_chart_rounded, color: DesignColors.brand, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Sales Trend',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -361,10 +353,7 @@ class _AnalyticsDashboardScreenState
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               time,
-                              style: const TextStyle(
-                                color: DesignColors.textTertiary,
-                                fontSize: 11,
-                              ),
+                              style: TextStyle(color: tertiaryColor, fontSize: 11),
                             ),
                           );
                         }
@@ -393,10 +382,7 @@ class _AnalyticsDashboardScreenState
                           .toDouble() /
                       5,
                   getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: DesignColors.surfaceBorder.withValues(alpha: 0.5),
-                      strokeWidth: 1,
-                    );
+                    return FlLine(color: border, strokeWidth: 1);
                   },
                 ),
                 borderData: FlBorderData(show: false),
@@ -408,41 +394,32 @@ class _AnalyticsDashboardScreenState
     );
   }
 
-  Widget _buildTopProducts() {
-    return GlassCard(
+  Widget _buildTopProducts(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: Colors.teal.withValues(alpha: 0.04),
-      borderColor: Colors.teal.withValues(alpha: 0.1),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.teal.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.teal.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.star_rounded,
-                  color: Colors.teal,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.star_rounded, color: DesignColors.info, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Top Products',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -473,7 +450,9 @@ class _AnalyticsDashboardScreenState
                                 ? Colors.grey.withValues(alpha: 0.2)
                                 : index == 2
                                     ? Colors.orange.withValues(alpha: 0.2)
-                                    : DesignColors.surfaceSubtle,
+                                    : (isDark
+                                        ? DesignColors.darkSurfaceElevated
+                                        : DesignColors.surfaceSubtle),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: (index == 0
@@ -482,7 +461,7 @@ class _AnalyticsDashboardScreenState
                                       ? Colors.grey
                                       : index == 2
                                           ? Colors.orange
-                                          : DesignColors.textTertiary)
+                                          : tertiaryColor)
                               .withValues(alpha: 0.3),
                           width: 1,
                         ),
@@ -497,7 +476,7 @@ class _AnalyticsDashboardScreenState
                                     ? Colors.grey[700]
                                     : index == 2
                                         ? Colors.orange[700]
-                                        : DesignColors.textTertiary,
+                                        : tertiaryColor,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
@@ -511,10 +490,10 @@ class _AnalyticsDashboardScreenState
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: DesignColors.textPrimary,
+                              color: titleColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -522,10 +501,7 @@ class _AnalyticsDashboardScreenState
                           const SizedBox(height: 4),
                           Text(
                             '${product['totalQty']} units sold',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: DesignColors.textSecondary,
-                            ),
+                            style: TextStyle(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -544,57 +520,43 @@ class _AnalyticsDashboardScreenState
                         const SizedBox(height: 4),
                         Text(
                           '${(revenue / (_summary['totalRevenue'] ?? 1) * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: DesignColors.textSecondary,
-                          ),
+                          style: TextStyle(fontSize: 11, color: secondaryColor),
                         ),
                       ],
                     ),
                   ],
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );
   }
 
-  Widget _buildPaymentMethods() {
-    return GlassCard(
+  Widget _buildPaymentMethods(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: DesignColors.info.withValues(alpha: 0.04),
-      borderColor: DesignColors.info.withValues(alpha: 0.1),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DesignColors.info.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DesignColors.info.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.payment_rounded,
-                  color: DesignColors.info,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.payment_rounded, color: DesignColors.info, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Payments',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -648,19 +610,16 @@ class _AnalyticsDashboardScreenState
                         children: [
                           Text(
                             _formatPaymentMethod(method),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: DesignColors.textPrimary,
+                              color: titleColor,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '$count transactions',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: DesignColors.textSecondary,
-                            ),
+                            style: TextStyle(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -670,66 +629,50 @@ class _AnalyticsDashboardScreenState
                       children: [
                         Text(
                           'KSh ${total.toStringAsFixed(0)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: DesignColors.textPrimary,
+                            color: titleColor,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '$percent%',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: DesignColors.textSecondary,
-                          ),
+                          style: TextStyle(fontSize: 11, color: secondaryColor),
                         ),
                       ],
                     ),
                   ],
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );
   }
 
-  Widget _buildCategoryBreakdown() {
-    return GlassCard(
+  Widget _buildCategoryBreakdown(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: Colors.teal.withValues(alpha: 0.04),
-      borderColor: Colors.teal.withValues(alpha: 0.1),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.teal.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.teal.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.category_rounded,
-                  color: Colors.teal,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.category_rounded, color: DesignColors.info, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Sales by Category',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -769,18 +712,15 @@ class _AnalyticsDashboardScreenState
                         const SizedBox(width: 8),
                         Text(
                           catName,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: DesignColors.textPrimary,
-                          ),
+                          style: TextStyle(fontSize: 13, color: titleColor),
                         ),
                         const Spacer(),
                         Text(
                           'KSh ${total.toStringAsFixed(0)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: DesignColors.textPrimary,
+                            color: titleColor,
                           ),
                         ),
                       ],
@@ -792,53 +732,42 @@ class _AnalyticsDashboardScreenState
                         value: share,
                         valueColor: AlwaysStoppedAnimation<Color>(color),
                         minHeight: 8,
-                        backgroundColor: DesignColors.surfaceBorder,
+                        backgroundColor: border,
                       ),
                     ),
                   ],
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );
   }
 
-  Widget _buildHourlyDistribution() {
-    return GlassCard(
+  Widget _buildHourlyDistribution(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
       padding: const EdgeInsets.all(20),
-      borderRadius: 16,
-      blur: 12,
-      tint: DesignColors.info.withValues(alpha: 0.04),
-      borderColor: DesignColors.info.withValues(alpha: 0.1),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DesignColors.accent.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.access_time_rounded,
-                  color: DesignColors.accent,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
+              const Icon(Icons.access_time_rounded, color: DesignColors.accent, size: 20),
+              const SizedBox(width: 10),
+              Text(
                 'Hourly Sales Distribution',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: DesignColors.textPrimary,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -899,10 +828,7 @@ class _AnalyticsDashboardScreenState
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 time,
-                                style: const TextStyle(
-                                  color: DesignColors.textTertiary,
-                                  fontSize: 11,
-                                ),
+                                style: TextStyle(color: tertiaryColor, fontSize: 11),
                               ),
                             );
                           }
@@ -931,11 +857,7 @@ class _AnalyticsDashboardScreenState
                             .toDouble() /
                         5,
                     getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color:
-                            DesignColors.surfaceBorder.withValues(alpha: 0.5),
-                        strokeWidth: 1,
-                      );
+                      return FlLine(color: border, strokeWidth: 1);
                     },
                   ),
                   borderData: FlBorderData(show: false),
@@ -1013,7 +935,7 @@ class _AnalyticsDashboardScreenState
       case 'electronics':
         return DesignColors.info;
       case 'clothing':
-        return Colors.teal;
+        return DesignColors.credit;
       case 'food':
         return DesignColors.success;
       case 'services':

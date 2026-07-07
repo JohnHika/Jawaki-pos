@@ -62,6 +62,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Payments',
+        showBackButton: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.receipt_long_rounded),

@@ -75,6 +75,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Axon AI',
+        showBackButton: false,
         actions: [
           if (messages.isNotEmpty)
             IconButton(
