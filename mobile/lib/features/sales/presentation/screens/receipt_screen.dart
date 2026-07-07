@@ -2,9 +2,11 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/sales_provider.dart';
 
@@ -62,8 +64,19 @@ class ReceiptScreen extends ConsumerWidget {
               child:
                   const Icon(Icons.share_outlined, size: 20, color: DesignColors.brand),
             ),
+            tooltip: 'Share receipt',
             onPressed: () {
-              // Share receipt
+              final receipt = receiptAsync.valueOrNull;
+              if (receipt == null) {
+                showGlassSnackBar(
+                  context,
+                  'Receipt is still loading — try again in a moment.',
+                  icon: Icons.hourglass_empty_rounded,
+                  color: DesignColors.warning,
+                );
+                return;
+              }
+              Share.share(_buildShareText(receipt));
             },
           ),
           IconButton(
@@ -76,8 +89,16 @@ class ReceiptScreen extends ConsumerWidget {
               child: const Icon(Icons.print_outlined,
                   size: 20, color: DesignColors.brand),
             ),
+            tooltip: 'Set up a receipt printer',
             onPressed: () {
-              // Print receipt
+              showGlassSnackBar(
+                context,
+                'Set up a receipt printer in Settings to print receipts.',
+                icon: Icons.print_outlined,
+                color: DesignColors.info,
+                actionLabel: 'Open Settings',
+                onAction: () => context.push('/settings'),
+              );
             },
           ),
           IconButton(
@@ -459,7 +480,13 @@ class ReceiptScreen extends ConsumerWidget {
                 child: _buildTotalRow(context, 'Discount', receipt['discount'],
                     isDiscount: true),
               ),
-            _buildTotalRow(context, 'Tax', receipt['tax']),
+            if (getIt<AuthService>().showTaxOnReceipt &&
+                (receipt['tax'] as num?) != null &&
+                (receipt['tax'] as num) > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: _buildTotalRow(context, 'Tax', receipt['tax']),
+              ),
             const SizedBox(height: 12),
             Container(
               height: 1,
@@ -624,5 +651,42 @@ class ReceiptScreen extends ConsumerWidget {
     final dt =
         dateTime is DateTime ? dateTime : DateTime.parse(dateTime.toString());
     return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _buildShareText(Map<String, dynamic> receipt) {
+    final items = receipt['items'] as List? ?? [];
+    final buffer = StringBuffer();
+
+    buffer.writeln(receipt['branchName'] ?? 'POS Store');
+    if ((receipt['branchAddress'] as String?)?.isNotEmpty == true) {
+      buffer.writeln(receipt['branchAddress']);
+    }
+    buffer.writeln('Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}');
+    buffer.writeln(_formatDateTime(receipt['createdAt']));
+    buffer.writeln('---');
+
+    for (final item in items) {
+      final name = item['productName'] ?? '';
+      final qty = item['quantity'];
+      final total = (item['total'] as num?)?.toStringAsFixed(2) ?? '0.00';
+      buffer.writeln('$qty x $name — KES $total');
+    }
+
+    buffer.writeln('---');
+    buffer.writeln('Subtotal: KES ${((receipt['subtotal'] as num?) ?? 0).toStringAsFixed(2)}');
+    final discount = (receipt['discount'] as num?) ?? 0;
+    if (discount > 0) {
+      buffer.writeln('Discount: -KES ${discount.toStringAsFixed(2)}');
+    }
+    final tax = (receipt['tax'] as num?) ?? 0;
+    if (getIt<AuthService>().showTaxOnReceipt && tax > 0) {
+      buffer.writeln('Tax: KES ${tax.toStringAsFixed(2)}');
+    }
+    buffer.writeln('Total: KES ${((receipt['total'] as num?) ?? 0).toStringAsFixed(2)}');
+    buffer.writeln('Payment: ${receipt['paymentMethod'] ?? 'CASH'}');
+    buffer.writeln();
+    buffer.writeln('Thank you for your purchase!');
+
+    return buffer.toString();
   }
 }

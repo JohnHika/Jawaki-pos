@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -82,8 +83,16 @@ class _AnalyticsDashboardScreenState
 
       setState(() => _isLoading = false);
     } catch (e) {
-      print('Analytics load error: $e');
-      setState(() => _isLoading = false);
+      if (!kReleaseMode) debugPrint('Analytics load error: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showGlassSnackBar(
+          context,
+          "Couldn't load analytics. Check your connection and try again.",
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
     }
   }
 
@@ -734,8 +743,13 @@ class _AnalyticsDashboardScreenState
           else
             ..._salesByCategory.map((category) {
               final catName = category['categoryName'] ?? 'Unknown';
-              final total = category['totalAmount'] ?? 0.0;
+              final total = (category['totalRevenue'] ?? 0.0) as double;
               final color = _getCategoryColor(catName);
+              final grandTotal = _salesByCategory.fold<double>(
+                0,
+                (sum, c) => sum + ((c['totalRevenue'] ?? 0) as double),
+              );
+              final share = grandTotal > 0 ? total / grandTotal : 0.0;
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
@@ -775,14 +789,7 @@ class _AnalyticsDashboardScreenState
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
-                        value: (_salesByCategory.isNotEmpty
-                                ? _salesByCategory.fold<double>(
-                                    0,
-                                    (sum, c) =>
-                                        sum +
-                                        ((c['totalAmount'] ?? 0) as double))
-                                : 1)
-                            .toDouble(),
+                        value: share,
                         valueColor: AlwaysStoppedAnimation<Color>(color),
                         minHeight: 8,
                         backgroundColor: DesignColors.surfaceBorder,

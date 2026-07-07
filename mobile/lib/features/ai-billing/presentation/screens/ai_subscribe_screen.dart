@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter/services.dart';
-import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
+import '../../../../core/theme/design_system.dart';
 
 class AiSubscribeScreen extends StatefulWidget {
   final String branchId;
@@ -20,43 +20,58 @@ class AiSubscribeScreen extends StatefulWidget {
 
 class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
   final AiBillingService _billingService = AiBillingService();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
-  bool _isLoading = false;
-  bool _isMpesaReady = false;
+  bool _isCardLoading = false;
+  bool _isMpesaCodeLoading = false;
+  bool _showMpesaFallback = false;
   String? _error;
   String? _successMessage;
 
   @override
-  void initState() {
-    super.initState();
-    _checkMpesaAvailability();
-  }
-
-  @override
   void dispose() {
+    _emailController.dispose();
     _codeController.dispose();
     super.dispose();
   }
 
-  Future<void> _checkMpesaAvailability() async {
+  Future<void> _payWithCard() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = 'Enter a valid email to receive your receipt');
+      return;
+    }
+
+    setState(() {
+      _isCardLoading = true;
+      _error = null;
+    });
+
     try {
-      // Try to open M-Pesa app
-      await _billingService.launchMpesa();
-      if (mounted) setState(() => _isMpesaReady = true);
+      final url = await _billingService.initializePaystackPayment(
+        widget.branchId,
+        email,
+      );
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (mounted) {
+          setState(() {
+            _successMessage =
+                'Complete the payment in your browser. Your subscription activates automatically once the card is charged, and renews on its own each month.';
+          });
+        }
+      } else {
+        if (mounted) setState(() => _error = 'Could not open the payment page');
+      }
     } catch (e) {
-      if (mounted) setState(() => _isMpesaReady = false);
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isCardLoading = false);
     }
   }
 
-  Future<void> _openMpesa() async {
-    try {
-      await _billingService.launchMpesa();
-    } catch (e) {
-      setState(() => _error = 'Failed to open M-Pesa. Make sure it is installed.');
-    }
-  }
-
-  Future<void> _submitCode() async {
+  Future<void> _submitMpesaCode() async {
     final code = _codeController.text.trim().toUpperCase();
     if (code.isEmpty) {
       setState(() => _error = 'Please enter the M-Pesa confirmation code');
@@ -67,7 +82,10 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isMpesaCodeLoading = true;
+      _error = null;
+    });
     try {
       final result = await _billingService.submitPayment(widget.branchId, code);
       if (mounted) {
@@ -75,240 +93,217 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
         _codeController.clear();
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isMpesaCodeLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final surface = Theme.of(context).cardColor;
-    final textPrimaryColor = Theme.of(context).textTheme.headlineSmall?.color;
-    final textSecondaryColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final textHintColor = Theme.of(context).textTheme.labelMedium?.color;
-
     return Scaffold(
-      backgroundColor: surface,
-      appBar: AppBar(
-        title: Text('Subscribe to Axon AI'),
-        backgroundColor: surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: textPrimaryColor),
-          onPressed: Navigator.of(context).pop,
-        ),
-      ),
+      appBar: const BrandedAppBar(title: 'Subscribe to Axon AI', showLogo: false),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Payment instructions
-              _SectionCard(
-                title: 'How to Subscribe',
-                children: [
-                  _InstructionStep(
-                    number: 1,
-                    title: 'Send M-Pesa',
-                    description: 'Send exactly 600 KES to your store\'s M-Pesa number',
-                    highlight: '0742126582',
-                    primary: primary,
-                  ),
-                  _InstructionStep(
-                    number: 2,
-                    title: 'Enter Code',
-                    description: 'Enter the confirmation code from your SMS',
-                  ),
-                ],
-              ).animate().slideX(begin: -0.2, duration: 400.ms),
-
-              const SizedBox(height: 24),
-
-              // Enter code section
-              Text(
-                'Enter M-Pesa Confirmation Code',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: textPrimaryColor,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              _CodeInputField(
-                controller: _codeController,
-                onSubmitted: _submitCode,
-              ).animate().scale(duration: 500.ms),
-
-              const SizedBox(height: 16),
-
-              // Submit button
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submitCode,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                      : Text(
-                        'Activate Subscription',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                ),
-              ).animate().fade(duration: 500.ms, delay: 200.ms),
-
-              const SizedBox(height: 16),
-
-              // Result message
-              if (_successMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _successMessage!,
-                          style: TextStyle(color: Colors.green),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () => _openMpesa(),
-                  icon: Icon(Icons.mobile_friendly, size: 20),
-                  label: Text('Open M-Pesa App'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ).animate().slideY(begin: 0.2, duration: 400.ms),
-              ],
-
-              // Error message
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.red),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-
-              // M-Pesa section
-              _MpesaButton(
-                isReady: _isMpesaReady,
-                onTap: _openMpesa,
-                primary: primary,
-              ).animate().slideY(begin: 0.3, duration: 500.ms),
-
-              const SizedBox(height: 24),
-
-              // Trial info
-              Container(
+              // Price
+              GlassCard(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                borderRadius: 12,
+                borderColor: DesignColors.brand.withValues(alpha: 0.25),
+                tint: DesignColors.brand.withValues(alpha: 0.08),
                 child: Row(
                   children: [
-                    Expanded(
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '7-Day Free Trial',
+                            'Monthly Subscription',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
-                              color: textPrimaryColor,
+                              color: DesignColors.textPrimary,
                             ),
                           ),
                           Text(
-                            'After trial, subscribe for 600 KES/month',
+                            'Renews automatically every 30 days',
                             style: TextStyle(
-                              color: textSecondaryColor,
-                              fontSize: 13,
-                            ),
+                                color: DesignColors.textSecondary, fontSize: 13),
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: primary.withOpacity(0.3)),
-                      ),
-                      child: Text(
-                        '600 KES',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: primary,
-                        ),
+                    Text(
+                      'KES ${AiBillingService.subscriptionPrice.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: DesignColors.brand,
                       ),
                     ),
                   ],
                 ),
-              ).animate().fadeIn(delay: 600.ms, duration: 500.ms),
+              ).animate().fadeIn(duration: 400.ms),
 
               const SizedBox(height: 24),
 
-              // Terms
-              Text(
-                'By subscribing, you agree to our Terms of Service and Privacy Policy. '
-                'Subscription auto-renews monthly unless cancelled.',
+              // Card payment — primary path, auto-renews
+              _SectionCard(
+                title: 'Pay with Card',
+                subtitle:
+                    'Recommended — your subscription renews automatically each month, no need to pay again.',
+                children: [
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email for receipt',
+                      hintText: 'you@example.com',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GradientButton(
+                    label: _isCardLoading ? 'Opening...' : 'Subscribe with Card',
+                    icon: Icons.credit_card,
+                    isLoading: _isCardLoading,
+                    onPressed: _isCardLoading ? null : _payWithCard,
+                    height: 50,
+                    borderRadius: 12,
+                  ),
+                ],
+              ).animate().slideY(begin: 0.15, duration: 400.ms),
+
+              const SizedBox(height: 16),
+
+              // Success / error messages
+              if (_successMessage != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: DesignColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: DesignColors.success.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle,
+                          color: DesignColors.success),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _successMessage!,
+                          style: const TextStyle(color: DesignColors.success),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (_error != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: DesignColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: DesignColors.error.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: DesignColors.error),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: DesignColors.error),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // M-Pesa fallback, collapsed by default
+              TextButton.icon(
+                onPressed: () => setState(
+                    () => _showMpesaFallback = !_showMpesaFallback),
+                icon: Icon(
+                  _showMpesaFallback
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 18,
+                ),
+                label: const Text('Prefer to pay with M-Pesa instead?'),
+              ),
+              if (_showMpesaFallback) ...[
+                const SizedBox(height: 8),
+                _SectionCard(
+                  title: 'Pay with M-Pesa',
+                  subtitle:
+                      'Manual — you\'ll need to submit this M-Pesa code again next month, since M-Pesa can\'t be auto-charged.',
+                  children: [
+                    _InstructionStep(
+                      number: 1,
+                      title: 'Send M-Pesa',
+                      description:
+                          'Send exactly KES ${AiBillingService.subscriptionPrice.toStringAsFixed(0)} to your store\'s M-Pesa number',
+                      highlight: '0742126582',
+                    ),
+                    const _InstructionStep(
+                      number: 2,
+                      title: 'Enter Code',
+                      description: 'Enter the confirmation code from your SMS',
+                    ),
+                    const SizedBox(height: 8),
+                    _CodeInputField(
+                      controller: _codeController,
+                      onSubmitted: _submitMpesaCode,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed:
+                            _isMpesaCodeLoading ? null : _submitMpesaCode,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: DesignColors.brand,
+                          side: const BorderSide(color: DesignColors.brand),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _isMpesaCodeLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: DesignColors.brand),
+                              )
+                            : const Text('Submit Code'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              const Text(
+                'By subscribing, you agree to our Terms of Service and Privacy Policy.',
                 style: TextStyle(
-                  color: textHintColor,
+                  color: DesignColors.textTertiary,
                   fontSize: 12,
                   height: 1.5,
                 ),
@@ -324,34 +319,37 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
 
 class _SectionCard extends StatelessWidget {
   final String title;
+  final String? subtitle;
   final List<Widget> children;
 
-  const _SectionCard({required this.title, required this.children});
+  const _SectionCard({required this.title, this.subtitle, required this.children});
 
   @override
   Widget build(BuildContext context) {
-    final surface = Theme.of(context).cardColor;
-    final primary = Theme.of(context).colorScheme.primary;
-    final textPrimary = Theme.of(context).textTheme.headlineSmall?.color;
-    final border = BorderSide(color: Colors.grey.shade300);
-
-    return Container(
+    return GlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
+      borderRadius: 16,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            style: const TextStyle(
+              fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: textPrimary,
+              color: DesignColors.textPrimary,
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                  color: DesignColors.textSecondary,
+                  fontSize: 12.5,
+                  height: 1.4),
+            ),
+          ],
           const SizedBox(height: 16),
           ...children,
         ],
@@ -365,21 +363,16 @@ class _InstructionStep extends StatelessWidget {
   final String title;
   final String description;
   final String? highlight;
-  final Color? primary;
 
   const _InstructionStep({
     required this.number,
     required this.title,
     required this.description,
     this.highlight,
-    this.primary,
   });
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = Theme.of(context).textTheme.headlineSmall?.color;
-    final textSecondary = Theme.of(context).textTheme.bodyLarge?.color;
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -388,14 +381,14 @@ class _InstructionStep extends StatelessWidget {
           Container(
             width: 32,
             height: 32,
-            decoration: BoxDecoration(
-              color: primary ?? Colors.blue,
+            decoration: const BoxDecoration(
+              color: DesignColors.brand,
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
                 '$number',
-                style: TextStyle(
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                   fontSize: 14,
@@ -410,17 +403,17 @@ class _InstructionStep extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
-                    color: textPrimary,
+                    color: DesignColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: TextStyle(
-                    color: textSecondary,
+                  style: const TextStyle(
+                    color: DesignColors.textSecondary,
                     fontSize: 13,
                     height: 1.4,
                   ),
@@ -433,22 +426,24 @@ class _InstructionStep extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: (primary ?? Colors.blue).withOpacity(0.1),
+                      color: DesignColors.brand.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: (primary ?? Colors.blue).withOpacity(0.3)),
+                      border: Border.all(
+                          color: DesignColors.brand.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           highlight!,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: primary,
+                            color: DesignColors.brand,
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(Icons.copy, size: 16, color: primary),
+                        const Icon(Icons.copy,
+                            size: 16, color: DesignColors.brand),
                       ],
                     ),
                   ),
@@ -473,7 +468,7 @@ class _CodeInputField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final border = BorderSide(color: Colors.grey.shade300);
+    final border = BorderSide(color: DesignColors.surfaceBorder);
 
     return TextField(
       controller: controller,
@@ -482,7 +477,9 @@ class _CodeInputField extends StatelessWidget {
       onSubmitted: (_) => onSubmitted(),
       decoration: InputDecoration(
         hintText: 'Enter M-Pesa code (e.g., QK8W3X)',
-        hintStyle: TextStyle(color: Theme.of(context).textTheme.labelMedium?.color, fontSize: 13),
+        hintStyle: const TextStyle(
+            color: DesignColors.textTertiary,
+            fontSize: 13),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: border,
@@ -493,93 +490,15 @@ class _CodeInputField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary ?? Colors.blue, width: 2),
+          borderSide: const BorderSide(color: DesignColors.brand, width: 2),
         ),
-        prefixIcon: Icon(Icons.sms, color: Theme.of(context).textTheme.labelMedium?.color),
+        prefixIcon: const Icon(Icons.sms, color: DesignColors.textTertiary),
         suffixIcon: IconButton(
-          icon: Icon(Icons.close, color: Theme.of(context).textTheme.labelMedium?.color),
+          icon: const Icon(Icons.close, color: DesignColors.textTertiary),
           onPressed: () => controller.clear(),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      ),
-    );
-  }
-}
-
-class _MpesaButton extends StatelessWidget {
-  final bool isReady;
-  final VoidCallback onTap;
-  final Color? primary;
-
-  const _MpesaButton({
-    required this.isReady,
-    required this.onTap,
-    this.primary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textPrimary = Theme.of(context).textTheme.headlineSmall?.color;
-    final textSecondary = Theme.of(context).textTheme.bodyLarge?.color;
-    final textHint = Theme.of(context).textTheme.labelMedium?.color;
-    final surface = Theme.of(context).cardColor;
-    final border = BorderSide(color: Colors.grey.shade300);
-
-    return InkWell(
-      onTap: isReady ? onTap : null,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isReady ? Colors.green.withOpacity(0.1) : surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isReady ? Colors.green.withOpacity(0.3) : border.color,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isReady ? Colors.green : border.color,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.mobile_friendly,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Open M-Pesa App',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: textPrimary,
-                    ),
-                  ),
-                  Text(
-                    isReady ? 'Tap to open' : 'M-Pesa app not found',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: textPrimary,
-            ),
-          ],
-        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }

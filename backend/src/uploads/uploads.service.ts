@@ -17,7 +17,7 @@ export interface UploadResult {
   bytes?: number;
 }
 
-export type ImageType = 'logo' | 'category' | 'product';
+export type ImageType = 'logo' | 'category' | 'product' | 'stock-request';
 
 @Injectable()
 export class UploadsService {

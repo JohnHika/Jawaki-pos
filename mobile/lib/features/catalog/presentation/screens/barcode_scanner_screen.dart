@@ -50,33 +50,41 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
+        builder: (dialogContext) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Searching...',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+          backgroundColor: Theme.of(dialogContext).brightness == Brightness.dark
+              ? DesignColors.darkSurface
+              : Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: DesignColors.brand),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Searching...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: DesignColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Barcode: $barcode',
-                      style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'Barcode: $barcode',
+                        style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -105,13 +113,11 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
         _lastScannedBarcode = null;
         getIt<HapticService>().error();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Product not found with barcode: $barcode'),
-            backgroundColor: DesignColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
+        showGlassSnackBar(
+          context,
+          'No product found with barcode: $barcode',
+          icon: Icons.search_off_rounded,
+          color: DesignColors.error,
         );
       }
     } catch (e) {
@@ -123,13 +129,11 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
       _lastScannedBarcode = null;
       getIt<HapticService>().error();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error looking up product: $e'),
-          backgroundColor: DesignColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+      showGlassSnackBar(
+        context,
+        "Couldn't look up that product. Try again.",
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
       );
     } finally {
       _isProcessing = false;

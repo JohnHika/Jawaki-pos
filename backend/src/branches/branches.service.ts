@@ -33,8 +33,15 @@ export class BranchesService {
       throw new ConflictException('Tenant with this slug already exists');
     }
 
+    const { taxRatePercent, showTaxOnReceipt, settings, ...rest } = dto;
     return this.prisma.tenant.create({
-      data: dto,
+      data: {
+        ...rest,
+        settings: this.mergeTaxSettingsFields(settings, {
+          taxRatePercent,
+          showTaxOnReceipt,
+        }),
+      },
     });
   }
 
@@ -76,10 +83,44 @@ export class BranchesService {
       throw new NotFoundException('Tenant not found');
     }
 
+    const { taxRatePercent, showTaxOnReceipt, settings, ...rest } = dto;
+    const hasSettingsUpdate =
+      taxRatePercent !== undefined ||
+      showTaxOnReceipt !== undefined ||
+      settings !== undefined;
+
     return this.prisma.tenant.update({
       where: { id: tenantId },
-      data: dto,
+      data: {
+        ...rest,
+        ...(hasSettingsUpdate
+          ? {
+              settings: this.mergeTaxSettingsFields(
+                { ...(tenant.settings as Record<string, any>), ...settings },
+                { taxRatePercent, showTaxOnReceipt },
+              ),
+            }
+          : {}),
+      },
     });
+  }
+
+  /** Merges tax-related fields into a settings JSON blob without
+   * clobbering other keys already stored there. */
+  private mergeTaxSettingsFields(
+    settings: Record<string, any> | undefined,
+    fields: { taxRatePercent?: number; showTaxOnReceipt?: boolean },
+  ): Record<string, any> {
+    const base = settings ?? {};
+    return {
+      ...base,
+      ...(fields.taxRatePercent !== undefined
+        ? { taxRatePercent: fields.taxRatePercent }
+        : {}),
+      ...(fields.showTaxOnReceipt !== undefined
+        ? { showTaxOnReceipt: fields.showTaxOnReceipt }
+        : {}),
+    };
   }
 
   // ==================== BRANCH OPERATIONS ====================

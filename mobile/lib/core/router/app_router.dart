@@ -8,6 +8,7 @@ import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
+import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
 import '../../features/sales/presentation/screens/pos_screen.dart';
 import '../../features/sales/presentation/screens/cart_screen.dart';
 import '../../features/sales/presentation/screens/payment_screen.dart';
@@ -31,14 +32,10 @@ import '../../features/finance/presentation/screens/finance_screen.dart';
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_subscribe_screen.dart';
-import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
-import '../../features/clients/presentation/screens/client_management_screen.dart';
-import '../../features/clients/presentation/screens/client_detail_screen.dart';
-import '../../features/clients/presentation/screens/multi_client_dashboard_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authService = getIt<AuthService>();
@@ -146,6 +143,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/dashboard',
             name: 'dashboard',
             builder: (context, state) => const DashboardScreen(),
+            routes: [
+              GoRoute(
+                path: 'profit-adjustment',
+                name: 'profit-adjustment',
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>;
+                  return ProfitAdjustmentScreen(
+                    date: extra['date'] as DateTime,
+                    currentRevenue: extra['currentRevenue'] as double,
+                    currentCost: extra['currentCost'] as double,
+                  );
+                },
+              ),
+            ],
           ),
 
           // POS / Sales Screen
@@ -264,7 +275,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const PaymentAnalyticsScreen(),
           ),
 
-          // Payments Hub Screen (Manual Payments, Hold Queue, Bulk Payments)
+          // Payments Hub Screen (today's takings, receipts, analytics, credit)
           GoRoute(
             path: '/payments',
             name: 'payments',
@@ -308,7 +319,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AiChatScreen(),
           ),
 
-          // AI Trial Screen
+          // AI Subscription Landing Screen (shown when a branch is unpaid)
           GoRoute(
             path: '/ai/trial',
             name: 'ai-trial',
@@ -317,7 +328,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return AiTrialScreen(
                 branchId: branchId,
                 branchName: '', // Not used anymore
-                onTrialStarted: () => context.go('/ai'),
+                onSubscribe: () => context.push('/ai/subscribe', extra: branchId),
               );
             },
           ),
@@ -335,21 +346,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             },
           ),
 
-          // Clients Management Screen (admin/supervisor)
-          GoRoute(
-            path: '/clients',
-            name: 'clients',
-            builder: (context, state) => const ClientManagementScreen(),
-            routes: [
-              GoRoute(
-                path: ':clientId',
-                name: 'client-detail',
-                builder: (context, state) => ClientDetailScreen(
-                  clientId: state.pathParameters['clientId']!,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     ],

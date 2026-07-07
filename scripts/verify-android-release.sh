@@ -2,7 +2,7 @@
 set -euo pipefail
 
 apk_path="${APK_PATH:-}"
-expected_package="${EXPECTED_ANDROID_PACKAGE:-com.levisaadventures.pos}"
+expected_package="${EXPECTED_ANDROID_PACKAGE:-com.archeaxon.axonpos}"
 expected_cert_sha256="${EXPECTED_ANDROID_CERT_SHA256:-0289d757a110883956bc03faeedc3c281d1eb685b98d9bfbad533a9b0d340393}"
 min_version_code="${MIN_ANDROID_VERSION_CODE:-}"
 

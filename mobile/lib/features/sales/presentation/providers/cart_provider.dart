@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/database/app_database.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 
 const _uuid = Uuid();
 
@@ -124,9 +125,10 @@ class CartState {
   }
 
   double get taxableAmount => subtotal - discount;
-  double get tax =>
-      taxableAmount *
-      0.16; // 16% VAT - TODO: Use product-level tax rates from backend
+
+  /// Tax rate is a business-level setting an admin configures in Settings
+  /// (defaults to 0 — no tax — until they set one), not a fixed assumption.
+  double get tax => taxableAmount * (getIt<AuthService>().taxRatePercent / 100);
   double get total => taxableAmount + tax;
 
   CartState copyWith({
@@ -365,10 +367,13 @@ class CartNotifier extends StateNotifier<CartState> {
     return const CartMutationResult.success();
   }
 
-  void updateItemDiscount(String productId, double discount) {
+  void updateItemDiscount(String productId, double discount, {String? reason}) {
     final updatedItems = state.items.map((item) {
       if (item.productId == productId) {
-        return item.copyWith(discount: discount);
+        return item.copyWith(
+          discount: discount,
+          notes: reason?.isNotEmpty == true ? reason : item.notes,
+        );
       }
       return item;
     }).toList();

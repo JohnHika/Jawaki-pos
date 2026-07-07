@@ -108,18 +108,10 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
           onChanged: (value) {
             ref.read(searchQueryProvider.notifier).state = value;
           },
-          onSubmitted: (value) {
-            _saveRecentSearch(value);
-          },
           textInputAction: TextInputAction.search,
         ),
       ),
     );
-  }
-
-  void _saveRecentSearch(String query) {
-    if (query.trim().isEmpty) return;
-    // TODO: Save to local database
   }
 }
 

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './auth/auth.module';
@@ -34,6 +35,9 @@ import { AppController } from './app.controller';
         limit: 100,
       },
     ]),
+
+    // Scheduled tasks (AI subscription auto-renewal, etc.)
+    ScheduleModule.forRoot(),
 
     // Core Modules
     PrismaModule,

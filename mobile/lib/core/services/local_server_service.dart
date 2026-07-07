@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
-import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../di/injection.dart';
 import '../network/api_client.dart';
@@ -20,7 +17,6 @@ import 'server/routes/sync_routes.dart';
 import 'server/routes/report_routes.dart';
 import 'server/routes/image_routes.dart';
 import 'server/routes/payment_routes.dart';
-import 'server/sql_helper.dart';
 import 'storage_service.dart';
 
 /// Phone Server Mode — runs an HTTP server inside the Flutter app.

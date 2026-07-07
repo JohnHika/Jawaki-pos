@@ -1658,7 +1658,10 @@ void showGlassSnackBar(
 //  BOTTOM SHEET WRAPPER
 // ═══════════════════════════════════════════════════════════════
 class GlassBottomSheet {
-  static void show(
+  /// Returns the same [Future] `showModalBottomSheet` produces, which
+  /// resolves once the sheet is dismissed — callers that need to react
+  /// after the sheet closes (e.g. refreshing data) can await this.
+  static Future<T?> show<T>(
     BuildContext context, {
     required Widget child,
     double initialSize = 0.5,
@@ -1667,7 +1670,7 @@ class GlassBottomSheet {
     bool scrollable = false,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    showModalBottomSheet(
+    return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

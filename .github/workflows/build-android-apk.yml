@@ -239,7 +239,7 @@ jobs:
         shell: bash
         env:
           APK_PATH: mobile/build/app/outputs/flutter-apk/app-release.apk
-          EXPECTED_ANDROID_PACKAGE: com.levisaadventures.pos
+          EXPECTED_ANDROID_PACKAGE: com.archeaxon.axonpos
           EXPECTED_ANDROID_CERT_SHA256: 0289d757a110883956bc03faeedc3c281d1eb685b98d9bfbad533a9b0d340393
           MIN_ANDROID_VERSION_CODE: ${{ steps.release_floor.outputs.min_version_code }}
         run: bash scripts/verify-android-release.sh
@@ -248,7 +248,7 @@ jobs:
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: levisa-adventures-apk-${{ steps.version.outputs.full_version }}
+          name: axon-pos-apk-${{ steps.version.outputs.full_version }}
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/di/injection.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
@@ -199,8 +201,15 @@ class CartScreen extends ConsumerWidget {
                 valueColor: DesignColors.success),
             const SizedBox(height: 8),
           ],
-          _buildSummaryRow(
-              context, 'Tax (16%)', 'KES ${cart.tax.toStringAsFixed(0)}'),
+          if (getIt<AuthService>().showTaxOnReceipt &&
+              getIt<AuthService>().taxRatePercent > 0) ...[
+            _buildSummaryRow(
+              context,
+              'Tax (${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}%)',
+              'KES ${cart.tax.toStringAsFixed(0)}',
+            ),
+            const SizedBox(height: 8),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Divider(

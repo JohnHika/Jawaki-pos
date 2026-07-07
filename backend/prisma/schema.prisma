@@ -856,26 +856,35 @@ model PosClient {
 }
 
 enum AiSubscriptionStatus {
-  TRIAL
+  TRIAL // legacy — no longer granted; kept so existing rows still validate
+  UNPAID
   ACTIVE
   EXPIRED
   CANCELLED
 }
 
 model AiSubscription {
-  id              String                @id @default(uuid())
-  branchId        String                @unique
-  status          AiSubscriptionStatus  @default(TRIAL)
-  trialStartedAt  DateTime              @default(now())
-  trialEndsAt     DateTime
-  subscribedAt    DateTime?
-  expiresAt       DateTime?
-  autoRenew       Boolean               @default(false)
-  price           Decimal               @default(600.00) @db.Decimal(10, 2)
-  mpesaPhone      String?               // Store owner's M-Pesa phone
-  smsPermission   Boolean               @default(false)
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id                      String                @id @default(uuid())
+  branchId                String                @unique
+  status                  AiSubscriptionStatus  @default(UNPAID)
+  trialStartedAt          DateTime?
+  trialEndsAt             DateTime?
+  subscribedAt            DateTime?
+  expiresAt               DateTime?
+  autoRenew               Boolean               @default(true)
+  price                   Decimal               @default(1500.00) @db.Decimal(10, 2)
+  mpesaPhone              String?               // Store owner's M-Pesa phone (legacy manual flow)
+  smsPermission           Boolean               @default(false)
+  // Paystack recurring billing — set once the customer's first card
+  // charge succeeds, then reused by the renewal cron with no customer
+  // action needed.
+  paystackCustomerCode    String?
+  paystackCustomerEmail   String?
+  paystackAuthorizationCode String?
+  lastRenewalAttemptAt    DateTime?
+  renewalFailureCount     Int                   @default(0)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
 
   branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
   payments        AiPayment[]
@@ -891,18 +900,26 @@ enum AiPaymentStatus {
   REJECTED
 }
 
+enum AiPaymentMethod {
+  MPESA_MANUAL
+  PAYSTACK_CARD
+}
+
 model AiPayment {
   id                String            @id @default(uuid())
   subscriptionId    String
-  mpesaCode         String            @unique
+  method            AiPaymentMethod   @default(MPESA_MANUAL)
+  mpesaCode         String?           @unique
+  paystackReference String?           @unique
   amount            Decimal           @db.Decimal(10, 2)
   senderPhone       String?
-  recipientPhone    String            @default("0742126582")
+  recipientPhone    String?           @default("0742126582")
   smsRaw            String?
+  isRenewal         Boolean           @default(false)
   verified          Boolean           @default(false)
   status            AiPaymentStatus   @default(PENDING)
   verifiedAt        DateTime?
-  verifiedBy        String?           // 'auto_sms' or 'admin_manual'
+  verifiedBy        String?           // 'auto_sms' | 'admin_manual' | 'paystack_webhook' | 'paystack_renewal_cron'
   adminNotes        String?
   createdAt         DateTime          @default(now())
 

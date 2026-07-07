@@ -1251,6 +1251,31 @@ class AppDatabase extends _$AppDatabase {
         .toList();
   }
 
+  /// Total items sold per day for a date range — used to derive a real
+  /// sell-through rate (units/day) instead of a static estimate.
+  Future<List<Map<String, dynamic>>> getDailyItemsSold(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final result = await customSelect(
+      'SELECT date(ps.created_at) as date, COALESCE(SUM(psi.quantity), 0) as items_sold '
+      'FROM pending_sales ps '
+      'INNER JOIN pending_sale_items psi ON psi.sale_id = ps.id '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'GROUP BY date(ps.created_at) '
+      'ORDER BY date',
+      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+    ).get();
+    return result
+        .map(
+          (r) => {
+            'date': r.read<String>('date'),
+            'itemsSold': r.read<int>('items_sold'),
+          },
+        )
+        .toList();
+  }
+
   /// Payment summary for analytics.
   Future<Map<String, dynamic>> getPaymentSummary(
     DateTime from,
@@ -1426,6 +1451,7 @@ class AppDatabase extends _$AppDatabase {
       '  name TEXT NOT NULL, '
       '  phone TEXT, '
       '  email TEXT, '
+      '  location TEXT, '
       '  notes TEXT, '
       '  total_purchases INTEGER NOT NULL DEFAULT 0, '
       '  total_spent REAL NOT NULL DEFAULT 0, '
@@ -1436,6 +1462,120 @@ class AppDatabase extends _$AppDatabase {
       '  loyalty_points INTEGER NOT NULL DEFAULT 0'
       ')',
     );
+    // customers existed before the `location` column was added — SQLite has
+    // no ADD COLUMN IF NOT EXISTS, so add it defensively and ignore the
+    // "duplicate column" error on installs that already have it.
+    try {
+      await customStatement('ALTER TABLE customers ADD COLUMN location TEXT');
+    } catch (_) {
+      // column already exists
+    }
+    await createCustomerInstallmentsTable();
+  }
+
+  /// Scheduled installment payments for a customer's credit balance, e.g.
+  /// "KES 10,000 due tomorrow, KES 2,000 due in 2 days" after a bulk
+  /// on-credit sale. Distinct from `balance` (the running total owed) so
+  /// staff can see and follow up on each promised payment individually.
+  Future<void> createCustomerInstallmentsTable() async {
+    await customStatement(
+      'CREATE TABLE IF NOT EXISTS customer_installments ('
+      '  id TEXT PRIMARY KEY NOT NULL, '
+      '  customer_id TEXT NOT NULL, '
+      '  amount REAL NOT NULL, '
+      '  due_date TEXT NOT NULL, '
+      '  note TEXT, '
+      '  status TEXT NOT NULL DEFAULT \'pending\', ' // pending, paid, overdue
+      '  created_at TEXT NOT NULL, '
+      '  paid_at TEXT'
+      ')',
+    );
+  }
+
+  Future<String> addCustomerInstallment(
+    String customerId,
+    double amount,
+    DateTime dueDate, {
+    String? note,
+  }) async {
+    await createCustomerInstallmentsTable();
+    final id = 'inst-${DateTime.now().microsecondsSinceEpoch}';
+    await customInsert(
+      'INSERT INTO customer_installments (id, customer_id, amount, due_date, note, status, created_at) '
+      'VALUES (?, ?, ?, ?, ?, \'pending\', ?)',
+      variables: [
+        Variable.withString(id),
+        Variable.withString(customerId),
+        Variable.withReal(amount),
+        Variable.withString(dueDate.toIso8601String()),
+        Variable.withString(note ?? ''),
+        Variable.withString(DateTime.now().toIso8601String()),
+      ],
+    );
+    return id;
+  }
+
+  Future<List<Map<String, dynamic>>> getCustomerInstallments(
+    String customerId,
+  ) async {
+    await createCustomerInstallmentsTable();
+    final result = await customSelect(
+      'SELECT * FROM customer_installments WHERE customer_id = ? ORDER BY due_date ASC',
+      variables: [Variable.withString(customerId)],
+    ).get();
+    return result
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'customerId': r.read<String>('customer_id'),
+            'amount': r.read<double>('amount'),
+            'dueDate': r.read<String>('due_date'),
+            'note': r.readNullable<String>('note') ?? '',
+            'status': r.read<String>('status'),
+            'createdAt': r.read<String>('created_at'),
+            'paidAt': r.readNullable<String>('paid_at'),
+          },
+        )
+        .toList();
+  }
+
+  Future<void> markInstallmentPaid(String installmentId) async {
+    await createCustomerInstallmentsTable();
+    await customStatement(
+      'UPDATE customer_installments SET status = \'paid\', paid_at = ? WHERE id = ?',
+      [
+        Variable.withString(DateTime.now().toIso8601String()),
+        Variable.withString(installmentId),
+      ],
+    );
+  }
+
+  /// Installments past their due date and still unpaid, across all
+  /// customers — used to surface who needs a follow-up call today.
+  Future<List<Map<String, dynamic>>> getOverdueInstallments() async {
+    await createCustomerInstallmentsTable();
+    await createCustomersTable();
+    final result = await customSelect(
+      'SELECT ci.*, c.name as customer_name, c.phone as customer_phone '
+      'FROM customer_installments ci '
+      'JOIN customers c ON c.id = ci.customer_id '
+      'WHERE ci.status = \'pending\' AND ci.due_date < ? '
+      'ORDER BY ci.due_date ASC',
+      variables: [Variable.withString(DateTime.now().toIso8601String())],
+    ).get();
+    return result
+        .map(
+          (r) => <String, dynamic>{
+            'id': r.read<String>('id'),
+            'customerId': r.read<String>('customer_id'),
+            'customerName': r.read<String>('customer_name'),
+            'customerPhone': r.readNullable<String>('customer_phone') ?? '',
+            'amount': r.read<double>('amount'),
+            'dueDate': r.read<String>('due_date'),
+            'note': r.readNullable<String>('note') ?? '',
+          },
+        )
+        .toList();
   }
 
   Future<List<Map<String, dynamic>>> searchCustomers(String query) async {
@@ -1447,20 +1587,7 @@ class AppDatabase extends _$AppDatabase {
         Variable.withString('%$query%'),
       ],
     ).get();
-    return result
-        .map(
-          (r) => <String, dynamic>{
-            'id': r.read<String>('id'),
-            'name': r.read<String>('name'),
-            'phone': r.readNullable<String>('phone') ?? '',
-            'email': r.readNullable<String>('email') ?? '',
-            'notes': r.readNullable<String>('notes') ?? '',
-            'totalPurchases': r.read<int>('total_purchases'),
-            'totalSpent': r.read<double>('total_spent'),
-            'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
-          },
-        )
-        .toList();
+    return result.map(_customerRowToMap).toList();
   }
 
   Future<List<Map<String, dynamic>>> getAllCustomers() async {
@@ -1468,20 +1595,7 @@ class AppDatabase extends _$AppDatabase {
     final result = await customSelect(
       'SELECT * FROM customers ORDER BY name ASC',
     ).get();
-    return result
-        .map(
-          (r) => <String, dynamic>{
-            'id': r.read<String>('id'),
-            'name': r.read<String>('name'),
-            'phone': r.readNullable<String>('phone') ?? '',
-            'email': r.readNullable<String>('email') ?? '',
-            'notes': r.readNullable<String>('notes') ?? '',
-            'totalPurchases': r.read<int>('total_purchases'),
-            'totalSpent': r.read<double>('total_spent'),
-            'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
-          },
-        )
-        .toList();
+    return result.map(_customerRowToMap).toList();
   }
 
   Future<Map<String, dynamic>?> getCustomer(String id) async {
@@ -1491,16 +1605,23 @@ class AppDatabase extends _$AppDatabase {
       variables: [Variable.withString(id)],
     ).get();
     if (result.isEmpty) return null;
-    final r = result.first;
+    return _customerRowToMap(result.first);
+  }
+
+  Map<String, dynamic> _customerRowToMap(QueryRow r) {
     return {
       'id': r.read<String>('id'),
       'name': r.read<String>('name'),
       'phone': r.readNullable<String>('phone') ?? '',
       'email': r.readNullable<String>('email') ?? '',
+      'location': r.readNullable<String>('location') ?? '',
       'notes': r.readNullable<String>('notes') ?? '',
       'totalPurchases': r.read<int>('total_purchases'),
       'totalSpent': r.read<double>('total_spent'),
       'lastPurchaseAt': r.readNullable<String>('last_purchase_at'),
+      'balance': r.read<double>('balance'),
+      'creditLimit': r.read<double>('credit_limit'),
+      'loyaltyPoints': r.read<int>('loyalty_points'),
     };
   }
 
@@ -1508,6 +1629,11 @@ class AppDatabase extends _$AppDatabase {
     String id,
     String name, {
     String? phone,
+    String? location,
+    String? email,
+    String? notes,
+    double initialBalance = 0,
+    double creditLimit = 0,
   }) async {
     await createCustomersTable();
     // Check if customer exists by name (case-insensitive)
@@ -1517,23 +1643,35 @@ class AppDatabase extends _$AppDatabase {
     ).get();
     if (existing.isNotEmpty) {
       final existingId = existing.first.read<String>('id');
-      // Update phone if provided
+      // Update contact/location details if provided
       if (phone != null && phone.isNotEmpty) {
         await customStatement('UPDATE customers SET phone = ? WHERE id = ?', [
           Variable.withString(phone),
           Variable.withString(existingId),
         ]);
       }
+      if (location != null && location.isNotEmpty) {
+        await customStatement(
+          'UPDATE customers SET location = ? WHERE id = ?',
+          [Variable.withString(location), Variable.withString(existingId)],
+        );
+      }
       return existingId;
     }
     // Insert new
     await customInsert(
-      'INSERT INTO customers (id, name, phone, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) VALUES (?, ?, ?, 0, 0, ?, 0, 0, 0)',
+      'INSERT INTO customers (id, name, phone, email, location, notes, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) '
+      'VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0)',
       variables: [
         Variable.withString(id),
         Variable.withString(name),
         Variable.withString(phone ?? ''),
+        Variable.withString(email ?? ''),
+        Variable.withString(location ?? ''),
+        Variable.withString(notes ?? ''),
         Variable.withString(DateTime.now().toIso8601String()),
+        Variable.withReal(initialBalance),
+        Variable.withReal(creditLimit),
       ],
     );
     return id;

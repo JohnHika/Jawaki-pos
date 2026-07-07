@@ -462,11 +462,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [DesignColors.brand, DesignColors.brandDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: DesignColors.brand,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(

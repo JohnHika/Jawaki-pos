@@ -108,8 +108,8 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Receipts'),
+      appBar: BrandedAppBar(
+        title: 'Receipts',
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list_rounded),
@@ -124,8 +124,8 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
           : _error != null
               ? EmptyState(
                   icon: Icons.error_outline_rounded,
-                  title: 'Failed to load receipts',
-                  subtitle: _error,
+                  title: 'Couldn\'t load receipts',
+                  subtitle: 'Check your connection and try again.',
                   actionLabel: 'Retry',
                   iconColor: DesignColors.error,
                   onAction: () {

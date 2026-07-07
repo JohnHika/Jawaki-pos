@@ -159,12 +159,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: Colors.teal.withValues(alpha: 0.08),
+              color: DesignColors.success.withValues(alpha: 0.08),
               child: Text(
                 cart.customerName!,
                 style: const TextStyle(
                   fontSize: 11,
-                  color: Colors.teal,
+                  color: DesignColors.success,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -202,21 +202,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.teal.withValues(alpha: 0.12),
+                      color: DesignColors.success.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.teal.withValues(alpha: 0.24)),
+                      border: Border.all(color: DesignColors.success.withValues(alpha: 0.24)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.shopping_bag_rounded, size: 14, color: Colors.teal),
+                        Icon(Icons.shopping_bag_rounded, size: 14, color: DesignColors.success),
                         SizedBox(width: 6),
                         Text(
                           '${cart.itemCount} Cart',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: Colors.teal,
+                            color: DesignColors.success,
                           ),
                         ),
                       ],
@@ -513,7 +513,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                               Row(mainAxisSize: MainAxisSize.min, children: [
                             IconButton(
                                 icon: const Icon(Icons.play_arrow_rounded,
-                                    color: Colors.teal),
+                                    color: DesignColors.success),
                                 onPressed: () {
                                   final current = ref.read(cartProvider);
                                   if (current.items.isNotEmpty)
@@ -532,9 +532,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             IconButton(
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: DesignColors.error),
-                                onPressed: () => ref
-                                    .read(parkedSalesProvider.notifier)
-                                    .remove(s.id)),
+                                onPressed: () async {
+                                  final confirmed = await showConfirmDialog(
+                                    ctx,
+                                    title: 'Discard Parked Sale',
+                                    message:
+                                        'Discard "${s.label}"? This sale will be permanently removed.',
+                                    confirmLabel: 'Discard',
+                                    confirmColor: DesignColors.error,
+                                  );
+                                  if (confirmed == true) {
+                                    ref
+                                        .read(parkedSalesProvider.notifier)
+                                        .remove(s.id);
+                                  }
+                                }),
                           ]),
                           onTap: () {
                             Navigator.pop(ctx);

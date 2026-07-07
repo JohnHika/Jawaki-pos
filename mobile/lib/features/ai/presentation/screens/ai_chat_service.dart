@@ -6,6 +6,12 @@ import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/di/injection.dart';
 
+/// Thrown when the backend rejects an AI request with 402 Payment
+/// Required — this branch has no active AI subscription.
+class AiSubscriptionRequiredException implements Exception {
+  const AiSubscriptionRequiredException();
+}
+
 class AiChatService {
   AiChatService._internal();
   static final AiChatService _instance = AiChatService._internal();
@@ -87,12 +93,22 @@ class AiChatService {
         final reply = data['data']['reply'] as String;
         _messages.add({'role': 'assistant', 'content': reply});
         return reply;
+      } else if (response.statusCode == 402) {
+        // Remove the pending user message — this turn never produced a
+        // reply, and re-sending after subscribing shouldn't leave a
+        // duplicate in history.
+        if (_messages.isNotEmpty && _messages.last['role'] == 'user') {
+          _messages.removeLast();
+        }
+        throw const AiSubscriptionRequiredException();
       } else {
         final error =
             'Sorry, the AI service is unavailable right now. (${response.statusCode})';
         _messages.add({'role': 'assistant', 'content': error});
         return error;
       }
+    } on AiSubscriptionRequiredException {
+      rethrow;
     } catch (e) {
       if (!kReleaseMode) debugPrint('[AiChat] Error: $e');
       const error =

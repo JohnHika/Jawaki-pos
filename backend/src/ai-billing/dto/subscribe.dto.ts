@@ -1,8 +1,11 @@
-import { IsString, IsOptional, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsString, IsOptional, IsEmail, MinLength, MaxLength, Matches } from 'class-validator';
 
-export class StartTrialDto {
+export class InitializePaystackPaymentDto {
   @IsString()
   branchId: string;
+
+  @IsEmail()
+  email: string;
 }
 
 export class SubscribeDto {

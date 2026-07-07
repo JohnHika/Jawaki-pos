@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -28,6 +29,11 @@ class _SettingsKeys {
   static const notifySync = 'setting_notify_sync';
 }
 
+String _initialFor(dynamic nameOrEmail) {
+  final text = nameOrEmail?.toString().trim() ?? '';
+  return text.isEmpty ? '?' : text[0].toUpperCase();
+}
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -38,9 +44,7 @@ class SettingsScreen extends ConsumerWidget {
     final syncService = getIt<SyncService>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: const BrandedAppBar(title: 'Settings'),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -53,17 +57,16 @@ class SettingsScreen extends ConsumerWidget {
             borderColor: DesignColors.surfaceBorder,
             child: Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: const Icon(
-                    Icons.person,
-                    color: DesignColors.brand,
-                    size: 28,
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: DesignColors.brand.withValues(alpha: 0.15),
+                  child: Text(
+                    _initialFor(user?['name'] ?? user?['email']),
+                    style: const TextStyle(
+                      color: DesignColors.brand,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -132,12 +135,7 @@ class SettingsScreen extends ConsumerWidget {
 
           if (perms.canConfigurePrinter || perms.canSeeAppearance) ...[
             const SizedBox(height: 16),
-            Text(
-              'Preferences',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: DesignColors.textSecondary,
-                  ),
-            ),
+            const _SettingsSectionLabel('Preferences'),
             const SizedBox(height: 8),
           ],
 
@@ -167,12 +165,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
 
           const SizedBox(height: 16),
-          Text(
-            'Account',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: DesignColors.textSecondary,
-                ),
-          ),
+          const _SettingsSectionLabel('Account'),
           const SizedBox(height: 8),
 
           _SettingsTile(
@@ -189,12 +182,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           const SizedBox(height: 16),
-          Text(
-            'Support',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: DesignColors.textSecondary,
-                ),
-          ),
+          const _SettingsSectionLabel('Support'),
           const SizedBox(height: 8),
 
           _SettingsTile(
@@ -225,12 +213,7 @@ class SettingsScreen extends ConsumerWidget {
           // Admin-only section
           if (perms.canManageUsers) ...[
             const SizedBox(height: 16),
-            Text(
-              'Administration',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: DesignColors.textSecondary,
-                  ),
-            ),
+            const _SettingsSectionLabel('Administration'),
             const SizedBox(height: 8),
             _SettingsTile(
               icon: Icons.people,
@@ -243,6 +226,14 @@ class SettingsScreen extends ConsumerWidget {
               title: 'Branch Management',
               subtitle: 'Manage store locations',
               onTap: () => _showBranchManagement(context),
+            ),
+            _SettingsTile(
+              icon: Icons.percent_rounded,
+              title: 'Tax Rate',
+              subtitle: getIt<AuthService>().taxRatePercent > 0
+                  ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% applied to every sale'
+                  : 'No tax applied to sales',
+              onTap: () => _showTaxRateDialog(context),
             ),
             _SettingsTile(
               icon: Icons.download,
@@ -261,15 +252,25 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 24),
 
           // Logout Button
-          OutlinedButton.icon(
-            onPressed: () => _showLogoutDialog(context, ref),
-            icon: const Icon(Icons.logout, color: DesignColors.error),
-            label: const Text(
-              'Logout',
-              style: TextStyle(color: DesignColors.error),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: DesignColors.error),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () => _showLogoutDialog(context, ref),
+              icon: const Icon(Icons.logout, color: DesignColors.error),
+              label: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: DesignColors.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: DesignColors.error),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -278,38 +279,25 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  // ===== LOGOUT (FIXED) =====
-  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
-    // Capture the settings screen context BEFORE opening the dialog
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) async {
+    // Capture the settings screen context BEFORE the async gap, since the
+    // dialog's own context is disposed as soon as it closes.
     final settingsContext = context;
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text(
-            'Are you sure you want to logout? Any unsynced data will be saved locally.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext); // Close dialog first
-              await ref.read(authControllerProvider.notifier).logout();
-              if (settingsContext.mounted) {
-                settingsContext.go('/login');
-              }
-            },
-            child: const Text(
-              'Logout',
-              style: TextStyle(color: DesignColors.error),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Logout',
+      message:
+          'Are you sure you want to logout? Any unsynced data will be saved locally.',
+      confirmLabel: 'Logout',
+      confirmColor: DesignColors.error,
     );
+    if (!confirmed) return;
+
+    await ref.read(authControllerProvider.notifier).logout();
+    if (settingsContext.mounted) {
+      settingsContext.go('/login');
+    }
   }
 
   // ===== SYNC SETTINGS =====
@@ -1013,6 +1001,126 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== ADMIN-ONLY: BRANCH MANAGEMENT =====
+  // ===== ADMIN-ONLY: TAX RATE =====
+  void _showTaxRateDialog(BuildContext context) {
+    final controller = TextEditingController(
+      text: getIt<AuthService>().taxRatePercent > 0
+          ? getIt<AuthService>().taxRatePercent.toString()
+          : '',
+    );
+    bool isSaving = false;
+    bool showOnReceipt = getIt<AuthService>().showTaxOnReceipt;
+    String? error;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Tax Rate'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Set the VAT/sales tax percentage applied to every sale. Leave at 0 to charge no tax.',
+                style: TextStyle(
+                    fontSize: 13, color: DesignColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Tax percentage',
+                  suffixText: '%',
+                  errorText: error,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Show tax on receipt'),
+                subtitle: const Text(
+                  'Print the tax amount as its own line on printed receipts',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: showOnReceipt,
+                onChanged: (value) =>
+                    setDialogState(() => showOnReceipt = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final text = controller.text.trim();
+                      final rate = text.isEmpty ? 0.0 : double.tryParse(text);
+                      if (rate == null || rate < 0 || rate > 100) {
+                        setDialogState(
+                            () => error = 'Enter a number between 0 and 100');
+                        return;
+                      }
+                      setDialogState(() {
+                        isSaving = true;
+                        error = null;
+                      });
+                      try {
+                        final apiClient = getIt<ApiClient>();
+                        final authService = getIt<AuthService>();
+                        final updated = await apiClient.updateCurrentTenant(
+                          taxRatePercent: rate,
+                          showTaxOnReceipt: showOnReceipt,
+                        );
+                        await authService.updateTenantSession({
+                          'id': updated['id'],
+                          'name': updated['name'],
+                          'settings': updated['settings'],
+                        });
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                        }
+                        if (context.mounted) {
+                          showGlassSnackBar(
+                            context,
+                            rate > 0
+                                ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
+                                : 'Tax removed — sales will not be taxed',
+                            icon: Icons.check_circle_rounded,
+                            color: DesignColors.success,
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isSaving = false;
+                          error = 'Could not save. Check your connection.';
+                        });
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showBranchManagement(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -1715,6 +1823,23 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
 }
 
 // ===== SHARED WIDGETS =====
+class _SettingsSectionLabel extends StatelessWidget {
+  final String label;
+
+  const _SettingsSectionLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: DesignColors.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+    );
+  }
+}
+
 class _SettingsTile extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -1732,27 +1857,20 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: DesignColors.surfaceSubtle,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: DesignColors.textSecondary, size: 20),
+    return ListCard(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: DesignColors.brandSubtle,
+          borderRadius: BorderRadius.circular(10),
         ),
-        title: Text(title),
-        subtitle: Text(
-          subtitle,
-          style:
-              const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
-        ),
-        trailing: trailing ?? const Icon(Icons.chevron_right),
-        onTap: onTap,
+        child: Icon(icon, color: DesignColors.brand, size: 20),
       ),
+      title: title,
+      subtitle: subtitle,
+      trailing: trailing,
+      onTap: onTap,
     );
   }
 }

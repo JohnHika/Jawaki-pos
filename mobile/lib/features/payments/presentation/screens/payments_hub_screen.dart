@@ -6,8 +6,8 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 
-/// Payments Hub - Main screen for all payment-related features
-/// Includes: Manual Payments, Hold Queue, Bulk Payments, Receipts
+/// Payments Hub - overview of today's takings plus real links into
+/// Receipts, Payment Analytics, and Customer Credit/Installments.
 class PaymentsHubScreen extends ConsumerStatefulWidget {
   const PaymentsHubScreen({super.key});
 
@@ -18,8 +18,8 @@ class PaymentsHubScreen extends ConsumerStatefulWidget {
 class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   late final AppDatabase _db;
   List<PendingSale> _todaysSales = [];
-  List<Map<String, dynamic>> _paymentMethodBreakdown = [];
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -29,18 +29,16 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   }
 
   Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
       final sales = await _db.watchTodaysSales().first;
-      final breakdown = await _db.getSalesByPaymentMethod(startOfDay, endOfDay);
 
       if (mounted) {
         setState(() {
           _todaysSales = sales;
-          _paymentMethodBreakdown = breakdown;
           _isLoading = false;
         });
       }
@@ -48,6 +46,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _error = e.toString();
         });
       }
     }
@@ -56,15 +55,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   double get _todaysTotal =>
       _todaysSales.fold<double>(0.0, (sum, s) => sum + s.total);
 
-  int get _manualPaymentsCount {
-    for (final entry in _paymentMethodBreakdown) {
-      final method = (entry['paymentMethod'] as String).toLowerCase();
-      if (method == 'manual') {
-        return entry['count'] as int;
-      }
-    }
-    return 0;
-  }
+  int get _todaysTransactionCount => _todaysSales.length;
 
   @override
   Widget build(BuildContext context) {
@@ -79,220 +70,169 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           ),
         ],
       ),
-      body: PageContainer(
-        withScroll: true,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            SectionHeader(
-              title: 'Payment Management',
-              subtitle: 'Manage cash, M-Pesa, manual payments, and receipts',
-              icon: Icons.payments_rounded,
-            ),
-            const SizedBox(height: 8),
-
-            // Quick action grid
-            Row(
-              children: [
-                Expanded(
-                  child: QuickActionTile(
-                    icon: Icons.approval_rounded,
-                    label: 'Manual Payments',
-                    subtitle: 'Request & approve',
-                    color: DesignColors.success,
-                    onTap: () {
-                      showGlassSnackBar(
-                        context,
-                        'Manual payment requests can be made from the payment screen',
-                        icon: Icons.info_outline_rounded,
-                        color: DesignColors.info,
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: QuickActionTile(
-                    icon: Icons.schedule_rounded,
-                    label: 'M-Pesa',
-                    subtitle: 'STK payments',
-                    color: DesignColors.warning,
-                    onTap: () {
-                      showGlassSnackBar(
-                        context,
-                        'Use M-Pesa from the POS payment screen',
-                        icon: Icons.info_outline_rounded,
-                        color: DesignColors.info,
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: QuickActionTile(
-                    icon: Icons.payments_rounded,
-                    label: 'Bulk Payments',
-                    subtitle: 'Process multiple',
-                    color: DesignColors.brand,
-                    onTap: () {
-                      showGlassSnackBar(
-                        context,
-                        'Bulk payments can be processed from the web dashboard',
-                        icon: Icons.info_outline_rounded,
-                        color: DesignColors.info,
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: QuickActionTile(
-                    icon: Icons.receipt_long_rounded,
-                    label: 'Receipts',
-                    subtitle: 'View & reprint',
-                    color: DesignColors.info,
-                    onTap: () => context.go('/receipts'),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Payment Methods
-            SectionHeader(
-              title: 'Payment Methods',
-              subtitle: 'Supported payment types',
-              icon: Icons.credit_card_rounded,
-            ),
-            const SizedBox(height: 8),
-
-            // Payment method chips
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: const [
-                PaymentChip(method: 'Cash', isSelected: true),
-                PaymentChip(method: 'M-Pesa'),
-                PaymentChip(method: 'Manual'),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Quick Stats with glass card (real data)
-            GlassCard(
-              padding: const EdgeInsets.all(20),
-              borderRadius: 16,
-              blur: 12,
-              gradient: const LinearGradient(
-                colors: [DesignColors.brand, DesignColors.brandDark],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.analytics_rounded,
-                            color: Colors.white, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Quick Stats',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildGlassStatItem(
-                        label: "Today's Sales",
-                        value: _isLoading
-                            ? '...'
-                            : 'KES ${_todaysTotal.toStringAsFixed(0)}',
-                        icon: Icons.point_of_sale_rounded,
-                      ),
-                      _buildGlassStatItem(
-                        label: 'Manual Payments',
-                        value: _isLoading ? '...' : '$_manualPaymentsCount',
-                        icon: Icons.edit_note_rounded,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Info card
-            GlassCard(
-              padding: const EdgeInsets.all(16),
-              borderRadius: 12,
-              blur: 8,
-              tint: DesignColors.info.withValues(alpha: 0.08),
-              borderColor: DesignColors.info.withValues(alpha: 0.2),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: DesignColors.info.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
+      body: _error != null
+          ? EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: "Couldn't load payment data",
+              subtitle: 'Check your connection and try again.',
+              actionLabel: 'Retry',
+              iconColor: DesignColors.error,
+              onAction: _loadData,
+            )
+          : RefreshIndicator(
+              color: DesignColors.brand,
+              onRefresh: _loadData,
+              child: PageContainer(
+                withScroll: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SectionHeader(
+                      title: 'Payment Management',
+                      subtitle: "Today's takings, receipts, and credit",
+                      icon: Icons.payments_rounded,
                     ),
-                    child: const Icon(Icons.info_outline_rounded,
-                        color: DesignColors.info, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 8),
+
+                    // Today's summary
+                    GlassCard(
+                      padding: const EdgeInsets.all(20),
+                      borderRadius: 16,
+                      blur: 12,
+                      gradient: const LinearGradient(
+                        colors: [DesignColors.brand, DesignColors.brandDark],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.today_rounded,
+                                    color: Colors.white, size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                "Today's Takings",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildGlassStatItem(
+                                label: 'Total Sales',
+                                value: _isLoading
+                                    ? '...'
+                                    : 'KES ${_todaysTotal.toStringAsFixed(0)}',
+                                icon: Icons.point_of_sale_rounded,
+                              ),
+                              _buildGlassStatItem(
+                                label: 'Transactions',
+                                value:
+                                    _isLoading ? '...' : '$_todaysTransactionCount',
+                                icon: Icons.receipt_rounded,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    SectionHeader(
+                      title: 'Quick Access',
+                      subtitle: 'Jump into receipts, analytics, or credit',
+                      icon: Icons.dashboard_rounded,
+                    ),
+                    const SizedBox(height: 8),
+
+                    Row(
                       children: [
-                        const Text(
-                          'POS Workspace',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: QuickActionTile(
+                            icon: Icons.receipt_long_rounded,
+                            label: 'Receipts',
+                            subtitle: 'View & share',
                             color: DesignColors.info,
+                            onTap: () => context.go('/receipts'),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Payment management for cash, M-Pesa, manual entries, and receipt lookup',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: DesignColors.textSecondary,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: QuickActionTile(
+                            icon: Icons.analytics_rounded,
+                            label: 'Analytics',
+                            subtitle: 'Payment breakdown',
+                            color: DesignColors.brand,
+                            onTap: () => context.push('/payment-analytics'),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: QuickActionTile(
+                            icon: Icons.credit_score_rounded,
+                            label: 'Customer Credit',
+                            subtitle: 'Installments & balances',
+                            color: DesignColors.warning,
+                            onTap: () => context.go('/customers'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: QuickActionTile(
+                            icon: Icons.point_of_sale_rounded,
+                            label: 'New Sale',
+                            subtitle: 'Start a checkout',
+                            color: DesignColors.success,
+                            onTap: () => context.go('/'),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Payment Methods
+                    SectionHeader(
+                      title: 'Accepted Payment Methods',
+                      subtitle: 'Available at checkout',
+                      icon: Icons.credit_card_rounded,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: const [
+                        PaymentChip(method: 'Cash', isSelected: true),
+                        PaymentChip(method: 'M-Pesa'),
+                        PaymentChip(method: 'Manual'),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
-
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
     );
   }
 

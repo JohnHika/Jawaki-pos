@@ -29,26 +29,9 @@ class AiBillingService {
 
   List<Map<String, dynamic>> get subscriptions => List.unmodifiable(_subscriptions);
 
-  Future<Map<String, dynamic>> startTrial(String branchId) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/ai-billing/trial'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'branchId': branchId}),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _subscriptions.add(data);
-        return data;
-      } else {
-        throw Exception('Failed to start trial: ${response.statusCode}');
-      }
-    } catch (e) {
-      if (!kReleaseMode) debugPrint('[AiBilling] Error: $e');
-      rethrow;
-    }
-  }
+  /// Monthly price for the AI assistant subscription. Kept in sync with
+  /// AiBillingService.SUBSCRIPTION_PRICE on the backend.
+  static const double subscriptionPrice = 1500.0;
 
   Future<Map<String, dynamic>> getStatus(String branchId) async {
     try {
@@ -129,20 +112,56 @@ class AiBillingService {
     }
   }
 
+  /// Starts a Paystack card checkout for this branch's subscription.
+  /// Returns the URL to open in a webview/browser; once the customer pays,
+  /// Paystack's webhook activates the subscription and saves the card for
+  /// automatic monthly renewal — no further action needed from them.
+  Future<String> initializePaystackPayment(
+    String branchId,
+    String email,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/ai-billing/paystack/initialize'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'branchId': branchId, 'email': email}),
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final payload = data['data'] ?? data;
+        return payload['authorizationUrl'] as String;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Could not start payment');
+      }
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiBilling] Error: $e');
+      rethrow;
+    }
+  }
+
   Future<bool> launchMpesa() async {
-    final Uri uri = Uri(
+    final amount = subscriptionPrice.toStringAsFixed(0);
+    const phone = '0742126582';
+
+    // Try the M-Pesa app with the payment prefilled
+    final mpesaUri = Uri(
       scheme: 'mpesa',
       path: 'payment',
-      query: 'phone=0742126582&amount=600&reference=Axon%20AI',
+      query: 'phone=$phone&amount=$amount&reference=Axon%20AI',
     );
-
-    // Try the M-Pesa app
-    final String? mpesaApp = await _tryLaunch('mpesa://');
-    if (mpesaApp != null) return true;
+    if (await canLaunchUrl(mpesaUri)) {
+      await launchUrl(mpesaUri);
+      return true;
+    }
 
     // Try the M-Pesa Express app
-    final String? mpesaExpress = await _tryLaunch('mpesaexpress://');
-    if (mpesaExpress != null) return true;
+    final mpesaExpressUri = Uri(scheme: 'mpesaexpress', path: 'payment');
+    if (await canLaunchUrl(mpesaExpressUri)) {
+      await launchUrl(mpesaExpressUri);
+      return true;
+    }
 
     // Fallback to web
     final Uri webUri = Uri.parse('https://mobile.mpesa.co.ke');
@@ -152,15 +171,6 @@ class AiBillingService {
     }
 
     throw Exception('M-Pesa app not found. Please install M-Pesa.');
-  }
-
-  Future<String?> _tryLaunch(String scheme) async {
-    final Uri uri = Uri(scheme: scheme);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-      return 'launched';
-    }
-    return null;
   }
 
   String formatCurrency(double amount) {

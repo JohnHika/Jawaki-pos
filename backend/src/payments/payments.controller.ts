@@ -21,6 +21,13 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 
+/**
+ * KNOWN LIMITATION: every endpoint in this controller is a stub that
+ * returns hardcoded placeholder data. No real M-Pesa Daraja, Pesapal, or
+ * TouristTap integration exists yet — "success" responses here do not
+ * mean money moved. Do not treat these as production-ready until real
+ * gateway integrations are built.
+ */
 @ApiTags('payments')
 @Controller({ path: 'payments', version: '1' })
 @UseGuards(JwtAuthGuard)

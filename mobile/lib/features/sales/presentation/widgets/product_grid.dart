@@ -124,7 +124,6 @@ class _ProductCard extends ConsumerWidget {
     // Get unit price info from product
     final unitPriceInfo =
         product['unitPriceInfo'] as Map<String, dynamic>? ?? {};
-    final currentPrice = unitPriceInfo['currentPrice'] as num? ?? price;
     final secondaryUnitPriceDisplay =
         unitPriceInfo['secondaryUnitPrice'] as num? ?? secondaryUnitPrice;
 
@@ -243,74 +242,6 @@ class _ProductCard extends ConsumerWidget {
                     ),
                   ),
 
-                // Quick-add button
-                Positioned(
-                  bottom: 6,
-                  right: 6,
-                  child: Material(
-                    color: DesignColors.brand,
-                    borderRadius: BorderRadius.circular(20),
-                    elevation: 3,
-                    shadowColor: DesignColors.brand.withValues(alpha: 0.4),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () async {
-                        if (isOutOfStock) {
-                          _showStockBlocked(context, productName, stock);
-                          return;
-                        }
-                        final sku = product['sku'] as String? ?? '';
-                        if (quantityInCart > 0) {
-                          final result = await ref
-                              .read(cartProvider.notifier)
-                              .updateQuantity(productId, quantityInCart + 1);
-                          if (!context.mounted) return;
-                          if (!result.success) {
-                            _showStockBlocked(
-                              context,
-                              productName,
-                              result.currentStock,
-                            );
-                            return;
-                          }
-                        } else {
-                          final result = await ref
-                              .read(cartProvider.notifier)
-                              .addItem(
-                                productId: productId,
-                                productName: productName,
-                                sku: sku,
-                                unitPrice: price,
-                                quantity: 1,
-                                saleUnit: unit,
-                                saleQuantity: 1,
-                                unitConversionFactor: 1,
-                              );
-                          if (!context.mounted) return;
-                          if (!result.success) {
-                            _showStockBlocked(
-                              context,
-                              productName,
-                              result.currentStock,
-                            );
-                            return;
-                          }
-                        }
-                        ScaffoldMessenger.of(context).clearSnackBars();
-                        showGlassSnackBar(
-                          context,
-                          '+1 $productName',
-                          icon: Icons.add_shopping_cart_rounded,
-                          color: DesignColors.success,
-                        );
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.all(6),
-                        child: Icon(Icons.add, color: Colors.white, size: 20),
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -445,7 +376,7 @@ class _ProductCard extends ConsumerWidget {
           ScaffoldMessenger.of(context).clearSnackBars();
           showGlassSnackBar(
             context,
-            '$qty ${tier.unit} ${productName} added to cart',
+            '$qty ${tier.unit} $productName added to cart',
             icon: Icons.add_shopping_cart_rounded,
             color: DesignColors.success,
           );

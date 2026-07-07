@@ -5,6 +5,9 @@ import {
   IsObject,
   IsEmail,
   IsUUID,
+  IsNumber,
+  Min,
+  Max,
   MaxLength,
   MinLength,
   Matches,
@@ -44,6 +47,27 @@ export class CreateTenantDto {
   @IsOptional()
   @IsObject()
   settings?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description:
+      'VAT/sales tax percentage applied to every sale at this business. 0 disables tax entirely.',
+    example: 16,
+    minimum: 0,
+    maximum: 100,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: 'Tax rate cannot be negative' })
+  @Max(100, { message: 'Tax rate cannot exceed 100%' })
+  taxRatePercent?: number;
+
+  @ApiPropertyOptional({
+    description: 'Whether the tax line is printed on receipts.',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  showTaxOnReceipt?: boolean;
 }
 
 export class UpdateTenantDto extends PartialType(CreateTenantDto) {}

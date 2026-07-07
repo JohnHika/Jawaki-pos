@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -15,6 +16,12 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   await for (final _ in db.watchTodaysSales()) {
     yield await db.getDashboardSummary();
   }
+});
+
+final _todaysCostProvider = FutureProvider.autoDispose<double>((ref) async {
+  final branchId = getIt<AuthService>().branchId;
+  if (branchId == null) return 0.0;
+  return getIt<AppDatabase>().getTodaysTotalPurchases(branchId);
 });
 
 final _recentSalesProvider = StreamProvider<List<PendingSale>>((ref) {
@@ -99,6 +106,8 @@ class DashboardScreen extends ConsumerWidget {
                     _buildSummaryGrid(context, summary),
                     const SizedBox(height: 12),
                     _buildAiBrief(context, summary),
+                    const SizedBox(height: 12),
+                    _buildCostAndProfitCard(context, ref, summary),
                   ],
                 ),
                 loading: () => _buildSummaryGrid(context, {
@@ -107,13 +116,15 @@ class DashboardScreen extends ConsumerWidget {
                   'avgTicket': 0.0,
                   'itemsSold': 0,
                 }),
-                error: (e, _) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Text(
-                      'Error: $e',
-                      style: const TextStyle(color: DesignColors.error),
-                    ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: EmptyState(
+                    icon: Icons.error_outline_rounded,
+                    title: 'Couldn\'t load summary',
+                    subtitle: 'Check your connection and try again.',
+                    iconColor: DesignColors.error,
+                    actionLabel: 'Retry',
+                    onAction: () => ref.invalidate(_dashboardSummaryProvider),
                   ),
                 ),
               ),
@@ -200,7 +211,7 @@ class DashboardScreen extends ConsumerWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
-                                color: Colors.teal,
+                                color: DesignColors.success,
                               ),
                             ),
                           ],
@@ -213,13 +224,15 @@ class DashboardScreen extends ConsumerWidget {
                   padding: EdgeInsets.all(20),
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Text(
-                      'Error: $e',
-                      style: const TextStyle(color: DesignColors.error),
-                    ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: EmptyState(
+                    icon: Icons.error_outline_rounded,
+                    title: 'Couldn\'t load recent sales',
+                    subtitle: 'Check your connection and try again.',
+                    iconColor: DesignColors.error,
+                    actionLabel: 'Retry',
+                    onAction: () => ref.invalidate(_recentSalesProvider),
                   ),
                 ),
               ),
@@ -248,7 +261,7 @@ class DashboardScreen extends ConsumerWidget {
                 title: "Today's Revenue",
                 value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
                 icon: Icons.trending_up_rounded,
-                color: Colors.teal,
+                color: DesignColors.success,
               ),
             ),
             // Transactions
@@ -404,6 +417,138 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildCostAndProfitCard(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> summary,
+  ) {
+    final revenue = (summary['totalRevenue'] as num?)?.toDouble() ?? 0;
+    final costAsync = ref.watch(_todaysCostProvider);
+
+    return costAsync.when(
+      data: (cost) => _costCard(context, ref, revenue, cost),
+      loading: () => _costCard(context, ref, revenue, 0, isLoading: true),
+      error: (e, _) => _costCard(context, ref, revenue, 0),
+    );
+  }
+
+  Widget _costCard(
+    BuildContext context,
+    WidgetRef ref,
+    double revenue,
+    double cost, {
+    bool isLoading = false,
+  }) {
+    final profit = revenue - cost;
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 14,
+      tint: DesignColors.success.withValues(alpha: 0.05),
+      borderColor: DesignColors.success.withValues(alpha: 0.16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: DesignColors.success.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: DesignColors.success,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  "Today's Cost & Profit",
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: DesignColors.textPrimary,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: isLoading
+                    ? null
+                    : () => _openProfitAdjustment(context, ref, revenue, cost),
+                icon: const Icon(Icons.tune_rounded, size: 16),
+                label: const Text('Adjust'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _costMetric(
+                  'Cost of Goods',
+                  isLoading ? '...' : 'KES ${cost.toStringAsFixed(0)}',
+                  DesignColors.textSecondary,
+                ),
+              ),
+              Expanded(
+                child: _costMetric(
+                  'Profit',
+                  isLoading ? '...' : 'KES ${profit.toStringAsFixed(0)}',
+                  DesignColors.success,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _costMetric(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: DesignColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openProfitAdjustment(
+    BuildContext context,
+    WidgetRef ref,
+    double revenue,
+    double cost,
+  ) async {
+    final saved = await context.push<bool>(
+      '/dashboard/profit-adjustment',
+      extra: {
+        'date': DateTime.now(),
+        'currentRevenue': revenue,
+        'currentCost': cost,
+      },
+    );
+    if (saved == true) {
+      ref.invalidate(_todaysCostProvider);
+    }
+  }
+
   Future<void> _shareDashboardReport(
     BuildContext context,
     WidgetRef ref,
@@ -416,11 +561,10 @@ class DashboardScreen extends ConsumerWidget {
   ═════════════
 ${_dateFmt.format(DateTime.now())}
 
-Sales:    ${_currencyFmt.format(summary['totalSales'] ?? 0)}
-Sales Count: ${summary['salesCount'] ?? 0}
-Profit:   ${_currencyFmt.format(summary['grossProfit'] ?? 0)}
-Avg Ticket: ${_currencyFmt.format(summary['avgTicket'] ?? 0)}
-Items Sold: ${summary['itemsSold'] ?? 0}
+Revenue:     ${_currencyFmt.format(summary['totalRevenue'] ?? 0)}
+Transactions: ${summary['transactionCount'] ?? 0}
+Avg Ticket:  ${_currencyFmt.format(summary['avgTicket'] ?? 0)}
+Items Sold:  ${summary['itemsSold'] ?? 0}
 
 Sent from your POS workspace
 ''';

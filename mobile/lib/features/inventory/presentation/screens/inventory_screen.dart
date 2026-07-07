@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../widgets/product_picker_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -201,7 +202,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              // Premium Tab Bar
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
@@ -213,11 +213,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   unselectedLabelColor: DesignColors.textSecondary,
                   indicator: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    gradient: const LinearGradient(
-                      colors: [DesignColors.brand, DesignColors.brandDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: DesignColors.brand,
                   ),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
@@ -276,20 +272,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           FloatingActionButton.small(
             heroTag: 'receiveStock',
             backgroundColor: DesignColors.brand,
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Select a product from Stock tab, then tap Receive',
-                  ),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
+            onPressed: () => _startReceiveStock(context),
             tooltip: 'Receive Stock',
             child: const Icon(Icons.inventory_rounded, color: Colors.white),
           ),
       ],
+    );
+  }
+
+  Future<void> _startReceiveStock(BuildContext context) async {
+    final selected = await showProductPicker(context);
+    if (selected == null || !context.mounted) return;
+    context.push(
+      '/inventory/batch-receive?productId=${Uri.encodeComponent(selected['id'] as String)}&productName=${Uri.encodeComponent(selected['name'] as String)}',
     );
   }
 
@@ -536,7 +531,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       onPressed: () => context.push(
                         '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(name)}',
                       ),
-                      gradient: [DesignColors.brand, DesignColors.brandDark],
+                      gradient: const [DesignColors.brand, DesignColors.brand],
                       height: 34,
                       expanded: false,
                       borderRadius: 8,
@@ -818,7 +813,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   onPressed: () => context.push(
                     '/inventory/request-stock?productId=$productId',
                   ),
-                  gradient: [DesignColors.warning, const Color(0xFFD97706)],
+                  gradient: const [DesignColors.warning, DesignColors.warning],
                   height: 32,
                   expanded: false,
                   borderRadius: 8,

@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../widgets/product_picker_dialog.dart';
 
@@ -97,6 +98,34 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
     );
   }
 
+  /// Uploads each locally-picked photo and returns the resulting URLs.
+  /// Local file paths only exist on this device, so they must become
+  /// real URLs before being sent to the backend for a manager on another
+  /// device to review.
+  Future<List<String>> _uploadImages() async {
+    if (_images.isEmpty) return [];
+
+    final apiClient = getIt<ApiClient>();
+    final urls = <String>[];
+
+    for (final imagePath in _images) {
+      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        urls.add(imagePath);
+        continue;
+      }
+      final fileName = imagePath.split(Platform.pathSeparator).last;
+      final result = await apiClient.uploadImage(
+        filePath: imagePath,
+        fileName: fileName,
+        type: 'stock-request',
+      );
+      final url = result['url'] as String?;
+      if (url != null) urls.add(url);
+    }
+
+    return urls;
+  }
+
   @override
   void dispose() {
     _quantityController.dispose();
@@ -128,6 +157,11 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
         throw Exception('No branch ID found. Please log in again.');
       }
 
+      // Photos are picked as local file paths, which only exist on this
+      // device — upload each one so the manager reviewing the request
+      // (on a different device) can actually see them.
+      final uploadedImageUrls = await _uploadImages();
+
       await stockRequestService.createRequest(
         branchId: branchId,
         productId: _selectedProductId!,
@@ -137,7 +171,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             ? null
             : _reasonController.text.trim(),
         priority: _priority.toUpperCase(),
-        images: _images.isEmpty ? null : _images,
+        images: uploadedImageUrls.isEmpty ? null : uploadedImageUrls,
       );
 
       if (!mounted) return;

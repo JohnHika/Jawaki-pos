@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/services/auth_service.dart';
 
 class ProfitAdjustmentScreen extends ConsumerStatefulWidget {
   final DateTime date;
@@ -50,11 +51,24 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
   Future<void> _saveAdjustment() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final branchId = getIt<AuthService>().branchId;
+    if (branchId == null) {
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'No branch selected. Please log in again.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+      return;
+    }
+
     final db = getIt<AppDatabase>();
     final adjustmentAmount = _adjustedCost - widget.currentCost;
 
     await db.setManualPurchaseAdjustment(
-      branchId: 'current-branch-id', // Will get from auth
+      branchId: branchId,
       amount: adjustmentAmount,
       reason: _reasonController.text.isNotEmpty ? _reasonController.text : null,
     );
@@ -66,7 +80,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
         icon: Icons.check_circle_rounded,
         color: DesignColors.success,
       );
-      context.pop();
+      context.pop(true);
     }
   }
 
@@ -75,8 +89,8 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
     final currencyFmt = NumberFormat.currency(locale: 'en_KE', symbol: 'KES ');
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Adjust Profit Calculation'),
+      appBar: BrandedAppBar(
+        title: 'Adjust Profit Calculation',
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline_rounded),
@@ -286,74 +300,56 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
   }
 
   void _showHelpDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Profit Adjustment Help'),
-        content: Column(
+    GlassBottomSheet.show(
+      context,
+      title: 'Profit Adjustment Help',
+      initialSize: 0.5,
+      maxSize: 0.7,
+      scrollable: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Use this screen to adjust your profit calculation when:',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: DesignColors.textPrimary,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             ...[
-              '• You use a different accounting method',
-              '• You have additional expenses to include',
-              '• You want to match your existing bookkeeping',
-              '• The auto-calculation doesn\'t match your records',
+              'You use a different accounting method',
+              'You have additional expenses to include',
+              'You want to match your existing bookkeeping',
+              'The auto-calculation doesn\'t match your records',
             ].map((item) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.check_circle, size: 16, color: DesignColors.success),
+                  const Icon(Icons.check_circle_rounded,
+                      size: 16, color: DesignColors.success),
                   const SizedBox(width: 8),
-                  Text(item, style: const TextStyle(fontSize: 14)),
+                  Expanded(
+                    child: Text(item,
+                        style: const TextStyle(
+                            fontSize: 14, color: DesignColors.textPrimary)),
+                  ),
                 ],
               ),
-            )).toList(),
-            const SizedBox(height: 12),
-            Text(
+            )),
+            const SizedBox(height: 16),
+            const Text(
               'Your adjustment will be saved and used for all profit reports today.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: DesignColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 12, color: DesignColors.textSecondary),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got it!'),
-          ),
-        ],
       ),
     );
   }
-}
-
-// Helper function to show snackbar
-void showGlassSnackBar(BuildContext context, String message, {
-  IconData? icon,
-  Color? color,
-}) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Row(
-        children: [
-          if (icon != null) ...[
-            Icon(icon, color: color ?? DesignColors.brand),
-            const SizedBox(width: 8),
-          ],
-          Expanded(child: Text(message)),
-        ],
-      ),
-      backgroundColor: color?.withValues(alpha: 0.1) ?? DesignColors.brand.withValues(alpha: 0.1),
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.all(16),
-      elevation: 0,
-    ),
-  );
 }

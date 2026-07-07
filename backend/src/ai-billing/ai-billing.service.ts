@@ -1,44 +1,42 @@
 import { Injectable, Logger, HttpException, HttpStatus } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AiSubscriptionStatus, AiPaymentStatus } from "@prisma/client";
+import { PaystackService } from "./paystack.service";
 
 @Injectable()
 export class AiBillingService {
   private readonly logger = new Logger(AiBillingService.name);
-  private readonly TRIAL_DAYS = 7;
+  private readonly SUBSCRIPTION_PRICE = 1500.0;
   private readonly SUBSCRIPTION_DAYS = 30;
   private readonly RECIPIENT_PHONE = "0742126582";
+  // M-Pesa SMS amounts must match the subscription price within this margin,
+  // since senders occasionally round to the nearest shilling in their SMS.
+  private readonly AMOUNT_TOLERANCE = 10;
+  // Stop auto-retrying a card renewal after this many consecutive failures
+  // (expired card, insufficient funds, etc.) rather than hammering Paystack
+  // and the customer's bank indefinitely.
+  private readonly MAX_RENEWAL_FAILURES = 3;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private paystackService: PaystackService,
+  ) {}
 
-  /** Start or check free trial for a branch */
-  async startTrial(branchId: string) {
+  /** Get or create the (unpaid) subscription record for a branch */
+  private async getOrCreateSubscription(branchId: string) {
     const existing = await this.prisma.aiSubscription.findUnique({
       where: { branchId },
     });
+    if (existing) return existing;
 
-    if (existing) {
-      return this.formatSubscription(existing);
-    }
-
-    const now = new Date();
-    const trialEnds = new Date(now);
-    trialEnds.setDate(trialEnds.getDate() + this.TRIAL_DAYS);
-
-    const sub = await this.prisma.aiSubscription.create({
+    return this.prisma.aiSubscription.create({
       data: {
         branchId,
-        status: "TRIAL",
-        trialStartedAt: now,
-        trialEndsAt: trialEnds,
-        price: 600.0,
+        status: "UNPAID",
+        price: this.SUBSCRIPTION_PRICE,
       },
     });
-
-    this.logger.log(
-      `Trial started for branch ${branchId}, ends ${trialEnds.toISOString()}`,
-    );
-    return this.formatSubscription(sub);
   }
 
   /** Get current subscription status */
@@ -56,19 +54,12 @@ export class AiBillingService {
       return {
         hasSubscription: false,
         status: null,
-        message: "No subscription found. Start your free trial!",
+        message: `Subscribe for KES ${this.SUBSCRIPTION_PRICE.toFixed(0)}/month to use the AI assistant.`,
       };
     }
 
-    // Check if trial or subscription expired
+    // Check if subscription expired
     const now = new Date();
-    if (sub.status === "TRIAL" && sub.trialEndsAt < now) {
-      await this.prisma.aiSubscription.update({
-        where: { id: sub.id },
-        data: { status: "EXPIRED" },
-      });
-      sub.status = "EXPIRED";
-    }
     if (sub.status === "ACTIVE" && sub.expiresAt && sub.expiresAt < now) {
       await this.prisma.aiSubscription.update({
         where: { id: sub.id },
@@ -92,10 +83,9 @@ export class AiBillingService {
     if (!sub) return false;
 
     const now = new Date();
-    if (sub.status === "TRIAL" && sub.trialEndsAt > now) return true;
-    if (sub.status === "ACTIVE" && sub.expiresAt && sub.expiresAt > now)
-      return true;
-    return false;
+    return (
+      sub.status === "ACTIVE" && !!sub.expiresAt && sub.expiresAt > now
+    );
   }
 
   /** Submit M-Pesa code for verification */
@@ -105,17 +95,7 @@ export class AiBillingService {
     senderPhone?: string,
     smsRaw?: string,
   ) {
-    // Get or create subscription
-    let sub = await this.prisma.aiSubscription.findUnique({
-      where: { branchId },
-    });
-    if (!sub) {
-      // Create trial first
-      const result = await this.startTrial(branchId);
-      sub = await this.prisma.aiSubscription.findUnique({
-        where: { branchId },
-      });
-    }
+    const sub = await this.getOrCreateSubscription(branchId);
 
     // Check for duplicate code
     const existing = await this.prisma.aiPayment.findUnique({
@@ -140,7 +120,7 @@ export class AiBillingService {
       data: {
         subscriptionId: sub.id,
         mpesaCode: mpesaCode.toUpperCase(),
-        amount: 600.0,
+        amount: this.SUBSCRIPTION_PRICE,
         senderPhone: senderPhone || null,
         recipientPhone: this.RECIPIENT_PHONE,
         smsRaw: smsRaw || null,
@@ -168,11 +148,16 @@ export class AiBillingService {
   ) {
     // Validate amount
     const parsedAmount = parseFloat(amount.replace(/[^0-9.]/g, ""));
-    if (parsedAmount < 590 || parsedAmount > 610) {
+    const minAmount = this.SUBSCRIPTION_PRICE - this.AMOUNT_TOLERANCE;
+    const maxAmount = this.SUBSCRIPTION_PRICE + this.AMOUNT_TOLERANCE;
+    if (parsedAmount < minAmount || parsedAmount > maxAmount) {
       this.logger.warn(
-        `SMS verification failed: amount ${parsedAmount} not ~600`,
+        `SMS verification failed: amount ${parsedAmount} not ~${this.SUBSCRIPTION_PRICE}`,
       );
-      return { verified: false, reason: "Amount does not match 600 KES" };
+      return {
+        verified: false,
+        reason: `Amount does not match KES ${this.SUBSCRIPTION_PRICE.toFixed(0)}`,
+      };
     }
 
     // Validate recipient (your number)
@@ -188,16 +173,7 @@ export class AiBillingService {
       return { verified: false, reason: "Recipient number does not match" };
     }
 
-    // Get or create subscription
-    let sub = await this.prisma.aiSubscription.findUnique({
-      where: { branchId },
-    });
-    if (!sub) {
-      const result = await this.startTrial(branchId);
-      sub = await this.prisma.aiSubscription.findUnique({
-        where: { branchId },
-      });
-    }
+    const sub = await this.getOrCreateSubscription(branchId);
 
     // Check for duplicate code
     const existing = await this.prisma.aiPayment.findUnique({
@@ -244,6 +220,215 @@ export class AiBillingService {
       expiresAt: expiresAt.toISOString(),
       message: `Subscription active! Expires ${expiresAt.toLocaleDateString()}`,
     };
+  }
+
+  // ===== PAYSTACK (card, auto-renewing) =====
+
+  /** Start a Paystack checkout for a fresh card-based subscription. */
+  async initializePaystackPayment(branchId: string, email: string) {
+    const sub = await this.getOrCreateSubscription(branchId);
+    const reference = `axon-ai-${branchId}-${randomUUID()}`;
+
+    const { authorizationUrl, accessCode } =
+      await this.paystackService.initializeTransaction({
+        email,
+        amountKes: this.SUBSCRIPTION_PRICE,
+        reference,
+        metadata: { branchId, subscriptionId: sub.id, isRenewal: false },
+      });
+
+    await this.prisma.aiPayment.create({
+      data: {
+        subscriptionId: sub.id,
+        method: "PAYSTACK_CARD",
+        paystackReference: reference,
+        amount: this.SUBSCRIPTION_PRICE,
+        status: "PENDING",
+        verified: false,
+      },
+    });
+
+    return { authorizationUrl, accessCode, reference };
+  }
+
+  /**
+   * Handle a Paystack webhook event. Called only after the caller has
+   * verified the `x-paystack-signature` header — this method trusts its
+   * input.
+   */
+  async handlePaystackWebhook(event: string, data: any) {
+    if (event !== "charge.success") {
+      this.logger.log(`Ignoring Paystack event: ${event}`);
+      return { handled: false };
+    }
+
+    const reference: string = data.reference;
+    const payment = await this.prisma.aiPayment.findUnique({
+      where: { paystackReference: reference },
+      include: { subscription: true },
+    });
+
+    if (!payment) {
+      this.logger.warn(`Paystack webhook for unknown reference: ${reference}`);
+      return { handled: false };
+    }
+
+    if (payment.status === "VERIFIED") {
+      // Already processed (Paystack retries webhooks) — no-op.
+      return { handled: true, alreadyProcessed: true };
+    }
+
+    await this.activateFromPaystackCharge(payment.subscriptionId, payment.id, data);
+    return { handled: true };
+  }
+
+  /** Shared activation logic for both the initial webhook and renewal charges. */
+  private async activateFromPaystackCharge(
+    subscriptionId: string,
+    paymentId: string,
+    chargeData: any,
+  ) {
+    const authorizationCode: string | undefined =
+      chargeData.authorization?.authorization_code;
+    const customerCode: string | undefined = chargeData.customer?.customer_code;
+    const customerEmail: string | undefined = chargeData.customer?.email;
+
+    await this.prisma.aiPayment.update({
+      where: { id: paymentId },
+      data: {
+        status: "VERIFIED",
+        verified: true,
+        verifiedAt: new Date(),
+        verifiedBy: "paystack_webhook",
+      },
+    });
+
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setDate(expiresAt.getDate() + this.SUBSCRIPTION_DAYS);
+
+    await this.prisma.aiSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: "ACTIVE",
+        subscribedAt: now,
+        expiresAt,
+        autoRenew: true,
+        renewalFailureCount: 0,
+        lastRenewalAttemptAt: now,
+        ...(authorizationCode ? { paystackAuthorizationCode: authorizationCode } : {}),
+        ...(customerCode ? { paystackCustomerCode: customerCode } : {}),
+        ...(customerEmail ? { paystackCustomerEmail: customerEmail } : {}),
+      },
+    });
+
+    this.logger.log(
+      `Subscription ${subscriptionId} active until ${expiresAt.toISOString()} (Paystack)`,
+    );
+  }
+
+  /**
+   * Daily cron target: find subscriptions expiring within the next day
+   * that have auto-renew enabled and a saved card, and charge them again
+   * with no customer action needed — the actual "auto subscribe" behavior.
+   */
+  async renewExpiringSubscriptions() {
+    if (this.isBillingDisabled()) return;
+
+    const renewalWindow = new Date();
+    renewalWindow.setDate(renewalWindow.getDate() + 1);
+
+    const dueForRenewal = await this.prisma.aiSubscription.findMany({
+      where: {
+        status: "ACTIVE",
+        autoRenew: true,
+        expiresAt: { lte: renewalWindow },
+        paystackAuthorizationCode: { not: null },
+        renewalFailureCount: { lt: this.MAX_RENEWAL_FAILURES },
+      },
+    });
+
+    this.logger.log(`Renewal check: ${dueForRenewal.length} subscription(s) due`);
+
+    for (const sub of dueForRenewal) {
+      await this.attemptRenewal(sub);
+    }
+  }
+
+  private async attemptRenewal(sub: {
+    id: string;
+    branchId: string;
+    paystackAuthorizationCode: string | null;
+    paystackCustomerEmail: string | null;
+    renewalFailureCount: number;
+  }) {
+    if (!sub.paystackAuthorizationCode || !sub.paystackCustomerEmail) return;
+
+    const reference = `axon-ai-renewal-${sub.branchId}-${randomUUID()}`;
+    const payment = await this.prisma.aiPayment.create({
+      data: {
+        subscriptionId: sub.id,
+        method: "PAYSTACK_CARD",
+        paystackReference: reference,
+        amount: this.SUBSCRIPTION_PRICE,
+        status: "PENDING",
+        verified: false,
+        isRenewal: true,
+      },
+    });
+
+    try {
+      const chargeResult = await this.paystackService.chargeAuthorization({
+        email: sub.paystackCustomerEmail,
+        authorizationCode: sub.paystackAuthorizationCode,
+        amountKes: this.SUBSCRIPTION_PRICE,
+        reference,
+        metadata: { branchId: sub.branchId, subscriptionId: sub.id, isRenewal: true },
+      });
+
+      if (chargeResult.status === "success") {
+        await this.activateFromPaystackCharge(sub.id, payment.id, chargeResult);
+        this.logger.log(`Auto-renewed subscription for branch ${sub.branchId}`);
+      } else {
+        await this.recordRenewalFailure(sub.id, payment.id, chargeResult.status);
+      }
+    } catch (error: any) {
+      await this.recordRenewalFailure(sub.id, payment.id, error?.message || "unknown error");
+    }
+  }
+
+  private async recordRenewalFailure(
+    subscriptionId: string,
+    paymentId: string,
+    reason: string,
+  ) {
+    this.logger.warn(`Renewal charge failed for subscription ${subscriptionId}: ${reason}`);
+
+    await this.prisma.aiPayment.update({
+      where: { id: paymentId },
+      data: {
+        status: "REJECTED",
+        adminNotes: `Auto-renewal failed: ${reason}`,
+      },
+    });
+
+    const sub = await this.prisma.aiSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        lastRenewalAttemptAt: new Date(),
+        renewalFailureCount: { increment: 1 },
+      },
+    });
+
+    if (sub.renewalFailureCount >= this.MAX_RENEWAL_FAILURES) {
+      this.logger.warn(
+        `Subscription ${subscriptionId} disabled auto-renew after ${sub.renewalFailureCount} failed attempts`,
+      );
+      await this.prisma.aiSubscription.update({
+        where: { id: subscriptionId },
+        data: { autoRenew: false },
+      });
+    }
   }
 
   // ===== ADMIN METHODS =====
@@ -464,10 +649,9 @@ export class AiBillingService {
       },
     });
 
-    const trialSubs = await this.prisma.aiSubscription.count({
+    const unpaidSubs = await this.prisma.aiSubscription.count({
       where: {
-        status: "TRIAL",
-        trialEndsAt: { gt: new Date() },
+        status: "UNPAID",
         ...(clientSlug ? { branch: { posClient: { slug: clientSlug } } } : {}),
       },
     });
@@ -477,7 +661,7 @@ export class AiBillingService {
       monthlyRevenue: monthlyTotal,
       totalPayments: payments.length,
       activeSubscriptions: activeSubs,
-      trialSubscriptions: trialSubs,
+      unpaidSubscriptions: unpaidSubs,
     };
   }
 
@@ -488,15 +672,7 @@ export class AiBillingService {
     let daysLeft = 0;
     let statusLabel = sub.status;
 
-    if (sub.status === "TRIAL") {
-      daysLeft = Math.max(
-        0,
-        Math.ceil(
-          (sub.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-        ),
-      );
-      statusLabel = "TRIAL";
-    } else if (sub.status === "ACTIVE" && sub.expiresAt) {
+    if (sub.status === "ACTIVE" && sub.expiresAt) {
       daysLeft = Math.max(
         0,
         Math.ceil(
@@ -504,6 +680,8 @@ export class AiBillingService {
         ),
       );
       statusLabel = "ACTIVE";
+    } else if (sub.status === "UNPAID") {
+      statusLabel = "UNPAID";
     } else {
       statusLabel = "EXPIRED";
     }
@@ -516,16 +694,20 @@ export class AiBillingService {
       posClient: sub.branch?.posClient?.name,
       status: statusLabel,
       daysLeft,
-      trialEndsAt: sub.trialEndsAt?.toISOString(),
       expiresAt: sub.expiresAt?.toISOString(),
       subscribedAt: sub.subscribedAt?.toISOString(),
       price: Number(sub.price),
+      autoRenew: sub.autoRenew,
+      hasSavedCard: Boolean(sub.paystackAuthorizationCode),
+      renewalFailureCount: sub.renewalFailureCount ?? 0,
       payments:
         sub.payments?.map((p: any) => ({
           id: p.id,
+          method: p.method,
           mpesaCode: p.mpesaCode,
           amount: Number(p.amount),
           status: p.status,
+          isRenewal: p.isRenewal,
           verifiedAt: p.verifiedAt?.toISOString(),
           createdAt: p.createdAt?.toISOString(),
         })) || [],
@@ -546,7 +728,6 @@ export class AiBillingService {
       hasSubscription: true,
       status: "ACTIVE",
       daysLeft: 3650,
-      trialEndsAt: null,
       expiresAt: null,
       subscribedAt: null,
       price: 0,

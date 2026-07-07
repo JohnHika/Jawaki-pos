@@ -60,6 +60,31 @@ class AuthService {
   String? get tenantSlug => _storage.getTenantSlug();
   String? get userRole => _currentUser?['role'];
 
+  /// VAT/sales tax percentage configured by the business admin. Defaults
+  /// to 0 (no tax) when nothing has been set — tax is opt-in, not assumed.
+  double get taxRatePercent {
+    final tenant = _currentUser?['tenant'];
+    if (tenant is! Map) return 0;
+    final settings = tenant['settings'];
+    if (settings is! Map) return 0;
+    final value = settings['taxRatePercent'];
+    if (value is num) return value.toDouble();
+    return 0;
+  }
+
+  /// Whether the tax line should be printed on receipts. Defaults to true
+  /// whenever a tax rate is configured, so tax is visible unless an admin
+  /// explicitly hides it (e.g. tax-inclusive pricing).
+  bool get showTaxOnReceipt {
+    final tenant = _currentUser?['tenant'];
+    if (tenant is! Map) return true;
+    final settings = tenant['settings'];
+    if (settings is! Map) return true;
+    final value = settings['showTaxOnReceipt'];
+    if (value is bool) return value;
+    return true;
+  }
+
   Future<void> _initializeAuth() async {
     _accessToken = await _storage.getAccessToken();
     _currentUser = _storage.getUser();

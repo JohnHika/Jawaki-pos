@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
@@ -57,6 +58,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _errorMessage = '';
   late final _WorkspaceIdentity _workspaceIdentity;
   bool _biometricAvailable = false;
+  String _appVersion = '';
 
   void _onNumberPressed(String number) {
     if (_pin.length >= _pinLength) return;
@@ -130,6 +132,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     super.initState();
     _workspaceIdentity = _loadWorkspaceIdentity();
     _checkBiometric();
+    _loadAppVersion();
 
     _fadeAnimation = AnimationController(
       duration: DesignAnimation.normal,
@@ -235,6 +238,13 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     }
   }
 
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _appVersion = 'POS Workspace v${info.version}');
+    }
+  }
+
   @override
   void dispose() {
     _fadeAnimation.dispose();
@@ -263,7 +273,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             colors: [
               DesignColors.brandDark,
               DesignColors.brand,
-              Colors.teal,
             ],
           ),
         ),
@@ -828,13 +837,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         SizedBox(height: DesignSpacing.sm),
 
         // Version
-        Text(
-          'POS Workspace v2.0',
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.white.withValues(alpha: 0.25),
+        if (_appVersion.isNotEmpty)
+          Text(
+            _appVersion,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.25),
+            ),
           ),
-        ),
       ],
     );
   }

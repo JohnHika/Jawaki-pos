@@ -25,7 +25,7 @@ val isReleaseTask = gradle.startParameter.taskNames.any {
 }
 
 android {
-    namespace = "com.levisaadventures.pos"
+    namespace = "com.archeaxon.axonpos"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -40,7 +40,7 @@ android {
 
     defaultConfig {
         // Axon POS - Professional Retail Management
-        applicationId = "com.levisaadventures.pos"
+        applicationId = "com.archeaxon.axonpos"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

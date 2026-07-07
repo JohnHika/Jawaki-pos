@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../widgets/add_edit_product_sheet.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final String productId;
@@ -54,6 +55,26 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     }
   }
 
+  Future<void> _editProduct() async {
+    final product = _product;
+    if (product == null) return;
+
+    await GlassBottomSheet.show(
+      context,
+      title: 'Edit Product',
+      initialSize: 0.85,
+      maxSize: 0.95,
+      scrollable: true,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: AddEditProductSheet(product: product),
+      ),
+    );
+    // The sheet syncs the catalog cache and pops itself on success; reload
+    // this screen's copy so any changes show immediately.
+    if (mounted) _loadProduct();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -70,20 +91,20 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha:0.3),
-                borderRadius: BorderRadius.circular(10),
+          if (_product != null)
+            IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.edit_outlined,
+                    color: DesignColors.textSecondary, size: 20),
               ),
-              child: const Icon(Icons.edit_outlined,
-                  color: DesignColors.textSecondary, size: 20),
+              tooltip: 'Edit product',
+              onPressed: _editProduct,
             ),
-            onPressed: () {
-              // TODO: Navigate to edit
-            },
-          ),
         ],
       ),
       body: PageContainer(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/theme/design_system.dart';
 import 'ai_chat_service.dart';
 import 'ai_quick_actions.dart';
@@ -47,9 +48,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
     setState(() => _isLoading = true);
     _scrollToBottom();
 
-    await _aiService.sendMessage(content: message);
+    try {
+      await _aiService.sendMessage(content: message);
+    } on AiSubscriptionRequiredException {
+      if (mounted) {
+        context.push('/ai/trial', extra: _aiService.branchId);
+      }
+    }
 
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
     _scrollToBottom();
   }
 
@@ -64,84 +71,22 @@ class _AiChatScreenState extends State<AiChatScreen> {
   @override
   Widget build(BuildContext context) {
     final messages = _aiService.messages;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+    return Scaffold(
+      appBar: BrandedAppBar(
+        title: 'Axon AI',
+        actions: [
+          if (messages.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              tooltip: 'New conversation',
+              onPressed: _newConversation,
+            ),
+          const SizedBox(width: 4),
+        ],
       ),
-      child: Column(
+      body: Column(
         children: [
-          // Handle + Header
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border(
-                bottom: BorderSide(
-                  color: isDark
-                      ? DesignColors.darkBorder
-                      : DesignColors.surfaceBorder,
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Drag handle
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.auto_awesome,
-                        color: DesignColors.brand,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Axon AI',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (messages.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.refresh, size: 20),
-                        tooltip: 'New conversation',
-                        onPressed: _newConversation,
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
           // Chat messages
           Expanded(
             child: messages.isEmpty

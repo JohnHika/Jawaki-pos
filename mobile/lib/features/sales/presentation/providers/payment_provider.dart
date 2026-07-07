@@ -142,11 +142,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       final response = await _apiClient.initiateMpesaPayment({
         'amount': amount,
         'phoneNumber': formattedPhone,
-        'accountReference': 'POS-${DateTime.now().millisecondsSinceEpoch}',
+        'reference': 'POS-${DateTime.now().millisecondsSinceEpoch}',
         'description': 'POS Sale',
       });
 
-      final checkoutRequestId = response['checkoutRequestId'];
+      final checkoutRequestId = response['checkout_request_id'];
       state = state.copyWith(currentTransactionId: checkoutRequestId);
 
       // Poll for payment status
@@ -450,11 +450,13 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       try {
         final status =
             await _apiClient.checkMpesaPaymentStatus(checkoutRequestId);
+        final normalizedStatus =
+            (status['status'] as String? ?? '').toUpperCase();
 
-        if (status['status'] == 'COMPLETED') {
+        if (normalizedStatus == 'COMPLETED') {
           return true;
-        } else if (status['status'] == 'FAILED' ||
-            status['status'] == 'CANCELLED') {
+        } else if (normalizedStatus == 'FAILED' ||
+            normalizedStatus == 'CANCELLED') {
           return false;
         }
         // Continue polling if still pending

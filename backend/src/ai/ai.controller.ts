@@ -4,6 +4,7 @@ import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiAccessGuard } from '../ai-billing/ai-billing.guard';
 
 @Controller('ai')
 export class AiController {
@@ -27,6 +28,7 @@ export class AiController {
   }
 
   @Post('chat')
+  @UseGuards(AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async chat(@Body() dto: ChatRequestDto) {
     const result = await this.aiService.chat(dto);
@@ -40,6 +42,7 @@ export class AiController {
   }
 
   @Post('chat/web-enhanced')
+  @UseGuards(AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async chatWithWebEnhancement(@Body() dto: ChatRequestDto) {
     // Enhance the request with current web insights
@@ -70,6 +73,7 @@ export class AiController {
   }
 
   @Post('cognitive/analyze')
+  @UseGuards(AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async cognitiveAnalysis(@Body() dto: ChatRequestDto) {
     const result = await this.aiCognitiveService.cognitiveBusinessAnalysis(dto);
@@ -80,6 +84,7 @@ export class AiController {
   }
 
   @Post('cognitive/monitor')
+  @UseGuards(AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async cognitiveMonitor(@Body() dto: ChatRequestDto) {
     const result = await this.aiCognitiveService.proactiveMonitor(dto);
@@ -90,6 +95,7 @@ export class AiController {
   }
 
   @Post('cognitive/advisor')
+  @UseGuards(AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async cognitiveAdvisor(@Body() dto: ChatRequestDto) {
     const result = await this.aiCognitiveService.cognitiveBusinessAdvisor(dto);

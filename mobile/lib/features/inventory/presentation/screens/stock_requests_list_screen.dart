@@ -92,24 +92,8 @@ class _StockRequestsListScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: BrandedAppBar(
+      appBar: const BrandedAppBar(
         title: 'Stock Requests',
-        actions: [
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.filter_list_rounded,
-                  color: DesignColors.textSecondary, size: 20),
-            ),
-            onPressed: () {
-              // TODO: Show filter dialog
-            },
-          ),
-        ],
       ),
       body: PageContainer(
         child: Column(

@@ -40,10 +40,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final balancesAsync = ref.watch(_supplierBalancesProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Finance',
-            style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.3)),
-        centerTitle: false,
+      appBar: BrandedAppBar(
+        title: 'Finance',
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -149,7 +147,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Error loading supplier data',
-          subtitle: e.toString(),
+          subtitle: 'Check your connection and try again.',
           iconColor: DesignColors.error,
           actionLabel: 'Retry',
           onAction: () => ref.invalidate(_supplierBalancesProvider),
@@ -405,12 +403,16 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       String supplierId, String supplierName, double currentDebt) async {
     final controller = TextEditingController(
         text: currentDebt > 0 ? currentDebt.toStringAsFixed(0) : '');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Pay $supplierName'),
-        content: Column(
+    final confirmed = await GlassBottomSheet.show<bool>(
+      context,
+      title: 'Pay $supplierName',
+      initialSize: 0.42,
+      maxSize: 0.6,
+      scrollable: true,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -429,18 +431,38 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12))),
             ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DesignColors.success,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Record Payment'),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style:
-                  FilledButton.styleFrom(backgroundColor: DesignColors.success),
-              child: const Text('Record Payment')),
-        ],
       ),
     );
 
@@ -484,30 +506,36 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   title: 'No invoices yet',
                   subtitle: 'Scanned supplier receipts will appear here.')
             else
-              ...invoices.map((invoice) => Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.receipt_long_rounded),
-                      title: Text(
-                          (invoice['invoiceNumber'] as String?)?.isNotEmpty ==
-                                  true
-                              ? invoice['invoiceNumber'] as String
-                              : 'Supplier invoice'),
-                      subtitle: Text(invoice['summary'] as String? ?? ''),
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                              FinanceScreen.currencyFmt.format(
-                                  (invoice['totalAmount'] as num).toDouble()),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700)),
-                          Text(invoice['status'] as String,
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: DesignColors.textTertiary)),
-                        ],
+              ...invoices.map((invoice) => ListCard(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: DesignColors.brand.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
                       ),
+                      child: const Icon(Icons.receipt_long_rounded,
+                          color: DesignColors.brand, size: 20),
+                    ),
+                    title:
+                        (invoice['invoiceNumber'] as String?)?.isNotEmpty ==
+                                true
+                            ? invoice['invoiceNumber'] as String
+                            : 'Supplier invoice',
+                    subtitle: invoice['summary'] as String? ?? '',
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                            FinanceScreen.currencyFmt.format(
+                                (invoice['totalAmount'] as num).toDouble()),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        Text(invoice['status'] as String,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: DesignColors.textTertiary)),
+                      ],
                     ),
                   )),
           ],

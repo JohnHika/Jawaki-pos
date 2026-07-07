@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
@@ -55,69 +57,58 @@ class _InventoryForecastingScreenState
         limit: 10,
       );
 
-      // Generate forecast data
-      _forecastData = await _generateForecast();
+      // Load real trailing sales-velocity data
+      _forecastData = await _loadDailySalesVelocity();
 
       setState(() => _isLoading = false);
     } catch (e) {
-      print('Inventory forecast load error: $e');
-      setState(() => _isLoading = false);
+      if (!kReleaseMode) debugPrint('Inventory forecast load error: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showGlassSnackBar(
+          context,
+          "Couldn't load inventory data. Check your connection and try again.",
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
     }
   }
 
-  Future<List<Map<String, dynamic>>> _generateForecast() async {
-    // Use actual low-stock data from the database as forecast
-    final forecast = <Map<String, dynamic>>[];
+  /// Builds the last 7 days of *actual* units sold per day, so the chart
+  /// reflects real sell-through instead of a fabricated projection.
+  Future<List<Map<String, dynamic>>> _loadDailySalesVelocity() async {
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final now = DateTime.now();
+    final startOfRange = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 6));
+    final endOfRange = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    // Use real stock data to populate forecast
-    try {
-      final lowStockItems = await getIt<AppDatabase>().getLowStockProducts();
-      final inventoryData = await getIt<AppDatabase>().getInventoryReport();
+    final dailySales =
+        await getIt<AppDatabase>().getDailyItemsSold(startOfRange, endOfRange);
+    final byDate = {
+      for (final row in dailySales) row['date'] as String: row['itemsSold'] as int,
+    };
 
-      for (int i = 0; i < 7; i++) {
-        final date = now.add(Duration(days: i));
-        final dayIndex = date.weekday % 7;
-        // Base demand estimated from historical data (average items sold per day from inventory)
-        final avgStock = inventoryData.isEmpty
-            ? 100
-            : inventoryData.fold<int>(
-                    0, (sum, item) => sum + (item['stock'] as int? ?? 0)) ~/
-                (inventoryData.length * 3).clamp(1, 100);
-        final lowStockCount = lowStockItems.length;
-
-        forecast.add({
-          'day': days[dayIndex],
-          'forecastedDemand': avgStock,
-          'currentStock': avgStock * 2,
-          'reorderPoint': (avgStock * 0.5).round().clamp(5, 100),
-          'lowStockAlerts': lowStockCount,
-          'date': date.toIso8601String().substring(0, 10),
-        });
-      }
-    } catch (_) {
-      // Return empty forecast on error
-      for (int i = 0; i < 7; i++) {
-        forecast.add({
-          'day': days[(now.add(Duration(days: i)).weekday) % 7],
-          'forecastedDemand': 0,
-          'currentStock': 0,
-          'reorderPoint': 0,
-          'lowStockAlerts': 0,
-          'date': now.add(Duration(days: i)).toIso8601String().substring(0, 10),
-        });
-      }
-    }
-
-    return forecast;
+    return [
+      for (int i = 0; i < 7; i++)
+        () {
+          final date = startOfRange.add(Duration(days: i));
+          final dateKey = date.toIso8601String().substring(0, 10);
+          return {
+            'day': days[date.weekday - 1],
+            'itemsSold': byDate[dateKey] ?? 0,
+            'date': dateKey,
+          };
+        }(),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Inventory Forecast'),
+      appBar: BrandedAppBar(
+        title: 'Inventory Forecast',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -126,7 +117,7 @@ class _InventoryForecastingScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
           : RefreshIndicator(
               onRefresh: _loadInventoryData,
               child: PageContainer(
@@ -222,7 +213,7 @@ class _InventoryForecastingScreenState
               ),
               const SizedBox(width: 12),
               const Text(
-                '7-Day Demand Forecast',
+                'Last 7 Days — Units Sold',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -242,7 +233,7 @@ class _InventoryForecastingScreenState
                       for (int i = 0; i < _forecastData.length; i++)
                         FlSpot(
                             i.toDouble(),
-                            (_forecastData[i]['forecastedDemand'] ?? 0)
+                            ((_forecastData[i]['itemsSold'] ?? 0) as int)
                                 .toDouble()),
                     ],
                     isCurved: true,
@@ -266,7 +257,14 @@ class _InventoryForecastingScreenState
                 minX: 0,
                 maxX: 6.toDouble(),
                 minY: 0,
-                maxY: 200.toDouble(),
+                maxY: _forecastData.isEmpty
+                    ? 10.0
+                    : (_forecastData
+                                .map((d) => (d['itemsSold'] ?? 0) as int)
+                                .reduce((a, b) => a > b ? a : b) *
+                            1.25)
+                        .clamp(10, double.infinity)
+                        .toDouble(),
                 titlesData: FlTitlesData(
                   show: true,
                   bottomTitles: AxisTitles(
@@ -396,7 +394,6 @@ class _InventoryForecastingScreenState
             ..._lowStockItems.take(4).map((item) {
               final name = item['name'] ?? 'Unknown';
               final quantity = item['quantity'] ?? 0;
-              final reorderLevel = item['reorderLevel'] ?? 0;
               final sku = item['sku'] ?? '';
               final isOut = quantity == 0;
 
@@ -457,28 +454,14 @@ class _InventoryForecastingScreenState
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          isOut ? 'Out of Stock' : '$quantity left',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: isOut
-                                ? DesignColors.error
-                                : DesignColors.warning,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Reorder: $reorderLevel',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: DesignColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      isOut ? 'Out of Stock' : '$quantity left',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            isOut ? DesignColors.error : DesignColors.warning,
+                      ),
                     ),
                   ],
                 ),
@@ -489,9 +472,9 @@ class _InventoryForecastingScreenState
               padding: const EdgeInsets.only(top: 12),
               child: Center(
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: () => context.push('/inventory'),
                   child: const Text(
-                    'View all items',
+                    'View all in Inventory',
                     style: TextStyle(
                       color: DesignColors.brand,
                       fontWeight: FontWeight.w600,

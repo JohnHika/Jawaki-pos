@@ -6,7 +6,6 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../ai/presentation/screens/ai_chat_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final Widget child;
@@ -17,8 +16,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _currentIndex = 0;
-
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
     if (perms.canSeeDashboard) {
@@ -38,21 +35,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         icon: Icons.auto_awesome_outlined,
         activeIcon: Icons.auto_awesome_rounded,
         label: 'AI',
-        isModal: true,
-        path: ''),);
+        path: '/ai'));
     items.add(_NavItem(
         icon: Icons.people_outlined,
         activeIcon: Icons.people_rounded,
         label: 'Customers',
         path: '/customers'));
-    // Clients — admin/supervisor only
-    if (perms.canSeeDashboard || perms.role == AppRole.admin) {
-      items.add(_NavItem(
-          icon: Icons.business_outlined,
-          activeIcon: Icons.business_rounded,
-          label: 'Clients',
-          path: '/clients'));
-    }
     if (perms.canSeeProducts) {
       items.add(_NavItem(
           icon: Icons.inventory_2_outlined,
@@ -95,7 +83,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return items;
   }
 
-  void _showMoreSheet(List<_NavItem> moreItems, int startIndex) {
+  /// Finds which nav item matches the router's current location, so the
+  /// bottom nav highlight always reflects where the user actually is —
+  /// instead of a locally-tracked index that only moved on nav taps and
+  /// stayed stuck on the first item (usually "Dashboard") after any other
+  /// navigation, e.g. opening straight into POS or a deep link.
+  int _resolveCurrentIndex(List<_NavItem> items) {
+    final location = GoRouterState.of(context).uri.toString();
+    var bestMatchIndex = -1;
+    var bestMatchLength = -1;
+    for (var i = 0; i < items.length; i++) {
+      final path = items[i].path;
+      if (path.isEmpty) continue;
+      final matches = path == '/'
+          ? location == '/'
+          : location == path || location.startsWith('$path/');
+      if (matches && path.length > bestMatchLength) {
+        bestMatchIndex = i;
+        bestMatchLength = path.length;
+      }
+    }
+    return bestMatchIndex;
+  }
+
+  void _showMoreSheet(List<_NavItem> moreItems) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     showModalBottomSheet(
@@ -170,7 +181,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         fontSize: 14, fontWeight: FontWeight.w600)),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() => _currentIndex = startIndex + entry.key);
                   context.go(item.path);
                 },
               );
@@ -178,16 +188,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  void _showAiChatSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black54,
-      isScrollControlled: true,
-      isDismissible: true,
-      builder: (context) => const AiChatScreen(),
     );
   }
 
@@ -203,11 +203,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final moreItems =
         hasMore ? allNavItems.skip(maxVisible).toList() : <_NavItem>[];
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // Ensure current index is valid
-    if (_currentIndex >= allNavItems.length) {
-      _currentIndex = 0;
-    }
+    final currentIndex = _resolveCurrentIndex(allNavItems);
 
     return Scaffold(
       body: Column(
@@ -282,18 +278,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ...visibleNavItems.asMap().entries.map((entry) {
                 final idx = entry.key;
                 final item = entry.value;
-                final isSelected = _currentIndex == idx;
+                final isSelected = currentIndex == idx;
                 return Expanded(
                     child: _NavItemWidget(
                         item: item,
                         isSelected: isSelected,
-                        onTap: () {
-                          setState(() => _currentIndex = idx);
-                          context.go(item.path);
-                        },
-                        onModalTap: item.isModal
-                            ? () => _showAiChatSheet(context)
-                            : null,
+                        onTap: () => context.go(item.path),
                         isDark: isDark));
               }),
               if (hasMore)
@@ -303,10 +293,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           icon: Icons.apps_outlined,
                           activeIcon: Icons.apps_rounded,
                           label: 'More',
-                          path: '',
-                          isModal: false),
-                      isSelected: _currentIndex >= maxVisible,
-                      onTap: () => _showMoreSheet(moreItems, maxVisible),
+                          path: ''),
+                      isSelected: currentIndex >= maxVisible,
+                      onTap: () => _showMoreSheet(moreItems),
                       isDark: isDark,
                     )),
             ],
@@ -321,14 +310,12 @@ class _NavItem {
   final IconData icon;
   final IconData activeIcon;
   final String label;
-  final bool isModal;
   final String path;
   _NavItem(
       {required this.icon,
       required this.activeIcon,
       required this.label,
-      required this.path,
-      this.isModal = false});
+      required this.path});
 }
 
 class _NavItemWidget extends StatelessWidget {
@@ -336,14 +323,12 @@ class _NavItemWidget extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final bool isDark;
-  final Function()? onModalTap;
 
   const _NavItemWidget(
       {required this.item,
       required this.isSelected,
       required this.onTap,
-      required this.isDark,
-      this.onModalTap});
+      required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -354,7 +339,7 @@ class _NavItemWidget extends StatelessWidget {
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: item.isModal ? onModalTap : onTap,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: DesignAnimation.fast,

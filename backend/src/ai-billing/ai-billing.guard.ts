@@ -1,4 +1,11 @@
-import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  Logger,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { AiBillingService } from './ai-billing.service';
 
 @Injectable()
@@ -13,13 +20,26 @@ export class AiAccessGuard implements CanActivate {
 
     if (!branchId) {
       this.logger.warn('No branch ID provided in request');
-      return false;
+      throw new HttpException(
+        {
+          message: 'A branch ID is required to use the AI assistant.',
+          code: 'AI_BRANCH_ID_MISSING',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const canUse = await this.billingService.canUseAi(branchId);
     if (!canUse) {
       this.logger.warn(`Branch ${branchId} does not have active AI subscription`);
+      throw new HttpException(
+        {
+          message: 'This branch needs an active AI subscription to use the assistant.',
+          code: 'AI_SUBSCRIPTION_REQUIRED',
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
     }
-    return canUse;
+    return true;
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
+import 'price_adjustment_widget.dart';
 
 class CartItemTile extends ConsumerWidget {
   final CartItem item;
@@ -20,29 +21,13 @@ class CartItemTile extends ConsumerWidget {
         color: DesignColors.error,
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      confirmDismiss: (direction) async {
-        return await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Remove Item'),
-                content: Text('Remove ${item.productName} from cart?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text(
-                      'Remove',
-                      style: TextStyle(color: DesignColors.error),
-                    ),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
-      },
+      confirmDismiss: (direction) => showConfirmDialog(
+        context,
+        title: 'Remove Item',
+        message: 'Remove ${item.productName} from cart?',
+        confirmLabel: 'Remove',
+        confirmColor: DesignColors.error,
+      ),
       onDismissed: (_) {
         ref.read(cartProvider.notifier).removeItem(item.productId);
       },
@@ -107,7 +92,7 @@ class CartItemTile extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        '-${item.discount.toStringAsFixed(0)}%',
+                        '-KES ${item.discount.toStringAsFixed(0)}',
                         style: const TextStyle(
                           color: DesignColors.success,
                           fontSize: 10,
@@ -125,11 +110,21 @@ class CartItemTile extends ConsumerWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  'KES ${item.total.toStringAsFixed(0)}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: DesignColors.brand,
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _showPriceAdjustment(context, item),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Text(
+                      'KES ${item.total.toStringAsFixed(0)}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: DesignColors.brand,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -138,6 +133,16 @@ class CartItemTile extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showPriceAdjustment(BuildContext context, CartItem item) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => PriceAdjustmentWidget(
+        productId: item.productId,
+        originalPrice: item.unitPrice * item.quantity,
       ),
     );
   }
@@ -222,56 +227,3 @@ class _QuantityButton extends StatelessWidget {
   }
 }
 
-class CartItemCompact extends ConsumerWidget {
-  final CartItem item;
-
-  const CartItemCompact({super.key, required this.item});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Theme.of(context).dividerColor),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: DesignColors.brand.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Center(
-              child: Text(
-                item.saleUnit != null && item.saleQuantity != null
-                    ? '${item.saleQuantity!.toStringAsFixed(item.saleQuantity!.truncateToDouble() == item.saleQuantity ? 0 : 1)} ${item.saleUnit}'
-                    : '${item.quantity}x',
-                style: const TextStyle(
-                  color: DesignColors.brand,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              item.productName,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13),
-            ),
-          ),
-          Text(
-            'KES ${item.total.toStringAsFixed(0)}',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-}

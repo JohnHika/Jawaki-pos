@@ -3,16 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/cart_provider.dart';
 
-/// Allows sellers to manually adjust prices during checkout.
+/// Allows sellers to manually adjust a single cart line's price during
+/// checkout. [productId] identifies the cart line (matches
+/// `CartItem.productId`, which is what `CartNotifier.updateItemDiscount`
+/// keys on).
 class PriceAdjustmentWidget extends ConsumerStatefulWidget {
-  final String itemId;
+  final String productId;
   final double originalPrice;
   final VoidCallback? onSave;
   final VoidCallback? onCancel;
 
   const PriceAdjustmentWidget({
     super.key,
-    required this.itemId,
+    required this.productId,
     required this.originalPrice,
     this.onSave,
     this.onCancel,
@@ -25,6 +28,7 @@ class PriceAdjustmentWidget extends ConsumerStatefulWidget {
 
 class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
   late final TextEditingController _priceController;
+  late final TextEditingController _reasonController;
   String? _errorMessage;
 
   @override
@@ -33,11 +37,13 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
     _priceController = TextEditingController(
       text: widget.originalPrice.toStringAsFixed(0),
     );
+    _reasonController = TextEditingController();
   }
 
   @override
   void dispose() {
     _priceController.dispose();
+    _reasonController.dispose();
     super.dispose();
   }
 
@@ -45,7 +51,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
     final cartItem = cartState.items.firstWhere(
-      (item) => item.id == widget.itemId,
+      (item) => item.productId == widget.productId,
       orElse: () => throw Exception('Item not found'),
     );
 
@@ -117,6 +123,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
               ),
               const SizedBox(height: 16),
               TextField(
+                controller: _reasonController,
                 maxLines: 2,
                 decoration: InputDecoration(
                   labelText: 'Reason (optional)',
@@ -152,8 +159,9 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                           ref
                               .read(cartProvider.notifier)
                               .updateItemDiscount(
-                                widget.itemId,
+                                widget.productId,
                                 widget.originalPrice - newPrice,
+                                reason: _reasonController.text.trim(),
                               );
 
                           widget.onSave?.call();
@@ -182,12 +190,4 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
       ),
     );
   }
-}
-
-extension PriceAdjustmentExtension on CartItem {
-  double get adjustmentAmount => originalPrice - adjustedPrice;
-
-  double get adjustedPrice => unitPrice;
-
-  double get originalPrice => unitPrice;
 }

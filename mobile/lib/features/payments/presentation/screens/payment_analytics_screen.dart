@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -78,16 +79,24 @@ class _PaymentAnalyticsScreenState
 
       setState(() => _isLoading = false);
     } catch (e) {
-      print('Payment analytics load error: $e');
-      setState(() => _isLoading = false);
+      if (!kReleaseMode) debugPrint('Payment analytics load error: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showGlassSnackBar(
+          context,
+          "Couldn't load payment analytics. Check your connection and try again.",
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payment Analytics'),
+      appBar: BrandedAppBar(
+        title: 'Payment Analytics',
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -290,6 +299,13 @@ class _PaymentAnalyticsScreenState
               final count = payment['count'] ?? 0;
               final total = payment['totalAmount'] ?? 0.0;
               final color = _getPaymentMethodColor(method);
+              final grandTotal = _paymentMethodBreakdown.fold<double>(
+                0,
+                (sum, p) => sum + ((p['totalAmount'] ?? 0) as double),
+              );
+              final share = grandTotal > 0
+                  ? (total as double) / grandTotal
+                  : 0.0;
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 20),
@@ -332,15 +348,7 @@ class _PaymentAnalyticsScreenState
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
-                              value: (_paymentMethodBreakdown.isNotEmpty
-                                      ? _paymentMethodBreakdown.fold<double>(
-                                          0,
-                                          (sum, p) =>
-                                              sum +
-                                              ((p['totalAmount'] ?? 0)
-                                                  as double))
-                                      : 1)
-                                  .toDouble(),
+                              value: share,
                               valueColor: AlwaysStoppedAnimation<Color>(color),
                               minHeight: 10,
                               backgroundColor: DesignColors.surfaceBorder,

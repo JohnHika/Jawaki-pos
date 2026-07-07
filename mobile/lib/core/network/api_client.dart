@@ -97,11 +97,15 @@ class ApiClient {
     String? name,
     String? logo,
     String? logoPublicId,
+    double? taxRatePercent,
+    bool? showTaxOnReceipt,
   }) async {
     final response = await _dio.patch('/branches/tenants/current', data: {
       if (name != null) 'name': name,
       if (logo != null) 'logo': logo,
       if (logoPublicId != null) 'logoPublicId': logoPublicId,
+      if (taxRatePercent != null) 'taxRatePercent': taxRatePercent,
+      if (showTaxOnReceipt != null) 'showTaxOnReceipt': showTaxOnReceipt,
     });
     return response.data as Map<String, dynamic>;
   }
@@ -386,7 +390,7 @@ class ApiClient {
   
   // Payment endpoints
   Future<Map<String, dynamic>> initiateMpesaPayment(Map<String, dynamic> data) async {
-    final response = await _dio.post('/payments/mpesa/stkpush', data: data);
+    final response = await _dio.post('/payments/mpesa/initiate', data: data);
     return response.data;
   }
   

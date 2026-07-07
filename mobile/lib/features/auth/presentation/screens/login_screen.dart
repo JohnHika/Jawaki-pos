@@ -345,87 +345,104 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         color: isDark ? DesignColors.darkBg : const Color(0xFF1A1A2E),
         child: SafeArea(
           minimum: EdgeInsets.only(top: 8, bottom: 16),
-          child: Center(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: isSmallScreen ? 12 : 32,
+          child: Stack(
+            children: [
+              Positioned(
+                top: 4,
+                left: 4,
+                child: IconButton(
+                  icon:
+                      const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  tooltip: 'Back',
+                  onPressed: () => context.canPop()
+                      ? context.pop()
+                      : context.go('/company-choice'),
+                ),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo section
-                  FadeTransition(
-                    opacity: _fadeAnimationValue,
-                    child: AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        final scale = 1.0 + (_pulseController.value * 0.04);
-                        return Transform.scale(
-                          scale: scale,
-                          child: child,
-                        );
-                      },
-                      child: Container(
-                        width: isSmallScreen ? 72 : 88,
-                        height: isSmallScreen ? 72 : 88,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
+              Center(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: isSmallScreen ? 12 : 32,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Logo section
+                      FadeTransition(
+                        opacity: _fadeAnimationValue,
+                        child: AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) {
+                            final scale = 1.0 + (_pulseController.value * 0.04);
+                            return Transform.scale(
+                              scale: scale,
+                              child: child,
+                            );
+                          },
+                          child: Container(
+                            width: isSmallScreen ? 72 : 88,
+                            height: isSmallScreen ? 72 : 88,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: _buildLogo(isSmallScreen ? 72 : 88),
+                            child: ClipOval(
+                              child: _buildLogo(isSmallScreen ? 72 : 88),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  SizedBox(height: isSmallScreen ? 16 : 24),
+                      SizedBox(height: isSmallScreen ? 16 : 24),
 
-                  // Title — dynamic based on fetched company
-                  Text(
-                    _companyName ?? 'POS System',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 26 : 32,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Point of Sale System',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 12 : 14,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white.withValues(alpha: 0.7),
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  SizedBox(height: isSmallScreen ? 24 : 32),
+                      // Title — dynamic based on fetched company
+                      Text(
+                        _companyName ?? 'POS System',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 26 : 32,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Point of Sale System',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 12 : 14,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      SizedBox(height: isSmallScreen ? 24 : 32),
 
-                  // Login card
-                  FadeTransition(
-                    opacity: _fadeAnimationValue,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: _buildLoginCard(isSmallScreen, authState, isDark),
-                    ),
-                  ),
+                      // Login card
+                      FadeTransition(
+                        opacity: _fadeAnimationValue,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child:
+                              _buildLoginCard(isSmallScreen, authState, isDark),
+                        ),
+                      ),
 
-                  // Bottom branding
-                  SizedBox(height: isSmallScreen ? 16 : 24),
-                  _buildBottomLinks(),
-                ],
+                      // Bottom branding
+                      SizedBox(height: isSmallScreen ? 16 : 24),
+                      _buildBottomLinks(),
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
