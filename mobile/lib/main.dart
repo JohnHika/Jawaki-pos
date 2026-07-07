@@ -186,8 +186,11 @@ class _POSAppLifecycleObserver extends WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     final authService = getIt<AuthService>();
 
+    // Only `paused`/`detached` mean the user actually left the app.
+    // `inactive` also fires for transient system UI (notification shade,
+    // app-switcher preview, permission dialogs) and would otherwise trigger
+    // an unwanted re-lock moments later on `resumed`.
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       authService.markAppBackgrounded();
       return;

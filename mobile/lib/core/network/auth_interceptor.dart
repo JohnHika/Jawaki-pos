@@ -40,22 +40,30 @@ class AuthInterceptor extends Interceptor {
 
     if (err.response?.statusCode == 401 && !_isRefreshing) {
       _isRefreshing = true;
-      
+
       try {
         // Try to refresh the token
         await _authService.refreshTokens();
         _isRefreshing = false;
-        
+
         // Retry the original request
         final opts = err.requestOptions;
         opts.headers['Authorization'] = 'Bearer ${_authService.accessToken}';
-        
+
         final response = await Dio().fetch(opts);
         return handler.resolve(response);
       } catch (e) {
         _isRefreshing = false;
-        // Token refresh failed, logout user
-        await _authService.logout();
+
+        // Only the server explicitly rejecting the refresh token (401/403)
+        // means the session is truly dead. Anything else — timeout, no
+        // connectivity, DNS failure, a 5xx from a cold-starting backend —
+        // is a transient failure to *verify* the session, not proof it's
+        // invalid, so we must not log the user out for it.
+        final refreshStatus = e is DioException ? e.response?.statusCode : null;
+        if (refreshStatus == 401 || refreshStatus == 403) {
+          await _authService.logout();
+        }
         return handler.next(err);
       }
     }

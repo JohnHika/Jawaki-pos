@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'storage_service.dart';
+import '../database/app_database.dart';
 import '../network/api_client.dart';
 
 enum AuthStatus {
@@ -13,6 +14,7 @@ enum AuthStatus {
 class AuthService {
   final StorageService _storage;
   final ApiClient _apiClient;
+  final AppDatabase _database;
   final LocalAuthentication _localAuth = LocalAuthentication();
 
   final StreamController<AuthStatus> _authStatusController =
@@ -26,8 +28,10 @@ class AuthService {
   AuthService({
     required StorageService storage,
     required ApiClient apiClient,
+    required AppDatabase database,
   })  : _storage = storage,
-        _apiClient = apiClient {
+        _apiClient = apiClient,
+        _database = database {
     // Note: Auth initialization is now done explicitly in main.dart
     // to avoid async operations in constructor which can cause crashes
     _updateStatus(AuthStatus.unknown);
@@ -168,6 +172,20 @@ class AuthService {
     }
 
     await _storage.clearSession();
+
+    // A different tenant/org may log in next on this same device. The
+    // catalog sync only runs once per app process, so without wiping this
+    // here, the next org would keep seeing whatever this org's products
+    // happened to be cached locally (or an empty cache from a sync that
+    // never succeeded). Deliberately does not touch cart/pending-sales/
+    // sync-queue tables, which may hold unsynced offline data.
+    try {
+      await _database.clearCatalogCache();
+    } catch (_) {
+      // Non-fatal: the next login's sync will still overwrite stale rows
+      // once it succeeds.
+    }
+
     _accessToken = null;
     _currentUser = null;
     _updateStatus(AuthStatus.unauthenticated);

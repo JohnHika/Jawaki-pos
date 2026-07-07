@@ -86,6 +86,7 @@ Future<void> configureDependencies() async {
     final authService = AuthService(
       storage: getIt<StorageService>(),
       apiClient: getIt<ApiClient>(),
+      database: getIt<AppDatabase>(),
     );
     getIt.registerSingleton<AuthService>(authService);
 

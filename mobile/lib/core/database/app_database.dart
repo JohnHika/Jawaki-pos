@@ -365,6 +365,22 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Wipes the locally cached product catalog and categories. Call this on
+  /// logout so a different tenant/org logging in on the same device never
+  /// sees a stale catalog left over from the previous session — the sync
+  /// that repopulates these tables only runs once per app process, so
+  /// without this the old tenant's products (or an empty cache from a
+  /// failed sync) would otherwise persist indefinitely across a re-login.
+  /// Deliberately scoped to products/categories only — cart, pending
+  /// sales, and the sync queue must survive a logout since they may hold
+  /// unsynced offline data.
+  Future<void> clearCatalogCache() async {
+    await transaction(() async {
+      await delete(products).go();
+      await delete(categories).go();
+    });
+  }
+
   // Products
   Future<List<Product>> getAllProducts() => select(products).get();
 

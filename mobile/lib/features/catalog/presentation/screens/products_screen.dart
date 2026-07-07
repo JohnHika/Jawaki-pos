@@ -19,12 +19,15 @@ final _productsProvider = StreamProvider<List<Product>>((ref) {
 
 final _selectedCategoryFilterProvider = StateProvider<String?>((ref) => null);
 final _searchQueryProvider = StateProvider<String>((ref) => '');
-final _catalogSyncProvider = FutureProvider<void>((ref) async {
-  try {
-    await catalog_cache.syncCatalogCacheFromApi();
-  } catch (_) {
-    // Keep the local cache visible if the backend is temporarily unavailable.
-  }
+
+// Keyed by the logged-in user's id (or a sentinel while logged out) so a
+// fresh login — including logging in as a different org on the same
+// device — always gets its own provider instance and re-runs the sync,
+// instead of forever reusing whichever tenant's sync happened to run
+// first in this app process.
+final _catalogSyncProvider =
+    FutureProvider.family<void, String>((ref, userKey) async {
+  await catalog_cache.syncCatalogCacheFromApi();
 });
 
 class ProductsScreen extends ConsumerWidget {
@@ -32,7 +35,9 @@ class ProductsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(_catalogSyncProvider);
+    final currentUserId =
+        ref.watch(currentUserProvider)?['id'] as String? ?? 'logged-out';
+    final syncAsync = ref.watch(_catalogSyncProvider(currentUserId));
     final categoriesAsync = ref.watch(categoriesProvider);
     final productsAsync = ref.watch(_productsProvider);
     final selectedCategory = ref.watch(_selectedCategoryFilterProvider);
@@ -294,6 +299,24 @@ class ProductsScreen extends ConsumerWidget {
                   final filtered =
                       _filterProducts(products, selectedCategory, searchQuery);
                   if (filtered.isEmpty) {
+                    // Distinguish a genuinely empty catalog from a local
+                    // cache that's empty because the sync from the backend
+                    // failed — showing "no products yet" in the latter case
+                    // would wrongly suggest the org has no products at all.
+                    if (products.isEmpty &&
+                        searchQuery.isEmpty &&
+                        syncAsync.hasError) {
+                      return EmptyState(
+                        icon: Icons.sync_problem_rounded,
+                        title: 'Couldn\'t load your product catalog',
+                        subtitle:
+                            'Check your connection and try again.',
+                        iconColor: DesignColors.error,
+                        actionLabel: 'Retry',
+                        onAction: () => ref
+                            .invalidate(_catalogSyncProvider(currentUserId)),
+                      );
+                    }
                     return EmptyState(
                       icon: Icons.inventory_2_outlined,
                       title: searchQuery.isNotEmpty

@@ -128,6 +128,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildWelcomeScreen() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -138,11 +141,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: DesignColors.brand.withValues(alpha: 0.1),
+                color: DesignColors.accent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(Icons.auto_awesome,
-                  size: 40, color: DesignColors.brand),
+                  size: 40, color: DesignColors.accent),
             ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
             const SizedBox(height: 20),
             Text(
@@ -152,10 +155,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   ),
             ).animate().fadeIn(delay: 200.ms),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Your intelligent business companion.\nAsk me anything about your sales, inventory, and customers.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: DesignColors.textSecondary, fontSize: 14),
+              style: TextStyle(color: secondaryColor, fontSize: 14),
             ).animate().fadeIn(delay: 400.ms),
             const SizedBox(height: 24),
           ],
@@ -175,66 +178,107 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Widget _buildInputBar() {
-    return Container(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 8,
-        top: 8,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fill = isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
+    final hintColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final iconColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final hasText = _controller.text.trim().isNotEmpty;
+
+    return Padding(
+      // Scaffold's default resizeToAvoidBottomInset already shrinks the
+      // body when the keyboard opens, so only the safe-area inset needs
+      // adding here — adding viewInsets.bottom too would double-count it
+      // and push the bar needlessly high above the keyboard.
+      padding: EdgeInsets.fromLTRB(
+        12,
+        8,
+        12,
+        MediaQuery.of(context).padding.bottom + 8,
       ),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              enabled: !_isLoading,
-              decoration: InputDecoration(
-                hintText: 'Ask me anything about your business...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.3),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-              textInputAction: TextInputAction.send,
-              onSubmitted: _sendMessage,
+      // A floating rounded pill with no top shadow/divider line — it reads
+      // as a compact input control sitting over the content, not a full
+      // width toolbar boxed off from the rest of the screen.
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            IconButton(
+              icon: Icon(Icons.add_rounded, color: iconColor),
+              onPressed: _isLoading ? null : () {},
+              tooltip: 'Attach',
             ),
-          ),
-          const SizedBox(width: 4),
-          AnimatedContainer(
-            duration: 200.ms,
-            child: _isLoading
-                ? const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                enabled: !_isLoading,
+                minLines: 1,
+                maxLines: 6,
+                onChanged: (_) => setState(() {}),
+                style: TextStyle(
+                  color: isDark
+                      ? DesignColors.darkTextPrimary
+                      : DesignColors.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Message Axon AI...',
+                  hintStyle: TextStyle(color: hintColor),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 10),
+                ),
+                textInputAction: TextInputAction.send,
+                onSubmitted: _sendMessage,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Padding(
+              padding: const EdgeInsets.all(4),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Padding(
+                        padding: EdgeInsets.all(6),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : GestureDetector(
+                      onTap: hasText
+                          ? () => _sendMessage(_controller.text)
+                          : null,
+                      child: AnimatedContainer(
+                        duration: 150.ms,
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: hasText
+                              ? DesignColors.accent
+                              : (isDark
+                                  ? DesignColors.darkBorder
+                                  : DesignColors.surfaceBorder),
+                        ),
+                        child: Icon(
+                          Icons.arrow_upward_rounded,
+                          size: 18,
+                          color: hasText ? Colors.black : hintColor,
+                        ),
+                      ),
                     ),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.send_rounded,
-                        color: DesignColors.brand),
-                    onPressed: () => _sendMessage(_controller.text),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -248,6 +292,9 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -258,9 +305,9 @@ class _ChatBubble extends StatelessWidget {
           if (!isUser) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: DesignColors.brand.withValues(alpha: 0.15),
+              backgroundColor: DesignColors.accent.withValues(alpha: 0.15),
               child: const Icon(Icons.auto_awesome,
-                  size: 16, color: DesignColors.brand),
+                  size: 16, color: DesignColors.accent),
             ),
             const SizedBox(width: 8),
           ],
@@ -269,11 +316,10 @@ class _ChatBubble extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: isUser
-                    ? DesignColors.brand.withValues(alpha: 0.1)
-                    : Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest
-                        .withValues(alpha: 0.5),
+                    ? DesignColors.accent.withValues(alpha: 0.1)
+                    : (isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceMuted),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -281,7 +327,7 @@ class _ChatBubble extends StatelessWidget {
                   bottomRight: Radius.circular(isUser ? 4 : 16),
                 ),
               ),
-              child: _buildMessageContent(message),
+              child: _buildMessageContent(textColor),
             ),
           ),
           if (isUser) const SizedBox(width: 8),
@@ -290,9 +336,9 @@ class _ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildMessageContent(String text) {
+  Widget _buildMessageContent(Color textColor) {
     // Simple markdown-like rendering for bold and bullet points
-    final lines = text.split('\n');
+    final lines = message.split('\n');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: lines.map((line) {
@@ -304,9 +350,7 @@ class _ChatBubble extends StatelessWidget {
             child: RichText(
               text: TextSpan(
                 style: TextStyle(
-                  color: isUser
-                      ? DesignColors.textPrimary
-                      : DesignColors.textPrimary,
+                  color: textColor,
                   fontSize: 14,
                   height: 1.5,
                 ),
@@ -331,9 +375,7 @@ class _ChatBubble extends StatelessWidget {
             child: Text(
               line,
               style: TextStyle(
-                color: isUser
-                    ? DesignColors.textPrimary
-                    : DesignColors.textPrimary,
+                color: textColor,
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -345,8 +387,7 @@ class _ChatBubble extends StatelessWidget {
           child: Text(
             line.isEmpty ? ' ' : line,
             style: TextStyle(
-              color:
-                  isUser ? DesignColors.textPrimary : DesignColors.textPrimary,
+              color: textColor,
               fontSize: 14,
               height: 1.5,
             ),
@@ -417,7 +458,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
                     width: 8,
                     height: 8,
                     decoration: const BoxDecoration(
-                      color: DesignColors.brand,
+                      color: DesignColors.accent,
                       shape: BoxShape.circle,
                     ),
                   ),

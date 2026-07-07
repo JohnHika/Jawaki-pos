@@ -106,6 +106,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return bestMatchIndex;
   }
 
+  /// The AI chat screen owns its own floating input bar in place of the
+  /// bottom nav, so the two don't stack into a "boxed-in" double bar. The
+  /// tab is still reachable via its own back/nav affordances within the
+  /// chat screen itself.
+  bool _isOnAiTab() {
+    final location = GoRouterState.of(context).uri.toString();
+    return location == '/ai' || location.startsWith('/ai/');
+  }
+
   void _showMoreSheet(List<_NavItem> moreItems) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -204,6 +213,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         hasMore ? allNavItems.skip(maxVisible).toList() : <_NavItem>[];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
+    final hideBottomNav = _isOnAiTab();
 
     return Scaffold(
       body: Column(
@@ -251,7 +261,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(child: widget.child),
         ],
       ),
-      bottomNavigationBar: Container(
+      bottomNavigationBar: hideBottomNav
+          ? null
+          : Container(
         decoration: BoxDecoration(
           color: isDark ? DesignColors.darkBg : DesignColors.surface,
           border: Border(
