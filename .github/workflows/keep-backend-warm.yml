@@ -1,0 +1,25 @@
+name: Keep Backend Warm
+
+# Render's free tier spins the service down after ~15 minutes idle and takes
+# 30-60+ seconds to cold-start on the next request — longer than the mobile
+# app's 30s network timeout, so the first request after any idle period
+# (very often the user's login/catalog-sync right after opening the app)
+# times out and fails. Pinging /health well inside that 15-minute window
+# keeps the instance from ever fully sleeping.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "https://arche-axon-pos-api.onrender.com/health")
+          echo "Health check returned HTTP $status"
+          if [ "$status" != "200" ]; then
+            echo "::warning::Backend health check did not return 200 (got $status) — may still be cold-starting."
+          fi

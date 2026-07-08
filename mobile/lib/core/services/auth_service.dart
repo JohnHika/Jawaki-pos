@@ -327,6 +327,32 @@ class AuthService {
     }
 
     _updateStatus(AuthStatus.authenticated);
+    _registerDeviceIfPossible();
+  }
+
+  /// Best-effort device registration — without this, POST /branches/:id/
+  /// devices is never called by anything, so the Device table stays empty
+  /// forever. That breaks PIN login's branch-by-device lookup on a fresh
+  /// device and leaves branch device lists empty in Settings. Runs after
+  /// [_updateStatus] so it never delays the login the user is waiting on,
+  /// and any failure (offline, or a cashier/seller account that isn't
+  /// authorized to register devices) is silently ignored — this is a
+  /// nice-to-have side effect of login, not something login should ever
+  /// fail over.
+  Future<void> _registerDeviceIfPossible() async {
+    final deviceId = await _storage.ensureDeviceId();
+    final branchId = _currentUser?['branchId'] as String?;
+    if (branchId == null) return;
+
+    try {
+      await _apiClient.registerDevice(
+        branchId: branchId,
+        deviceUuid: deviceId,
+        name: 'Mobile POS',
+      );
+    } catch (_) {
+      // Offline, or this account isn't ADMIN/MANAGER — fine either way.
+    }
   }
 
   void _updateStatus(AuthStatus status) {

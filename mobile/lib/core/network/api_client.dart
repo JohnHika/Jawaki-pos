@@ -169,6 +169,25 @@ class ApiClient {
     await _dio.delete('/branches/$id');
   }
 
+  /// Registers (or re-registers) this device against a branch. Only
+  /// ADMIN/MANAGER accounts are authorized server-side — a 403 here just
+  /// means this login can't self-register the device, which is expected
+  /// for cashier/seller accounts and not an error worth surfacing.
+  Future<Map<String, dynamic>> registerDevice({
+    required String branchId,
+    required String deviceUuid,
+    required String name,
+    String? appVersion,
+  }) async {
+    final response = await _dio.post('/branches/$branchId/devices', data: {
+      'deviceUuid': deviceUuid,
+      'name': name,
+      'branchId': branchId,
+      if (appVersion != null) 'appVersion': appVersion,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Admin-only. Returns recent tenant activity (logins, branch/PIN
   /// changes, etc.) — the actual data behind the Settings > Audit Trail
   /// screen.
