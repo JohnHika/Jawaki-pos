@@ -132,6 +132,12 @@ class AuthService {
       }
 
       _updateStatus(AuthStatus.authenticated);
+      // Fire-and-forget: a session restored from local storage on a cold
+      // start carries whatever `permissions` (if any) was saved at the
+      // last login/refresh — stale if the backend was redeployed with a
+      // newer permission set since then. This brings it current without
+      // blocking startup on the network call.
+      unawaited(refreshPermissions());
       return;
     }
 
