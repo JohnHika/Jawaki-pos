@@ -16,15 +16,19 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/update_check_service.dart';
+import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-// Settings keys for SharedPreferences
+// Settings keys for SharedPreferences. Printer keys delegate to
+// PrinterSettingsKeys (receipt_printer_service.dart) so this screen and
+// receipt_screen.dart's print action always agree on where those live.
 class _SettingsKeys {
-  static const autoPrintReceipt = 'setting_auto_print_receipt';
-  static const printerName = 'setting_printer_name';
-  static const paperWidth = 'setting_paper_width';
+  static const autoPrintReceipt = PrinterSettingsKeys.autoPrint;
+  static const printerName = PrinterSettingsKeys.printerName;
+  static const printerMacAddress = PrinterSettingsKeys.printerMacAddress;
+  static const paperWidth = PrinterSettingsKeys.paperWidth;
   static const notifySales = 'setting_notify_sales';
   static const notifyInventory = 'setting_notify_inventory';
   static const notifySync = 'setting_notify_sync';
@@ -382,6 +386,8 @@ class SettingsScreen extends ConsumerWidget {
     final prefs = await SharedPreferences.getInstance();
     final autoPrint = prefs.getBool(_SettingsKeys.autoPrintReceipt) ?? false;
     final printerName = prefs.getString(_SettingsKeys.printerName) ?? '';
+    final printerMacAddress =
+        prefs.getString(_SettingsKeys.printerMacAddress) ?? '';
     final paperWidth = prefs.getString(_SettingsKeys.paperWidth) ?? '58mm';
 
     if (!context.mounted) return;
@@ -395,6 +401,7 @@ class SettingsScreen extends ConsumerWidget {
       builder: (context) => _PrinterSettingsSheet(
         autoPrint: autoPrint,
         printerName: printerName,
+        printerMacAddress: printerMacAddress,
         paperWidth: paperWidth,
       ),
     );
@@ -1597,11 +1604,13 @@ class SettingsScreen extends ConsumerWidget {
 class _PrinterSettingsSheet extends StatefulWidget {
   final bool autoPrint;
   final String printerName;
+  final String printerMacAddress;
   final String paperWidth;
 
   const _PrinterSettingsSheet({
     required this.autoPrint,
     required this.printerName,
+    required this.printerMacAddress,
     required this.paperWidth,
   });
 
@@ -1612,20 +1621,96 @@ class _PrinterSettingsSheet extends StatefulWidget {
 class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
   late bool _autoPrint;
   late String _paperWidth;
-  late TextEditingController _printerNameController;
+  late String _printerName;
+  late String _printerMacAddress;
+  bool _isScanning = false;
+  bool _isConnecting = false;
+  List<PairedPrinter> _pairedPrinters = [];
 
   @override
   void initState() {
     super.initState();
     _autoPrint = widget.autoPrint;
     _paperWidth = widget.paperWidth;
-    _printerNameController = TextEditingController(text: widget.printerName);
+    _printerName = widget.printerName;
+    _printerMacAddress = widget.printerMacAddress;
   }
 
-  @override
-  void dispose() {
-    _printerNameController.dispose();
-    super.dispose();
+  Future<void> _scanForPrinters() async {
+    setState(() => _isScanning = true);
+    try {
+      final printer = getIt<ReceiptPrinterService>();
+
+      var hasPermission = await printer.hasPermission;
+      if (!hasPermission) {
+        hasPermission = await printer.requestPermission();
+      }
+      if (!hasPermission) {
+        if (mounted) {
+          showGlassSnackBar(
+              context, 'Bluetooth permission is required to find printers',
+              icon: Icons.bluetooth_disabled_rounded,
+              color: DesignColors.warning);
+        }
+        return;
+      }
+
+      final enabled = await printer.isBluetoothEnabled;
+      if (!enabled) {
+        if (mounted) {
+          showGlassSnackBar(context, 'Turn on Bluetooth to find printers',
+              icon: Icons.bluetooth_disabled_rounded,
+              color: DesignColors.warning);
+        }
+        return;
+      }
+
+      final paired = await printer.getPairedPrinters();
+      setState(() => _pairedPrinters = paired);
+
+      if (paired.isEmpty && mounted) {
+        showGlassSnackBar(
+            context,
+            'No paired Bluetooth devices found — pair your printer in phone Bluetooth settings first',
+            icon: Icons.bluetooth_searching_rounded,
+            color: DesignColors.info);
+      }
+    } catch (e) {
+      if (mounted) {
+        showGlassSnackBar(context, 'Could not scan for printers: $e',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    } finally {
+      if (mounted) setState(() => _isScanning = false);
+    }
+  }
+
+  Future<void> _connectTo(PairedPrinter device) async {
+    setState(() => _isConnecting = true);
+    try {
+      final connected =
+          await getIt<ReceiptPrinterService>().connect(device.macAddress);
+      if (connected) {
+        setState(() {
+          _printerName = device.name;
+          _printerMacAddress = device.macAddress;
+        });
+        if (mounted) {
+          showGlassSnackBar(context, 'Connected to ${device.name}',
+              icon: Icons.check_circle_rounded, color: DesignColors.success);
+        }
+      } else if (mounted) {
+        showGlassSnackBar(context, 'Could not connect to ${device.name}',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    } catch (e) {
+      if (mounted) {
+        showGlassSnackBar(context, 'Connection failed: $e',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    } finally {
+      if (mounted) setState(() => _isConnecting = false);
+    }
   }
 
   @override
@@ -1637,15 +1722,22 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _printerNameController,
-              decoration: InputDecoration(
-                labelText: 'Printer Name / Address',
-                hintText: 'e.g. BT_Printer_58mm',
-                prefixIcon: const Icon(Icons.print_rounded),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
+            GroupedCard(
+              margin: EdgeInsets.zero,
+              children: [
+                SettingsRow(
+                  icon: Icons.print_rounded,
+                  title: _printerMacAddress.isEmpty
+                      ? 'No printer connected'
+                      : _printerName,
+                  subtitle: _printerMacAddress.isEmpty
+                      ? 'Scan and connect a Bluetooth printer'
+                      : _printerMacAddress,
+                  iconColor: _printerMacAddress.isEmpty
+                      ? DesignColors.textTertiary
+                      : DesignColors.success,
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
@@ -1678,24 +1770,47 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                 ),
               ],
             ),
+            if (_pairedPrinters.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              const SettingsGroupLabel('PAIRED DEVICES'),
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: _pairedPrinters
+                    .map((device) => SettingsRow(
+                          icon: Icons.bluetooth_rounded,
+                          title: device.name,
+                          subtitle: device.macAddress,
+                          trailing: _isConnecting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2))
+                              : (device.macAddress == _printerMacAddress
+                                  ? const Icon(Icons.check_circle_rounded,
+                                      color: DesignColors.success)
+                                  : null),
+                          onTap: _isConnecting ? null : () => _connectTo(device),
+                        ))
+                    .toList(),
+              ),
+            ],
             const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      showGlassSnackBar(
-                          context, 'Searching for Bluetooth printers...',
-                          icon: Icons.bluetooth_searching_rounded,
-                          color: DesignColors.info);
-                    },
+                    onPressed: _isScanning ? null : _scanForPrinters,
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Scan Printers'),
+                    child: _isScanning
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Scan Printers'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1706,8 +1821,10 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setBool(
                           _SettingsKeys.autoPrintReceipt, _autoPrint);
-                      await prefs.setString(_SettingsKeys.printerName,
-                          _printerNameController.text);
+                      await prefs.setString(
+                          _SettingsKeys.printerName, _printerName);
+                      await prefs.setString(
+                          _SettingsKeys.printerMacAddress, _printerMacAddress);
                       await prefs.setString(
                           _SettingsKeys.paperWidth, _paperWidth);
                       if (context.mounted) {

@@ -19,12 +19,22 @@ export class RedisService implements OnModuleDestroy {
     return this.client;
   }
 
+  /**
+   * Reads/writes below fail soft (log + return null/no-op) rather than
+   * throwing. Redis here is purely a performance cache and a sequence
+   * counter store — a Redis outage must degrade to "slightly slower" or
+   * "counter recalculated from the DB," never "the request fails," since a
+   * cache being unavailable is not the same as the data being unavailable.
+   * This distinguishes cache/counter reads (soft-fail) from anything that
+   * would be a correctness issue if silently skipped — there is currently
+   * no such usage of RedisService in this codebase.
+   */
   async get(key: string): Promise<string | null> {
     try {
       return await this.client.get(key);
     } catch (error) {
-      this.logger.error(`Redis GET failed for key ${key}: ${error.message}`);
-      throw new Error('Redis service unavailable. Please try again later.');
+      this.logger.warn(`Redis GET failed for key ${key}: ${error.message}`);
+      return null;
     }
   }
 
@@ -36,8 +46,7 @@ export class RedisService implements OnModuleDestroy {
         await this.client.set(key, value);
       }
     } catch (error) {
-      this.logger.error(`Redis SET failed for key ${key}: ${error.message}`);
-      throw new Error('Redis service unavailable. Please try again later.');
+      this.logger.warn(`Redis SET failed for key ${key}: ${error.message}`);
     }
   }
 
@@ -45,8 +54,7 @@ export class RedisService implements OnModuleDestroy {
     try {
       await this.client.del(key);
     } catch (error) {
-      this.logger.error(`Redis DEL failed for key ${key}: ${error.message}`);
-      throw new Error('Redis service unavailable. Please try again later.');
+      this.logger.warn(`Redis DEL failed for key ${key}: ${error.message}`);
     }
   }
 
@@ -55,8 +63,8 @@ export class RedisService implements OnModuleDestroy {
       const result = await this.client.exists(key);
       return result === 1;
     } catch (error) {
-      this.logger.error(`Redis EXISTS failed for key ${key}: ${error.message}`);
-      throw new Error('Redis service unavailable. Please try again later.');
+      this.logger.warn(`Redis EXISTS failed for key ${key}: ${error.message}`);
+      return false;
     }
   }
 
@@ -67,7 +75,12 @@ export class RedisService implements OnModuleDestroy {
   async getJson<T>(key: string): Promise<T | null> {
     const value = await this.get(key);
     if (!value) return null;
-    return JSON.parse(value) as T;
+    try {
+      return JSON.parse(value) as T;
+    } catch (error) {
+      this.logger.warn(`Redis value for key ${key} was not valid JSON: ${error.message}`);
+      return null;
+    }
   }
 
   async invalidatePattern(pattern: string): Promise<void> {
@@ -77,28 +90,24 @@ export class RedisService implements OnModuleDestroy {
         await this.client.del(...keys);
       }
     } catch (error) {
-      this.logger.error(`Redis invalidatePattern failed for pattern ${pattern}: ${error.message}`);
-      throw new Error('Redis service unavailable. Please try again later.');
+      this.logger.warn(`Redis invalidatePattern failed for pattern ${pattern}: ${error.message}`);
     }
   }
 
-  // Cache-aside pattern helper
+  // Cache-aside pattern helper. On any cache failure (get or set), falls
+  // through to calling factory() directly — a slow/unavailable cache must
+  // never be the reason a real request fails.
   async getOrSet<T>(
     key: string,
     factory: () => Promise<T>,
     ttlSeconds: number,
   ): Promise<T> {
-    try {
-      const cached = await this.getJson<T>(key);
-      if (cached) return cached;
+    const cached = await this.getJson<T>(key);
+    if (cached) return cached;
 
-      const value = await factory();
-      await this.setJson(key, value as object, ttlSeconds);
-      return value;
-    } catch (error) {
-      this.logger.error(`Redis getOrSet failed for key ${key}: ${error.message}`);
-      throw new Error('Redis service unavailable. Please try again later.');
-    }
+    const value = await factory();
+    await this.setJson(key, value as object, ttlSeconds);
+    return value;
   }
 
   async onModuleDestroy() {

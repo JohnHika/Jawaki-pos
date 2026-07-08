@@ -518,6 +518,7 @@ export class SyncService {
           paymentMethod: payload.paymentMethod,
           discountAmount: payload.discount || payload.discountAmount,
           paidAmount: payload.paidAmount || payload.totalAmount || 0,
+          tenders: payload.tenders,
           notes: payload.notes,
           offlineId: event.eventId,
         });

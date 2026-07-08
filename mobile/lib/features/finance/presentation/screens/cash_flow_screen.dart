@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
@@ -199,6 +200,17 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                     title: 'Expenses',
                     trailing: Text(FinanceScreen.currencyFmt
                         .format((breakdown['expenseOut'] as num).toDouble())),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              GroupedCard(
+                children: [
+                  SettingsRow(
+                    icon: Icons.calculate_rounded,
+                    title: 'Cash Reconciliation',
+                    subtitle: 'Count the till and compare against this figure',
+                    onTap: () => context.push('/cash-flow/reconciliation'),
                   ),
                 ],
               ),

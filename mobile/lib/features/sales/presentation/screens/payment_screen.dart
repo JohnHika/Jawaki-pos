@@ -12,6 +12,7 @@ enum PaymentMethod {
   cash,
   mpesa,
   manual,
+  split,
 }
 
 class PaymentScreen extends ConsumerStatefulWidget {
@@ -191,6 +192,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               onTap: () =>
                   setState(() => _selectedMethod = PaymentMethod.manual),
             ),
+            const SizedBox(height: 10),
+
+            // Split
+            _PaymentMethodTile(
+              icon: Icons.call_split_rounded,
+              title: 'Split Payment',
+              subtitle: 'Part cash, part M-Pesa, etc.',
+              color: DesignColors.warning,
+              isSelected: _selectedMethod == PaymentMethod.split,
+              onTap: () =>
+                  setState(() => _selectedMethod = PaymentMethod.split),
+            ),
 
             // Phone number input for M-Pesa
             if (_selectedMethod == PaymentMethod.mpesa) ...[
@@ -274,6 +287,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'Send M-Pesa Request';
       case PaymentMethod.manual:
         return 'Confirm Manual Payment';
+      case PaymentMethod.split:
+        return 'Enter Split Payment';
       case null:
         return 'Select Payment Method';
     }
@@ -316,6 +331,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           items: cart.items,
         );
         break;
+      case PaymentMethod.split:
+        final tenders = await _showSplitPaymentSheet(cart.total);
+        if (tenders == null) return; // cancelled
+        result = await paymentNotifier.processSplitPayment(
+          amount: cart.total,
+          items: cart.items,
+          tenders: tenders,
+        );
+        break;
     }
 
     if (result != null && mounted) {
@@ -331,6 +355,159 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       context.go('/receipt/$result');
     }
   }
+
+  /// Collects one or more tenders (method + amount) that together must
+  /// cover the sale total. Returns null if the user cancels.
+  Future<List<PaymentTender>?> _showSplitPaymentSheet(double total) async {
+    final rows = <_TenderRow>[
+      _TenderRow(method: 'CASH', amountController: TextEditingController()),
+      _TenderRow(method: 'MPESA', amountController: TextEditingController()),
+    ];
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final entered = rows.fold<double>(
+            0, (sum, r) => sum + (double.tryParse(r.amountController.text) ?? 0));
+          final remaining = total - entered;
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 4, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Split Payment',
+                    style: Theme.of(ctx)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('Total due: KES ${total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary)),
+                const SizedBox(height: 16),
+                ...rows.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final row = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: row.method,
+                            decoration:
+                                const InputDecoration(labelText: 'Method'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'CASH', child: Text('Cash')),
+                              DropdownMenuItem(
+                                  value: 'MPESA', child: Text('M-Pesa')),
+                              DropdownMenuItem(
+                                  value: 'PESAPAL', child: Text('PesaPal')),
+                              DropdownMenuItem(
+                                  value: 'CREDIT', child: Text('Credit')),
+                            ],
+                            onChanged: (v) =>
+                                setSheetState(() => row.method = v ?? row.method),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: row.amountController,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                                labelText: 'Amount (KES)'),
+                            onChanged: (_) => setSheetState(() {}),
+                          ),
+                        ),
+                        if (rows.length > 1)
+                          IconButton(
+                            tooltip: 'Remove',
+                            onPressed: () =>
+                                setSheetState(() => rows.removeAt(index)),
+                            icon: const Icon(Icons.remove_circle_outline_rounded,
+                                color: DesignColors.error),
+                          ),
+                      ],
+                    ),
+                  );
+                }),
+                TextButton.icon(
+                  onPressed: () => setSheetState(() => rows.add(_TenderRow(
+                      method: 'CASH', amountController: TextEditingController()))),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add another tender'),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: (remaining > 0.01
+                            ? DesignColors.warning
+                            : DesignColors.success)
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    remaining > 0.01
+                        ? 'Remaining: KES ${remaining.toStringAsFixed(2)}'
+                        : 'Fully covered'
+                            '${remaining < -0.01 ? ' (change: KES ${(-remaining).toStringAsFixed(2)})' : ''}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: remaining > 0.01
+                          ? DesignColors.warning
+                          : DesignColors.success,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: remaining > 0.01
+                        ? null
+                        : () => Navigator.pop(sheetContext, true),
+                    child: const Text('Confirm Split'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    if (confirmed != true) return null;
+
+    return rows
+        .where((r) => (double.tryParse(r.amountController.text) ?? 0) > 0)
+        .map((r) => PaymentTender(
+              method: r.method,
+              amount: double.parse(r.amountController.text),
+            ))
+        .toList();
+  }
+}
+
+class _TenderRow {
+  String method;
+  final TextEditingController amountController;
+
+  _TenderRow({required this.method, required this.amountController});
 }
 
 class _PaymentMethodTile extends StatelessWidget {

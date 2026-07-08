@@ -46,27 +46,60 @@ export class SuppliersService {
    * locally against its own Drift database — now a single source of
    * truth per tenant instead of one private ledger per phone.
    */
+  /**
+   * Aggregates in SQL (groupBy) instead of fetching every invoice/payment
+   * row per supplier and reducing in JS — a supplier with years of history
+   * would otherwise mean pulling its entire invoice/payment history into
+   * Node memory just to compute a handful of totals Postgres can compute
+   * directly.
+   */
   async getSupplierDebts(tenantId: string) {
     const suppliers = await this.prisma.supplier.findMany({
       where: { tenantId, isActive: true },
-      include: {
-        invoices: { select: { totalAmount: true, paidAmount: true, status: true, dueDate: true } },
-        payments: { select: { amount: true, paidAt: true } },
-      },
+      select: { id: true, name: true, phone: true, email: true },
       orderBy: { name: 'asc' },
     });
+    if (suppliers.length === 0) return [];
 
+    const supplierIds = suppliers.map((s) => s.id);
     const now = new Date();
+
+    const [invoiceTotals, paymentTotals, overdueCounts, lastPayments] = await Promise.all([
+      this.prisma.supplierInvoice.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: supplierIds } },
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.supplierPayment.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: supplierIds } },
+        _sum: { amount: true },
+      }),
+      this.prisma.supplierInvoice.groupBy({
+        by: ['supplierId'],
+        where: {
+          supplierId: { in: supplierIds },
+          status: { not: SupplierInvoiceStatus.PAID },
+          dueDate: { lt: now },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.supplierPayment.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: supplierIds } },
+        _max: { paidAt: true },
+      }),
+    ]);
+
+    const invoiceMap = new Map(invoiceTotals.map((r) => [r.supplierId, r]));
+    const paymentMap = new Map(paymentTotals.map((r) => [r.supplierId, r]));
+    const overdueMap = new Map(overdueCounts.map((r) => [r.supplierId, r._count._all]));
+    const lastPaymentMap = new Map(lastPayments.map((r) => [r.supplierId, r._max.paidAt]));
+
     return suppliers.map((s) => {
-      const totalInvoiced = s.invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
-      const totalPaid = s.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-      const overdueCount = s.invoices.filter(
-        (inv) => inv.status !== SupplierInvoiceStatus.PAID && inv.dueDate && inv.dueDate < now,
-      ).length;
-      const lastPayment = s.payments.reduce<Date | null>(
-        (latest, p) => (!latest || p.paidAt > latest ? p.paidAt : latest),
-        null,
-      );
+      const totalInvoiced = Number(invoiceMap.get(s.id)?._sum.totalAmount ?? 0);
+      const totalPaid = Number(paymentMap.get(s.id)?._sum.amount ?? 0);
 
       return {
         id: s.id,
@@ -76,9 +109,9 @@ export class SuppliersService {
         totalInvoiced,
         totalPaid,
         totalOwed: Math.max(totalInvoiced - totalPaid, 0),
-        invoiceCount: s.invoices.length,
-        overdueCount,
-        lastPaymentDate: lastPayment,
+        invoiceCount: invoiceMap.get(s.id)?._count._all ?? 0,
+        overdueCount: overdueMap.get(s.id) ?? 0,
+        lastPaymentDate: lastPaymentMap.get(s.id) ?? null,
       };
     });
   }
@@ -87,10 +120,16 @@ export class SuppliersService {
     const supplier = await this.prisma.supplier.findFirst({ where: { id: supplierId, tenantId } });
     if (!supplier) throw new NotFoundException('Supplier not found');
 
+    // Mobile expects a plain array (see finance_screen.dart), so this stays
+    // a flat list rather than a paginated envelope — but it's capped
+    // instead of truly unbounded. Most recent 200 invoices covers years of
+    // history for any single supplier in practice; older records are still
+    // in the DB and reachable via a future paginated endpoint if needed.
     const invoices = await this.prisma.supplierInvoice.findMany({
       where: { supplierId },
       include: { items: true },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
     return invoices.map((invoice) => this.formatInvoice(invoice));

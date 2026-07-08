@@ -12,6 +12,7 @@ import '../services/storage_service.dart';
 import '../services/haptic_service.dart';
 import '../services/local_server_service.dart';
 import '../services/update_check_service.dart';
+import '../services/receipt_printer_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 
 final getIt = GetIt.instance;
@@ -138,6 +139,13 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] Registering AiBillingService...');
     getIt.registerSingleton<AiBillingService>(AiBillingService());
     debugPrint('[DI] AiBillingService registered');
+
+    // ============================================
+    // STEP 10: Receipt Printer Service (Bluetooth ESC/POS)
+    // ============================================
+    debugPrint('[DI] Registering ReceiptPrinterService...');
+    getIt.registerSingleton<ReceiptPrinterService>(ReceiptPrinterService());
+    debugPrint('[DI] ReceiptPrinterService registered');
 
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {

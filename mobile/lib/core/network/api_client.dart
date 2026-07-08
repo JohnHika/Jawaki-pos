@@ -601,6 +601,33 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Records a physical cash count against the system's expected cash
+  /// figure. SUPERVISOR+ only on the backend — a plain cashier cannot
+  /// self-certify their own till count.
+  Future<Map<String, dynamic>> createCashReconciliation(
+    String branchId, {
+    required double countedCash,
+    String? notes,
+  }) async {
+    final response = await _dio.post('/cash-flow/reconciliations/$branchId', data: {
+      'countedCash': countedCash,
+      if (notes != null) 'notes': notes,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCashReconciliations(
+    String branchId, {
+    int? page,
+    int? limit,
+  }) async {
+    final response = await _dio.get('/cash-flow/reconciliations/$branchId', queryParameters: {
+      if (page != null) 'page': page,
+      if (limit != null) 'limit': limit,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   // Restock suggestions
   Future<Map<String, dynamic>> getRestockSuggestions(String branchId) async {
     final response = await _dio.get('/inventory/restock-suggestions/$branchId');

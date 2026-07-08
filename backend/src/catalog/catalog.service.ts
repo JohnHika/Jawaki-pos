@@ -199,6 +199,45 @@ export class CatalogService {
 
   async getProducts(tenantId: string, query: ProductQueryDto, branchId?: string) {
     const { search, categoryId, isActive, isFavorite, page = 1, limit = 50 } = query;
+
+    // Free-text search produces too many distinct cache keys for a low hit
+    // rate each, so it always goes straight to Postgres. Everything else —
+    // the plain "list this branch's catalog" request the POS/products
+    // screen makes on every load — is cacheable.
+    if (search) {
+      return this.getProductsUncached(tenantId, query, branchId);
+    }
+
+    const cacheKey = [
+      'products',
+      tenantId,
+      branchId ?? 'no-branch',
+      categoryId ?? 'no-category',
+      isActive ?? 'any',
+      isFavorite ?? 'any',
+      page,
+      limit,
+    ].join(':');
+
+    // Short TTL, not "never expires + invalidate on write": the response
+    // embeds current stock counts (via the `stock` include below), which
+    // change on every sale — invalidating this cache per-sale would defeat
+    // the point of caching the catalog read at all, so a short TTL is the
+    // deliberate tradeoff instead of a longer one relying purely on
+    // invalidateProductCache().
+    return this.redisService.getOrSet(
+      cacheKey,
+      () => this.getProductsUncached(tenantId, query, branchId),
+      20,
+    );
+  }
+
+  private async getProductsUncached(
+    tenantId: string,
+    query: ProductQueryDto,
+    branchId?: string,
+  ) {
+    const { search, categoryId, isActive, isFavorite, page = 1, limit = 50 } = query;
     const skip = (page - 1) * limit;
 
     const where: any = { tenantId };
@@ -595,6 +634,11 @@ export class CatalogService {
         stock: branchId ? { where: { branchId } } : false,
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      // Favorites are self-curated by staff for quick access on the POS
+      // screen, not a general product list — a cap protects against
+      // pathological cases (e.g. everything accidentally favorited)
+      // without needing a paginated UI for what's meant to be a short list.
+      take: 200,
     });
 
     return products.map((p) => this.formatProduct(p, branchId));

@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/sales_provider.dart';
 
@@ -19,6 +21,16 @@ class ReceiptScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final receiptAsync = ref.watch(receiptProvider(saleId));
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Auto-print fires once, the moment the receipt data first loads —
+    // ref.listen (not a postFrameCallback in initState) because this is a
+    // stateless ConsumerWidget and the receipt arrives asynchronously via
+    // the provider, not at build time.
+    ref.listen(receiptProvider(saleId), (previous, next) {
+      if (previous?.value == null && next.value != null) {
+        _autoPrintIfEnabled(next.value!);
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -89,17 +101,8 @@ class ReceiptScreen extends ConsumerWidget {
               child: const Icon(Icons.print_outlined,
                   size: 20, color: DesignColors.accent),
             ),
-            tooltip: 'Set up a receipt printer',
-            onPressed: () {
-              showGlassSnackBar(
-                context,
-                'Set up a receipt printer in Settings to print receipts.',
-                icon: Icons.print_outlined,
-                color: DesignColors.info,
-                actionLabel: 'Open Settings',
-                onAction: () => context.push('/settings'),
-              );
-            },
+            tooltip: 'Print receipt',
+            onPressed: () => _printReceipt(context, receiptAsync.valueOrNull),
           ),
           IconButton(
             icon: Container(
@@ -694,5 +697,108 @@ class ReceiptScreen extends ConsumerWidget {
     buffer.writeln('Thank you for your purchase!');
 
     return buffer.toString();
+  }
+
+  /// Silent counterpart to [_printReceipt] for the "auto-print after each
+  /// sale" setting — no snackbars on success (a printed receipt is
+  /// self-evident), and failures don't interrupt the flow since the user
+  /// never explicitly asked for a print in this moment. Manual retry via
+  /// the print button in the app bar is still available if this fails.
+  Future<void> _autoPrintIfEnabled(Map<String, dynamic> receipt) async {
+    final prefs = await SharedPreferences.getInstance();
+    final autoPrint = prefs.getBool(PrinterSettingsKeys.autoPrint) ?? false;
+    if (!autoPrint) return;
+
+    final printerMac =
+        prefs.getString(PrinterSettingsKeys.printerMacAddress) ?? '';
+    if (printerMac.isEmpty) return;
+
+    final printer = getIt<ReceiptPrinterService>();
+    try {
+      final connected = await printer.isConnected;
+      if (!connected && !(await printer.connect(printerMac))) return;
+
+      final paperWidth =
+          prefs.getString(PrinterSettingsKeys.paperWidth) ?? '58mm';
+      await printer.printReceipt(
+        receipt: receipt,
+        saleId: saleId,
+        paperWidth: paperWidth,
+        showTax: getIt<AuthService>().showTaxOnReceipt,
+      );
+    } catch (_) {
+      // Silent by design — see doc comment above.
+    }
+  }
+
+  Future<void> _printReceipt(
+      BuildContext context, Map<String, dynamic>? receipt) async {
+    if (receipt == null) {
+      showGlassSnackBar(
+        context,
+        'Receipt is still loading — try again in a moment.',
+        icon: Icons.hourglass_empty_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final printerMac =
+        prefs.getString(PrinterSettingsKeys.printerMacAddress) ?? '';
+    if (printerMac.isEmpty) {
+      if (!context.mounted) return;
+      showGlassSnackBar(
+        context,
+        'Set up a receipt printer in Settings to print receipts.',
+        icon: Icons.print_outlined,
+        color: DesignColors.info,
+        actionLabel: 'Open Settings',
+        onAction: () => context.push('/settings'),
+      );
+      return;
+    }
+
+    final printer = getIt<ReceiptPrinterService>();
+    final connected = await printer.isConnected;
+    if (!connected) {
+      final reconnected = await printer.connect(printerMac);
+      if (!reconnected) {
+        if (!context.mounted) return;
+        showGlassSnackBar(
+          context,
+          'Could not reach the printer — check it\'s on and in range.',
+          icon: Icons.print_disabled_rounded,
+          color: DesignColors.error,
+        );
+        return;
+      }
+    }
+
+    final paperWidth =
+        prefs.getString(PrinterSettingsKeys.paperWidth) ?? '58mm';
+
+    try {
+      await printer.printReceipt(
+        receipt: receipt,
+        saleId: saleId,
+        paperWidth: paperWidth,
+        showTax: getIt<AuthService>().showTaxOnReceipt,
+      );
+      if (context.mounted) {
+        showGlassSnackBar(context, 'Receipt sent to printer',
+            icon: Icons.check_circle_rounded, color: DesignColors.success);
+      }
+    } on PrinterUnavailableException catch (e) {
+      if (context.mounted) {
+        showGlassSnackBar(context, e.message,
+            icon: Icons.print_disabled_rounded, color: DesignColors.error);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showGlassSnackBar(context, 'Could not print receipt: $e',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    }
   }
 }

@@ -90,4 +90,8 @@ class RolePermissions {
   // ── Cash flow & restocking ───────────────────
   bool get canViewCashFlow   => role.isAtLeast(AppRole.storeManager);
   bool get canRecordRestock  => role.isAtLeast(AppRole.stockKeeper);
+  // Backend gates this at SUPERVISOR+; mobile's role model has no direct
+  // supervisor tier, so it rounds up to storeManager+ — same treatment as
+  // canVoidSales above for the same backend/mobile role mismatch.
+  bool get canReconcileCash  => role.isAtLeast(AppRole.storeManager);
 }

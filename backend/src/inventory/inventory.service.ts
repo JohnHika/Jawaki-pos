@@ -1226,47 +1226,65 @@ export class InventoryService {
       this.prisma.stockBatch.count({ where: whereClause }),
     ]);
 
-    // Calculate summary
-    const allBatches = await this.prisma.stockBatch.findMany({
-      where: { stock: { branchId } },
-      include: { stock: true },
-    });
-
+    // Calculate summary — four targeted zone queries instead of pulling
+    // every batch for the branch into memory. costPrice*quantity value per
+    // zone still has to be summed row-by-row (Prisma has no computed-column
+    // SUM), but each query only touches the batches in that zone rather
+    // than the branch's entire batch history.
     const days30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const days60 = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
     const days90 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
+    const zoneWhere = (range: { lt?: Date; gt?: Date; lte?: Date; gte?: Date }) => ({
+      stock: { branchId },
+      expiryDate: range,
+    });
+
+    const [expiredBatches, expiring30Batches, expiring60Batches, expiring90Batches] =
+      await Promise.all([
+        this.prisma.stockBatch.findMany({
+          where: zoneWhere({ lt: now }),
+          select: { quantity: true, costPrice: true },
+        }),
+        this.prisma.stockBatch.findMany({
+          where: zoneWhere({ gte: now, lte: days30 }),
+          select: { quantity: true, costPrice: true },
+        }),
+        this.prisma.stockBatch.findMany({
+          where: zoneWhere({ gt: days30, lte: days60 }),
+          select: { quantity: true, costPrice: true },
+        }),
+        this.prisma.stockBatch.findMany({
+          where: zoneWhere({ gt: days60, lte: days90 }),
+          select: { quantity: true, costPrice: true },
+        }),
+      ]);
+
+    const summarizeZone = (rows: Array<{ quantity: any; costPrice: any }>) =>
+      rows.reduce(
+        (acc, row) => {
+          const qty = Number(row.quantity);
+          const value = row.costPrice ? qty * Number(row.costPrice) : 0;
+          return { count: acc.count + 1, value: acc.value + value };
+        },
+        { count: 0, value: 0 },
+      );
+
+    const expired = summarizeZone(expiredBatches);
+    const expiring30 = summarizeZone(expiring30Batches);
+    const expiring60 = summarizeZone(expiring60Batches);
+    const expiring90 = summarizeZone(expiring90Batches);
+
     const summary = {
-      expiredCount: 0,
-      expiredValue: 0,
-      expiring30Days: 0,
-      expiring30DaysValue: 0,
-      expiring60Days: 0,
-      expiring60DaysValue: 0,
-      expiring90Days: 0,
-      expiring90DaysValue: 0,
+      expiredCount: expired.count,
+      expiredValue: expired.value,
+      expiring30Days: expiring30.count,
+      expiring30DaysValue: expiring30.value,
+      expiring60Days: expiring60.count,
+      expiring60DaysValue: expiring60.value,
+      expiring90Days: expiring90.count,
+      expiring90DaysValue: expiring90.value,
     };
-
-    for (const batch of allBatches) {
-      const qty = Number(batch.quantity);
-      const value = batch.costPrice ? qty * Number(batch.costPrice) : 0;
-
-      if (batch.expiryDate) {
-        if (batch.expiryDate < now) {
-          summary.expiredCount++;
-          summary.expiredValue += value;
-        } else if (batch.expiryDate <= days30) {
-          summary.expiring30Days++;
-          summary.expiring30DaysValue += value;
-        } else if (batch.expiryDate <= days60) {
-          summary.expiring60Days++;
-          summary.expiring60DaysValue += value;
-        } else if (batch.expiryDate <= days90) {
-          summary.expiring90Days++;
-          summary.expiring90DaysValue += value;
-        }
-      }
-    }
 
     const items = batches.map((batch) => {
       const daysUntilExpiry = batch.expiryDate

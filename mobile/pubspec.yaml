@@ -1,7 +1,7 @@
 name: axon_pos
 description: Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 publish_to: 'none'
-version: 1.0.22+2027
+version: 1.0.23+2028
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -108,6 +108,11 @@ dependencies:
 
   # Markdown rendering for AI chat responses (tables, lists, bold/italic)
   gpt_markdown_lite: ^1.0.16
+
+  # Bluetooth transport for the ESC/POS thermal receipt printer (esc_pos_utils
+  # above builds the print commands; this sends them over Bluetooth Classic)
+  print_bluetooth_thermal: ^1.1.7
+  permission_handler: ^12.0.3
 
 dev_dependencies:
   flutter_test:

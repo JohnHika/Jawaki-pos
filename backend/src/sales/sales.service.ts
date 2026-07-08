@@ -13,7 +13,7 @@ import {
   CreateRefundDto,
   SalesQueryDto,
 } from './dto/sales.dto';
-import { SaleStatus, PaymentMethod, StockMovementType } from '@prisma/client';
+import { SaleStatus, PaymentMethod, PaymentStatus, StockMovementType } from '@prisma/client';
 
 @Injectable()
 export class SalesService {
@@ -190,10 +190,29 @@ export class SalesService {
     const discountAmount = dto.discountAmount || 0;
     const totalAmount = subtotal + totalTax - discountAmount;
 
+    // SPLIT sales derive paidAmount from the sum of their tenders instead
+    // of a single top-level paidAmount — the two are mutually exclusive
+    // representations of the same thing, and tenders is the source of
+    // truth when present.
+    if (dto.paymentMethod === PaymentMethod.SPLIT) {
+      if (!dto.tenders || dto.tenders.length < 2) {
+        throw new BadRequestException('A split payment needs at least 2 tenders');
+      }
+      if (dto.tenders.some((t) => t.method === PaymentMethod.SPLIT)) {
+        throw new BadRequestException('A tender cannot itself be SPLIT');
+      }
+    } else if (dto.tenders && dto.tenders.length > 0) {
+      throw new BadRequestException('tenders is only valid when paymentMethod is SPLIT');
+    }
+
+    const tenderTotal = dto.tenders?.reduce((sum, t) => sum + t.amount, 0);
+
     // For CREDIT payment, paidAmount is optional (defaults to 0, creating an outstanding balance)
-    const paidAmount = dto.paymentMethod === PaymentMethod.CREDIT
-      ? (dto.paidAmount ?? 0)
-      : (dto.paidAmount ?? totalAmount);
+    const paidAmount = dto.paymentMethod === PaymentMethod.SPLIT
+      ? tenderTotal!
+      : dto.paymentMethod === PaymentMethod.CREDIT
+        ? (dto.paidAmount ?? 0)
+        : (dto.paidAmount ?? totalAmount);
 
     const changeAmount = paidAmount - totalAmount;
 
@@ -243,6 +262,24 @@ export class SalesService {
           customer: { select: { name: true } },
         },
       });
+
+      // Split sales get one Payment row per tender so the breakdown
+      // (how much was cash vs M-Pesa vs card) survives past the top-level
+      // Sale.paymentMethod=SPLIT, which on its own can't represent that.
+      let tenderPayments: Awaited<ReturnType<typeof tx.payment.findMany>> = [];
+      if (dto.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
+        await tx.payment.createMany({
+          data: dto.tenders.map((tender) => ({
+            saleId: newSale.id,
+            method: tender.method,
+            amount: tender.amount,
+            status: PaymentStatus.COMPLETED,
+            transactionId: tender.reference,
+            paidAt: new Date(),
+          })),
+        });
+        tenderPayments = await tx.payment.findMany({ where: { saleId: newSale.id } });
+      }
 
       // Update stock
       for (const update of stockUpdates) {
@@ -326,7 +363,7 @@ export class SalesService {
         }
       }
 
-      return newSale;
+      return { ...newSale, payments: tenderPayments };
     });
 
     // Cash-flow ledger only ever tracks physical cash movements — sales paid
@@ -342,6 +379,26 @@ export class SalesService {
         referenceId: sale.id,
         createdById: userId,
       });
+    } else if (sale.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
+      // Only the cash tender(s) put physical money in the till. Change is
+      // handed back in cash regardless of which tender it's notionally
+      // "from," so it comes out of the cash portion specifically — not
+      // proportionally across all tenders, which would misstate how much
+      // cash actually changed hands.
+      const cashTendered = dto.tenders
+        .filter((t) => t.method === PaymentMethod.CASH)
+        .reduce((sum, t) => sum + t.amount, 0);
+      const netCashIn = cashTendered - Number(sale.changeAmount);
+      if (netCashIn > 0) {
+        await this.cashFlowService.recordEntry({
+          branchId: sale.branchId,
+          type: CashEntryType.SALE_CASH_IN,
+          amount: netCashIn,
+          referenceType: 'sale',
+          referenceId: sale.id,
+          createdById: userId,
+        });
+      }
     }
 
     return this.formatSale(sale);
@@ -430,6 +487,7 @@ export class SalesService {
         branch: { select: { name: true, code: true, address: true, phone: true } },
         user: { select: { firstName: true, lastName: true } },
         customer: { select: { name: true, phone: true } },
+        payments: true,
       },
     });
 
@@ -844,6 +902,14 @@ export class SalesService {
       notes: sale.notes,
       createdAt: sale.createdAt,
     };
+
+    if (sale.payments && sale.payments.length > 0) {
+      result.tenders = sale.payments.map((p: any) => ({
+        method: p.method,
+        amount: Number(p.amount),
+        reference: p.transactionId,
+      }));
+    }
 
     if (includeItems && sale.items) {
       result.items = sale.items.map((item: any) => ({

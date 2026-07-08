@@ -49,6 +49,27 @@ export class CreateSaleItemDto {
   discount?: number;
 }
 
+// One payment component of a SPLIT sale — e.g. { method: CASH, amount: 500 }
+// plus { method: MPESA, amount: 300 } together covering one KES 800 total.
+export class SaleTenderDto {
+  @ApiProperty({ enum: PaymentMethod, description: 'Must not itself be SPLIT' })
+  @IsEnum(PaymentMethod, { message: 'Invalid tender payment method' })
+  method: PaymentMethod;
+
+  @ApiProperty({ example: 500 })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Tender amount must have up to 2 decimal places' })
+  @Min(0.01, { message: 'Tender amount must be greater than 0' })
+  @Max(10000000, { message: 'Tender amount cannot exceed 10,000,000' })
+  @Type(() => Number)
+  amount: number;
+
+  @ApiPropertyOptional({ description: 'External reference, e.g. M-Pesa transaction code' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, { message: 'Reference must not exceed 100 characters' })
+  reference?: string;
+}
+
 // Create Sale DTO
 export class CreateSaleDto {
   @ApiProperty({ description: 'Branch ID' })
@@ -92,6 +113,18 @@ export class CreateSaleDto {
   @Max(10000000, { message: 'Paid amount cannot exceed 10,000,000' })
   @Type(() => Number)
   paidAmount?: number;
+
+  @ApiPropertyOptional({
+    type: [SaleTenderDto],
+    description: 'Required when paymentMethod is SPLIT — the individual payment components, which must sum to at least the total',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SaleTenderDto)
+  @ArrayMinSize(2, { message: 'A split payment needs at least 2 tenders' })
+  @ArrayMaxSize(10, { message: 'A split payment cannot exceed 10 tenders' })
+  tenders?: SaleTenderDto[];
 
   @ApiPropertyOptional()
   @IsOptional()

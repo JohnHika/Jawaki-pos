@@ -61,6 +61,7 @@ model Branch {
   supplierInvoices SupplierInvoice[]
   cashSettings   BranchCashSettings?
   cashLedgerEntries CashLedgerEntry[]
+  cashReconciliations CashReconciliation[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -125,6 +126,7 @@ model User {
   manualPaymentsApproved ManualPaymentRequest[] @relation("ManualPaymentApprovedBy")
   supplierInvoicesCreated SupplierInvoice[]
   supplierPaymentsCreated SupplierPayment[]
+  cashReconciliationsCounted CashReconciliation[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -1077,6 +1079,38 @@ model CashLedgerEntry {
 
   branch        Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
-  @@index([branchId, createdAt])
+  // sumToday()/sumNegativeToday() in cash-flow.service.ts filter on all
+  // three columns together (branchId, type, createdAt range) — this
+  // composite lets Postgres seek directly instead of scanning every entry
+  // for the branch and filtering type afterward. Old (branchId, createdAt)
+  // index is now redundant since this one covers the same leading columns.
+  @@index([branchId, type, createdAt])
   @@map("cash_ledger_entries")
+}
+
+// ==================== CASH RECONCILIATION ====================
+
+model CashReconciliation {
+  id             String   @id @default(uuid())
+  branchId       String
+  // Snapshot of CashFlowService.getAvailableCash() at the moment this
+  // reconciliation was opened — a live/moving figure otherwise, so it must
+  // be captured once and stored rather than recomputed later.
+  expectedCash   Decimal  @db.Decimal(10, 2)
+  countedCash    Decimal  @db.Decimal(10, 2)
+  // countedCash - expectedCash. Negative = shortfall (missing cash),
+  // positive = overage (more cash than expected).
+  discrepancy    Decimal  @db.Decimal(10, 2)
+  cashMode       CashFlowMode
+  periodStart    DateTime
+  periodEnd      DateTime @default(now())
+  notes          String?
+  countedById    String
+  createdAt      DateTime @default(now())
+
+  branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  countedBy      User     @relation(fields: [countedById], references: [id])
+
+  @@index([branchId, createdAt])
+  @@map("cash_reconciliations")
 }

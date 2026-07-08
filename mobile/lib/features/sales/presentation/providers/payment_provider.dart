@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:drift/drift.dart' show Value;
@@ -11,6 +13,29 @@ import '../../../../core/services/auth_service.dart';
 import 'cart_provider.dart';
 
 const _uuid = Uuid();
+
+/// One payment component of a split sale, e.g. { method: CASH, amount: 500 }.
+/// Backend enum values (not the display-only [PaymentMethod] enum in
+/// payment_screen.dart) — this must match what CreateSaleDto expects.
+class PaymentTender {
+  final String method; // 'CASH' | 'MPESA' | 'PESAPAL' | 'TOURISTTAP' | 'CREDIT'
+  final double amount;
+  final String? reference;
+
+  const PaymentTender({required this.method, required this.amount, this.reference});
+
+  Map<String, dynamic> toJson() => {
+        'method': method,
+        'amount': amount,
+        if (reference != null) 'reference': reference,
+      };
+
+  static PaymentTender fromJson(Map<String, dynamic> json) => PaymentTender(
+        method: json['method'] as String,
+        amount: (json['amount'] as num).toDouble(),
+        reference: json['reference'] as String?,
+      );
+}
 
 // Payment state
 class PaymentState {
@@ -305,6 +330,57 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
+  /// Records one sale paid via multiple tenders at once (e.g. part cash,
+  /// part M-Pesa). [tenders] must sum to at least [amount]; any tender with
+  /// method CASH contributes to the till, matching how the backend's
+  /// cash-flow ledger only counts the cash portion of a split sale.
+  Future<String?> processSplitPayment({
+    required double amount,
+    required List<CartItem> items,
+    required List<PaymentTender> tenders,
+  }) async {
+    state = state.copyWith(isProcessing: true, error: null);
+
+    final tenderTotal = tenders.fold<double>(0, (sum, t) => sum + t.amount);
+    if (tenderTotal < amount) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Tenders (KES ${tenderTotal.toStringAsFixed(2)}) do not cover '
+            'the total (KES ${amount.toStringAsFixed(2)})',
+      );
+      return null;
+    }
+
+    try {
+      final saleId = _uuid.v4();
+      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
+
+      // Tenders are stored as JSON in paymentReference — SPLIT is the only
+      // payment method whose "reference" is structured data rather than a
+      // single external transaction id, reusing the field rather than
+      // adding a dedicated column/migration for what's still a single
+      // nullable string slot everywhere else.
+      final tendersJson = jsonEncode(tenders.map((t) => t.toJson()).toList());
+
+      await _createLocalSale(
+        saleId: saleId,
+        receiptNumber: receiptNumber,
+        items: items,
+        paymentMethod: 'SPLIT',
+        total: tenderTotal,
+        paymentReference: tendersJson,
+      );
+
+      await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson, tenders);
+
+      state = state.copyWith(isProcessing: false);
+      return saleId;
+    } catch (e) {
+      state = state.copyWith(isProcessing: false, error: e.toString());
+      return null;
+    }
+  }
+
   Future<void> _createLocalSale({
     required String saleId,
     required String receiptNumber,
@@ -359,6 +435,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String paymentMethod,
     double total, [
     String? paymentReference,
+    List<PaymentTender>? tenders,
   ]) async {
     if (!_connectivity.isOnline) {
       await _queueSaleForSync(
@@ -367,6 +444,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod,
         total,
         paymentReference,
+        tenders,
       );
       return;
     }
@@ -378,6 +456,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod,
         total,
         paymentReference,
+        tenders,
       );
       await _database.markSaleAsSynced(saleId);
     } catch (_) {
@@ -387,6 +466,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod,
         total,
         paymentReference,
+        tenders,
       );
     }
   }
@@ -397,6 +477,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String paymentMethod,
     double total, [
     String? paymentReference,
+    List<PaymentTender>? tenders,
   ]) async {
     await _apiClient.createSale({
       'offlineId': saleId,
@@ -412,6 +493,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       'paymentReference': paymentReference,
       'paidAmount': total,
       'cashierId': _authService.userId,
+      if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
     });
   }
 
@@ -421,6 +503,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String paymentMethod,
     double total, [
     String? paymentReference,
+    List<PaymentTender>? tenders,
   ]) async {
     await _syncService.queueSyncItem(
       tableName: 'sales',
@@ -434,6 +517,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         'paymentReference': paymentReference,
         'paidAmount': total,
         'cashierId': _authService.userId,
+        if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
       },
       deviceId: _authService.deviceId!,
       userId: _authService.userId ?? '',

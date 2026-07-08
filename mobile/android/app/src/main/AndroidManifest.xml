@@ -13,6 +13,18 @@
     <uses-permission android:name="android.permission.INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION"/>
 
+    <!-- Bluetooth receipt printer (print_bluetooth_thermal). Android 12+
+         (API 31+) requires BLUETOOTH_CONNECT/BLUETOOTH_SCAN as runtime
+         permissions, not just declared here; android:usesPermissionFlags
+         neverForLocation avoids also requiring ACCESS_FINE_LOCATION since
+         this app only connects to already-paired printers, never scans
+         for nearby unpaired devices by physical proximity. Legacy
+         BLUETOOTH/BLUETOOTH_ADMIN cover pre-12 devices. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+
     <application
         android:label="Axon POS"
         android:name="${applicationName}"
