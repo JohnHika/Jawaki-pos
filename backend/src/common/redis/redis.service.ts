@@ -12,6 +12,25 @@ export class RedisService implements OnModuleDestroy {
       host: this.configService.get<string>('REDIS_HOST', 'localhost'),
       port: this.configService.get<number>('REDIS_PORT', 6379),
       password: this.configService.get<string>('REDIS_PASSWORD') || undefined,
+      // Without these, ioredis's defaults (enableOfflineQueue: true,
+      // unlimited reconnect retries) mean a command issued while the
+      // connection is down just queues and waits — potentially forever —
+      // instead of rejecting. That silently defeats every fail-soft
+      // try/catch in this file: nothing ever throws, so every caller
+      // (e.g. CatalogService.getCategories on every single request) hangs
+      // indefinitely instead of falling through to Postgres. This is a
+      // real production incident this fixed, not a defensive guess.
+      connectTimeout: 3000,
+      commandTimeout: 3000,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      // Keep retrying in the background (so Redis coming back up after a
+      // blip self-heals without a restart) but cap the backoff so it
+      // never grows unbounded.
+      retryStrategy: (times) => Math.min(times * 200, 3000),
+    });
+    this.client.on('error', (error) => {
+      this.logger.warn(`Redis connection error: ${error.message}`);
     });
   }
 
