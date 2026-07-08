@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
 import '../../../../core/theme/design_system.dart';
 import 'ai_chat_service.dart';
 import 'ai_quick_actions.dart';
@@ -312,22 +313,34 @@ class _ChatBubble extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? DesignColors.accent.withValues(alpha: 0.1)
-                    : (isDark
-                        ? DesignColors.darkSurfaceElevated
-                        : DesignColors.surfaceMuted),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isUser ? 16 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 16),
-                ),
+            child: ConstrainedBox(
+              // AI replies get a wider ceiling than user bubbles — a
+              // markdown table needs real horizontal room to render as an
+              // actual table instead of squeezing cells onto separate
+              // wrapped lines.
+              constraints: BoxConstraints(
+                maxWidth: isUser
+                    ? MediaQuery.of(context).size.width * 0.78
+                    : MediaQuery.of(context).size.width * 0.92,
               ),
-              child: _buildMessageContent(textColor),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isUser
+                      ? DesignColors.accent.withValues(alpha: 0.1)
+                      : (isDark
+                          ? DesignColors.darkSurfaceElevated
+                          : DesignColors.surfaceMuted),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isUser ? 16 : 4),
+                    bottomRight: Radius.circular(isUser ? 4 : 16),
+                  ),
+                ),
+                child: _buildMessageContent(textColor),
+              ),
             ),
           ),
           if (isUser) const SizedBox(width: 8),
@@ -337,63 +350,30 @@ class _ChatBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(Color textColor) {
-    // Simple markdown-like rendering for bold and bullet points
-    final lines = message.split('\n');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: lines.map((line) {
-        // Bold text **text**
-        if (line.contains('**')) {
-          final parts = line.split('**');
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: RichText(
-              text: TextSpan(
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 14,
-                  height: 1.5,
-                ),
-                children: [
-                  for (int i = 0; i < parts.length; i++)
-                    TextSpan(
-                      text: parts[i],
-                      style: i.isOdd
-                          ? const TextStyle(fontWeight: FontWeight.bold)
-                          : null,
-                    ),
-                ],
-              ),
-            ),
-          );
-        }
-        // Bullet points
-        if (line.trimLeft().startsWith('•') ||
-            line.trimLeft().startsWith('-')) {
-          return Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 2),
-            child: Text(
-              line,
-              style: TextStyle(
-                color: textColor,
-                fontSize: 14,
-                height: 1.5,
-              ),
-            ),
-          );
-        }
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 1),
-          child: Text(
-            line.isEmpty ? ' ' : line,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        );
-      }).toList(),
+    // Full markdown rendering (tables, bold, lists, links) instead of the
+    // old line-by-line parser, which only understood **bold** and bullet
+    // dashes — a markdown table from the AI came through as literal
+    // "| Col | Col |" pipe text instead of an actual table.
+    if (!isUser) {
+      return GptMarkdown(
+        message,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 14,
+          height: 1.5,
+        ),
+      );
+    }
+
+    // User's own messages are always plain text they typed themselves —
+    // no need to parse markdown out of them.
+    return Text(
+      message,
+      style: TextStyle(
+        color: textColor,
+        fontSize: 14,
+        height: 1.5,
+      ),
     );
   }
 }

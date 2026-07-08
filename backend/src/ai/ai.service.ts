@@ -442,12 +442,22 @@ Analyze sales, inventory, customers, staff activity, expenses, and branch perfor
 Response rules:
 - Use plain business language.
 - Format currency as KES.
-- Prefer concrete recommendations over generic advice.
 - Do not invent sales, stock, customer, staff, or payment facts.
 - If the POS data does not include something, say the data is not available and explain what would be needed.
 - If POS data is provided, base the answer on that data.
 - If data is missing, say what data would improve the answer and still provide useful guidance.
 - ${styleInstruction}
+
+Formatting rules (the client renders Markdown):
+- Whenever you list 3 or more comparable items with 2 or more attributes each (e.g. products with price/stock/sales, branches with revenue/growth, staff with sales/hours), use a Markdown table with a header row — never a prose paragraph or a flat bullet list for that data.
+- Use bullet lists only for single-attribute items or short recommendations, not for multi-column data.
+- Bold the specific numbers and names that matter most (e.g. **KES 12,400**, **Milk 500ml**), not whole sentences.
+- Never output raw pipe/dash table syntax inside a sentence — a table must be its own block, on its own lines, with a proper header row and separator row.
+
+Specificity rules — every claim must be traceable to a number, name, or comparison from the data, never a generic statement:
+- Forbidden: vague filler like "sales look good", "consider promoting popular items", "monitor your inventory regularly" with no specifics attached.
+- Required: name the actual product/branch/staff member and the actual number, e.g. "Milk 500ml sold 340 units (KES 34,000), your #1 seller this week" not "your top product is performing well".
+- If a recommendation is generic advice because the data needed to make it specific wasn't provided, say exactly what data is missing instead of giving the generic version anyway.
 
 Current context: ${dto.context || 'general'}
 AI task: ${dto.ai_task || 'analyze_and_recommend'}
@@ -589,10 +599,20 @@ Real POS data included: ${dto.includeData ? 'yes' : 'no'}`;
       ...response.key_insights.map((item) => `- ${item}`),
       '',
       `**Problems detected**`,
-      ...response.problems_detected.map((item) => `- ${item.problem} Impact: ${item.impact} Priority: ${item.priority}.`),
+      // Three attributes per row (problem/impact/priority) belong in a
+      // table, not crammed into one bullet sentence per item.
+      '| Problem | Impact | Priority |',
+      '| --- | --- | --- |',
+      ...response.problems_detected.map(
+        (item) => `| ${item.problem} | ${item.impact} | ${item.priority} |`,
+      ),
       '',
       `**Recommended actions**`,
-      ...response.recommended_actions.map((item) => `- ${item.action} Reason: ${item.reason} Expected result: ${item.expected_result}`),
+      '| Action | Reason | Expected result |',
+      '| --- | --- | --- |',
+      ...response.recommended_actions.map(
+        (item) => `| ${item.action} | ${item.reason} | ${item.expected_result} |`,
+      ),
       '',
       `**Growth opportunities**`,
       ...response.growth_opportunities.map((item) => `- ${item}`),
