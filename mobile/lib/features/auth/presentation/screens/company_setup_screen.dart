@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 
 /// Collects company, admin account, and first-branch details to
@@ -180,6 +182,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
         );
 
         if (!mounted) return;
+        unawaited(getIt<UpdateCheckService>().checkAfterLogin());
         context.go('/');
       }
     } catch (e) {

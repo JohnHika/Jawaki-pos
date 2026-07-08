@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/update_check_service.dart';
+import '../theme/design_system.dart';
 
+/// Full-screen, non-dismissible update prompt — shown whenever
+/// [UpdateCheckService.activeGateUpdate] is non-null, regardless of
+/// whether it came from the resume/cold-start version-floor check or the
+/// post-login "any newer version is required" check. The two triggers are
+/// tracked separately on the service, but from here they're the same
+/// moment: the user must update before continuing.
 class ForcedUpdateGate extends StatelessWidget {
   const ForcedUpdateGate({
     super.key,
@@ -13,176 +20,411 @@ class ForcedUpdateGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final update = updateService.requiredUpdate;
+    final update = updateService.activeGateUpdate;
     if (update == null) {
       return const SizedBox.shrink();
     }
 
-    final progress = updateService.downloadProgress;
-    final progressLabel = progress == null
-        ? null
-        : '${(progress * 100).clamp(0, 100).toStringAsFixed(0)}%';
+    final isBusy = updateService.isDownloading || updateService.isInstalling;
 
     return Material(
-      color: Colors.black.withValues(alpha: 0.76),
+      color: DesignColors.darkBg,
       child: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              elevation: 12,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: DesignSpacing.xxl,
+                vertical: DesignSpacing.xxxl,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Icon(
-                        Icons.system_update_alt_rounded,
-                        size: 56,
-                        color: Colors.green,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Update required',
-                        textAlign: TextAlign.center,
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'This POS version is no longer supported. Install the latest update to continue using the app.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[700],
-                            ),
-                      ),
-                      const SizedBox(height: 20),
-                      _VersionTile(
-                        label: 'Current version',
-                        value: _cleanVersion(updateService.currentVersion),
-                        valueColor: Colors.orange,
-                      ),
-                      const SizedBox(height: 8),
-                      _VersionTile(
-                        label: 'Required version',
-                        value: update.releaseName ?? update.minSupportedVersion,
-                        valueColor: Colors.green,
-                      ),
-                      if (update.latestVersion != update.minSupportedVersion ||
-                          update.releaseName != null) ...[
-                        const SizedBox(height: 8),
-                        _VersionTile(
-                          label: 'Latest version',
-                          value: update.displayVersion,
-                          valueColor: Colors.green,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Mark(pulsing: isBusy),
+                  const SizedBox(height: DesignSpacing.xxl),
+                  Text(
+                    isBusy ? 'Updating Axon POS' : 'Update Required',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: DesignColors.darkTextPrimary,
                         ),
-                      ],
-                      if (update.releaseNotes.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        Text(
-                          'What\'s new',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 180),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: SingleChildScrollView(
-                            child: Text(update.releaseNotes),
-                          ),
-                        ),
-                      ],
-                      if (updateService.errorMessage != null) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            updateService.errorMessage!,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ],
-                      if (progress != null) ...[
-                        const SizedBox(height: 16),
-                        LinearProgressIndicator(value: progress),
-                        const SizedBox(height: 8),
-                        Text(
-                          progressLabel ?? 'Downloading...',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      if (updateService.requiresInstallerPermission)
-                        FilledButton.icon(
-                          onPressed:
-                              updateService.openInstallerPermissionSettings,
-                          icon: const Icon(Icons.settings_applications_rounded),
-                          label: const Text('Enable install permission'),
-                        )
-                      else if (updateService.isDownloading)
-                        FilledButton.icon(
-                          onPressed: null,
-                          icon: const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          label: Text(
-                            progressLabel == null
-                                ? 'Downloading update...'
-                                : 'Downloading update... $progressLabel',
-                          ),
-                        )
-                      else if (updateService.isInstalling)
-                        FilledButton.icon(
-                          onPressed: null,
-                          icon: const Icon(Icons.install_mobile_rounded),
-                          label: const Text('Opening installer...'),
-                        )
-                      else
-                        FilledButton.icon(
-                          onPressed:
-                              updateService.downloadAndInstallRequiredUpdate,
-                          icon: const Icon(Icons.download_rounded),
-                          label: const Text('Download & install update'),
-                        ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: updateService.openDownloadFallback,
-                        icon: const Icon(Icons.open_in_new_rounded),
-                        label: const Text('Open fallback download link'),
-                      ),
-                      const SizedBox(height: 8),
-                      const TextButton(
-                        onPressed: SystemNavigator.pop,
-                        child: Text('Close app'),
-                      ),
-                    ],
                   ),
-                ),
+                  const SizedBox(height: DesignSpacing.sm),
+                  Text(
+                    isBusy
+                        ? 'Hang tight — this only takes a moment.'
+                        : 'A newer version is available. Update now to keep using Axon POS.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: DesignColors.darkTextSecondary,
+                        ),
+                  ),
+                  const SizedBox(height: DesignSpacing.xxl),
+                  if (isBusy)
+                    _DownloadTelemetry(updateService: updateService)
+                  else
+                    _UpdateSummary(
+                      updateService: updateService,
+                      update: update,
+                    ),
+                  if (updateService.errorMessage != null) ...[
+                    const SizedBox(height: DesignSpacing.lg),
+                    _ErrorBanner(message: updateService.errorMessage!),
+                  ],
+                  const SizedBox(height: DesignSpacing.xxl),
+                  if (updateService.requiresInstallerPermission)
+                    SettingsPrimaryButton(
+                      label: 'Enable install permission',
+                      onPressed: updateService.openInstallerPermissionSettings,
+                    )
+                  else if (updateService.isDownloading)
+                    const SettingsPrimaryButton(
+                      label: 'Downloading…',
+                      isLoading: true,
+                      onPressed: null,
+                    )
+                  else if (updateService.isInstalling)
+                    const SettingsPrimaryButton(
+                      label: 'Opening installer…',
+                      isLoading: true,
+                      onPressed: null,
+                    )
+                  else
+                    SettingsPrimaryButton(
+                      label: 'Download & install update',
+                      onPressed: updateService.downloadAndInstallRequiredUpdate,
+                    ),
+                  const SizedBox(height: DesignSpacing.md),
+                  TextButton(
+                    onPressed: updateService.openDownloadFallback,
+                    style: TextButton.styleFrom(
+                      foregroundColor: DesignColors.darkTextSecondary,
+                    ),
+                    child: const Text('Open fallback download link'),
+                  ),
+                  if (!isBusy) ...[
+                    const SizedBox(height: DesignSpacing.xs),
+                    TextButton(
+                      onPressed: SystemNavigator.pop,
+                      style: TextButton.styleFrom(
+                        foregroundColor: DesignColors.darkTextTertiary,
+                      ),
+                      child: const Text('Close app'),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Mark extends StatelessWidget {
+  const _Mark({required this.pulsing});
+
+  final bool pulsing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 84,
+        height: 84,
+        decoration: BoxDecoration(
+          color: DesignColors.accentSubtle,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: DesignColors.accent.withValues(alpha: pulsing ? 0.6 : 0.35),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: DesignColors.accent.withValues(alpha: pulsing ? 0.35 : 0.18),
+              blurRadius: pulsing ? 28 : 18,
+              spreadRadius: pulsing ? 4 : 1,
+            ),
+          ],
+        ),
+        child: Icon(
+          pulsing
+              ? Icons.downloading_rounded
+              : Icons.system_update_alt_rounded,
+          color: DesignColors.accent,
+          size: 38,
+        ),
+      ),
+    );
+  }
+}
+
+class _UpdateSummary extends StatelessWidget {
+  const _UpdateSummary({
+    required this.updateService,
+    required this.update,
+  });
+
+  final UpdateCheckService updateService;
+  final AppUpdateInfo update;
+
+  @override
+  Widget build(BuildContext context) {
+    final notes = _parseReleaseNotes(update.releaseNotes);
+
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignSpacing.xl),
+      borderRadius: DesignSpacing.radiusLg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _VersionColumn(
+                  label: 'Current',
+                  value: _cleanVersion(updateService.currentVersion),
+                  color: DesignColors.darkTextSecondary,
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                color: DesignColors.accent,
+              ),
+              Expanded(
+                child: _VersionColumn(
+                  label: 'New',
+                  value: update.displayVersion,
+                  color: DesignColors.accent,
+                  alignEnd: true,
+                ),
+              ),
+            ],
+          ),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: DesignSpacing.lg),
+            const Divider(color: DesignColors.darkBorder, height: 1),
+            const SizedBox(height: DesignSpacing.lg),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "What's new",
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: DesignColors.darkTextPrimary,
+                    ),
+              ),
+            ),
+            const SizedBox(height: DesignSpacing.sm),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final note in notes) _ReleaseNoteRow(text: note),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _VersionColumn extends StatelessWidget {
+  const _VersionColumn({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: DesignColors.darkTextTertiary,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: DesignType.numeric(fontSize: 18, color: color),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReleaseNoteRow extends StatelessWidget {
+  const _ReleaseNoteRow({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 3),
+            child: Icon(
+              Icons.check_circle_rounded,
+              size: 14,
+              color: DesignColors.accent,
+            ),
+          ),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: DesignColors.darkTextSecondary,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DownloadTelemetry extends StatelessWidget {
+  const _DownloadTelemetry({required this.updateService});
+
+  final UpdateCheckService updateService;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = updateService.downloadProgress;
+    final downloaded = updateService.downloadedBytes;
+    final total = updateService.totalBytes;
+    final elapsed = updateService.downloadElapsed;
+
+    final percentLabel = progress == null
+        ? '—'
+        : '${(progress * 100).clamp(0, 100).toStringAsFixed(0)}%';
+    final sizeLabel = (downloaded == null)
+        ? null
+        : total != null
+            ? '${_formatBytes(downloaded)} / ${_formatBytes(total)}'
+            : _formatBytes(downloaded);
+    final speedLabel = (downloaded != null && elapsed.inMilliseconds > 500)
+        ? '${_formatBytes((downloaded / (elapsed.inMilliseconds / 1000)).round())}/s'
+        : null;
+
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignSpacing.xl),
+      borderRadius: DesignSpacing.radiusLg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                updateService.isInstalling ? 'Installing' : 'Downloading',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: DesignColors.darkTextPrimary,
+                    ),
+              ),
+              Text(
+                percentLabel,
+                style: DesignType.numeric(
+                  fontSize: 20,
+                  color: DesignColors.accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: DesignSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: updateService.isInstalling ? null : progress,
+              minHeight: 8,
+              backgroundColor: DesignColors.darkSurfaceElevated,
+              valueColor: const AlwaysStoppedAnimation(DesignColors.accent),
+            ),
+          ),
+          if (sizeLabel != null || speedLabel != null) ...[
+            const SizedBox(height: DesignSpacing.md),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (sizeLabel != null)
+                  Text(
+                    sizeLabel,
+                    style: DesignType.numeric(
+                      fontSize: 13,
+                      color: DesignColors.darkTextSecondary,
+                    ),
+                  ),
+                if (speedLabel != null)
+                  StatusBadge(
+                    label: speedLabel,
+                    color: DesignColors.accent,
+                    isActive: true,
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.errorSubtle,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 18,
+            color: DesignColors.error,
+          ),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(color: DesignColors.error, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -194,44 +436,26 @@ String _cleanVersion(String? value) {
   return plusIndex < 0 ? value : value.substring(0, plusIndex);
 }
 
-class _VersionTile extends StatelessWidget {
-  const _VersionTile({
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
+/// Splits release notes into individual bullet lines. Falls back to a
+/// single "row" containing the whole string if it has no newlines, so a
+/// plain sentence still renders instead of looking empty.
+List<String> _parseReleaseNotes(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return const [];
 
-  final String label;
-  final String value;
-  final Color valueColor;
+  final lines = trimmed
+      .split('\n')
+      .map((line) => line.trim().replaceFirst(RegExp(r'^[-*•]\s*'), ''))
+      .where((line) => line.isNotEmpty)
+      .toList();
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[700],
-                  ),
-            ),
-          ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: valueColor,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
+  return lines.isEmpty ? [trimmed] : lines;
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(0)} KB';
+  final mb = kb / 1024;
+  return '${mb.toStringAsFixed(1)} MB';
 }

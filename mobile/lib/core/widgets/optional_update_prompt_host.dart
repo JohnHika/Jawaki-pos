@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/update_check_service.dart';
+import 'update_success_screen.dart';
 
 class OptionalUpdatePromptHost extends StatefulWidget {
   const OptionalUpdatePromptHost({
@@ -92,7 +93,21 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
     _dialogInFlight = true;
 
     try {
-      await widget.updateService.showInstalledUpdateNoticeIfNeeded(context);
+      final due =
+          await widget.updateService.consumeInstalledUpdateNoticeIfDue();
+      if (due == null || !mounted) return;
+
+      await Navigator.of(context).push<void>(
+        PageRouteBuilder<void>(
+          opaque: true,
+          transitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (_, __, ___) => UpdateSuccessScreen(update: due),
+          transitionsBuilder: (_, animation, __, child) => FadeTransition(
+            opacity: animation,
+            child: child,
+          ),
+        ),
+      );
     } finally {
       _dialogInFlight = false;
     }

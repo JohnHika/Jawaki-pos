@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_client.dart';
+import '../widgets/update_available_dialog.dart';
 import 'update_version_utils.dart';
 
 // GitHub Packages configuration
@@ -132,6 +133,8 @@ class UpdateCheckService extends ChangeNotifier {
   bool _isInstalling = false;
   bool _requiresInstallerPermission = false;
   double? _downloadProgress;
+  int? _downloadedBytes;
+  int? _totalBytes;
   String? _errorMessage;
   String? _currentVersion;
   String? _downloadedApkPath;
@@ -141,18 +144,33 @@ class UpdateCheckService extends ChangeNotifier {
   AppUpdateInfo? _installedUpdateNotice;
   final Stopwatch _downloadDuration = Stopwatch();
 
+  // Set by checkAfterLogin() — deliberately independent of _requiredUpdate
+  // (which stays reserved for the existing forceUpdate/minSupportedVersion
+  // floor check on resume/cold-start). Any update at all is treated as
+  // required immediately after a fresh login, per product decision.
+  AppUpdateInfo? _postLoginUpdate;
+
   bool get hasOptionalUpdateAvailable => _optionalUpdate != null;
   bool get isForceUpdateRequired => _requiredUpdate != null;
+  bool get isPostLoginUpdateRequired => _postLoginUpdate != null;
   bool get isDownloading => _isDownloading;
   bool get isInstalling => _isInstalling;
   bool get requiresInstallerPermission => _requiresInstallerPermission;
   double? get downloadProgress => _downloadProgress;
+  int? get downloadedBytes => _downloadedBytes;
+  int? get totalBytes => _totalBytes;
+  Duration get downloadElapsed => _downloadDuration.elapsed;
   String? get errorMessage => _errorMessage;
   String? get currentVersion => _currentVersion;
   String? get downloadedApkPath => _downloadedApkPath;
   AppUpdateInfo? get requiredUpdate => _requiredUpdate;
   AppUpdateInfo? get optionalUpdate => _optionalUpdate;
   AppUpdateInfo? get installedUpdateNotice => _installedUpdateNotice;
+
+  /// The update that should be shown by the (unified) full-screen gate,
+  /// whichever trigger source it came from — the gate itself doesn't need
+  /// to know or care why it's showing.
+  AppUpdateInfo? get activeGateUpdate => _requiredUpdate ?? _postLoginUpdate;
 
   Future<bool> checkForUpdates({
     bool force = false,
@@ -240,6 +258,22 @@ class UpdateCheckService extends ChangeNotifier {
     }
 
     return false;
+  }
+
+  /// Called right after a successful login. Unlike the passive
+  /// resume/cold-start check (which only blocks when a version falls
+  /// below `minSupportedVersion` or the manifest sets `forceUpdate`),
+  /// this treats ANY newer version as required — the user should not be
+  /// able to keep using an outdated build simply because it still meets
+  /// the historical floor.
+  Future<void> checkAfterLogin() async {
+    await checkForUpdates(force: true);
+
+    final newer = _optionalUpdate ?? _requiredUpdate;
+    if (newer != null) {
+      _postLoginUpdate = newer;
+      notifyListeners();
+    }
   }
 
   /// Get the latest Android update from GitHub Packages releases
@@ -332,83 +366,39 @@ class UpdateCheckService extends ChangeNotifier {
     return baseUri.resolve(normalizedPath).toString();
   }
 
+  /// A lighter, genuinely dismissible first touchpoint for an update that
+  /// isn't required yet (e.g. a manual "Check for updates" tap in
+  /// Settings while the app is still above its minimum supported
+  /// version). Choosing to update hands off to the same full-screen
+  /// [ForcedUpdateGate] flow via [beginOptionalUpdateNow] — there is only
+  /// one real download/install experience in the app.
   Future<void> showCachedOptionalUpdateDialog(BuildContext context) async {
     final optionalUpdate = _optionalUpdate;
     if (optionalUpdate == null) return;
-
-    final currentVersion = _currentVersion ?? await _resolveCurrentVersion();
     if (!context.mounted) return;
 
-    await _showOptionalUpdateDialog(
-      context: context,
-      currentVersion: currentVersion,
-      update: optionalUpdate,
-    );
+    await showUpdateAvailableDialog(context: context, update: optionalUpdate);
   }
 
-  Future<void> showInstalledUpdateNoticeIfNeeded(BuildContext context) async {
+  /// Whether the "you're up to date" screen still needs to be shown for
+  /// the currently-installed version (i.e. this exact build hasn't
+  /// already had its notice acknowledged). Pure state check — actually
+  /// presenting the screen is the caller's job (see
+  /// OptionalUpdatePromptHost), so this service stays UI-free.
+  Future<AppUpdateInfo?> consumeInstalledUpdateNoticeIfDue() async {
     final update = _installedUpdateNotice;
-    if (update == null || update.releaseNotes.trim().isEmpty) return;
+    if (update == null || update.releaseNotes.trim().isEmpty) return null;
 
     final prefs = await SharedPreferences.getInstance();
     final noticeKey = update.noticeKey;
-    if (prefs.getString('last_seen_update_notice') == noticeKey) return;
-    if (!context.mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        titlePadding: EdgeInsets.zero,
-        title: Container(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
-          decoration: const BoxDecoration(
-            color: Color(0xFF101828),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.auto_awesome_rounded, color: Colors.white),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Your POS just got better',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                update.displayVersion,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Text(update.releaseNotes),
-            ],
-          ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
+    if (prefs.getString('last_seen_update_notice') == noticeKey) return null;
 
     await prefs.setString('last_seen_update_notice', noticeKey);
+    return update;
   }
 
   Future<void> downloadAndInstallRequiredUpdate() async {
-    await _downloadAndInstall(_requiredUpdate);
+    await _downloadAndInstall(activeGateUpdate);
   }
 
   Future<void> openInstallerPermissionSettings() async {
@@ -427,7 +417,7 @@ class UpdateCheckService extends ChangeNotifier {
   }
 
   Future<void> openDownloadFallback() async {
-    final update = _requiredUpdate ?? _optionalUpdate;
+    final update = activeGateUpdate ?? _optionalUpdate;
     if (update == null || update.apkUrl.trim().isEmpty) {
       _errorMessage =
           'No fallback download link is configured for this update.';
@@ -469,6 +459,8 @@ class UpdateCheckService extends ChangeNotifier {
     _requiresInstallerPermission = false;
     _errorMessage = null;
     _downloadProgress = 0;
+    _downloadedBytes = null;
+    _totalBytes = null;
     _isDownloading = true;
     _downloadDuration
       ..reset()
@@ -531,8 +523,11 @@ class UpdateCheckService extends ChangeNotifier {
       filePath,
       deleteOnError: true,
       onReceiveProgress: (received, total) {
-        if (total <= 0) return;
-        _downloadProgress = received / total;
+        _downloadedBytes = received;
+        if (total > 0) {
+          _totalBytes = total;
+          _downloadProgress = received / total;
+        }
         notifyListeners();
       },
     );
@@ -587,6 +582,13 @@ class UpdateCheckService extends ChangeNotifier {
             ? update
             : null;
 
+    // Once the running app is no longer behind (e.g. right after the
+    // freshly-installed build relaunches and re-checks), there's nothing
+    // left for the post-login gate to require.
+    if (!hasNewerVersion) {
+      _postLoginUpdate = null;
+    }
+
     if (_requiredUpdate == null) {
       _requiresInstallerPermission = false;
       _isDownloading = false;
@@ -617,221 +619,13 @@ class UpdateCheckService extends ChangeNotifier {
     return origin.resolve(normalizedPath).toString();
   }
 
-  Future<void> _showOptionalUpdateDialog({
-    required BuildContext context,
-    required String currentVersion,
-    required AppUpdateInfo update,
-  }) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.system_update_alt_rounded, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Update Available'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('A newer POS version is available for this device.'),
-              const SizedBox(height: 12),
-              _versionRow('Current', _displayCurrentVersion(currentVersion),
-                  isOld: true),
-              _versionRow('Latest', update.displayVersion, isOld: false),
-              if (update.releaseNotes.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'What\'s New:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  update.releaseNotes,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Later'),
-          ),
-          FilledButton.icon(
-            icon: const Icon(Icons.download),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              if (!context.mounted) return;
-              await _showDownloadProgressDialog(context, update);
-            },
-            label: const Text('Download Update'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _versionRow(String label, String version, {required bool isOld}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Text('$label: ', style: const TextStyle(color: Colors.grey)),
-          Text(
-            version,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: isOld ? Colors.orange : Colors.green,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showDownloadProgressDialog(
-    BuildContext context,
-    AppUpdateInfo update,
-  ) async {
-    var started = false;
-    Future<void>? downloadFuture;
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        if (!started) {
-          started = true;
-          downloadFuture = Future<void>.microtask(() async {
-            await _downloadAndInstall(update);
-            if (ctx.mounted) {
-              Navigator.of(ctx).pop();
-            }
-          });
-        }
-
-        return AlertDialog(
-          title: const Row(
-            children: [
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 12),
-              Text('Downloading Update'),
-            ],
-          ),
-          content: StreamBuilder<double?>(
-            stream: Stream.periodic(
-              const Duration(milliseconds: 200),
-              (_) => _downloadProgress,
-            ),
-            builder: (context, snapshot) {
-              final progress = snapshot.data ?? 0;
-              final progressPercent =
-                  (progress * 100).clamp(0, 100).toStringAsFixed(0);
-              final downloadedMB =
-                  (progress * 114).toStringAsFixed(1); // ~114MB APK
-              final elapsedSeconds = _downloadDuration.elapsed.inSeconds;
-              final speedKBps = _isDownloading && elapsedSeconds > 0
-                  ? (progress > 0
-                      ? (progress * 114 * 1024 / elapsedSeconds)
-                          .toStringAsFixed(0)
-                      : '0')
-                  : '0';
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LinearProgressIndicator(value: progress),
-                  const SizedBox(height: 12),
-                  Text('Version: ${update.displayVersion}'),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Progress: $progressPercent% ($downloadedMB MB of ~114 MB)',
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Speed: $speedKBps KB/s'),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-
-    if (downloadFuture != null) {
-      await downloadFuture;
-    }
-
-    if (!context.mounted) return;
-
-    if (_requiresInstallerPermission) {
-      await _showInstallerPermissionDialog(context);
-    } else if (_errorMessage != null) {
-      await _showUpdateErrorDialog(context);
-    }
-  }
-
-  Future<void> _showInstallerPermissionDialog(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Install Permission Needed'),
-        content: const Text(
-          'Android needs one-time permission before Axon POS can install app updates. '
-          'Enable "Allow from this source", then return to Axon POS and check for updates again.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Later'),
-          ),
-          FilledButton.icon(
-            icon: const Icon(Icons.settings_applications_rounded),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await openInstallerPermissionSettings();
-            },
-            label: const Text('Enable Permission'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showUpdateErrorDialog(BuildContext context) async {
-    final message = _errorMessage;
-    if (message == null || message.isEmpty) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Update Could Not Continue'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
-          ),
-          FilledButton.icon(
-            icon: const Icon(Icons.open_in_new_rounded),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await openDownloadFallback();
-            },
-            label: const Text('Open Download'),
-          ),
-        ],
-      ),
-    );
+  /// Promotes an optional (not-yet-required) update into the same
+  /// required-update path the full-screen [ForcedUpdateGate] renders —
+  /// so there is exactly one download/progress/error/permission
+  /// experience in the app, not a second parallel implementation.
+  void beginOptionalUpdateNow(AppUpdateInfo update) {
+    _postLoginUpdate = update;
+    notifyListeners();
   }
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
@@ -885,12 +679,5 @@ class UpdateCheckService extends ChangeNotifier {
 
     return !isNewerAppVersion(update.latestVersion, currentVersion) &&
         !isNewerAppVersion(currentVersion, update.latestVersion);
-  }
-
-  String _displayCurrentVersion(String currentVersion) {
-    final plusIndex = currentVersion.indexOf('+');
-    return plusIndex < 0
-        ? currentVersion
-        : currentVersion.substring(0, plusIndex);
   }
 }

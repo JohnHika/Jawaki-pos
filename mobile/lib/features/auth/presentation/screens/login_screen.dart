@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 
@@ -174,6 +175,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       );
 
       if (!mounted) return;
+      unawaited(getIt<UpdateCheckService>().checkAfterLogin());
       context.go('/');
     }
   }

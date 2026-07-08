@@ -99,13 +99,12 @@ void main() {
         ),
       );
 
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(find.text('Installed Update Ready'), findsOneWidget);
-      expect(updateService.installedNoticeShowCount, 1);
+      expect(find.text("You're up to date"), findsOneWidget);
+      expect(updateService.installedNoticeConsumeCount, 1);
 
-      await tester.tap(find.text('OK'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       updateService.setInstalledNotice(
@@ -115,11 +114,13 @@ void main() {
           buildNumber: 2014,
         ),
       );
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(updateService.installedNoticeShowCount, 1);
-      expect(find.text('Installed Update Ready'), findsNothing);
+      // Same notice was already consumed once — the fake service's
+      // consumeInstalledUpdateNoticeIfDue mirrors the real de-dupe
+      // behaviour by returning null for an already-seen noticeKey.
+      expect(updateService.installedNoticeConsumeCount, 1);
+      expect(find.text("You're up to date"), findsNothing);
     },
   );
 }
@@ -147,7 +148,8 @@ class _FakeUpdateCheckService extends UpdateCheckService {
   AppUpdateInfo? _installedNotice;
   bool _forceUpdate = false;
   int dialogShowCount = 0;
-  int installedNoticeShowCount = 0;
+  int installedNoticeConsumeCount = 0;
+  String? _lastConsumedNoticeKey;
 
   @override
   bool get hasOptionalUpdateAvailable => _optional != null;
@@ -191,20 +193,13 @@ class _FakeUpdateCheckService extends UpdateCheckService {
   }
 
   @override
-  Future<void> showInstalledUpdateNoticeIfNeeded(BuildContext context) async {
-    installedNoticeShowCount += 1;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Installed Update Ready'),
-        content: Text(installedUpdateNotice?.displayVersion ?? 'unknown'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+  Future<AppUpdateInfo?> consumeInstalledUpdateNoticeIfDue() async {
+    final update = _installedNotice;
+    if (update == null) return null;
+    if (update.noticeKey == _lastConsumedNoticeKey) return null;
+
+    _lastConsumedNoticeKey = update.noticeKey;
+    installedNoticeConsumeCount += 1;
+    return update;
   }
 }

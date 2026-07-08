@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 
@@ -101,6 +103,13 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         : await controller.loginWithPin(_pin);
 
     if (result && mounted) {
+      // Only the network-authenticated path is a genuine fresh login —
+      // unlockWithPin just re-enters an already-authenticated session
+      // entirely offline, so it must not trigger a network-dependent
+      // mandatory update check.
+      if (!hasLocalPin) {
+        unawaited(getIt<UpdateCheckService>().checkAfterLogin());
+      }
       context.go('/');
     } else {
       if (mounted) {

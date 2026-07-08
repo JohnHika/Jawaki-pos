@@ -168,7 +168,8 @@ class _POSAppState extends ConsumerState<POSApp> {
               child: Stack(
                 children: [
                   child!,
-                  if (updateService.isForceUpdateRequired)
+                  if (updateService.isForceUpdateRequired ||
+                      updateService.isPostLoginUpdateRequired)
                     Positioned.fill(
                       child: ForcedUpdateGate(updateService: updateService),
                     ),

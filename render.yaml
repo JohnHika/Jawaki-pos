@@ -52,11 +52,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.25"
+        value: "1.0.26"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.25"
+        value: "Axon POS 1.0.26"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2030"
+        value: "2031"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -66,4 +66,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Fixes a stale-session issue where the permission system wouldn't apply until re-login after an update; permissions now refresh automatically on app launch."
+        value: "Redesigned app-update experience: the update prompt and 'what's new' screen now match the app's real dark theme with live download speed and progress, instead of a generic system dialog. Updates are now checked and required right after login."
