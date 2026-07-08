@@ -52,11 +52,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.20"
+        value: "1.0.24"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.20"
+        value: "Axon POS 1.0.24"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2025"
+        value: "2029"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -66,4 +66,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Adds supplier restocking and cash-flow tracking with AI-powered restock suggestions; fixes a login lockout on devices with no PIN configured; makes the Settings biometric toggle verify real device biometrics before enabling."
+        value: "Adds a granular permission system: admins can create custom roles, assign multiple roles per user, and grant/revoke individual permissions. Backend now enforces all access checks directly."
