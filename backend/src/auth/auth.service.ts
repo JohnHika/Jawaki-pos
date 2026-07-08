@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   NotFoundException,
@@ -41,6 +42,8 @@ export interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -666,7 +669,21 @@ export class AuthService {
       || branches.find((item: any) => item.isPrimary)
       || branches[0];
 
-    const permissions = await this.permissionsService.getEffectivePermissions(user.id);
+    // Fails soft — a transient DB hiccup computing permissions must not
+    // block login entirely. JwtStrategy re-derives permissions fresh on
+    // every subsequent request anyway, so an empty array here just means
+    // the very first screen after login is momentarily under-permissioned
+    // until the next request succeeds, not a hard failure to log in.
+    let permissions: string[] = [];
+    try {
+      permissions = await this.permissionsService.getEffectivePermissions(user.id);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve permissions for user ${user.id} during login: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
     return {
       accessToken,
