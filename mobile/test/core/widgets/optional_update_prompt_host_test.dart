@@ -29,9 +29,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Optional Update Ready'), findsOneWidget);
+      expect(find.text('Update available'), findsOneWidget);
       expect(find.text('Login Screen'), findsOneWidget);
-      expect(updateService.dialogShowCount, 1);
     },
   );
 
@@ -58,8 +57,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(updateService.dialogShowCount, 1);
-      expect(find.text('Optional Update Ready'), findsOneWidget);
+      expect(find.text('Update available'), findsOneWidget);
 
       await tester.tap(find.text('Later'));
       await tester.pumpAndSettle();
@@ -68,8 +66,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(updateService.dialogShowCount, 1);
-      expect(find.text('Optional Update Ready'), findsNothing);
+      expect(find.text('Update available'), findsNothing);
     },
   );
 
@@ -147,7 +144,6 @@ class _FakeUpdateCheckService extends UpdateCheckService {
   AppUpdateInfo? _optional;
   AppUpdateInfo? _installedNotice;
   bool _forceUpdate = false;
-  int dialogShowCount = 0;
   int installedNoticeConsumeCount = 0;
   String? _lastConsumedNoticeKey;
 
@@ -172,24 +168,6 @@ class _FakeUpdateCheckService extends UpdateCheckService {
   void setInstalledNotice(AppUpdateInfo? update) {
     _installedNotice = update;
     notifyListeners();
-  }
-
-  @override
-  Future<void> showCachedOptionalUpdateDialog(BuildContext context) async {
-    dialogShowCount += 1;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Optional Update Ready'),
-        content: Text(optionalUpdate?.latestVersion ?? 'unknown'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Later'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override

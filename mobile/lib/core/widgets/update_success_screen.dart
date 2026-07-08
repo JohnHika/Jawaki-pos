@@ -20,9 +20,21 @@ class _ReleaseNote {
 /// `last_seen_update_notice` de-dupe key the previous AlertDialog-based
 /// implementation used, so it still only shows once per released version.
 class UpdateSuccessScreen extends StatelessWidget {
-  const UpdateSuccessScreen({super.key, required this.update});
+  const UpdateSuccessScreen({
+    super.key,
+    required this.update,
+    required this.onDismiss,
+  });
 
   final AppUpdateInfo update;
+
+  // Shown as a Stack overlay (see main.dart), not pushed onto a Navigator,
+  // so dismissal is a plain callback rather than Navigator.of(context).pop().
+  // (This screen previously used Navigator.of(context) here, which threw
+  // "Navigator operation requested with a context that does not include a
+  // Navigator" every time, because the host widget that built it sits above
+  // MaterialApp.router's internal Navigator, not below it.)
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +102,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                   const SizedBox(height: DesignSpacing.xxl),
                   SettingsPrimaryButton(
                     label: 'Continue',
-                    onPressed: () => Navigator.of(context).maybePop(),
+                    onPressed: onDismiss,
                   ),
                 ],
               ),
