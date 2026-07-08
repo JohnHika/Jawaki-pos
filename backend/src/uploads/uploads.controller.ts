@@ -21,6 +21,8 @@ import {
 } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { UploadsService, ImageType } from './uploads.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 
@@ -45,6 +47,8 @@ export class UploadsController {
    * Returns the secure URL + publicId that must be saved on the calling entity.
    */
   @Post('image')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('uploads.image')
   @ApiOperation({ summary: 'Upload a company image (logo, category, product)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

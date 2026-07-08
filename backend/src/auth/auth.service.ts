@@ -8,10 +8,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import {
   LoginDto,
   PinLoginDto,
@@ -21,18 +23,20 @@ import {
   LogoutDto,
   ChangePasswordDto,
   SetPinDto,
+  SetOfflineAccessPinDto,
   AuthResponseDto,
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
-import { UserRole } from '@prisma/client';
+import { LegacyUserRole } from '@prisma/client';
 
 export interface JwtPayload {
   sub: string;
   email: string;
-  role: UserRole;
+  role: LegacyUserRole;
   tenantId: string;
   branchId?: string;
   deviceId?: string;
+  permissions?: string[];
 }
 
 @Injectable()
@@ -43,6 +47,7 @@ export class AuthService {
     private configService: ConfigService,
     private redisService: RedisService,
     private auditService: AuditService,
+    private permissionsService: PermissionsService,
   ) {}
 
   async validateUser(email: string, password: string, tenantId?: string) {
@@ -287,7 +292,7 @@ export class AuthService {
               firstName: dto.admin.firstName.trim(),
               lastName: dto.admin.lastName.trim(),
               phone: dto.admin.phone?.trim() || null,
-              role: UserRole.ADMIN,
+              role: LegacyUserRole.ADMIN,
               lastLoginAt: new Date(),
               branches: {
                 create: {
@@ -364,7 +369,7 @@ export class AuthService {
         firstName: registerDto.firstName,
         lastName: registerDto.lastName,
         phone: registerDto.phone,
-        role: registerDto.role || UserRole.CASHIER,
+        role: registerDto.role || LegacyUserRole.CASHIER,
         branches: registerDto.branchIds
           ? {
               create: registerDto.branchIds.map((branchId, index) => ({
@@ -478,6 +483,36 @@ export class AuthService {
       userId,
       action: 'UPDATE',
       entityType: 'pin',
+      entityId: userId,
+    });
+  }
+
+  // Sets this user's offline-access PIN — authorizes logging into any
+  // phone acting as a local server as this user, entirely without
+  // network access. Must be set while online; the hash then travels to
+  // phone-server devices via the offline directory sync.
+  //
+  // Deliberately NOT bcrypt: bcrypt can only be verified by re-running the
+  // same native, CPU-heavy algorithm, which the mobile app doesn't ship
+  // (it has no bcrypt dependency, unlike this backend). Any phone-server
+  // device receiving this hash needs to verify it standalone, fully
+  // offline, using only what Dart's `crypto` package already provides —
+  // so this uses the exact salted-SHA-256 scheme StorageService already
+  // uses for the on-device unlock PIN (storage_service.dart `_hashPin`),
+  // with the salt persisted alongside the hash (`salt:hash`) instead of
+  // in per-device secure storage, since this hash must be portable to
+  // any device that pulls the offline directory, not just the owner's own.
+  async setOfflineAccessPin(userId: string, dto: SetOfflineAccessPinDto): Promise<void> {
+    const salt = randomBytes(16).toString('base64url');
+    const hash = createHash('sha256').update(`${salt}:${dto.pin}`).digest('hex');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { offlineAccessPinHash: `${salt}:${hash}` },
+    });
+    await this.auditService.record({
+      userId,
+      action: 'UPDATE',
+      entityType: 'offline_access_pin',
       entityId: userId,
     });
   }
@@ -631,6 +666,8 @@ export class AuthService {
       || branches.find((item: any) => item.isPrimary)
       || branches[0];
 
+    const permissions = await this.permissionsService.getEffectivePermissions(user.id);
+
     return {
       accessToken,
       refreshToken,
@@ -646,6 +683,7 @@ export class AuthService {
         branchId: activeBranch?.id,
         branchName: activeBranch?.name,
         hasPinSet: Boolean(user.pin),
+        permissions,
         tenant: user.tenant
           ? {
               id: user.tenant.id,

@@ -6,7 +6,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RolesGuard } from './guards/roles.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
 import { AuditModule } from '../audit/audit.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
@@ -22,9 +24,10 @@ import { AuditModule } from '../audit/audit.module';
       inject: [ConfigService],
     }),
     AuditModule,
+    PermissionsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RolesGuard],
+  providers: [AuthService, JwtStrategy, RolesGuard, PermissionsGuard],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

@@ -17,9 +17,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
 /**
  * KNOWN LIMITATION: every endpoint in this controller is a stub that
@@ -38,6 +37,8 @@ export class PaymentsController {
   // ==================== M-PESA (Daraja) ENDPOINTS ====================
 
   @Post('mpesa/initiate')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('payments.mpesa_initiate')
   @ApiOperation({ summary: 'Initiate M-Pesa payment via Daraja API' })
   @ApiResponse({ status: 200, description: 'Payment initiated' })
   @ApiResponse({ status: 400, description: 'Invalid payment details' })
@@ -88,6 +89,8 @@ export class PaymentsController {
   // ==================== PESAPAL ENDPOINTS ====================
 
   @Post('pesapal/initiate')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('payments.pesapal_initiate')
   @ApiOperation({ summary: 'Initiate Pesapal payment' })
   @ApiResponse({ status: 200, description: 'Pesapal payment initiated' })
   async initiatePesapalPayment(
@@ -135,6 +138,8 @@ export class PaymentsController {
   // ==================== TOURISTTAP (NFC) ENDPOINTS ====================
 
   @Post('touristtap/initiate')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('payments.touristtap_initiate')
   @ApiOperation({ summary: 'Initiate TouristTap NFC payment' })
   @ApiResponse({ status: 200, description: 'TouristTap payment initiated' })
   async initiateTouristTapPayment(

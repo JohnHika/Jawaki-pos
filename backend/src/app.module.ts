@@ -21,6 +21,9 @@ import { PaymentsModule } from './payments/payments.module';
 import { AuditModule } from './audit/audit.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CashFlowModule } from './cash-flow/cash-flow.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { RolesModule } from './roles/roles.module';
+import { UsersManagementModule } from './users/users-management.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -64,6 +67,9 @@ import { AppController } from './app.controller';
     AuditModule,
     SuppliersModule,
     CashFlowModule,
+    PermissionsModule,
+    RolesModule,
+    UsersManagementModule,
   ],
   controllers: [AppController],
 })

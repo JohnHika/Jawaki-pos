@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shelf/shelf.dart' as shelf;
@@ -17,6 +18,7 @@ import 'server/routes/sync_routes.dart';
 import 'server/routes/report_routes.dart';
 import 'server/routes/image_routes.dart';
 import 'server/routes/payment_routes.dart';
+import 'server/sql_helper.dart';
 import 'storage_service.dart';
 
 /// Phone Server Mode — runs an HTTP server inside the Flutter app.
@@ -104,6 +106,10 @@ class LocalServerService {
       // previously mounted routes. Each class must add to the same router.
       final db_local = db;
       await _seedDefaultAdmin(db_local);
+      // Must run BEFORE the ApiClient base URL is redirected to localhost
+      // below — this is the last moment the app's HTTP client still talks
+      // to the real remote backend, which is what this pull needs.
+      await _syncOfflineDirectory(db_local);
 
       AuthRoutes(db_local).addRoutes(appRouter);
       CatalogRoutes(db_local).addRoutes(appRouter);
@@ -190,15 +196,24 @@ class LocalServerService {
     });
   }
 
-  /// Seed a default admin user if the server_users table is empty.
-  Future<void> _seedDefaultAdmin(AppDatabase db) async {
+  /// Pulls the tenant's offline-access user directory from the real
+  /// backend (id, name, role, offline-access PIN hash, effective
+  /// permissions — never the online login PIN/password) and upserts it
+  /// into `server_users`, so other devices can log in against this phone
+  /// as any user who has set an offline-access PIN, entirely offline
+  /// afterward. Only runs while genuinely online; a failure here (no
+  /// connectivity, no `users.view` permission, etc.) must not block
+  /// server start — it just means whatever was synced last time (or
+  /// nothing) is what's available offline.
+  Future<void> _syncOfflineDirectory(AppDatabase db) async {
     try {
       await db.customStatement(
         'CREATE TABLE IF NOT EXISTS server_users ('
         '  id TEXT PRIMARY KEY NOT NULL, '
         '  email TEXT NOT NULL UNIQUE, '
-        '  password_hash TEXT NOT NULL, '
+        '  password_hash TEXT NOT NULL DEFAULT \'\', '
         '  pin_hash TEXT, '
+        '  offline_pin_hash TEXT, '
         '  first_name TEXT NOT NULL DEFAULT \'\', '
         '  last_name TEXT NOT NULL DEFAULT \'\', '
         '  role TEXT NOT NULL DEFAULT \'CASHIER\', '
@@ -206,6 +221,102 @@ class LocalServerService {
         '  branch_id TEXT, '
         '  is_active INTEGER NOT NULL DEFAULT 1, '
         '  last_login_at TEXT, '
+        '  permissions_json TEXT, '
+        '  created_at TEXT NOT NULL, '
+        '  updated_at TEXT NOT NULL'
+        ')',
+      );
+      for (final columnDef in [
+        'permissions_json TEXT',
+        'offline_pin_hash TEXT',
+      ]) {
+        try {
+          await db.customStatement('ALTER TABLE server_users ADD COLUMN $columnDef');
+        } catch (_) {
+          // Column already exists.
+        }
+      }
+
+      final apiClient = getIt<ApiClient>();
+      final directory = await apiClient.getOfflineUserDirectory();
+
+      final now = DateTime.now().toIso8601String();
+      for (final entry in directory) {
+        final user = entry as Map<String, dynamic>;
+        final id = user['id'] as String;
+        final email = user['email'] as String;
+        final offlinePinHash = user['offlineAccessPinHash'] as String?;
+        if (offlinePinHash == null) continue; // hasn't opted in
+
+        final permissions = (user['permissions'] as List<dynamic>? ?? [])
+            .cast<String>();
+
+        final existing = await db
+            .customSelect(
+              'SELECT id FROM server_users WHERE id = ${Sql.str(id)}',
+            )
+            .get();
+
+        if (existing.isEmpty) {
+          await db.customStatement(
+            'INSERT INTO server_users '
+            '(id, email, offline_pin_hash, first_name, last_name, role, tenant_id, branch_id, is_active, permissions_json, created_at, updated_at) '
+            'VALUES (${Sql.vals([
+              id,
+              email,
+              offlinePinHash,
+              user['firstName'] as String? ?? '',
+              user['lastName'] as String? ?? '',
+              user['role'] as String? ?? 'CASHIER',
+              user['tenantId'] as String? ?? 'local',
+              user['branchId'] as String?,
+              (user['isActive'] as bool? ?? true) ? 1 : 0,
+              jsonEncode(permissions),
+              now,
+              now,
+            ])})',
+          );
+        } else {
+          await db.customStatement(
+            'UPDATE server_users SET ${Sql.assign({
+              'email': email,
+              'offline_pin_hash': offlinePinHash,
+              'first_name': user['firstName'] as String? ?? '',
+              'last_name': user['lastName'] as String? ?? '',
+              'role': user['role'] as String? ?? 'CASHIER',
+              'branch_id': user['branchId'] as String?,
+              'is_active': (user['isActive'] as bool? ?? true),
+              'permissions_json': jsonEncode(permissions),
+              'updated_at': now,
+            })} WHERE id = ${Sql.str(id)}',
+          );
+        }
+      }
+
+      debugPrint('[LocalServer] Synced offline directory: ${directory.length} user(s)');
+    } catch (e) {
+      debugPrint('[LocalServer] Offline directory sync skipped: $e');
+    }
+  }
+
+  /// Seed a default admin user if the server_users table is empty.
+  Future<void> _seedDefaultAdmin(AppDatabase db) async {
+    try {
+      await db.customStatement(
+        'CREATE TABLE IF NOT EXISTS server_users ('
+        '  id TEXT PRIMARY KEY NOT NULL, '
+        '  email TEXT NOT NULL UNIQUE, '
+        '  password_hash TEXT NOT NULL DEFAULT \'\', '
+        '  pin_hash TEXT, '
+        '  offline_pin_hash TEXT, '
+        '  first_name TEXT NOT NULL DEFAULT \'\', '
+        '  last_name TEXT NOT NULL DEFAULT \'\', '
+        '  role TEXT NOT NULL DEFAULT \'CASHIER\', '
+        '  tenant_id TEXT NOT NULL DEFAULT \'local\', '
+        '  branch_id TEXT, '
+        '  is_active INTEGER NOT NULL DEFAULT 1, '
+        '  last_login_at TEXT, '
+        '  permissions_json TEXT, '
         '  created_at TEXT NOT NULL, '
         '  updated_at TEXT NOT NULL'
         ')',

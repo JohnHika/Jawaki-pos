@@ -178,6 +178,18 @@ class AuthService {
     await _applyAuthResponse(response);
   }
 
+  /// Logs into a phone-server (offline mode) using the offline-access PIN
+  /// a user set up in advance while online — see
+  /// ApiClient.loginWithOfflinePin. Only works when the app's base URL is
+  /// already pointed at a phone-server (Settings → Backend Server).
+  Future<void> loginWithOfflinePin({
+    required String email,
+    required String pin,
+  }) async {
+    final response = await _apiClient.loginWithOfflinePin(email: email, pin: pin);
+    await _applyAuthResponse(response);
+  }
+
   /// Whether this device has a local quick-unlock PIN configured, i.e.
   /// whether [unlockWithPin] can be used instead of the network-dependent
   /// [loginWithPin].
@@ -260,6 +272,29 @@ class AuthService {
 
   Future<void> applyAuthResponse(Map<String, dynamic> response) async {
     await _applyAuthResponse(response);
+  }
+
+  /// Re-pulls this user's effective permissions from the backend and
+  /// patches them into the stored user map, so a role or override edit an
+  /// admin makes elsewhere takes effect without forcing a re-login. Safe
+  /// to call opportunistically (e.g. on app resume) — a network failure
+  /// here just means permissions stay as they were until the next try.
+  Future<void> refreshPermissions() async {
+    if (_currentUser == null || !isAuthenticated) return;
+
+    try {
+      final permissions = await _apiClient.getMyPermissions();
+      _currentUser = {
+        ..._currentUser!,
+        'permissions': permissions,
+      };
+      await _storage.saveUser(_currentUser!);
+      _authStatusController.add(
+        isLocked ? AuthStatus.locked : AuthStatus.authenticated,
+      );
+    } catch (_) {
+      // Fail soft — stale permissions are better than crashing app resume.
+    }
   }
 
   Future<void> updateTenantSession(Map<String, dynamic> tenantData) async {

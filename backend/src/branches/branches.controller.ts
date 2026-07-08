@@ -36,9 +36,8 @@ import {
   BulkDeleteBranchesDto,
 } from './dto/bulk-branch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
 @ApiTags('branches')
 @Controller({ path: 'branches', version: '1' })
@@ -50,8 +49,8 @@ export class BranchesController {
   // ==================== TENANT ENDPOINTS ====================
 
   @Post('tenants')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.tenant.create')
   @ApiOperation({ summary: 'Create a new tenant (Super Admin only)' })
   @ApiResponse({ status: 201, description: 'Tenant created' })
   async createTenant(@Body() dto: CreateTenantDto) {
@@ -66,8 +65,8 @@ export class BranchesController {
   }
 
   @Patch('tenants/current')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.tenant.update')
   @ApiOperation({ summary: 'Update current tenant' })
   @ApiResponse({ status: 200, description: 'Tenant updated' })
   async updateTenant(@Request() req: any, @Body() dto: UpdateTenantDto) {
@@ -77,8 +76,8 @@ export class BranchesController {
   // ==================== BRANCH ENDPOINTS ====================
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.create')
   @ApiOperation({ summary: 'Create a new branch' })
   @ApiResponse({ status: 201, description: 'Branch created', type: BranchResponseDto })
   async createBranch(@Request() req: any, @Body() dto: CreateBranchDto) {
@@ -100,8 +99,8 @@ export class BranchesController {
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.update')
   @ApiOperation({ summary: 'Update branch' })
   @ApiResponse({ status: 200, description: 'Branch updated', type: BranchResponseDto })
   async updateBranch(
@@ -113,8 +112,8 @@ export class BranchesController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete branch (if no sales history)' })
   @ApiResponse({ status: 204, description: 'Branch deleted' })
@@ -125,8 +124,8 @@ export class BranchesController {
   // ==================== BULK BRANCH ENDPOINTS ====================
 
   @Post('bulk')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.bulk')
   @ApiOperation({ summary: 'Bulk create branches' })
   @ApiResponse({ status: 201, description: 'Branches created', type: [BranchResponseDto] })
   async bulkCreateBranches(@Request() req: any, @Body() dto: BulkCreateBranchesDto) {
@@ -134,8 +133,8 @@ export class BranchesController {
   }
 
   @Patch('bulk')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.bulk')
   @ApiOperation({ summary: 'Bulk update branches' })
   @ApiResponse({ status: 200, description: 'Branches updated', type: [BranchResponseDto] })
   async bulkUpdateBranches(@Request() req: any, @Body() dto: BulkUpdateBranchesDto) {
@@ -143,8 +142,8 @@ export class BranchesController {
   }
 
   @Delete('bulk')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('branches.bulk')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Bulk delete branches (if no sales)' })
   @ApiResponse({ status: 204, description: 'Branches deleted' })
@@ -155,8 +154,8 @@ export class BranchesController {
   // ==================== DEVICE ENDPOINTS ====================
 
   @Post(':branchId/devices')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('devices.create')
   @ApiOperation({ summary: 'Register a new device to a branch' })
   @ApiResponse({ status: 201, description: 'Device registered', type: DeviceResponseDto })
   async registerDevice(@Request() req: any, @Body() dto: RegisterDeviceDto) {
@@ -195,8 +194,8 @@ export class BranchesController {
   }
 
   @Patch('devices/:deviceId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('devices.update')
   @ApiOperation({ summary: 'Update device' })
   @ApiResponse({ status: 200, description: 'Device updated', type: DeviceResponseDto })
   async updateDevice(
@@ -208,8 +207,8 @@ export class BranchesController {
   }
 
   @Delete('devices/:deviceId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('devices.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Deactivate device' })
   @ApiResponse({ status: 204, description: 'Device deactivated' })

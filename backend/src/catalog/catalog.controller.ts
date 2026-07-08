@@ -37,9 +37,8 @@ import {
   BulkDeleteProductsDto,
 } from './dto/bulk-product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
 @ApiTags('catalog')
 @Controller({ path: 'catalog', version: '1' })
@@ -51,8 +50,8 @@ export class CatalogController {
   // ==================== CATEGORY ENDPOINTS ====================
 
   @Post('categories')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('categories.create')
   @ApiOperation({ summary: 'Create a new category' })
   @ApiResponse({ status: 201, description: 'Category created', type: CategoryResponseDto })
   async createCategory(@Request() req: any, @Body() dto: CreateCategoryDto) {
@@ -78,8 +77,8 @@ export class CatalogController {
   }
 
   @Patch('categories/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('categories.update')
   @ApiOperation({ summary: 'Update category' })
   @ApiResponse({ status: 200, description: 'Category updated', type: CategoryResponseDto })
   async updateCategory(
@@ -91,8 +90,8 @@ export class CatalogController {
   }
 
   @Delete('categories/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('categories.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete category (if empty)' })
   @ApiResponse({ status: 204, description: 'Category deleted' })
@@ -103,8 +102,8 @@ export class CatalogController {
   // ==================== PRODUCT ENDPOINTS ====================
 
   @Post('products')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('products.create')
   @ApiOperation({ summary: 'Create a new product' })
   @ApiResponse({ status: 201, description: 'Product created', type: ProductResponseDto })
   async createProduct(@Request() req: any, @Body() dto: CreateProductDto) {
@@ -156,8 +155,8 @@ export class CatalogController {
   }
 
   @Patch('products/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('products.update')
   @ApiOperation({ summary: 'Update product' })
   @ApiResponse({ status: 200, description: 'Product updated', type: ProductResponseDto })
   async updateProduct(
@@ -169,8 +168,8 @@ export class CatalogController {
   }
 
   @Delete('products/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('products.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete product (if no sales)' })
   @ApiResponse({ status: 204, description: 'Product deleted' })
@@ -188,8 +187,8 @@ export class CatalogController {
   // ==================== BULK PRODUCT ENDPOINTS ====================
 
   @Post('products/bulk')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('products.bulk')
   @ApiOperation({ summary: 'Bulk create products' })
   @ApiResponse({ status: 201, description: 'Products created', type: [ProductResponseDto] })
   async bulkCreateProducts(@Request() req: any, @Body() dto: BulkCreateProductsDto) {
@@ -197,8 +196,8 @@ export class CatalogController {
   }
 
   @Patch('products/bulk')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('products.bulk')
   @ApiOperation({ summary: 'Bulk update products' })
   @ApiResponse({ status: 200, description: 'Products updated', type: [ProductResponseDto] })
   async bulkUpdateProducts(@Request() req: any, @Body() dto: BulkUpdateProductsDto) {
@@ -206,8 +205,8 @@ export class CatalogController {
   }
 
   @Delete('products/bulk')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('products.bulk')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Bulk delete products (if no sales)' })
   @ApiResponse({ status: 204, description: 'Products deleted' })
@@ -218,8 +217,8 @@ export class CatalogController {
   // ==================== PRICING ENDPOINTS ====================
 
   @Post('pricing')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('pricing.set')
   @ApiOperation({ summary: 'Set branch-specific price for a product' })
   @ApiResponse({ status: 201, description: 'Price override created' })
   async setBranchPrice(@Request() req: any, @Body() dto: SetBranchPriceDto) {
@@ -234,8 +233,8 @@ export class CatalogController {
   }
 
   @Delete('pricing/:productId/:branchId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('pricing.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove branch-specific price' })
   @ApiResponse({ status: 204, description: 'Price override removed' })

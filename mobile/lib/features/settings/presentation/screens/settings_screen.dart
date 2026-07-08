@@ -17,7 +17,6 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/update_check_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
-import '../../../../core/auth/app_roles.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -206,6 +205,12 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => _showChangePinDialog(context),
             ),
             SettingsRow(
+              icon: Icons.wifi_off_rounded,
+              title: 'Offline Access PIN',
+              subtitle: 'Set a PIN to log in when a phone is acting as the server without internet',
+              onTap: () => _showOfflineAccessPinDialog(context),
+            ),
+            SettingsRow(
               icon: Icons.security_rounded,
               title: 'Security',
               subtitle: 'Biometrics & auto-lock',
@@ -249,8 +254,8 @@ class SettingsScreen extends ConsumerWidget {
               SettingsRow(
                 icon: Icons.people_rounded,
                 title: 'User Management',
-                subtitle: 'Manage staff & roles',
-                onTap: () => _showUserManagement(context),
+                subtitle: 'Manage staff, roles & permissions',
+                onTap: () => context.push('/users'),
               ),
               SettingsRow(
                 icon: Icons.store_rounded,
@@ -640,6 +645,112 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  // ===== OFFLINE ACCESS PIN =====
+  // Authorizes this account to log into ANY phone acting as a local
+  // server (Settings → Backend Server) with no internet connection.
+  // Distinct from _showChangePinDialog's quick-unlock PIN, which only
+  // unlocks an already-authenticated session on this specific device.
+  void _showOfflineAccessPinDialog(BuildContext context) {
+    final pinController = TextEditingController();
+    final confirmPinController = TextEditingController();
+    String? error;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return SettingsDialog(
+            title: 'Offline Access PIN',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Set a PIN so you can log in as yourself on a phone '
+                    'that\'s acting as the local server, even with no '
+                    'internet connection. Must be set now, while online.',
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ),
+                TextField(
+                  controller: pinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Offline Access PIN',
+                    hintText: '4-6 digits',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmPinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm PIN',
+                    hintText: '4-6 digits',
+                    counterText: '',
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(error!,
+                      style: const TextStyle(
+                          color: DesignColors.error, fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              SettingsPrimaryButton(
+                label: 'Save',
+                isLoading: isSaving,
+                onPressed: () async {
+                  final pin = pinController.text;
+                  final confirmPin = confirmPinController.text;
+
+                  if (pin.length < 4 || pin.length > 6) {
+                    setDialogState(() => error = 'PIN must be 4-6 digits');
+                    return;
+                  }
+                  if (pin != confirmPin) {
+                    setDialogState(() => error = 'PINs do not match');
+                    return;
+                  }
+
+                  setDialogState(() {
+                    isSaving = true;
+                    error = null;
+                  });
+
+                  try {
+                    await getIt<ApiClient>().setOfflineAccessPin(pin);
+                    if (!context.mounted || !dialogContext.mounted) return;
+                    Navigator.pop(dialogContext);
+                    _showSnack(context, 'Offline access PIN set successfully');
+                  } catch (e) {
+                    setDialogState(() {
+                      isSaving = false;
+                      error = 'Could not save. Check your connection and try again.';
+                    });
+                  }
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   // ===== SECURITY SETTINGS =====
   void _showSecuritySettings(BuildContext context) async {
     final storage = getIt<StorageService>();
@@ -921,193 +1032,6 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     return 'Axon POS $version';
-  }
-
-  // ===== ADMIN-ONLY: USER MANAGEMENT =====
-  void _showUserManagement(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          final border =
-              isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-          return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: border,
-                          borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('User Management',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w800)),
-                  FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showAddUserDialog(context);
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: DesignColors.accent,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.person_add, size: 18),
-                    label: const Text('Add'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: [
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final user = ref.watch(currentUserProvider) ?? {};
-                        final role = AppRole.fromString(
-                            user['role'] as String? ?? 'CASHIER');
-                        return _UserTile(
-                          name: user['name'] as String? ?? 'User',
-                          email: user['email'] as String? ?? '',
-                          role: role,
-                          isCurrentUser: true,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _RoleAccessSummary(),
-                    const SizedBox(height: 12),
-                    // Placeholder for additional users
-                    const GroupedCard(
-                      margin: EdgeInsets.zero,
-                      children: [
-                        SettingsRow(
-                          icon: Icons.person_add_rounded,
-                          title: 'No other users yet',
-                          subtitle: 'Tap + Add to create staff accounts',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _showAddUserDialog(BuildContext context) {
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
-    final pinController = TextEditingController();
-    String selectedRole = 'seller';
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => SettingsDialog(
-          title: 'Add New User',
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: pinController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'PIN (4 digits)',
-                    prefixIcon: Icon(Icons.lock),
-                    counterText: '',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    prefixIcon: Icon(Icons.badge),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'seller', child: Text('Seller')),
-                    DropdownMenuItem(
-                        value: 'stock_keeper', child: Text('Stock Keeper')),
-                    DropdownMenuItem(
-                        value: 'store_manager', child: Text('Store Manager')),
-                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                  ],
-                  onChanged: (v) =>
-                      setDialogState(() => selectedRole = v ?? 'seller'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            SettingsPrimaryButton(
-              label: 'Add User',
-              onPressed: () {
-                if (nameController.text.isEmpty ||
-                    pinController.text.length != 4) {
-                  _showSnack(context, 'Fill all fields (PIN must be 4 digits)',
-                      isError: true);
-                  return;
-                }
-                Navigator.pop(dialogContext);
-                _showSnack(context,
-                    '${nameController.text} added as ${AppRole.fromString(selectedRole).label}');
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ===== ADMIN-ONLY: BRANCH MANAGEMENT =====
@@ -2211,156 +2135,6 @@ class _InfoRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _UserTile extends StatelessWidget {
-  final String name;
-  final String email;
-  final AppRole role;
-  final bool isCurrentUser;
-
-  const _UserTile({
-    required this.name,
-    required this.email,
-    required this.role,
-    this.isCurrentUser = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: border),
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: DesignColors.accent.withValues(alpha: 0.1),
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(
-                color: DesignColors.accent, fontWeight: FontWeight.bold),
-          ),
-        ),
-        title: Row(
-          children: [
-            Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
-            if (isCurrentUser) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text('You',
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: DesignColors.accent,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ],
-        ),
-        subtitle: Text('$email  •  ${role.label}'),
-        trailing: isCurrentUser
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: () {},
-              ),
-      ),
-    );
-  }
-}
-
-class _RoleAccessSummary extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    const roles = [
-      ('Seller', 'POS, own sales, and basic settings'),
-      ('Stock Keeper', 'Seller access plus inventory and product viewing'),
-      (
-        'Store Manager',
-        'Product editing, reports, discounts, sync, and printer settings'
-      ),
-      (
-        'Admin',
-        'All access including users, branches, finance, audit, and exports'
-      ),
-    ];
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: DesignColors.accent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.admin_panel_settings_rounded,
-                      color: DesignColors.accent, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Role access levels',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ...roles.map(
-              (role) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.check_circle_rounded,
-                        size: 16, color: DesignColors.success),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: RichText(
-                        text: TextSpan(
-                          style: Theme.of(context).textTheme.bodySmall,
-                          children: [
-                            TextSpan(
-                              text: '${role.$1}: ',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            TextSpan(text: role.$2),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

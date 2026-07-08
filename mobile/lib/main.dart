@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -199,6 +200,7 @@ class _POSAppLifecycleObserver extends WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       await authService.lockIfRequiredAfterResume();
       getIt<UpdateCheckService>().checkForUpdates(force: true);
+      unawaited(authService.refreshPermissions());
     }
   }
 }

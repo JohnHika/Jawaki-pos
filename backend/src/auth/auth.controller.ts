@@ -25,13 +25,13 @@ import {
   LogoutDto,
   ChangePasswordDto,
   SetPinDto,
+  SetOfflineAccessPinDto,
   AuthResponseDto,
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { Roles } from './decorators/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { RequirePermissions } from './decorators/require-permissions.decorator';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
@@ -84,8 +84,8 @@ export class AuthController {
   }
 
   @Post('register')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('users.create')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Register a new user (Admin/Manager only)' })
   @ApiResponse({ status: 201, description: 'User registered', type: AuthResponseDto })
@@ -137,6 +137,23 @@ export class AuthController {
     await this.authService.setPin(req.user.sub, setPinDto);
   }
 
+  @Post('offline-access-pin')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Set or update this user\'s offline-access PIN',
+    description:
+      'Authorizes logging into a phone acting as a local server (offline mode) as this user. Must be set once while online.',
+  })
+  @ApiResponse({ status: 204, description: 'Offline-access PIN set successfully' })
+  async setOfflineAccessPin(
+    @Request() req: any,
+    @Body() dto: SetOfflineAccessPinDto,
+  ): Promise<void> {
+    await this.authService.setOfflineAccessPin(req.user.sub, dto);
+  }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
@@ -147,8 +164,8 @@ export class AuthController {
   }
 
   @Get('users')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('users.view')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get users for the current company only' })
   @ApiResponse({ status: 200, description: 'Company users' })

@@ -9,7 +9,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { SyncService } from './sync.service';
 import {
@@ -25,11 +26,12 @@ import {
 @ApiTags('Sync')
 @ApiBearerAuth()
 @Controller('sync')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SyncController {
   constructor(private syncService: SyncService) {}
 
   @Post('push')
+  @RequirePermissions('sync.push')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Push offline events to server' })
   @ApiResponse({ status: 200, type: PushSyncResponseDto })
@@ -41,6 +43,7 @@ export class SyncController {
   }
 
   @Post('pull')
+  @RequirePermissions('sync.pull')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Pull server changes for offline sync' })
   @ApiResponse({ status: 200, type: PullSyncResponseDto })
@@ -52,6 +55,7 @@ export class SyncController {
   }
 
   @Get('status')
+  @RequirePermissions('sync.status')
   @ApiOperation({ summary: 'Get sync status for current device' })
   @ApiResponse({ status: 200, type: SyncStatusDto })
   async getSyncStatus(@CurrentUser() user: any): Promise<SyncStatusDto> {
@@ -59,6 +63,7 @@ export class SyncController {
   }
 
   @Post('heartbeat')
+  @RequirePermissions('sync.status')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Register device heartbeat' })
   async heartbeat(@CurrentUser() user: any): Promise<void> {
@@ -66,6 +71,7 @@ export class SyncController {
   }
 
   @Post('conflicts/resolve')
+  @RequirePermissions('sync.resolve_conflicts')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resolve sync conflicts' })
   @ApiResponse({ status: 200, type: [SyncResultDto] })
@@ -77,12 +83,14 @@ export class SyncController {
   }
 
   @Get('failed')
+  @RequirePermissions('sync.push')
   @ApiOperation({ summary: 'Get failed sync events for retry' })
   async getFailedEvents(@CurrentUser() user: any): Promise<any[]> {
     return this.syncService.getFailedEvents(user.deviceId);
   }
 
   @Post('retry')
+  @RequirePermissions('sync.push')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Retry failed sync events' })
   @ApiResponse({ status: 200, type: PushSyncResponseDto })

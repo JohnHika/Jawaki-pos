@@ -13,20 +13,21 @@ datasource db {
 // ==================== TENANT & ORGANIZATION ====================
 
 model Tenant {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  logo        String?
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  logo         String?
   logoPublicId String?
-  isActive    Boolean  @default(true)
-  settings    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive     Boolean  @default(true)
+  settings     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  branches    Branch[]
-  users       User[]
-  categories  Category[]
-  products    Product[]
+  branches   Branch[]
+  users      User[]
+  categories Category[]
+  products   Product[]
+  roles      Role[]
 
   @@map("tenants")
 }
@@ -46,51 +47,55 @@ model Branch {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  posClient   PosClient? @relation(fields: [posClientId], references: [id])
-  devices     Device[]
-  users       UserBranch[]
-  stock       Stock[]
-  sales       Sale[]
-  stockMovements StockMovement[]
-  priceOverrides BranchPriceOverride[]
-  stockRequests  StockRequest[]
-  expenses    Expense[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  posClient             PosClient?             @relation(fields: [posClientId], references: [id])
+  devices               Device[]
+  users                 UserBranch[]
+  stock                 Stock[]
+  sales                 Sale[]
+  stockMovements        StockMovement[]
+  priceOverrides        BranchPriceOverride[]
+  stockRequests         StockRequest[]
+  expenses              Expense[]
   manualPaymentRequests ManualPaymentRequest[]
-  aiSubscription AiSubscription?
-  supplierInvoices SupplierInvoice[]
-  cashSettings   BranchCashSettings?
-  cashLedgerEntries CashLedgerEntry[]
-  cashReconciliations CashReconciliation[]
+  aiSubscription        AiSubscription?
+  supplierInvoices      SupplierInvoice[]
+  cashSettings          BranchCashSettings?
+  cashLedgerEntries     CashLedgerEntry[]
+  cashReconciliations   CashReconciliation[]
 
   @@unique([tenantId, code])
   @@map("branches")
 }
 
 model Device {
-  id              String   @id @default(uuid())
-  branchId        String
-  deviceUuid      String   @unique
-  name            String
-  model           String?
-  osVersion       String?
-  appVersion      String?
-  lastSyncAt      DateTime?
-  lastActiveAt    DateTime?
-  isActive        Boolean  @default(true)
-  registeredAt    DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String    @id @default(uuid())
+  branchId     String
+  deviceUuid   String    @unique
+  name         String
+  model        String?
+  osVersion    String?
+  appVersion   String?
+  lastSyncAt   DateTime?
+  lastActiveAt DateTime?
+  isActive     Boolean   @default(true)
+  registeredAt DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  syncEvents      SyncEvent[]
-  sales           Sale[]
+  branch     Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  syncEvents SyncEvent[]
+  sales      Sale[]
 
   @@map("devices")
 }
 
 // ==================== USERS & AUTHENTICATION ====================
 
-enum UserRole {
+// Legacy fixed role enum — superseded by the granular Permission/Role
+// system below. Kept alongside User.role during rollout so existing
+// RolesGuard-gated endpoints keep working while endpoints are migrated
+// to PermissionsGuard one module at a time; dropped once that's complete.
+enum LegacyUserRole {
   CASHIER
   SUPERVISOR
   MANAGER
@@ -98,38 +103,142 @@ enum UserRole {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  tenantId      String
-  email         String
-  phone         String?
-  passwordHash  String
-  firstName     String
-  lastName      String
-  role          UserRole @default(CASHIER)
-  pin           String?  // For quick POS login
-  avatar        String?
-  isActive      Boolean  @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String         @id @default(uuid())
+  tenantId             String
+  email                String
+  phone                String?
+  passwordHash         String
+  firstName            String
+  lastName             String
+  role                 LegacyUserRole @default(CASHIER)
+  pin                  String? // For quick POS login
+  // Separate from `pin`: authorizes logging into a phone-acting-as-local-
+  // server (offline mode) as this user. Kept distinct from the online quick-
+  // login PIN so a device operating fully offline never needs the online
+  // credential, and revoking one doesn't affect the other. Set via
+  // POST /auth/offline-access-pin; never returned by any API in plaintext
+  // — only the hash travels to phone-server devices via the offline
+  // directory sync (GET /users/offline-directory), where it's verified
+  // entirely on-device.
+  offlineAccessPinHash String?
+  avatar               String?
+  isActive             Boolean        @default(true)
+  lastLoginAt          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branches      UserBranch[]
-  sales         Sale[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  stockRequestsCreated  StockRequest[] @relation("RequestedByUser")
-  stockRequestsResolved StockRequest[] @relation("ResolvedByUser")
-  expensesCreated       Expense[]
-  expensesApproved      Expense[] @relation("ExpenseApprovedBy")
-  manualPaymentsCreated ManualPaymentRequest[] @relation("ManualPaymentRequestedBy")
-  manualPaymentsApproved ManualPaymentRequest[] @relation("ManualPaymentApprovedBy")
-  supplierInvoicesCreated SupplierInvoice[]
-  supplierPaymentsCreated SupplierPayment[]
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches                   UserBranch[]
+  sales                      Sale[]
+  refreshTokens              RefreshToken[]
+  auditLogs                  AuditLog[]
+  stockRequestsCreated       StockRequest[]           @relation("RequestedByUser")
+  stockRequestsResolved      StockRequest[]           @relation("ResolvedByUser")
+  expensesCreated            Expense[]
+  expensesApproved           Expense[]                @relation("ExpenseApprovedBy")
+  manualPaymentsCreated      ManualPaymentRequest[]   @relation("ManualPaymentRequestedBy")
+  manualPaymentsApproved     ManualPaymentRequest[]   @relation("ManualPaymentApprovedBy")
+  supplierInvoicesCreated    SupplierInvoice[]
+  supplierPaymentsCreated    SupplierPayment[]
   cashReconciliationsCounted CashReconciliation[]
+  roles                      UserRole[]
+  permissionOverrides        UserPermissionOverride[]
 
   @@unique([tenantId, email])
   @@map("users")
+}
+
+// ==================== GRANULAR PERMISSIONS ====================
+
+// Fixed, seeded catalog of granular capability keys (e.g. "products.create").
+// Not tenant-editable — grows only via app updates / seed script changes.
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  feature     String
+  action      String
+  label       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+  userOverrides   UserPermissionOverride[]
+
+  @@index([feature])
+  @@map("permissions")
+}
+
+// Tenant-scoped, admin-editable bundle of permissions. Seeded with 4
+// defaults per tenant (Cashier/Supervisor/Manager/Admin) that reproduce
+// today's LegacyUserRole access levels, but admins can rename, reshape,
+// or create additional roles.
+model Role {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model RolePermission {
+  id            String   @id @default(uuid())
+  roleId        String
+  permissionKey String
+  createdAt     DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@unique([roleId, permissionKey])
+  @@index([permissionKey])
+  @@map("role_permissions")
+}
+
+// Join table: which role(s) a user holds. Replaces the single
+// User.role/LegacyUserRole field — a user can hold multiple roles at once.
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// Per-user grant/revoke exceptions layered on top of role-derived
+// permissions. A revoke always wins over any role grant for that key.
+model UserPermissionOverride {
+  id            String   @id @default(uuid())
+  userId        String
+  permissionKey String
+  grant         Boolean
+  reason        String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@unique([userId, permissionKey])
+  @@index([userId])
+  @@map("user_permission_overrides")
 }
 
 model UserBranch {
@@ -139,8 +248,8 @@ model UserBranch {
   isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@unique([userId, branchId])
   @@map("user_branches")
@@ -151,11 +260,11 @@ model RefreshToken {
   userId            String
   tokenHash         String   @unique // Hashed token for security
   deviceId          String?
-  deviceFingerprint String?  // Device binding for theft detection
+  deviceFingerprint String? // Device binding for theft detection
   expiresAt         DateTime
   createdAt         DateTime @default(now())
 
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("refresh_tokens")
@@ -164,61 +273,61 @@ model RefreshToken {
 // ==================== CATALOG & PRICING ====================
 
 model Category {
-  id          String   @id @default(uuid())
-  tenantId    String
-  parentId    String?
-  name        String
-  slug        String
-  description String?
-  image       String?
+  id            String   @id @default(uuid())
+  tenantId      String
+  parentId      String?
+  name          String
+  slug          String
+  description   String?
+  image         String?
   imagePublicId String?
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryHierarchy")
-  products    ProductCategory[]
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[]        @relation("CategoryHierarchy")
+  products ProductCategory[]
 
   @@unique([tenantId, slug])
   @@map("categories")
 }
 
 model Product {
-  id              String   @id @default(uuid())
-  tenantId        String
-  sku             String
-  name            String
-  description     String?
-  image           String?
-  imagePublicId   String?
-  basePrice       Decimal  @db.Decimal(10, 2)
-  costPrice       Decimal? @db.Decimal(10, 2)
-  taxRate         Decimal  @default(0) @db.Decimal(5, 2)
-  unit            String   @default("piece")
-  secondaryUnit   String?  // e.g., "box", "carton", "pack"
+  id               String   @id @default(uuid())
+  tenantId         String
+  sku              String
+  name             String
+  description      String?
+  image            String?
+  imagePublicId    String?
+  basePrice        Decimal  @db.Decimal(10, 2)
+  costPrice        Decimal? @db.Decimal(10, 2)
+  taxRate          Decimal  @default(0) @db.Decimal(5, 2)
+  unit             String   @default("piece")
+  secondaryUnit    String? // e.g., "box", "carton", "pack"
   secondaryUnitQty Decimal? @db.Decimal(10, 3) // How many base units per secondary unit
-  tertiaryUnit    String?  // e.g., "carton" if secondary is "box"
-  tertiaryUnitQty Decimal? @db.Decimal(10, 3) // How many base units per tertiary unit
-  minStock        Int      @default(0)
-  trackInventory  Boolean  @default(true)
-  allowFractions  Boolean  @default(false)
-  isActive        Boolean  @default(true)
-  isFavorite      Boolean  @default(false)
-  sortOrder       Int      @default(0)
-  metadata        Json     @default("{}")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  tertiaryUnit     String? // e.g., "carton" if secondary is "box"
+  tertiaryUnitQty  Decimal? @db.Decimal(10, 3) // How many base units per tertiary unit
+  minStock         Int      @default(0)
+  trackInventory   Boolean  @default(true)
+  allowFractions   Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  isFavorite       Boolean  @default(false)
+  sortOrder        Int      @default(0)
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  categories      ProductCategory[]
-  stock           Stock[]
-  saleItems       SaleItem[]
-  priceOverrides  BranchPriceOverride[]
-  stockMovements  StockMovement[]
-  stockRequests   StockRequest[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categories           ProductCategory[]
+  stock                Stock[]
+  saleItems            SaleItem[]
+  priceOverrides       BranchPriceOverride[]
+  stockMovements       StockMovement[]
+  stockRequests        StockRequest[]
   supplierInvoiceItems SupplierInvoiceItem[]
 
   @@unique([tenantId, sku])
@@ -231,26 +340,26 @@ model ProductCategory {
   categoryId String
   createdAt  DateTime @default(now())
 
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([productId, categoryId])
   @@map("product_categories")
 }
 
 model BranchPriceOverride {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   branchId  String
   productId String
-  price     Decimal  @db.Decimal(10, 2)
+  price     Decimal   @db.Decimal(10, 2)
   startDate DateTime?
   endDate   DateTime?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([branchId, productId])
   @@map("branch_price_overrides")
@@ -266,31 +375,31 @@ model Stock {
   reservedQty Decimal  @default(0) @db.Decimal(10, 3)
   updatedAt   DateTime @updatedAt
 
-  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  batches     StockBatch[]
+  branch  Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batches StockBatch[]
 
   @@unique([branchId, productId])
   @@map("stock")
 }
 
 model StockBatch {
-  id            String   @id @default(uuid())
-  stockId       String
-  batchNumber   String
-  quantity      Decimal  @db.Decimal(10, 3)
-  reservedQty   Decimal  @default(0) @db.Decimal(10, 3)
-  expiryDate    DateTime?
+  id              String    @id @default(uuid())
+  stockId         String
+  batchNumber     String
+  quantity        Decimal   @db.Decimal(10, 3)
+  reservedQty     Decimal   @default(0) @db.Decimal(10, 3)
+  expiryDate      DateTime?
   manufactureDate DateTime?
-  costPrice     Decimal? @db.Decimal(10, 2)
-  supplierRef   String?  // Supplier reference or invoice number
-  notes         String?
-  isBlocked     Boolean  @default(false) // Manually block expired/damaged batches
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  costPrice       Decimal?  @db.Decimal(10, 2)
+  supplierRef     String? // Supplier reference or invoice number
+  notes           String?
+  isBlocked       Boolean   @default(false) // Manually block expired/damaged batches
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  stock         Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
-  saleItems     SaleItemBatch[]
+  stock     Stock           @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  saleItems SaleItemBatch[]
 
   @@unique([stockId, batchNumber])
   @@index([expiryDate])
@@ -315,23 +424,23 @@ enum StockMovementType {
 }
 
 model StockMovement {
-  id              String            @id @default(uuid())
-  branchId        String
-  productId       String
-  batchId         String?           // Link to batch if applicable
-  type            StockMovementType
-  quantity        Decimal           @db.Decimal(10, 3)
-  previousQty     Decimal           @db.Decimal(10, 3)
-  newQty          Decimal           @db.Decimal(10, 3)
-  batchNumber     String?           // Denormalized batch tracking
-  expiryDate      DateTime?         // Denormalized expiry tracking
-  reference       String?           // e.g., sale ID, transfer ID
-  notes           String?
-  createdById     String?
-  createdAt       DateTime          @default(now())
+  id          String            @id @default(uuid())
+  branchId    String
+  productId   String
+  batchId     String? // Link to batch if applicable
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(10, 3)
+  previousQty Decimal           @db.Decimal(10, 3)
+  newQty      Decimal           @db.Decimal(10, 3)
+  batchNumber String? // Denormalized batch tracking
+  expiryDate  DateTime? // Denormalized expiry tracking
+  reference   String? // e.g., sale ID, transfer ID
+  notes       String?
+  createdById String?
+  createdAt   DateTime          @default(now())
 
-  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([branchId, productId])
   @@index([createdAt])
@@ -340,30 +449,30 @@ model StockMovement {
 }
 
 model StockTransfer {
-  id              String   @id @default(uuid())
-  fromBranchId    String
-  toBranchId      String
-  status          String   @default("pending") // pending, in_transit, completed, cancelled
-  notes           String?
-  createdById     String
-  approvedById    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(uuid())
+  fromBranchId String
+  toBranchId   String
+  status       String   @default("pending") // pending, in_transit, completed, cancelled
+  notes        String?
+  createdById  String
+  approvedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  items           StockTransferItem[]
+  items StockTransferItem[]
 
   @@map("stock_transfers")
 }
 
 model StockTransferItem {
-  id              String   @id @default(uuid())
-  transferId      String
-  productId       String
-  requestedQty    Decimal  @db.Decimal(10, 3)
-  sentQty         Decimal? @db.Decimal(10, 3)
-  receivedQty     Decimal? @db.Decimal(10, 3)
+  id           String   @id @default(uuid())
+  transferId   String
+  productId    String
+  requestedQty Decimal  @db.Decimal(10, 3)
+  sentQty      Decimal? @db.Decimal(10, 3)
+  receivedQty  Decimal? @db.Decimal(10, 3)
 
-  transfer        StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
 
   @@map("stock_transfer_items")
 }
@@ -379,27 +488,27 @@ enum RequestStatus {
 }
 
 model StockRequest {
-  id            String         @id @default(uuid())
+  id            String        @id @default(uuid())
   branchId      String
   requestedById String
   productId     String
-  quantity      Decimal        @db.Decimal(10, 3)
-  unit          String         @default("piece")
+  quantity      Decimal       @db.Decimal(10, 3)
+  unit          String        @default("piece")
   reason        String?
-  priority      String         @default("normal") // low, normal, high, urgent
-  status        RequestStatus  @default(PENDING)
-  images        String[]       @default([])
+  priority      String        @default("normal") // low, normal, high, urgent
+  status        RequestStatus @default(PENDING)
+  images        String[]      @default([])
   resolvedById  String?
   resolvedAt    DateTime?
-  resolution    String?        // Approval/rejection notes
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  
-  branch        Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  requestedBy   User           @relation("RequestedByUser", fields: [requestedById], references: [id])
-  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  resolvedBy    User?          @relation("ResolvedByUser", fields: [resolvedById], references: [id])
-  
+  resolution    String? // Approval/rejection notes
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  branch      Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("RequestedByUser", fields: [requestedById], references: [id])
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  resolvedBy  User?   @relation("ResolvedByUser", fields: [resolvedById], references: [id])
+
   @@index([branchId, status])
   @@index([requestedById])
   @@index([status, createdAt])
@@ -426,33 +535,33 @@ enum PaymentMethod {
 }
 
 model Sale {
-  id              String        @id @default(uuid())
-  branchId        String
-  deviceId        String?
-  userId          String
-  receiptNumber   String        @unique
-  customerId      String?
-  status          SaleStatus    @default(COMPLETED)
-  subtotal        Decimal       @db.Decimal(10, 2)
-  taxAmount       Decimal       @db.Decimal(10, 2)
-  discountAmount  Decimal       @default(0) @db.Decimal(10, 2)
-  totalAmount     Decimal       @db.Decimal(10, 2)
-  paidAmount      Decimal       @db.Decimal(10, 2)
-  changeAmount    Decimal       @default(0) @db.Decimal(10, 2)
-  paymentMethod   PaymentMethod
-  notes           String?
-  metadata        Json          @default("{}")
-  offlineId       String?       @unique  // Original ID from device
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id             String        @id @default(uuid())
+  branchId       String
+  deviceId       String?
+  userId         String
+  receiptNumber  String        @unique
+  customerId     String?
+  status         SaleStatus    @default(COMPLETED)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  taxAmount      Decimal       @db.Decimal(10, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal       @db.Decimal(10, 2)
+  paidAmount     Decimal       @db.Decimal(10, 2)
+  changeAmount   Decimal       @default(0) @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod
+  notes          String?
+  metadata       Json          @default("{}")
+  offlineId      String?       @unique // Original ID from device
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  branch          Branch        @relation(fields: [branchId], references: [id])
-  device          Device?       @relation(fields: [deviceId], references: [id])
-  user            User          @relation(fields: [userId], references: [id])
-  customer        Customer?     @relation(fields: [customerId], references: [id])
-  items           SaleItem[]
-  payments        Payment[]
-  refunds         Refund[]
+  branch               Branch                @relation(fields: [branchId], references: [id])
+  device               Device?               @relation(fields: [deviceId], references: [id])
+  user                 User                  @relation(fields: [userId], references: [id])
+  customer             Customer?             @relation(fields: [customerId], references: [id])
+  items                SaleItem[]
+  payments             Payment[]
+  refunds              Refund[]
   manualPaymentRequest ManualPaymentRequest?
 
   @@index([branchId, createdAt])
@@ -461,51 +570,51 @@ model Sale {
 }
 
 model SaleItem {
-  id            String   @id @default(uuid())
-  saleId        String
-  productId     String
-  productName   String   // Denormalized for receipt
-  quantity      Decimal  @db.Decimal(10, 3)
-  unitPrice     Decimal  @db.Decimal(10, 2)
-  discount      Decimal  @default(0) @db.Decimal(10, 2)
-  taxRate       Decimal  @db.Decimal(5, 2)
-  taxAmount     Decimal  @db.Decimal(10, 2)
-  totalAmount   Decimal  @db.Decimal(10, 2)
+  id          String  @id @default(uuid())
+  saleId      String
+  productId   String
+  productName String // Denormalized for receipt
+  quantity    Decimal @db.Decimal(10, 3)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  discount    Decimal @default(0) @db.Decimal(10, 2)
+  taxRate     Decimal @db.Decimal(5, 2)
+  taxAmount   Decimal @db.Decimal(10, 2)
+  totalAmount Decimal @db.Decimal(10, 2)
 
-  sale          Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product       Product  @relation(fields: [productId], references: [id])
-  batches       SaleItemBatch[]
+  sale    Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  batches SaleItemBatch[]
 
   @@map("sale_items")
 }
 
 model SaleItemBatch {
-  id            String   @id @default(uuid())
-  saleItemId    String
-  stockBatchId  String
-  quantity      Decimal  @db.Decimal(10, 3)
-  batchNumber   String   // Denormalized for tracking
-  expiryDate    DateTime? // Denormalized for tracking
+  id           String    @id @default(uuid())
+  saleItemId   String
+  stockBatchId String
+  quantity     Decimal   @db.Decimal(10, 3)
+  batchNumber  String // Denormalized for tracking
+  expiryDate   DateTime? // Denormalized for tracking
 
-  saleItem      SaleItem    @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
-  stockBatch    StockBatch  @relation(fields: [stockBatchId], references: [id])
+  saleItem   SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  stockBatch StockBatch @relation(fields: [stockBatchId], references: [id])
 
   @@map("sale_item_batches")
 }
 
 model Customer {
-  id          String   @id @default(uuid())
-  tenantId    String
-  name        String
-  phone       String?
-  email       String?
-  address     String?
-  loyaltyPoints Int    @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  loyaltyPoints Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  sales       Sale[]
+  sales Sale[]
 
   @@map("customers")
 }
@@ -522,72 +631,72 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id                String        @id @default(uuid())
-  saleId            String
-  method            PaymentMethod
-  amount            Decimal       @db.Decimal(10, 2)
-  status            PaymentStatus @default(PENDING)
-  transactionId     String?       // External transaction ID
-  providerResponse  Json?         // Full response from payment provider
-  paidAt            DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id               String        @id @default(uuid())
+  saleId           String
+  method           PaymentMethod
+  amount           Decimal       @db.Decimal(10, 2)
+  status           PaymentStatus @default(PENDING)
+  transactionId    String? // External transaction ID
+  providerResponse Json? // Full response from payment provider
+  paidAt           DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  sale              Sale          @relation(fields: [saleId], references: [id])
+  sale Sale @relation(fields: [saleId], references: [id])
 
   @@index([transactionId])
   @@map("payments")
 }
 
 model MpesaTransaction {
-  id                  String   @id @default(uuid())
-  merchantRequestId   String   @unique
-  checkoutRequestId   String   @unique
-  phoneNumber         String
-  amount              Decimal  @db.Decimal(10, 2)
-  accountReference    String
-  transactionDesc     String?
-  resultCode          Int?
-  resultDesc          String?
-  mpesaReceiptNumber  String?
-  transactionDate     DateTime?
-  status              String   @default("pending")
-  callbackPayload     Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String    @id @default(uuid())
+  merchantRequestId  String    @unique
+  checkoutRequestId  String    @unique
+  phoneNumber        String
+  amount             Decimal   @db.Decimal(10, 2)
+  accountReference   String
+  transactionDesc    String?
+  resultCode         Int?
+  resultDesc         String?
+  mpesaReceiptNumber String?
+  transactionDate    DateTime?
+  status             String    @default("pending")
+  callbackPayload    Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@map("mpesa_transactions")
 }
 
 model PesapalTransaction {
-  id                    String   @id @default(uuid())
-  orderTrackingId       String   @unique
-  merchantReference     String
-  amount                Decimal  @db.Decimal(10, 2)
-  currency              String   @default("KES")
-  description           String?
-  paymentMethod         String?
-  status                String   @default("pending")
-  statusCode            Int?
-  message               String?
-  paymentAccountRef     String?
-  ipnPayload            Json?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                String   @id @default(uuid())
+  orderTrackingId   String   @unique
+  merchantReference String
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("KES")
+  description       String?
+  paymentMethod     String?
+  status            String   @default("pending")
+  statusCode        Int?
+  message           String?
+  paymentAccountRef String?
+  ipnPayload        Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@map("pesapal_transactions")
 }
 
 model TouristTapTransaction {
-  id                String   @id @default(uuid())
-  transactionRef    String   @unique
-  amount            Decimal  @db.Decimal(10, 2)
-  currency          String   @default("KES")
-  customerRef       String?
-  status            String   @default("pending")
-  providerResponse  Json?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(uuid())
+  transactionRef   String   @unique
+  amount           Decimal  @db.Decimal(10, 2)
+  currency         String   @default("KES")
+  customerRef      String?
+  status           String   @default("pending")
+  providerResponse Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@map("touristtap_transactions")
 }
@@ -608,7 +717,7 @@ model ManualPaymentRequest {
   branchId        String
   requestedById   String
   approvedById    String?
-  paymentMethod   String              // Manual payment method (cash, mpesa, etc.)
+  paymentMethod   String // Manual payment method (cash, mpesa, etc.)
   amount          Decimal             @db.Decimal(10, 2)
   reason          String
   status          ManualPaymentStatus @default(PENDING)
@@ -620,10 +729,10 @@ model ManualPaymentRequest {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  branch          Branch              @relation(fields: [branchId], references: [id])
-  requestedBy     User                @relation("ManualPaymentRequestedBy", fields: [requestedById], references: [id])
-  approvedBy      User?               @relation("ManualPaymentApprovedBy", fields: [approvedById], references: [id])
-  sale            Sale?               @relation(fields: [saleId], references: [id])
+  branch      Branch @relation(fields: [branchId], references: [id])
+  requestedBy User   @relation("ManualPaymentRequestedBy", fields: [requestedById], references: [id])
+  approvedBy  User?  @relation("ManualPaymentApprovedBy", fields: [approvedById], references: [id])
+  sale        Sale?  @relation(fields: [saleId], references: [id])
 
   @@index([branchId, status])
   @@index([status, createdAt])
@@ -655,31 +764,31 @@ enum ExpenseStatus {
 }
 
 model Expense {
-  id              String        @id @default(uuid())
-  expenseNumber   String        @unique
-  category        ExpenseCategory
-  branchId        String
-  supplier        String
-  reference       String?       // Invoice or receipt number
-  description     String
-  amount          Decimal       @db.Decimal(10, 2)
-  status          ExpenseStatus @default(PENDING)
-  date            DateTime
-  paymentMethod   String?
-  notes           String?
-  receiptImages   String[]      @default([])
-  createdById     String
-  approvedById    String?
-  approvedAt      DateTime?
-  offlineId       String?       @unique
-  metadata        Json          @default("{}")
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id            String          @id @default(uuid())
+  expenseNumber String          @unique
+  category      ExpenseCategory
+  branchId      String
+  supplier      String
+  reference     String? // Invoice or receipt number
+  description   String
+  amount        Decimal         @db.Decimal(10, 2)
+  status        ExpenseStatus   @default(PENDING)
+  date          DateTime
+  paymentMethod String?
+  notes         String?
+  receiptImages String[]        @default([])
+  createdById   String
+  approvedById  String?
+  approvedAt    DateTime?
+  offlineId     String?         @unique
+  metadata      Json            @default("{}")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  branch          Branch        @relation(fields: [branchId], references: [id])
-  createdBy       User          @relation(fields: [createdById], references: [id])
-  approvedBy      User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
-  items           ExpenseItem[]
+  branch     Branch        @relation(fields: [branchId], references: [id])
+  createdBy  User          @relation(fields: [createdById], references: [id])
+  approvedBy User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  items      ExpenseItem[]
 
   @@index([branchId, date])
   @@index([category, status])
@@ -688,15 +797,15 @@ model Expense {
 }
 
 model ExpenseItem {
-  id            String   @id @default(uuid())
-  expenseId     String
-  description   String
-  quantity      Decimal  @db.Decimal(10, 2)
-  unitPrice     Decimal  @db.Decimal(10, 2)
-  total         Decimal  @db.Decimal(10, 2)
-  createdAt     DateTime @default(now())
+  id          String   @id @default(uuid())
+  expenseId   String
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
 
-  expense       Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
   @@index([expenseId])
   @@map("expense_items")
@@ -705,31 +814,31 @@ model ExpenseItem {
 // ==================== REFUNDS ====================
 
 model Refund {
-  id              String   @id @default(uuid())
-  saleId          String
-  amount          Decimal  @db.Decimal(10, 2)
-  reason          String
-  status          String   @default("pending")
-  processedById   String?
-  processedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  saleId        String
+  amount        Decimal   @db.Decimal(10, 2)
+  reason        String
+  status        String    @default("pending")
+  processedById String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  sale            Sale     @relation(fields: [saleId], references: [id])
-  items           RefundItem[]
+  sale  Sale         @relation(fields: [saleId], references: [id])
+  items RefundItem[]
 
   @@map("refunds")
 }
 
 model RefundItem {
-  id            String   @id @default(uuid())
-  refundId      String
-  saleItemId    String
-  quantity      Decimal  @db.Decimal(10, 3)
-  amount        Decimal  @db.Decimal(10, 2)
-  restockItem   Boolean  @default(true)
+  id          String  @id @default(uuid())
+  refundId    String
+  saleItemId  String
+  quantity    Decimal @db.Decimal(10, 3)
+  amount      Decimal @db.Decimal(10, 2)
+  restockItem Boolean @default(true)
 
-  refund        Refund   @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  refund Refund @relation(fields: [refundId], references: [id], onDelete: Cascade)
 
   @@map("refund_items")
 }
@@ -767,27 +876,27 @@ enum SyncEventType {
 }
 
 model SyncEvent {
-  id            String          @id @default(uuid())
-  deviceId      String
-  branchId      String
-  userId        String
-  eventType     SyncEventType
-  eventId       String          // Original event ID from device
-  entityId      String?         // Server-side entity ID after processing
-  entityType    String?         // Type of entity processed
-  payload       Json
-  status        SyncEventStatus @default(PENDING)
-  attempts      Int             @default(0)
-  retryCount    Int             @default(0)
-  resolution    String?         // Conflict resolution strategy used
-  error         String?         // Error details if failed
-  errorMessage  String?
-  processedAt   DateTime?
-  deviceTimestamp DateTime      // When event occurred on device
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id              String          @id @default(uuid())
+  deviceId        String
+  branchId        String
+  userId          String
+  eventType       SyncEventType
+  eventId         String // Original event ID from device
+  entityId        String? // Server-side entity ID after processing
+  entityType      String? // Type of entity processed
+  payload         Json
+  status          SyncEventStatus @default(PENDING)
+  attempts        Int             @default(0)
+  retryCount      Int             @default(0)
+  resolution      String? // Conflict resolution strategy used
+  error           String? // Error details if failed
+  errorMessage    String?
+  processedAt     DateTime?
+  deviceTimestamp DateTime // When event occurred on device
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  device        Device          @relation(fields: [deviceId], references: [id])
+  device Device @relation(fields: [deviceId], references: [id])
 
   @@unique([deviceId, eventId])
   @@index([status, createdAt])
@@ -797,18 +906,18 @@ model SyncEvent {
 // ==================== AUDIT & LOGGING ====================
 
 model AuditLog {
-  id          String   @id @default(uuid())
-  userId      String?
-  action      String
-  entityType  String
-  entityId    String?
-  oldValues   Json?
-  newValues   Json?
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
 
-  user        User?    @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
   @@index([entityType, entityId])
   @@index([createdAt])
@@ -830,17 +939,17 @@ enum ConflictResolution {
 }
 
 model ConflictLog {
-  id            String              @id @default(uuid())
-  tableName     String
-  recordId      String
-  conflictType  ConflictType
-  resolution    ConflictResolution
-  serverData    Json?
-  clientData    Json?
-  resolvedData  Json?
-  notes         String?
-  createdAt     DateTime            @default(now())
-  createdBy     String?
+  id           String             @id @default(uuid())
+  tableName    String
+  recordId     String
+  conflictType ConflictType
+  resolution   ConflictResolution
+  serverData   Json?
+  clientData   Json?
+  resolvedData Json?
+  notes        String?
+  createdAt    DateTime           @default(now())
+  createdBy    String?
 
   @@index([tableName, recordId])
   @@index([conflictType])
@@ -851,16 +960,16 @@ model ConflictLog {
 // ==================== AI SUBSCRIPTIONS & BILLING ====================
 
 model PosClient {
-  id          String   @id @default(uuid())
-  name        String   // e.g., 'Levisa', 'TSL', 'Kate'
-  slug        String   @unique
-  logo        String?
-  isActive    Boolean  @default(true)
-  settings    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  name      String // e.g., 'Levisa', 'TSL', 'Kate'
+  slug      String   @unique
+  logo      String?
+  isActive  Boolean  @default(true)
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  branches    Branch[]
+  branches Branch[]
 
   @@map("pos_clients")
 }
@@ -874,30 +983,30 @@ enum AiSubscriptionStatus {
 }
 
 model AiSubscription {
-  id                      String                @id @default(uuid())
-  branchId                String                @unique
-  status                  AiSubscriptionStatus  @default(UNPAID)
-  trialStartedAt          DateTime?
-  trialEndsAt             DateTime?
-  subscribedAt            DateTime?
-  expiresAt               DateTime?
-  autoRenew               Boolean               @default(true)
-  price                   Decimal               @default(1500.00) @db.Decimal(10, 2)
-  mpesaPhone              String?               // Store owner's M-Pesa phone (legacy manual flow)
-  smsPermission           Boolean               @default(false)
+  id                        String               @id @default(uuid())
+  branchId                  String               @unique
+  status                    AiSubscriptionStatus @default(UNPAID)
+  trialStartedAt            DateTime?
+  trialEndsAt               DateTime?
+  subscribedAt              DateTime?
+  expiresAt                 DateTime?
+  autoRenew                 Boolean              @default(true)
+  price                     Decimal              @default(1500.00) @db.Decimal(10, 2)
+  mpesaPhone                String? // Store owner's M-Pesa phone (legacy manual flow)
+  smsPermission             Boolean              @default(false)
   // Paystack recurring billing — set once the customer's first card
   // charge succeeds, then reused by the renewal cron with no customer
   // action needed.
-  paystackCustomerCode    String?
-  paystackCustomerEmail   String?
+  paystackCustomerCode      String?
+  paystackCustomerEmail     String?
   paystackAuthorizationCode String?
-  lastRenewalAttemptAt    DateTime?
-  renewalFailureCount     Int                   @default(0)
-  createdAt               DateTime              @default(now())
-  updatedAt               DateTime              @updatedAt
+  lastRenewalAttemptAt      DateTime?
+  renewalFailureCount       Int                  @default(0)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
-  branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  payments        AiPayment[]
+  branch   Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  payments AiPayment[]
 
   @@index([status])
   @@index([expiresAt])
@@ -916,24 +1025,24 @@ enum AiPaymentMethod {
 }
 
 model AiPayment {
-  id                String            @id @default(uuid())
+  id                String          @id @default(uuid())
   subscriptionId    String
-  method            AiPaymentMethod   @default(MPESA_MANUAL)
-  mpesaCode         String?           @unique
-  paystackReference String?           @unique
-  amount            Decimal           @db.Decimal(10, 2)
+  method            AiPaymentMethod @default(MPESA_MANUAL)
+  mpesaCode         String?         @unique
+  paystackReference String?         @unique
+  amount            Decimal         @db.Decimal(10, 2)
   senderPhone       String?
-  recipientPhone    String?           @default("0742126582")
+  recipientPhone    String?         @default("0742126582")
   smsRaw            String?
-  isRenewal         Boolean           @default(false)
-  verified          Boolean           @default(false)
-  status            AiPaymentStatus   @default(PENDING)
+  isRenewal         Boolean         @default(false)
+  verified          Boolean         @default(false)
+  status            AiPaymentStatus @default(PENDING)
   verifiedAt        DateTime?
-  verifiedBy        String?           // 'auto_sms' | 'admin_manual' | 'paystack_webhook' | 'paystack_renewal_cron'
+  verifiedBy        String? // 'auto_sms' | 'admin_manual' | 'paystack_webhook' | 'paystack_renewal_cron'
   adminNotes        String?
-  createdAt         DateTime          @default(now())
+  createdAt         DateTime        @default(now())
 
-  subscription      AiSubscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscription AiSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([createdAt])
@@ -954,8 +1063,8 @@ model Supplier {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  invoices    SupplierInvoice[]
-  payments    SupplierPayment[]
+  invoices SupplierInvoice[]
+  payments SupplierPayment[]
 
   @@unique([tenantId, name])
   @@map("suppliers")
@@ -991,11 +1100,11 @@ model SupplierInvoice {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  branch          Branch                @relation(fields: [branchId], references: [id])
-  supplier        Supplier              @relation(fields: [supplierId], references: [id])
-  createdBy       User                  @relation(fields: [createdById], references: [id])
-  items           SupplierInvoiceItem[]
-  payments        SupplierPayment[]
+  branch    Branch                @relation(fields: [branchId], references: [id])
+  supplier  Supplier              @relation(fields: [supplierId], references: [id])
+  createdBy User                  @relation(fields: [createdById], references: [id])
+  items     SupplierInvoiceItem[]
+  payments  SupplierPayment[]
 
   @@index([branchId, status])
   @@index([supplierId])
@@ -1013,8 +1122,8 @@ model SupplierInvoiceItem {
   lineTotal   Decimal  @db.Decimal(10, 2)
   createdAt   DateTime @default(now())
 
-  invoice     SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  product     Product?        @relation(fields: [productId], references: [id])
+  invoice SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [productId], references: [id])
 
   @@index([invoiceId])
   @@map("supplier_invoice_items")
@@ -1030,9 +1139,9 @@ model SupplierPayment {
   createdById String
   createdAt   DateTime @default(now())
 
-  supplier    Supplier         @relation(fields: [supplierId], references: [id])
-  invoice     SupplierInvoice? @relation(fields: [invoiceId], references: [id])
-  createdBy   User             @relation(fields: [createdById], references: [id])
+  supplier  Supplier         @relation(fields: [supplierId], references: [id])
+  invoice   SupplierInvoice? @relation(fields: [invoiceId], references: [id])
+  createdBy User             @relation(fields: [createdById], references: [id])
 
   @@index([supplierId])
   @@index([invoiceId])
@@ -1060,7 +1169,7 @@ model BranchCashSettings {
   mode      CashFlowMode @default(CASH_ONLY)
   updatedAt DateTime     @updatedAt
 
-  branch    Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@map("branch_cash_settings")
 }
@@ -1077,7 +1186,7 @@ model CashLedgerEntry {
   createdById   String?
   createdAt     DateTime      @default(now())
 
-  branch        Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   // sumToday()/sumNegativeToday() in cash-flow.service.ts filter on all
   // three columns together (branchId, type, createdAt range) — this
@@ -1091,25 +1200,25 @@ model CashLedgerEntry {
 // ==================== CASH RECONCILIATION ====================
 
 model CashReconciliation {
-  id             String   @id @default(uuid())
-  branchId       String
+  id           String       @id @default(uuid())
+  branchId     String
   // Snapshot of CashFlowService.getAvailableCash() at the moment this
   // reconciliation was opened — a live/moving figure otherwise, so it must
   // be captured once and stored rather than recomputed later.
-  expectedCash   Decimal  @db.Decimal(10, 2)
-  countedCash    Decimal  @db.Decimal(10, 2)
+  expectedCash Decimal      @db.Decimal(10, 2)
+  countedCash  Decimal      @db.Decimal(10, 2)
   // countedCash - expectedCash. Negative = shortfall (missing cash),
   // positive = overage (more cash than expected).
-  discrepancy    Decimal  @db.Decimal(10, 2)
-  cashMode       CashFlowMode
-  periodStart    DateTime
-  periodEnd      DateTime @default(now())
-  notes          String?
-  countedById    String
-  createdAt      DateTime @default(now())
+  discrepancy  Decimal      @db.Decimal(10, 2)
+  cashMode     CashFlowMode
+  periodStart  DateTime
+  periodEnd    DateTime     @default(now())
+  notes        String?
+  countedById  String
+  createdAt    DateTime     @default(now())
 
-  branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  countedBy      User     @relation(fields: [countedById], references: [id])
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  countedBy User   @relation(fields: [countedById], references: [id])
 
   @@index([branchId, createdAt])
   @@map("cash_reconciliations")

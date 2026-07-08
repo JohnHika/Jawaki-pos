@@ -1,26 +1,21 @@
 /// Role-based access control for Axon POS.
 ///
-/// Hierarchy (higher inherits all lower permissions):
-///   ADMIN > STORE_MANAGER > STOCK_KEEPER > SELLER
+/// The backend is the real enforcement point: it computes each user's
+/// effective permission set (union of assigned roles' permissions, plus
+/// personal grants, minus personal revokes — see PermissionsService on the
+/// backend) and returns it as `permissions: string[]` on login. This file
+/// is a thin mobile-side reflection of that decision, not a second source
+/// of truth — every getter here just checks membership in that set.
 ///
-/// Seller         — POS, own sales, basic settings
-/// Stock Keeper   — + Inventory, Products (view only), stock alerts
-/// Store Manager  — + Products CRUD, reports, all sales, discounts, printer/sync/notif settings
-/// Admin          — + User management, branches, financial reports, audit, data export, system settings
+/// [AppRole] is kept only as a display concept (e.g. a "primary role" chip
+/// in the UI) computed from the user's highest-privilege assigned role; it
+/// no longer drives any access decision on its own.
 
 enum AppRole {
   seller,
   stockKeeper,
   storeManager,
   admin;
-
-  /// The hierarchy level (higher = more permissions).
-  int get level => switch (this) {
-    AppRole.seller       => 0,
-    AppRole.stockKeeper  => 1,
-    AppRole.storeManager => 2,
-    AppRole.admin        => 3,
-  };
 
   /// Display label.
   String get label => switch (this) {
@@ -30,68 +25,97 @@ enum AppRole {
     AppRole.admin        => 'Admin',
   };
 
-  /// Parse from the string stored in user map / database.
+  /// Best-effort display role derived from a granular permission set —
+  /// used only for a UI chip, never for gating. Highest tier wins.
+  static AppRole fromPermissions(Set<String> permissions) {
+    if (permissions.contains('roles.update') || permissions.contains('audit.read')) {
+      return AppRole.admin;
+    }
+    if (permissions.contains('reporting.dashboard') || permissions.contains('products.create')) {
+      return AppRole.storeManager;
+    }
+    if (permissions.contains('inventory.stock.adjust')) {
+      return AppRole.stockKeeper;
+    }
+    return AppRole.seller;
+  }
+
+  /// Legacy string parse, kept for any code still passing the old
+  /// LegacyUserRole string (e.g. before permissions are fetched).
   static AppRole fromString(String? value) => switch (value?.toLowerCase()) {
     'admin'         => AppRole.admin,
-    'store_manager' || 'storemanager' || 'manager' => AppRole.storeManager,
-    'stock_keeper'  || 'stockkeeper'               => AppRole.stockKeeper,
+    'manager' || 'store_manager' || 'storemanager' => AppRole.storeManager,
+    'supervisor' || 'stock_keeper' || 'stockkeeper' => AppRole.stockKeeper,
     _               => AppRole.seller,
   };
-
-  /// Returns true if this role is at least [other] in the hierarchy.
-  bool isAtLeast(AppRole other) => level >= other.level;
 }
 
-/// Central permission definitions tied to roles.
+/// Thin reflector over the backend-computed effective permission set.
+/// Getter names are preserved from the pre-granular-permissions version so
+/// existing call sites across the app don't all need touching at once.
 class RolePermissions {
+  final Set<String> _permissions;
   final AppRole role;
-  const RolePermissions(this.role);
+
+  RolePermissions(List<dynamic>? permissions)
+      : _permissions = (permissions ?? const []).map((e) => e.toString()).toSet(),
+        role = AppRole.fromPermissions(
+          (permissions ?? const []).map((e) => e.toString()).toSet(),
+        );
+
+  /// Escape hatch for raw key checks — used by the role editor / user
+  /// permission override screens, which need every one of the ~130 keys,
+  /// not just the fixed getters below.
+  bool has(String key) => _permissions.contains(key);
+
+  bool _any(List<String> keys) => keys.any(_permissions.contains);
 
   // ── Bottom-nav tabs ──────────────────────────
   bool get canSeePOS        => true; // everyone
-  bool get canSeeDashboard  => role.isAtLeast(AppRole.storeManager);
-  bool get canSeeProducts   => role.isAtLeast(AppRole.stockKeeper);
-  bool get canSeeInventory  => role.isAtLeast(AppRole.stockKeeper);
-  bool get canSeeReports    => role.isAtLeast(AppRole.storeManager);
+  bool get canSeeDashboard  => has('reporting.dashboard');
+  bool get canSeeProducts   => has('products.view');
+  bool get canSeeInventory  => has('inventory.stock.view');
+  bool get canSeeReports    => _any(['reporting.sales_summary', 'reporting.dashboard']);
   bool get canSeeSettings   => true; // everyone, but content differs
 
   // ── Product capabilities ─────────────────────
-  /// Stock keepers can browse; managers+ can create/edit/delete.
-  bool get canViewProducts  => role.isAtLeast(AppRole.stockKeeper);
-  bool get canEditProducts  => role.isAtLeast(AppRole.storeManager);
+  bool get canViewProducts  => has('products.view');
+  bool get canEditProducts  => has('products.update');
 
   // ── Inventory ────────────────────────────────
-  bool get canManageStock   => role.isAtLeast(AppRole.stockKeeper);
+  bool get canManageStock   => has('inventory.stock.adjust');
 
   // ── Sales ────────────────────────────────────
-  bool get canMakeSales     => true;
-  bool get canViewAllSales  => role.isAtLeast(AppRole.storeManager);
-  bool get canVoidSales     => role.isAtLeast(AppRole.storeManager);
-  bool get canApplyDiscount => role.isAtLeast(AppRole.storeManager);
+  bool get canMakeSales     => has('sales.create');
+  bool get canViewAllSales  => has('sales.view_all');
+  bool get canVoidSales     => has('sales.void');
+  bool get canApplyDiscount => has('sales.discount');
 
   // ── Settings sections ────────────────────────
-  bool get canConfigurePrinter      => role.isAtLeast(AppRole.storeManager);
-  bool get canConfigureSync         => role.isAtLeast(AppRole.storeManager);
-  bool get canConfigureNotifications => role.isAtLeast(AppRole.storeManager);
-  bool get canChangePin             => true;
-  bool get canConfigureSecurity     => true;
-  bool get canSeeHelpSupport        => true;
-  bool get canSeeAbout              => true;
-  bool get canSeeAppearance         => true;
+  bool get canConfigurePrinter       => has('settings.printer_configure');
+  bool get canConfigureSync          => has('settings.sync_configure');
+  bool get canConfigureNotifications => has('settings.notifications_configure');
+  bool get canChangePin              => true;
+  bool get canConfigureSecurity      => has('settings.security_configure');
+  bool get canSeeHelpSupport         => true;
+  bool get canSeeAbout               => true;
+  bool get canSeeAppearance          => true;
 
   // ── Admin-only ───────────────────────────────
-  bool get canManageUsers           => role.isAtLeast(AppRole.admin);
-  bool get canManageBranches        => role.isAtLeast(AppRole.admin);
-  bool get canSeeFinancialReports   => role.isAtLeast(AppRole.admin);
-  bool get canSeeAuditTrail         => role.isAtLeast(AppRole.admin);
-  bool get canExportData            => role.isAtLeast(AppRole.admin);
-  bool get canConfigureSystemSecurity => role.isAtLeast(AppRole.admin);
+  bool get canManageUsers             => has('users.view');
+  bool get canManageBranches          => has('branches.create');
+  bool get canSeeFinancialReports     => has('reporting.financial');
+  bool get canSeeAuditTrail           => has('audit.read');
+  bool get canExportData              => has('data.export');
+  bool get canConfigureSystemSecurity => has('settings.system_security_configure');
 
   // ── Cash flow & restocking ───────────────────
-  bool get canViewCashFlow   => role.isAtLeast(AppRole.storeManager);
-  bool get canRecordRestock  => role.isAtLeast(AppRole.stockKeeper);
-  // Backend gates this at SUPERVISOR+; mobile's role model has no direct
-  // supervisor tier, so it rounds up to storeManager+ — same treatment as
-  // canVoidSales above for the same backend/mobile role mismatch.
-  bool get canReconcileCash  => role.isAtLeast(AppRole.storeManager);
+  bool get canViewCashFlow   => has('cash_flow.settings_view');
+  bool get canRecordRestock  => has('suppliers.invoices_create');
+  bool get canReconcileCash  => has('cash_reconciliation.create');
+
+  // ── Roles & permissions admin (new) ──────────
+  bool get canManageRoles            => has('roles.view');
+  bool get canAssignRoles            => has('permissions.assign_role');
+  bool get canOverrideUserPermissions => has('permissions.override_user');
 }

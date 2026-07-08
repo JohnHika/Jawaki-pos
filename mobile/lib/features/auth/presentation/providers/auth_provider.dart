@@ -116,6 +116,32 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Logs into a phone-server (offline mode) as a user who set up an
+  /// offline-access PIN in advance while online. Only meaningful when
+  /// this device's base URL is already pointed at a phone-server.
+  Future<bool> loginWithOfflinePin({
+    required String email,
+    required String pin,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      await _authService.loginWithOfflinePin(email: email, pin: pin);
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: _authService.currentUser,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _getErrorMessage(e),
+      );
+      return false;
+    }
+  }
+
   Future<bool> hasLocalPinSet() => _authService.hasLocalPinSet();
 
   Future<void> setLocalPin(String pin) => _authService.setLocalPin(pin);
@@ -231,11 +257,20 @@ final userRoleProvider = Provider<String?>((ref) {
   return ref.watch(currentUserProvider)?['role'];
 });
 
-final appRoleProvider = Provider<AppRole>((ref) {
-  final roleStr = ref.watch(userRoleProvider);
-  return AppRole.fromString(roleStr);
+/// Effective permission keys from the backend's login response — the real
+/// source of truth. Falls back to an empty set (no access) if absent
+/// rather than guessing, since an empty/missing list from a logged-in
+/// session would itself indicate something is wrong upstream.
+final userPermissionsProvider = Provider<List<dynamic>>((ref) {
+  return ref.watch(currentUserProvider)?['permissions'] as List<dynamic>? ?? const [];
 });
 
 final permissionsProvider = Provider<RolePermissions>((ref) {
-  return RolePermissions(ref.watch(appRoleProvider));
+  return RolePermissions(ref.watch(userPermissionsProvider));
+});
+
+/// Display-only role chip derived from the permission set — never used
+/// for gating, see RolePermissions/AppRole docs in app_roles.dart.
+final appRoleProvider = Provider<AppRole>((ref) {
+  return ref.watch(permissionsProvider).role;
 });

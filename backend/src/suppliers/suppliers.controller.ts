@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto, CreateSupplierInvoiceDto, RecordSupplierPaymentDto } from './dto/suppliers.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('suppliers')
@@ -44,6 +46,8 @@ export class SuppliersController {
   }
 
   @Post('invoices')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('suppliers.invoices_create')
   @ApiOperation({ summary: 'Record a supplier invoice (restock purchase)' })
   @ApiResponse({ status: 201, description: 'Invoice recorded, stock updated' })
   async createInvoice(
@@ -62,6 +66,8 @@ export class SuppliersController {
   }
 
   @Post('invoices/:id/payments')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('suppliers.payments_record')
   @ApiOperation({ summary: 'Record a payment against a supplier invoice' })
   @ApiResponse({ status: 201, description: 'Payment recorded' })
   async recordPayment(

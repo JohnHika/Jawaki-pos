@@ -36,9 +36,8 @@ import {
   StockRequestResponseDto,
 } from './dto/inventory.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
 @ApiTags('inventory')
 @Controller({ path: 'inventory', version: '1' })
@@ -66,8 +65,8 @@ export class InventoryController {
   }
 
   @Post('adjust')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.stock.adjust')
   @ApiOperation({ summary: 'Adjust stock levels (Supervisor+ only)' })
   @ApiResponse({ status: 201, description: 'Stock adjusted' })
   async adjustStock(@Request() req: any, @Body() dto: StockAdjustmentDto) {
@@ -126,8 +125,8 @@ export class InventoryController {
   // ==================== TRANSFERS ====================
 
   @Post('transfers')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.transfers.create')
   @ApiOperation({ summary: 'Create a stock transfer request' })
   @ApiResponse({ status: 201, description: 'Transfer created', type: TransferResponseDto })
   async createTransfer(@Request() req: any, @Body() dto: CreateTransferDto) {
@@ -165,8 +164,8 @@ export class InventoryController {
   }
 
   @Post('transfers/:id/send')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.transfers.send')
   @ApiOperation({ summary: 'Send a pending transfer' })
   @ApiResponse({ status: 200, description: 'Transfer sent' })
   async sendTransfer(@Param('id') id: string, @Request() req: any) {
@@ -174,8 +173,8 @@ export class InventoryController {
   }
 
   @Post('transfers/:id/receive')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.transfers.receive')
   @ApiOperation({ summary: 'Receive a transfer' })
   @ApiResponse({ status: 200, description: 'Transfer received' })
   async receiveTransfer(
@@ -189,8 +188,8 @@ export class InventoryController {
   // ==================== BATCH & EXPIRY MANAGEMENT ====================
 
   @Post('batches/receive')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.batches.receive')
   @ApiOperation({ summary: 'Receive stock with batch tracking (for medicines)' })
   @ApiResponse({ status: 201, description: 'Batches received successfully' })
   async receiveBatch(@Request() req: any, @Body() dto: ReceiveBatchDto) {
@@ -209,8 +208,8 @@ export class InventoryController {
   }
 
   @Put('batches/:batchId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.batches.update')
   @ApiOperation({ summary: 'Update batch details (block expired, adjust quantity)' })
   @ApiResponse({ status: 200, description: 'Batch updated' })
   async updateBatch(
@@ -222,8 +221,8 @@ export class InventoryController {
   }
 
   @Get('expiry-dashboard')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.expiry.dashboard')
   @ApiOperation({ summary: 'Expiry Dashboard - View expired and expiring stock (Manager+)' })
   @ApiResponse({ status: 200, description: 'Expiry dashboard data', type: ExpiryDashboardResponseDto })
   async getExpiryDashboard(
@@ -234,8 +233,8 @@ export class InventoryController {
   }
 
   @Post('batches/block-expired')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.expiry.block_expired')
   @ApiOperation({ summary: 'Auto-block all expired batches (Admin only)' })
   @ApiResponse({ status: 200, description: 'Expired batches blocked' })
   async blockExpiredBatches(@Request() req: any) {
@@ -295,8 +294,8 @@ export class InventoryController {
   }
 
   @Put('stock-requests/:id/resolve')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.stock_requests.resolve')
   @ApiOperation({ summary: 'Resolve a stock request (approve/reject/fulfill) - Supervisor+ only' })
   @ApiResponse({ status: 200, description: 'Stock request resolved', type: StockRequestResponseDto })
   async resolveStockRequest(
@@ -315,8 +314,8 @@ export class InventoryController {
   }
 
   @Get('stock-requests/stats/summary')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.stock_requests.resolve')
   @ApiOperation({ summary: 'Get stock request statistics - Supervisor+ only' })
   @ApiResponse({ status: 200, description: 'Stock request statistics' })
   async getStockRequestStats(@Request() req: any, @Query('branchId') branchId?: string) {

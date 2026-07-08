@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ReportingService } from './reporting.service';
 import {
@@ -29,12 +29,12 @@ import {
 @ApiTags('Reporting')
 @ApiBearerAuth()
 @Controller('reports')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ReportingController {
   constructor(private reportingService: ReportingService) {}
 
   @Get('dashboard')
-  @Roles('MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.dashboard')
   @ApiOperation({ summary: 'Get dashboard summary' })
   @ApiResponse({ status: 200, type: DashboardSummaryDto })
   async getDashboard(
@@ -45,7 +45,7 @@ export class ReportingController {
   }
 
   @Get('sales/summary')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.sales_summary')
   @ApiOperation({ summary: 'Get sales summary' })
   @ApiResponse({ status: 200, type: SalesSummaryDto })
   async getSalesSummary(
@@ -56,7 +56,7 @@ export class ReportingController {
   }
 
   @Get('sales/trend')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.sales_trend')
   @ApiOperation({ summary: 'Get sales trend over time' })
   @ApiResponse({ status: 200, type: [SalesTrendDto] })
   async getSalesTrend(
@@ -67,7 +67,7 @@ export class ReportingController {
   }
 
   @Get('products/top')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.top_products')
   @ApiOperation({ summary: 'Get top selling products' })
   @ApiResponse({ status: 200, type: [TopProductDto] })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -80,7 +80,7 @@ export class ReportingController {
   }
 
   @Get('categories')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.category_sales')
   @ApiOperation({ summary: 'Get sales by category' })
   @ApiResponse({ status: 200, type: [CategorySalesDto] })
   async getCategorySales(
@@ -91,7 +91,7 @@ export class ReportingController {
   }
 
   @Get('cashiers')
-  @Roles('MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.cashier_performance')
   @ApiOperation({ summary: 'Get cashier performance' })
   @ApiResponse({ status: 200, type: [CashierPerformanceDto] })
   async getCashierPerformance(
@@ -102,7 +102,7 @@ export class ReportingController {
   }
 
   @Get('payments')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.payment_breakdown')
   @ApiOperation({ summary: 'Get payment method breakdown' })
   @ApiResponse({ status: 200, type: [PaymentMethodBreakdownDto] })
   async getPaymentMethodBreakdown(
@@ -113,7 +113,7 @@ export class ReportingController {
   }
 
   @Get('branches')
-  @Roles('MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.branch_comparison')
   @ApiOperation({ summary: 'Get branch comparison' })
   @ApiResponse({ status: 200, type: [BranchComparisonDto] })
   async getBranchComparison(
@@ -124,7 +124,7 @@ export class ReportingController {
   }
 
   @Get('inventory')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.inventory_report')
   @ApiOperation({ summary: 'Get inventory report' })
   @ApiResponse({ status: 200, type: InventoryReportDto })
   async getInventoryReport(
@@ -135,7 +135,7 @@ export class ReportingController {
   }
 
   @Get('inventory/movements')
-  @Roles('SUPERVISOR', 'MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.inventory_report')
   @ApiOperation({ summary: 'Get stock movement summary' })
   @ApiResponse({ status: 200, type: StockMovementSummaryDto })
   async getStockMovementSummary(
@@ -146,7 +146,7 @@ export class ReportingController {
   }
 
   @Get('profit-loss/:branchId/:date')
-  @Roles('MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.profit_loss')
   @ApiOperation({ summary: 'Get daily profit and loss report with expense integration' })
   @ApiResponse({ status: 200, type: DailyProfitAndLossDto })
   async getDailyProfitAndLoss(
@@ -158,7 +158,7 @@ export class ReportingController {
   }
 
   @Get('profit-loss')
-  @Roles('MANAGER', 'ADMIN')
+  @RequirePermissions('reporting.profit_loss')
   @ApiOperation({ summary: 'Get profit and loss trend over a date range' })
   @ApiResponse({ status: 200, type: [DailyProfitAndLossDto] })
   async getProfitAndLossRange(

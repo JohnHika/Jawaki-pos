@@ -1,8 +1,10 @@
-import { Controller, Post, Get, Body, Query, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, UseGuards } from '@nestjs/common';
 import { AiBillingService } from '../ai-billing.service';
 import { AdminActionDto } from '../dto/subscribe.dto';
+import { AdminSecretGuard } from './admin-secret.guard';
 
 @Controller('api/v1/admin/ai-billing')
+@UseGuards(AdminSecretGuard)
 export class AiBillingAdminController {
   constructor(private readonly billingService: AiBillingService) {}
 

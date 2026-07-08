@@ -25,6 +25,7 @@ class AuthRoutes {
   void addRoutes(Router r) {
     r.post('/api/v1/auth/login', _handleLogin);
     r.post('/api/v1/auth/pin-login', _handlePinLogin);
+    r.post('/api/v1/auth/offline-pin-login', _handleOfflinePinLogin);
     r.post('/api/v1/auth/refresh', _handleRefresh);
     r.post('/api/v1/auth/logout', _handleLogout);
   }
@@ -89,6 +90,49 @@ class AuthRoutes {
     }
 
     return _error(401, 'Invalid PIN');
+  }
+
+  /// POST /api/v1/auth/offline-pin-login
+  ///
+  /// Verifies against `offline_pin_hash` — set on the real backend via
+  /// POST /auth/offline-access-pin and pulled into this device via
+  /// LocalServerService._syncOfflineDirectory. Distinct from
+  /// [_handlePinLogin]'s `pin_hash`, which is this device's own local
+  /// quick-unlock PIN and has nothing to do with other users.
+  Future<shelf.Response> _handleOfflinePinLogin(shelf.Request request) async {
+    final body = getRequestBody(request);
+    if (body == null) {
+      return _error(400, 'Request body is required');
+    }
+
+    final email = body['email'] as String?;
+    final pin = body['pin'] as String?;
+    if (email == null || pin == null) {
+      return _error(400, 'Email and PIN are required');
+    }
+
+    final user = await _findUserByEmail(email);
+    if (user == null) {
+      return _error(401, 'Invalid credentials');
+    }
+
+    if (user['isActive'] != true) {
+      return _error(403, 'Account is deactivated. Contact your administrator.');
+    }
+
+    final offlinePinHash = user['offlinePinHash'] as String?;
+    if (offlinePinHash == null) {
+      return _error(
+        401,
+        'This account has not set up offline access. Set an offline-access PIN in Settings while online first.',
+      );
+    }
+
+    if (!_verifySaltedPin(pin, offlinePinHash)) {
+      return _error(401, 'Invalid credentials');
+    }
+
+    return _generateAuthResponse(user);
   }
 
   /// POST /api/v1/auth/refresh
@@ -173,6 +217,7 @@ class AuthRoutes {
     final role = (user['role'] as String?) ?? 'CASHIER';
     final tenantId = (user['tenantId'] as String?) ?? 'local';
     final branchId = user['branchId'] as String?;
+    final permissions = (user['permissions'] as List<dynamic>?) ?? const [];
 
     // Generate tokens
     final accessToken = AuthToken.generate(
@@ -211,6 +256,7 @@ class AuthRoutes {
           'role': role,
           'tenantId': tenantId,
           'branchId': branchId,
+          'permissions': permissions,
           'branches': [
             {'id': branchId ?? '', 'name': 'Default Branch', 'isPrimary': true},
           ],
@@ -225,13 +271,26 @@ class AuthRoutes {
     return inputHash == hash;
   }
 
+  /// Verifies a PIN against the `salt:hash` scheme the backend computes
+  /// in AuthService.setOfflineAccessPin (salted SHA-256, matching this
+  /// exact `$salt:$pin` concatenation so both sides agree byte-for-byte).
+  bool _verifySaltedPin(String pin, String saltedHash) {
+    final parts = saltedHash.split(':');
+    if (parts.length != 2) return false;
+    final salt = parts[0];
+    final expectedHash = parts[1];
+    final actualHash = sha256.convert(utf8.encode('$salt:$pin')).toString();
+    return actualHash == expectedHash;
+  }
+
   Future<void> _ensureServerUsersTable() async {
     await _db.customStatement(
       'CREATE TABLE IF NOT EXISTS server_users ('
       '  id TEXT PRIMARY KEY NOT NULL, '
       '  email TEXT NOT NULL UNIQUE, '
-      '  password_hash TEXT NOT NULL, '
+      '  password_hash TEXT NOT NULL DEFAULT \'\', '
       '  pin_hash TEXT, '
+      '  offline_pin_hash TEXT, '
       '  first_name TEXT NOT NULL DEFAULT \'\', '
       '  last_name TEXT NOT NULL DEFAULT \'\', '
       '  role TEXT NOT NULL DEFAULT \'CASHIER\', '
@@ -239,10 +298,26 @@ class AuthRoutes {
       '  branch_id TEXT, '
       '  is_active INTEGER NOT NULL DEFAULT 1, '
       '  last_login_at TEXT, '
+      '  permissions_json TEXT, '
       '  created_at TEXT NOT NULL, '
       '  updated_at TEXT NOT NULL'
       ')',
     );
+    // Additive migration for tables created before these columns existed —
+    // CREATE TABLE IF NOT EXISTS above is a no-op on an existing table, so
+    // new columns have to be added separately. SQLite has no "ADD COLUMN
+    // IF NOT EXISTS", so a duplicate-column error here just means an
+    // earlier run already added it.
+    for (final columnDef in [
+      'permissions_json TEXT',
+      'offline_pin_hash TEXT',
+    ]) {
+      try {
+        await _db.customStatement('ALTER TABLE server_users ADD COLUMN $columnDef');
+      } catch (_) {
+        // Column already exists — expected on every run after the first.
+      }
+    }
   }
 
   Future<void> _ensureRefreshTokensTable() async {
@@ -258,11 +333,13 @@ class AuthRoutes {
   }
 
   Map<String, dynamic> _rowToMap(QueryRow row) {
+    final permissionsJson = row.readNullable<String>('permissions_json');
     return {
       'id': row.read<String>('id'),
       'email': row.read<String>('email'),
       'passwordHash': row.read<String>('password_hash'),
       'pinHash': row.readNullable<String>('pin_hash'),
+      'offlinePinHash': row.readNullable<String>('offline_pin_hash'),
       'firstName': row.read<String>('first_name'),
       'lastName': row.read<String>('last_name'),
       'role': row.read<String>('role'),
@@ -270,6 +347,9 @@ class AuthRoutes {
       'branchId': row.readNullable<String>('branch_id'),
       'isActive': row.read<int>('is_active') == 1,
       'lastLoginAt': row.readNullable<String>('last_login_at'),
+      'permissions': permissionsJson != null
+          ? (jsonDecode(permissionsJson) as List<dynamic>).cast<String>()
+          : <String>[],
     };
   }
 

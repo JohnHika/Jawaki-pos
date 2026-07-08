@@ -35,6 +35,9 @@ import '../../features/inventory/presentation/screens/restock_suggestions_screen
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_subscribe_screen.dart';
+import '../../features/users/presentation/screens/user_management_screen.dart';
+import '../../features/users/presentation/screens/role_editor_screen.dart';
+import '../../features/users/presentation/screens/user_permission_override_screen.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../di/injection.dart';
@@ -106,8 +109,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Role-based route guards
       if (isLoggedIn) {
-        final role = AppRole.fromString(authService.userRole);
-        final perms = RolePermissions(role);
+        final perms = RolePermissions(
+          authService.currentUser?['permissions'] as List<dynamic>?,
+        );
 
         // Products & Inventory require stock keeper+
         if ((path == '/products' ||
@@ -326,6 +330,41 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             name: 'settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+
+          // User & role management
+          GoRoute(
+            path: '/users',
+            name: 'users',
+            builder: (context, state) => const UserManagementScreen(),
+            routes: [
+              GoRoute(
+                path: 'roles',
+                name: 'roles',
+                builder: (context, state) => const RoleListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    name: 'role-new',
+                    builder: (context, state) => const RoleEditorScreen(),
+                  ),
+                  GoRoute(
+                    path: ':roleId',
+                    name: 'role-edit',
+                    builder: (context, state) => RoleEditorScreen(
+                      roleId: state.pathParameters['roleId'],
+                    ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: ':userId/permissions',
+                name: 'user-permissions',
+                builder: (context, state) => UserPermissionOverrideScreen(
+                  userId: state.pathParameters['userId']!,
+                ),
+              ),
+            ],
           ),
 
           // Finance Screen

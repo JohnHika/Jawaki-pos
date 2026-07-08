@@ -22,12 +22,12 @@ import {
   SetPinDto,
   AuthResponseDto,
 } from './dto/auth.dto';
-import { UserRole } from '@prisma/client';
+import { LegacyUserRole } from '@prisma/client';
 
 export interface JwtPayload {
   sub: string;
   email: string;
-  role: UserRole;
+  role: LegacyUserRole;
   tenantId: string;
   branchId?: string;
   deviceId?: string;
@@ -241,7 +241,7 @@ export class AuthService {
         firstName: registerDto.firstName,
         lastName: registerDto.lastName,
         phone: registerDto.phone,
-        role: registerDto.role || UserRole.CASHIER,
+        role: registerDto.role || LegacyUserRole.CASHIER,
         branches: registerDto.branchIds
           ? {
               create: registerDto.branchIds.map((branchId, index) => ({
@@ -517,6 +517,7 @@ export class AuthService {
         role: user.role,
         tenantId: user.tenantId,
         hasPinSet: Boolean(user.pin),
+        permissions: [],
         branches: user.branches?.map((ub: any) => ({
           id: ub.branch?.id || ub.branchId,
           name: ub.branch?.name || '',

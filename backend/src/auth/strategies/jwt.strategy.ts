@@ -4,12 +4,14 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { JwtPayload } from '../auth.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PermissionsService } from '../../permissions/permissions.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    private permissionsService: PermissionsService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -33,6 +35,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found or inactive');
     }
 
+    // Re-derived fresh on every request, same as role/tenantId above —
+    // an admin editing a role or a user's overrides takes effect on the
+    // user's very next request, no re-login required.
+    const permissions = await this.permissionsService.getEffectivePermissions(payload.sub);
+
     return {
       sub: payload.sub,
       email: payload.email,
@@ -40,6 +47,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: payload.tenantId,
       branchId: payload.branchId,
       deviceId: payload.deviceId,
+      permissions,
     };
   }
 }

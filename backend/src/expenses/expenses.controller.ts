@@ -24,6 +24,8 @@ import {
   ExpenseTrendDto,
 } from './dto/expenses.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('expenses')
@@ -100,6 +102,8 @@ export class ExpensesController {
   }
 
   @Put(':id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('expenses.update')
   @ApiOperation({ summary: 'Update an expense' })
   @ApiResponse({ status: 200, description: 'Expense updated', type: ExpenseResponseDto })
   async updateExpense(
@@ -112,6 +116,8 @@ export class ExpensesController {
   }
 
   @Post(':id/approve')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('expenses.approve')
   @ApiOperation({ summary: 'Approve an expense' })
   @ApiResponse({ status: 200, description: 'Expense approved', type: ExpenseResponseDto })
   async approveExpense(
@@ -124,6 +130,8 @@ export class ExpensesController {
   }
 
   @Post(':id/reject')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('expenses.reject')
   @ApiOperation({ summary: 'Reject an expense' })
   @ApiResponse({ status: 200, description: 'Expense rejected', type: ExpenseResponseDto })
   async rejectExpense(
@@ -136,6 +144,8 @@ export class ExpensesController {
   }
 
   @Post(':id/mark-paid')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('expenses.mark_paid')
   @ApiOperation({ summary: 'Mark expense as paid' })
   @ApiResponse({ status: 200, description: 'Expense marked as paid', type: ExpenseResponseDto })
   async markAsPaid(
@@ -147,6 +157,8 @@ export class ExpensesController {
   }
 
   @Delete(':id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('expenses.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete an expense' })
   @ApiResponse({ status: 204, description: 'Expense deleted' })

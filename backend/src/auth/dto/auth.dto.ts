@@ -15,7 +15,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { LegacyUserRole } from '@prisma/client';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@store.com' })
@@ -109,10 +109,10 @@ export class RegisterDto {
   @Matches(/^\+?[\d\s-()]+$/, { message: 'Invalid phone number format' })
   phone?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, default: UserRole.CASHIER })
+  @ApiPropertyOptional({ enum: LegacyUserRole, default: LegacyUserRole.CASHIER })
   @IsOptional()
-  @IsEnum(UserRole, { message: 'Invalid role' })
-  role?: UserRole;
+  @IsEnum(LegacyUserRole, { message: 'Invalid role' })
+  role?: LegacyUserRole;
 
   @ApiProperty({ description: 'Tenant ID' })
   @IsUUID('4', { message: 'Tenant ID must be a valid UUID' })
@@ -303,6 +303,17 @@ export class SetPinDto {
   pin: string;
 }
 
+// Authorizes logging into a phone-acting-as-local-server (offline mode)
+// as this user — separate from SetPinDto's online quick-login PIN.
+export class SetOfflineAccessPinDto {
+  @ApiProperty({ example: '1234' })
+  @IsString()
+  @MinLength(4, { message: 'PIN must be at least 4 digits' })
+  @MaxLength(6, { message: 'PIN must not exceed 6 digits' })
+  @Matches(/^\d{4,6}$/, { message: 'PIN must contain only 4-6 digits' })
+  pin: string;
+}
+
 export class AuthResponseDto {
   @ApiProperty()
   accessToken: string;
@@ -319,12 +330,13 @@ export class AuthResponseDto {
     email: string;
     firstName: string;
     lastName: string;
-    role: UserRole;
+    role: LegacyUserRole;
     tenantId: string;
     tenantSlug?: string;
     branchId?: string;
     branchName?: string;
     hasPinSet: boolean;
+    permissions: string[];
     tenant?: {
       id: string;
       name: string;

@@ -31,9 +31,8 @@ import {
   BulkVoidSalesDto,
 } from './dto/bulk-sales.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
 @ApiTags('sales')
 @Controller({ path: 'sales', version: '1' })
@@ -92,8 +91,8 @@ export class SalesController {
   }
 
   @Post(':id/void')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.void')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Void a sale (Supervisor+ only)' })
   @ApiResponse({ status: 200, description: 'Sale voided' })
@@ -106,8 +105,8 @@ export class SalesController {
   }
 
   @Post('refund')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.refund')
   @ApiOperation({ summary: 'Create a refund (Supervisor+ only)' })
   @ApiResponse({ status: 201, description: 'Refund created' })
   async createRefund(@Request() req: any, @Body() dto: CreateRefundDto) {
@@ -124,8 +123,8 @@ export class SalesController {
   }
 
   @Post('bulk/void')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.bulk_void')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Bulk void sales (Supervisor+ only)' })
   @ApiResponse({ status: 200, description: 'Sales voided' })

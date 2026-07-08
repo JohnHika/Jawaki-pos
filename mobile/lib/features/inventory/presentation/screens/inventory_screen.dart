@@ -119,8 +119,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = getIt<AuthService>();
-    final role = AppRole.fromString(authService.userRole);
-    final permissions = RolePermissions(role);
+    final permissions = RolePermissions(
+      authService.currentUser?['permissions'] as List<dynamic>?,
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
@@ -131,7 +132,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         title: 'Inventory',
         showBackButton: false,
         actions: [
-          if (permissions.canManageStock && role.isAtLeast(AppRole.stockKeeper))
+          if (permissions.canManageStock)
             IconButton(
               icon: const Icon(Icons.assignment_outlined, size: 20),
               tooltip: 'Stock Requests',
@@ -220,7 +221,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _buildStockTab(context, permissions, role),
+                    _buildStockTab(context, permissions),
                     _buildLowStockTab(context, permissions),
                     _buildTransfersTab(context),
                   ],
@@ -231,12 +232,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ),
       ),
       floatingActionButton: permissions.canManageStock
-          ? _buildActionButtons(context, role)
+          ? _buildActionButtons(context)
           : null,
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, AppRole role) {
+  Widget _buildActionButtons(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -251,14 +252,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        if (role.isAtLeast(AppRole.stockKeeper))
-          FloatingActionButton.small(
-            heroTag: 'receiveStock',
-            backgroundColor: DesignColors.brand,
-            onPressed: () => _startReceiveStock(context),
-            tooltip: 'Receive Stock',
-            child: const Icon(Icons.inventory_rounded, color: Colors.white),
-          ),
+        FloatingActionButton.small(
+          heroTag: 'receiveStock',
+          backgroundColor: DesignColors.brand,
+          onPressed: () => _startReceiveStock(context),
+          tooltip: 'Receive Stock',
+          child: const Icon(Icons.inventory_rounded, color: Colors.white),
+        ),
       ],
     );
   }
@@ -274,7 +274,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _buildStockTab(
     BuildContext context,
     RolePermissions permissions,
-    AppRole role,
   ) {
     if (_isLoading) {
       return _buildLoadingList();
@@ -345,7 +344,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    return _buildStockItemCard(item, permissions, role);
+                    return _buildStockItemCard(item, permissions);
                   },
                 ),
         ),
@@ -356,7 +355,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _buildStockItemCard(
     Map<String, dynamic> item,
     RolePermissions permissions,
-    AppRole role,
   ) {
     final name = item['name'] as String? ?? 'Unknown';
     final sku = item['sku'] as String? ?? '';
@@ -489,8 +487,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ],
                 const Spacer(),
                 // Receive button
-                if (permissions.canManageStock &&
-                    role.isAtLeast(AppRole.stockKeeper))
+                if (permissions.canManageStock)
                   SizedBox(
                     height: 34,
                     child: GradientButton(

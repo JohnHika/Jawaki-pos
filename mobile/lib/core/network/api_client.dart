@@ -43,11 +43,43 @@ class ApiClient {
     return response.data;
   }
 
+  /// Logs in against a phone-server using the offline-access PIN, not the
+  /// online quick-login PIN — only meaningful when [baseUrl] points at a
+  /// local server, since that's the only place `offline-pin-login` is
+  /// implemented (see AuthRoutes._handleOfflinePinLogin on the phone-server
+  /// side). Requires email because, unlike the online quick-login PIN
+  /// (unique per device), multiple synced users could pick colliding PINs.
+  Future<Map<String, dynamic>> loginWithOfflinePin({
+    required String email,
+    required String pin,
+  }) async {
+    final response = await _dio.post('/auth/offline-pin-login', data: {
+      'email': email,
+      'pin': pin,
+    });
+    return response.data;
+  }
+
   /// Sets/updates the account's server-side PIN, so [loginWithPin] can
   /// authenticate this user even on a device that has never stored a
   /// local PIN hash (e.g. after a reinstall, or on a brand-new device).
   Future<void> setPin(String pin) async {
     await _dio.post('/auth/set-pin', data: {'pin': pin});
+  }
+
+  /// Sets/updates this user's offline-access PIN — authorizes logging
+  /// into any phone acting as a local server (fully offline mode) as this
+  /// user. Distinct from [setPin]'s online quick-login PIN.
+  Future<void> setOfflineAccessPin(String pin) async {
+    await _dio.post('/auth/offline-access-pin', data: {'pin': pin});
+  }
+
+  /// Pulled once (while online) by a device about to become a phone
+  /// server, so it can authorize other users' logins entirely offline
+  /// afterward. Only includes users who have set an offline-access PIN.
+  Future<List<dynamic>> getOfflineUserDirectory() async {
+    final response = await _dio.get('/users/offline-directory');
+    return response.data as List<dynamic>;
   }
 
   Future<Map<String, dynamic>> refreshToken(String refreshToken) async {
@@ -119,6 +151,105 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getProfile() async {
     final response = await _dio.get('/auth/profile');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Re-pulls this user's effective permissions mid-session, so a role or
+  /// override edit an admin makes takes effect without forcing a re-login.
+  Future<List<String>> getMyPermissions() async {
+    final response = await _dio.get('/permissions/me');
+    final list = (response.data['permissions'] as List<dynamic>?) ?? [];
+    return list.cast<String>();
+  }
+
+  Future<List<dynamic>> getPermissionCatalog() async {
+    final response = await _dio.get('/permissions');
+    return response.data as List<dynamic>;
+  }
+
+  // Roles endpoints
+  Future<List<dynamic>> getRoles() async {
+    final response = await _dio.get('/roles');
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getRole(String id) async {
+    final response = await _dio.get('/roles/$id');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createRole({
+    required String name,
+    String? description,
+    List<String>? permissionKeys,
+  }) async {
+    final response = await _dio.post('/roles', data: {
+      'name': name,
+      if (description != null) 'description': description,
+      if (permissionKeys != null) 'permissionKeys': permissionKeys,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateRole(
+    String id, {
+    String? name,
+    String? description,
+    List<String>? permissionKeys,
+  }) async {
+    final response = await _dio.patch('/roles/$id', data: {
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (permissionKeys != null) 'permissionKeys': permissionKeys,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteRole(String id) async {
+    await _dio.delete('/roles/$id');
+  }
+
+  // User management endpoints (distinct from /auth/users; this surface
+  // additionally carries each user's assigned roles for admin UI use)
+  Future<List<dynamic>> getManagedUsers() async {
+    final response = await _dio.get('/users');
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getUserPermissionBreakdown(String userId) async {
+    final response = await _dio.get('/users/$userId/permissions');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> assignUserRole(String userId, String roleId) async {
+    final response = await _dio.post('/users/$userId/roles', data: {'roleId': roleId});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> removeUserRole(String userId, String roleId) async {
+    final response = await _dio.delete('/users/$userId/roles/$roleId');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> setUserPermissionOverride(
+    String userId, {
+    required String permissionKey,
+    required bool grant,
+    String? reason,
+  }) async {
+    final response = await _dio.post('/users/$userId/permission-overrides', data: {
+      'permissionKey': permissionKey,
+      'grant': grant,
+      if (reason != null) 'reason': reason,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> clearUserPermissionOverride(
+    String userId,
+    String permissionKey,
+  ) async {
+    final response = await _dio.delete('/users/$userId/permission-overrides/$permissionKey');
     return response.data as Map<String, dynamic>;
   }
 
