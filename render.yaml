@@ -9,7 +9,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    branch: update-feature
+    branch: main
     healthCheckPath: /health
     buildCommand: cd backend && npm ci --include=dev && npx prisma generate && npm run build
     preDeployCommand: cd backend && npx prisma migrate deploy
