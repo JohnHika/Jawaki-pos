@@ -58,11 +58,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.31"
+        value: "1.0.32"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.31"
+        value: "Axon POS 1.0.32"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2037"
+        value: "2038"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -72,4 +72,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Fixes a bug where receiving stock batches could fail with a session error under normal background sync activity, and fixes stock changes made elsewhere (other devices, admin corrections) not always showing up on this device until a manual refresh."
+        value: "Fixes stock counts showing 0 on the sale screen for products that actually have stock -- the sale screen now refreshes stock automatically when opened, instead of only when visiting the Products screen."
