@@ -58,11 +58,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.33"
+        value: "1.0.34"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.33"
+        value: "Axon POS 1.0.34"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2039"
+        value: "2040"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -72,4 +72,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Adds a real pack/carton pricing setup (enter the exact pack size and bulk price directly), a one-off price override when adding an item to the cart, a fuller cart item breakdown showing the price math, and fixes the cart bar's item count text rendering sideways."
+        value: "Removes the 3-tier limit on product pricing -- add as many pricing tiers as your business actually sells in (piece, dozen, carton, pallet, and beyond), each with its own real price."
