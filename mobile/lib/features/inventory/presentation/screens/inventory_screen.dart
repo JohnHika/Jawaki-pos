@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../../../../core/utils/format.dart';
 import '../widgets/product_picker_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -88,7 +89,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return 'KES ${amount.toStringAsFixed(amount % 1 == 0 ? 0 : 2)}';
+    return formatMoney(amount, decimals: amount % 1 != 0);
   }
 
   Color _stockColor(int stock, int minStock) {
@@ -162,12 +163,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         title: 'Inventory',
         showBackButton: false,
         actions: [
-          if (permissions.canManageStock)
+          if (permissions.canManageStock) ...[
+            IconButton(
+              icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+              tooltip: 'Request Stock',
+              onPressed: () => context.push('/inventory/request-stock'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.inventory_rounded, size: 20),
+              tooltip: 'Receive Stock',
+              onPressed: () => _startReceiveStock(context),
+            ),
             IconButton(
               icon: const Icon(Icons.assignment_outlined, size: 20),
               tooltip: 'Stock Requests',
               onPressed: () => context.push('/inventory/stock-requests'),
             ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh_rounded, size: 20),
             onPressed: _loadData,
@@ -261,35 +273,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
       ),
-      floatingActionButton: permissions.canManageStock
-          ? _buildActionButtons(context)
-          : null,
-    );
-  }
-
-  Widget _buildActionButtons(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        FloatingActionButton.small(
-          heroTag: 'requestStock',
-          backgroundColor: DesignColors.warning,
-          onPressed: () => context.push('/inventory/request-stock'),
-          tooltip: 'Request Stock',
-          child: const Icon(
-            Icons.add_shopping_cart_rounded,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 10),
-        FloatingActionButton.small(
-          heroTag: 'receiveStock',
-          backgroundColor: DesignColors.brand,
-          onPressed: () => _startReceiveStock(context),
-          tooltip: 'Receive Stock',
-          child: const Icon(Icons.inventory_rounded, color: Colors.white),
-        ),
-      ],
     );
   }
 

@@ -89,6 +89,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               }
             });
           }, isDark, active: _showFavorites),
+          if (parkedSales.isNotEmpty)
+            _topAction(Icons.inventory_2_outlined,
+                'Parked (${parkedSales.length})',
+                () => _showParkedSalesSheet(context), isDark),
+          if (cart.items.isNotEmpty)
+            _topAction(Icons.pause_rounded, 'Park Sale',
+                () => _parkCurrentSale(context), isDark),
           Stack(
             children: [
               _topAction(Icons.shopping_cart_outlined, 'Cart',
@@ -280,32 +287,6 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 : const ProductGrid(),
           ),
           if (cart.itemCount > 0) const CartSummaryBar(),
-        ],
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (parkedSales.isNotEmpty)
-            FloatingActionButton.small(
-              heroTag: 'viewParked',
-              backgroundColor: DesignColors.warning,
-              onPressed: () => _showParkedSalesSheet(context),
-              tooltip: 'Parked (${parkedSales.length})',
-              child: Text('${parkedSales.length}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-            ),
-          if (parkedSales.isNotEmpty) const SizedBox(height: 8),
-          if (cart.items.isNotEmpty)
-            FloatingActionButton.small(
-              heroTag: 'parkSale',
-              backgroundColor: const Color(0xFF64748B),
-              onPressed: () => _parkCurrentSale(context),
-              tooltip: 'Park Sale',
-              child: const Icon(Icons.pause_rounded, color: Colors.white),
-            ),
         ],
       ),
     );

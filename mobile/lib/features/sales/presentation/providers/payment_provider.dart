@@ -85,6 +85,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<String?> processCashPayment({
     required double amount,
     required List<CartItem> items,
+    String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -99,9 +100,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         items: items,
         paymentMethod: 'CASH',
         total: amount,
+        customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'CASH', amount);
+      await _syncOrQueueSale(saleId, items, 'CASH', amount, null, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -114,6 +116,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<String?> processManualPayment({
     required double amount,
     required List<CartItem> items,
+    String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -127,9 +130,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         items: items,
         paymentMethod: 'MANUAL',
         total: amount,
+        customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'MANUAL', amount);
+      await _syncOrQueueSale(saleId, items, 'MANUAL', amount, null, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -143,6 +147,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required double amount,
     required String phoneNumber,
     required List<CartItem> items,
+    String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -195,8 +200,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'MPESA',
         total: amount,
         paymentReference: checkoutRequestId,
+        customerId: customerId,
       );
-      await _syncOrQueueSale(saleId, items, 'MPESA', amount, checkoutRequestId);
+      await _syncOrQueueSale(
+          saleId, items, 'MPESA', amount, checkoutRequestId, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -209,6 +216,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<String?> processPesaPalPayment({
     required double amount,
     required List<CartItem> items,
+    String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -241,8 +249,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'PESAPAL',
         total: amount,
         paymentReference: orderId,
+        customerId: customerId,
       );
-      await _syncOrQueueSale(saleId, items, 'PESAPAL', amount, orderId);
+      await _syncOrQueueSale(
+          saleId, items, 'PESAPAL', amount, orderId, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -255,6 +265,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<String?> processTouristTapPayment({
     required double amount,
     required List<CartItem> items,
+    String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -285,9 +296,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'TOURISTTAP',
         total: amount,
         paymentReference: transactionId,
+        customerId: customerId,
       );
       await _syncOrQueueSale(
-          saleId, items, 'TOURISTTAP', amount, transactionId);
+          saleId, items, 'TOURISTTAP', amount, transactionId, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -306,6 +318,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
+    // A credit (debt) sale must be attributable to a customer — otherwise
+    // there's no one to record the debt against and no way to collect it.
+    if (customerId == null) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Select a customer before selling on debt',
+      );
+      return null;
+    }
+
     try {
       final saleId = _uuid.v4();
       final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
@@ -318,9 +340,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'CREDIT',
         total: amount,
         paymentReference: customerId,
+        customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'CREDIT', amount, customerId);
+      // The whole amount is owed — add it to the customer's running debt
+      // balance so the Customers screen and profile reflect what they owe.
+      await _database.updateCustomerBalance(customerId, amount);
+
+      await _syncOrQueueSale(
+          saleId, items, 'CREDIT', amount, customerId, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -331,13 +359,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }
 
   /// Records one sale paid via multiple tenders at once (e.g. part cash,
-  /// part M-Pesa). [tenders] must sum to at least [amount]; any tender with
-  /// method CASH contributes to the till, matching how the backend's
-  /// cash-flow ledger only counts the cash portion of a split sale.
+  /// part M-Pesa, part debt). [tenders] must sum to at least [amount]; any
+  /// tender with method CASH contributes to the till, and any tender with
+  /// method CREDIT is added to the customer's debt balance (which is why a
+  /// customer is required when a split includes a debt portion).
   Future<String?> processSplitPayment({
     required double amount,
     required List<CartItem> items,
     required List<PaymentTender> tenders,
+    String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -347,6 +377,17 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         isProcessing: false,
         error: 'Tenders (KES ${tenderTotal.toStringAsFixed(2)}) do not cover '
             'the total (KES ${amount.toStringAsFixed(2)})',
+      );
+      return null;
+    }
+
+    final debtPortion = tenders
+        .where((t) => t.method == 'CREDIT')
+        .fold<double>(0, (sum, t) => sum + t.amount);
+    if (debtPortion > 0 && customerId == null) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Select a customer before adding a debt portion',
       );
       return null;
     }
@@ -369,9 +410,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'SPLIT',
         total: tenderTotal,
         paymentReference: tendersJson,
+        customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson, tenders);
+      // The debt portion of the split becomes customer debt.
+      if (debtPortion > 0 && customerId != null) {
+        await _database.updateCustomerBalance(customerId, debtPortion);
+      }
+
+      await _syncOrQueueSale(
+          saleId, items, 'SPLIT', tenderTotal, tendersJson, tenders, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -388,6 +436,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required String paymentMethod,
     required double total,
     String? paymentReference,
+    String? customerId,
   }) async {
     final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
     final tax = subtotal * 0.16;
@@ -402,6 +451,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         total: total,
         paymentMethod: paymentMethod,
         paymentReference: Value(paymentReference),
+        customerId: Value(customerId),
         cashierId: _authService.userId!,
         branchId: _authService.branchId!,
         createdAt: DateTime.now(),
@@ -436,6 +486,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double total, [
     String? paymentReference,
     List<PaymentTender>? tenders,
+    String? customerId,
   ]) async {
     if (!_connectivity.isOnline) {
       await _queueSaleForSync(
@@ -445,6 +496,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         total,
         paymentReference,
         tenders,
+        customerId,
       );
       return;
     }
@@ -457,6 +509,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         total,
         paymentReference,
         tenders,
+        customerId,
       );
       await _database.markSaleAsSynced(saleId);
     } catch (_) {
@@ -467,6 +520,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         total,
         paymentReference,
         tenders,
+        customerId,
       );
     }
   }
@@ -478,9 +532,23 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double total, [
     String? paymentReference,
     List<PaymentTender>? tenders,
+    String? customerId,
   ]) async {
+    final branchId = _authService.branchId;
+    // branchId is a required field on the server (CreateSaleDto.branchId).
+    // Without it every POST /sales 400s, the sale is silently re-queued,
+    // and server-side stock never decrements. Never send a knowingly
+    // invalid request — let the caller's catch queue it for a later retry
+    // once a branch is resolved.
+    if (branchId == null) {
+      throw StateError('Cannot sync sale: no branch selected');
+    }
+
     await _apiClient.createSale({
       'offlineId': saleId,
+      'branchId': branchId,
+      if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
+      if (customerId != null) 'customerId': customerId,
       'items': items
           .map((i) => {
                 'productId': i.productId,
@@ -504,6 +572,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double total, [
     String? paymentReference,
     List<PaymentTender>? tenders,
+    String? customerId,
   ]) async {
     await _syncService.queueSyncItem(
       tableName: 'sales',
@@ -512,6 +581,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       eventType: SyncEventType.saleCreated,
       data: {
         'offlineId': saleId,
+        // branchId is required server-side; a queued sale that omits it
+        // would keep failing forever when the background sync retries it.
+        if (_authService.branchId != null) 'branchId': _authService.branchId,
+        if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
+        if (customerId != null) 'customerId': customerId,
         'items': items.map((i) => i.toJson()).toList(),
         'paymentMethod': paymentMethod,
         'paymentReference': paymentReference,

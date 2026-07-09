@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/utils/format.dart';
 
 class PaymentAnalyticsScreen extends ConsumerStatefulWidget {
   const PaymentAnalyticsScreen({super.key});
@@ -228,7 +229,7 @@ class _PaymentAnalyticsScreenState
               Expanded(
                 child: MetricCard(
                   title: 'Total Payments',
-                  value: 'KSh ${totalPayments.toStringAsFixed(0)}',
+                  value: formatMoney(totalPayments, symbol: 'KSh '),
                   icon: Icons.payments_rounded,
                   color: DesignColors.brand,
                 ),
@@ -250,7 +251,7 @@ class _PaymentAnalyticsScreenState
               Expanded(
                 child: MetricCard(
                   title: 'Avg Payment',
-                  value: 'KSh ${avgPayment.toStringAsFixed(0)}',
+                  value: formatMoney(avgPayment, symbol: 'KSh '),
                   icon: Icons.calculate_rounded,
                   color: DesignColors.accent,
                 ),
@@ -364,7 +365,7 @@ class _PaymentAnalyticsScreenState
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          'KSh ${total.toStringAsFixed(0)}',
+                          formatMoney(total, symbol: 'KSh '),
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -636,7 +637,7 @@ class _PaymentAnalyticsScreenState
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              'KSh ${total.toStringAsFixed(0)}',
+                              formatMoney(total, symbol: 'KSh '),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,

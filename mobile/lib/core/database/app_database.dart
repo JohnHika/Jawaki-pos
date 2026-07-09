@@ -897,6 +897,22 @@ class AppDatabase extends _$AppDatabase {
               updatedAt: Value(DateTime.now()),
             ),
           );
+    } else {
+      // No local stock row yet for this product+branch — previously this
+      // silently did nothing, so the first sale of a product never showed
+      // any deduction. Create the row so the sale is reflected; the next
+      // catalog sync corrects it to the server's (now-decremented) value.
+      final start = (0 - quantity);
+      await into(localStock).insert(
+        LocalStockCompanion.insert(
+          id: 'stock-$branchId-$productId',
+          productId: productId,
+          branchId: branchId,
+          quantity: start,
+          updatedAt: DateTime.now(),
+        ),
+        mode: InsertMode.insertOrReplace,
+      );
     }
   }
 
@@ -1069,6 +1085,11 @@ class AppDatabase extends _$AppDatabase {
     return (select(
       pendingSaleItems,
     )..where((i) => i.saleId.equals(saleId))).get();
+  }
+
+  Future<PendingSale?> getPendingSaleById(String saleId) {
+    return (select(pendingSales)..where((s) => s.id.equals(saleId)))
+        .getSingleOrNull();
   }
 
   /// Stream all sale items (for category / product reports).

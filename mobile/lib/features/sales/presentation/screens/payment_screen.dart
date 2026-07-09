@@ -12,6 +12,7 @@ enum PaymentMethod {
   cash,
   mpesa,
   manual,
+  debt,
   split,
 }
 
@@ -194,11 +195,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             ),
             const SizedBox(height: 10),
 
+            // Debt (sell now, customer pays later)
+            _PaymentMethodTile(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Add to Debt',
+              subtitle: 'Customer pays later — requires a customer',
+              color: DesignColors.error,
+              isSelected: _selectedMethod == PaymentMethod.debt,
+              onTap: () =>
+                  setState(() => _selectedMethod = PaymentMethod.debt),
+            ),
+            const SizedBox(height: 10),
+
             // Split
             _PaymentMethodTile(
               icon: Icons.call_split_rounded,
               title: 'Split Payment',
-              subtitle: 'Part cash, part M-Pesa, etc.',
+              subtitle: 'Part cash, part M-Pesa, part debt',
               color: DesignColors.warning,
               isSelected: _selectedMethod == PaymentMethod.split,
               onTap: () =>
@@ -287,6 +300,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return 'Send M-Pesa Request';
       case PaymentMethod.manual:
         return 'Confirm Manual Payment';
+      case PaymentMethod.debt:
+        return 'Record as Debt';
       case PaymentMethod.split:
         return 'Enter Split Payment';
       case null:
@@ -307,6 +322,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         result = await paymentNotifier.processCashPayment(
           amount: cart.total,
           items: cart.items,
+          customerId: cart.customerId,
         );
         break;
       case PaymentMethod.mpesa:
@@ -323,23 +339,74 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           amount: cart.total,
           phoneNumber: _phoneController.text,
           items: cart.items,
+          customerId: cart.customerId,
         );
         break;
       case PaymentMethod.manual:
         result = await paymentNotifier.processManualPayment(
           amount: cart.total,
           items: cart.items,
+          customerId: cart.customerId,
+        );
+        break;
+      case PaymentMethod.debt:
+        // Whole sale is owed — requires a customer to record the debt
+        // against. Prompt to pick one if none is set.
+        if (cart.customerId == null) {
+          if (mounted) {
+            showGlassSnackBar(
+              context,
+              'Select a customer before selling on debt',
+              icon: Icons.person_off_rounded,
+              color: DesignColors.warning,
+            );
+          }
+          return;
+        }
+        result = await paymentNotifier.processCreditPayment(
+          amount: cart.total,
+          items: cart.items,
+          customerId: cart.customerId,
+          customerName: cart.customerName,
         );
         break;
       case PaymentMethod.split:
         final tenders = await _showSplitPaymentSheet(cart.total);
         if (tenders == null) return; // cancelled
+        // A split with a debt (CREDIT) portion needs a customer to owe it.
+        final hasDebt = tenders.any((t) => t.method == 'CREDIT');
+        if (hasDebt && cart.customerId == null) {
+          if (mounted) {
+            showGlassSnackBar(
+              context,
+              'Select a customer before adding a debt portion',
+              icon: Icons.person_off_rounded,
+              color: DesignColors.warning,
+            );
+          }
+          return;
+        }
         result = await paymentNotifier.processSplitPayment(
           amount: cart.total,
           items: cart.items,
           tenders: tenders,
+          customerId: cart.customerId,
         );
         break;
+    }
+
+    // Surface any error the payment notifier set (e.g. debt with no
+    // customer, or a failed tender) instead of silently doing nothing.
+    if (result == null) {
+      final err = ref.read(paymentProvider).error;
+      if (err != null && mounted) {
+        showGlassSnackBar(
+          context,
+          err,
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
     }
 
     if (result != null && mounted) {
@@ -415,7 +482,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                               DropdownMenuItem(
                                   value: 'PESAPAL', child: Text('PesaPal')),
                               DropdownMenuItem(
-                                  value: 'CREDIT', child: Text('Credit')),
+                                  value: 'CREDIT', child: Text('Debt (owed)')),
                             ],
                             onChanged: (v) =>
                                 setSheetState(() => row.method = v ?? row.method),

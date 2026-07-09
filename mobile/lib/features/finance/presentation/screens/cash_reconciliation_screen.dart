@@ -56,10 +56,15 @@ class _CashReconciliationScreenState
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCountSheet,
-        icon: const Icon(Icons.calculate_rounded),
-        label: const Text('Count Cash'),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: GradientButton(
+          label: 'Count Cash',
+          icon: Icons.calculate_rounded,
+          onPressed: _showCountSheet,
+          height: 52,
+          borderRadius: 12,
+        ),
       ),
       body: historyAsync.when(
         data: (data) {

@@ -130,22 +130,21 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         showBackButton: false,
         actions: [
           IconButton(
+            tooltip: _isScanning ? 'Scanning...' : 'Scan Receipt',
+            icon: _isScanning
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.document_scanner_rounded),
+            onPressed: _isScanning ? null : _pickAndScanReceipt,
+          ),
+          IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(_supplierBalancesProvider),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _isScanning ? null : _pickAndScanReceipt,
-        icon: _isScanning
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white))
-            : const Icon(Icons.document_scanner_rounded),
-        label: Text(_isScanning ? 'Scanning...' : 'Scan Receipt'),
       ),
       body: balancesAsync.when(
         data: (suppliers) {

@@ -381,17 +381,18 @@ class ProductsScreen extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: perms.canEditProducts
-          ? GradientButton(
-              label: 'Add Product',
-              icon: Icons.add_rounded,
-              onPressed: () => _showAddEditProduct(context, ref),
-              height: 48,
-              expanded: false,
-              borderRadius: 12,
+      bottomNavigationBar: perms.canEditProducts
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: GradientButton(
+                label: 'Add Product',
+                icon: Icons.add_rounded,
+                onPressed: () => _showAddEditProduct(context, ref),
+                height: 52,
+                borderRadius: 12,
+              ),
             )
           : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 

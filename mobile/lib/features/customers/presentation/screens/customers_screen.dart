@@ -276,7 +276,17 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Scaffold(
-      appBar: BrandedAppBar(title: 'Customers', showBackButton: false),
+      appBar: BrandedAppBar(
+        title: 'Customers',
+        showBackButton: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person_add_rounded, size: 20),
+            tooltip: 'Add Customer',
+            onPressed: _showAddCustomerSheet,
+          ),
+        ],
+      ),
       body: PageContainer(
         child: Column(
           children: [
@@ -515,13 +525,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddCustomerSheet,
-        backgroundColor: DesignColors.accent,
-        foregroundColor: Colors.black,
-        icon: const Icon(Icons.person_add_rounded),
-        label: const Text('Add Customer'),
       ),
     );
   }
