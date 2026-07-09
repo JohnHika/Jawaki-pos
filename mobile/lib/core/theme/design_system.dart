@@ -864,20 +864,20 @@ class EmptyState extends StatelessWidget {
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: color.withValues(alpha: 0.12)),
               ),
-              child: Icon(icon, size: 48, color: color.withValues(alpha: 0.5)),
+              child: Icon(icon, size: 32, color: color.withValues(alpha: 0.5)),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             Text(
               title,
               style: TextStyle(
@@ -2062,29 +2062,35 @@ class TenantBrandMark extends StatelessWidget {
       return AxonLogoTitle(logoSize: size);
     }
 
+    // A subtle corner radius reads as barely-rounded at small badge sizes,
+    // especially against a bright logo background on a dark app bar — use
+    // a proportionally larger radius so it's unmistakably a rounded badge,
+    // not a square swatch. Clamped so it never exceeds a perfect circle.
+    final radius = (size * 0.36).clamp(0.0, size / 2);
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(size * 0.28),
-      child: Image.network(
-        url,
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox(
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            AxonLogoTitle(logoSize: size),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return SizedBox(
-            width: size,
-            height: size,
-            child: const Center(
+        child: Image.network(
+          url,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              AxonLogoTitle(logoSize: size),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Center(
               child: SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(strokeWidth: 1.6),
+                width: size * 0.5,
+                height: size * 0.5,
+                child: const CircularProgressIndicator(strokeWidth: 1.6),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

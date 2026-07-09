@@ -66,7 +66,9 @@ export class AiDailyBriefTask {
 
     const { reply, model } = await this.aiService.chat({
       user_question:
-        "Give me a short 2-3 sentence brief on yesterday's business performance and one concrete suggestion for today.",
+        "Give me a short 2-3 sentence brief on yesterday's business performance and one concrete suggestion for today. " +
+        'This will be shown in a narrow mobile card, so if you need to list specific items, use a short ' +
+        'bullet list (max 3 items, one line each) instead of a markdown table.',
       context: 'general',
       ai_task: 'analyze_and_recommend',
       response_style: 'concise',

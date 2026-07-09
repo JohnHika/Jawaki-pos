@@ -122,23 +122,43 @@ class _PaymentAnalyticsScreenState
                     _buildPaymentSummaryCards(),
                     const SizedBox(height: 24),
 
-                    // Payment Method Breakdown
-                    _buildPaymentMethodBreakdown(isDark),
-                    const SizedBox(height: 24),
+                    if (_hasNoTransactions)
+                      // No point repeating the same "no data" empty state
+                      // four times in a row (breakdown, trend chart, peak
+                      // hours all have nothing to show) — one clear message
+                      // covers the whole period instead of a long scroll of
+                      // near-identical placeholder cards.
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: EmptyState(
+                          icon: Icons.query_stats_rounded,
+                          title: 'No transactions in this period',
+                          subtitle:
+                              'Payment breakdowns, trends, and peak hours will appear here once sales come in.',
+                        ),
+                      )
+                    else ...[
+                      // Payment Method Breakdown
+                      _buildPaymentMethodBreakdown(isDark),
+                      const SizedBox(height: 24),
 
-                    // Transaction Trend Chart
-                    _buildTransactionTrendChart(isDark),
-                    const SizedBox(height: 24),
+                      // Transaction Trend Chart
+                      _buildTransactionTrendChart(isDark),
+                      const SizedBox(height: 24),
 
-                    // Peak Hours Analysis
-                    _buildPeakHoursAnalysis(isDark),
-                    const SizedBox(height: 16),
+                      // Peak Hours Analysis
+                      _buildPeakHoursAnalysis(isDark),
+                      const SizedBox(height: 16),
+                    ],
                   ],
                 ),
               ),
             ),
     );
   }
+
+  bool get _hasNoTransactions =>
+      ((_paymentSummary['transactionCount'] as int?) ?? 0) == 0;
 
   Widget _buildPeriodSelector(bool isDark) {
     final secondaryColor =
