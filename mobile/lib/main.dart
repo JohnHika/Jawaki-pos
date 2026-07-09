@@ -14,6 +14,7 @@ import 'core/services/local_server_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
+import 'core/services/notification_service.dart';
 import 'core/widgets/forced_update_gate.dart';
 import 'core/widgets/optional_update_prompt_host.dart';
 
@@ -74,6 +75,22 @@ void main() async {
       debugPrint('[main] Background sync initialized successfully');
     } catch (e, stackTrace) {
       debugPrint('[main] Background sync init failed (non-critical): $e');
+      debugPrint('[main] Stack trace: $stackTrace');
+    }
+
+    debugPrint('[main] Initializing notifications (non-blocking)...');
+    try {
+      final notificationService = getIt<NotificationService>();
+      await notificationService.initialize();
+      // Re-register the token on every cold start if the user already
+      // granted permission previously — FCM tokens can rotate, and this
+      // keeps the backend's copy fresh without asking again.
+      if (await notificationService.hasPermission()) {
+        await notificationService.registerToken();
+      }
+      debugPrint('[main] Notifications initialized successfully');
+    } catch (e, stackTrace) {
+      debugPrint('[main] Notification init failed (non-critical): $e');
       debugPrint('[main] Stack trace: $stackTrace');
     }
 

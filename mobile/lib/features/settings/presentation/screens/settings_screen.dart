@@ -17,6 +17,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/update_check_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -1864,11 +1865,30 @@ class _NotificationSettingsSheetState
                     await prefs.setBool(
                         _SettingsKeys.notifyInventory, _notifyInventory);
                     await prefs.setBool(_SettingsKeys.notifySync, _notifySync);
+
+                    // These three toggles are per-category filters; the OS
+                    // notification permission itself is a single shared
+                    // gate, so any category being on means this device
+                    // needs to be registered to actually receive pushes.
+                    final anyEnabled =
+                        _notifySales || _notifyInventory || _notifySync;
+                    String? permissionMessage;
+                    if (anyEnabled) {
+                      final granted = await getIt<NotificationService>()
+                          .requestPermission();
+                      if (!granted) {
+                        permissionMessage =
+                            'Notifications are blocked in your phone settings — enable them there to receive alerts.';
+                      }
+                    }
+
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Notification settings saved')),
+                        SnackBar(
+                          content: Text(permissionMessage ??
+                              'Notification settings saved'),
+                        ),
                       );
                     }
                   },

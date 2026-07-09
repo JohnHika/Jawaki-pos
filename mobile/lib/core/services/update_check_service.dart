@@ -240,6 +240,18 @@ class UpdateCheckService extends ChangeNotifier {
         _applyManifest(manifest, currentVersion);
       }
 
+      // Fall back to a locally-persisted "just installed this build" notice
+      // when the live manifest didn't already arm one (see
+      // _persistPendingInstalledNotice) — covers the normal case where the
+      // manifest has since moved on to describe a newer release, or the
+      // network is unavailable right after the update relaunch.
+      if (_installedUpdateNotice == null) {
+        await _applyPendingInstalledNoticeIfMatches(currentVersion);
+        if (_installedUpdateNotice != null) {
+          notifyListeners();
+        }
+      }
+
       return isForceUpdateRequired || hasOptionalUpdateAvailable;
     } catch (error) {
       if (!kReleaseMode) {
@@ -397,6 +409,65 @@ class UpdateCheckService extends ChangeNotifier {
     return update;
   }
 
+  static const _pendingNoticeBuildKey = 'pending_update_notice_build';
+  static const _pendingNoticeVersionKey = 'pending_update_notice_version';
+  static const _pendingNoticeReleaseNotesKey =
+      'pending_update_notice_release_notes';
+
+  /// Records that this update's notice should be shown once the app
+  /// relaunches on the new build, independent of whether a later live
+  /// manifest fetch happens to report the same version (see
+  /// _applyPendingInstalledNoticeIfMatches). Keyed on build number (the
+  /// authoritative, unambiguous identifier for "did this exact install
+  /// actually take effect"), since displayVersion/noticeKey may be a
+  /// human-readable release name rather than the raw installed version.
+  Future<void> _persistPendingInstalledNotice(AppUpdateInfo update) async {
+    if (update.releaseNotes.trim().isEmpty) return;
+    final buildNumber = update.buildNumber;
+    if (buildNumber == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_pendingNoticeBuildKey, buildNumber);
+    await prefs.setString(_pendingNoticeVersionKey, update.displayVersion);
+    await prefs.setString(_pendingNoticeReleaseNotesKey, update.releaseNotes);
+  }
+
+  /// Checks for a notice persisted by _persistPendingInstalledNotice and, if
+  /// the app is now actually running that exact build (confirming the
+  /// install completed rather than being cancelled), arms it as the
+  /// installed-update notice. Always clears the stored flag either way, so a
+  /// cancelled/failed install doesn't leave a stale pending notice around
+  /// forever waiting for a build that will never launch.
+  Future<void> _applyPendingInstalledNoticeIfMatches(
+    String currentVersion,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final pendingBuild = prefs.getInt(_pendingNoticeBuildKey);
+    if (pendingBuild == null) return;
+
+    final pendingVersion = prefs.getString(_pendingNoticeVersionKey) ?? '';
+    final pendingNotes = prefs.getString(_pendingNoticeReleaseNotesKey) ?? '';
+    await prefs.remove(_pendingNoticeBuildKey);
+    await prefs.remove(_pendingNoticeVersionKey);
+    await prefs.remove(_pendingNoticeReleaseNotesKey);
+
+    final currentBuildNumber = _currentBuildNumber(currentVersion);
+    if (currentBuildNumber == null ||
+        pendingBuild != currentBuildNumber ||
+        pendingNotes.trim().isEmpty) {
+      return;
+    }
+
+    _installedUpdateNotice = AppUpdateInfo(
+      latestVersion: _stripBuildSuffix(currentVersion),
+      releaseName: pendingVersion.isEmpty ? null : pendingVersion,
+      buildNumber: currentBuildNumber,
+      minSupportedVersion: _stripBuildSuffix(currentVersion),
+      forceUpdate: false,
+      apkUrl: '',
+      releaseNotes: pendingNotes,
+    );
+  }
+
   Future<void> downloadAndInstallRequiredUpdate() async {
     await _downloadAndInstall(activeGateUpdate);
   }
@@ -488,6 +559,13 @@ class UpdateCheckService extends ChangeNotifier {
         _errorMessage = message.isNotEmpty
             ? message
             : 'Android installer could not be opened automatically. Use the fallback download link if needed.';
+      } else {
+        // The OS installer takes over from here and this process may be
+        // killed before the app relaunches on the new build, so the
+        // what's-new notice can't rely on a later live manifest re-fetch
+        // happening to match this exact version by coincidence — persist
+        // it now, before handing off, so it survives the relaunch.
+        await _persistPendingInstalledNotice(update);
       }
       notifyListeners();
     } catch (error) {

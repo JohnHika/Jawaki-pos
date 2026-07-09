@@ -89,6 +89,26 @@ model Device {
   @@map("devices")
 }
 
+// One row per (user, physical device) that has granted notification
+// permission — a user can be signed into more than one device, and a push
+// needs to reach all of them. Kept separate from Device (which is
+// branch-scoped and registered independently of any user) since token
+// delivery is inherently a per-user, per-install concept.
+model PushToken {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  deviceUuid String?
+  platform   String   @default("android")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
 // ==================== USERS & AUTHENTICATION ====================
 
 // Legacy fixed role enum — superseded by the granular Permission/Role
@@ -143,6 +163,7 @@ model User {
   cashReconciliationsCounted CashReconciliation[]
   roles                      UserRole[]
   permissionOverrides        UserPermissionOverride[]
+  pushTokens                 PushToken[]
 
   @@unique([tenantId, email])
   @@map("users")

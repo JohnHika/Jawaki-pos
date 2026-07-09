@@ -13,6 +13,7 @@ import '../services/haptic_service.dart';
 import '../services/local_server_service.dart';
 import '../services/update_check_service.dart';
 import '../services/receipt_printer_service.dart';
+import '../services/notification_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 
 final getIt = GetIt.instance;
@@ -146,6 +147,18 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] Registering ReceiptPrinterService...');
     getIt.registerSingleton<ReceiptPrinterService>(ReceiptPrinterService());
     debugPrint('[DI] ReceiptPrinterService registered');
+
+    // ============================================
+    // STEP 11: Notification Service (push notifications)
+    // ============================================
+    debugPrint('[DI] Registering NotificationService...');
+    getIt.registerSingleton<NotificationService>(
+      NotificationService(
+        apiClient: getIt<ApiClient>(),
+        storage: getIt<StorageService>(),
+      ),
+    );
+    debugPrint('[DI] NotificationService registered');
 
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/auth/app_roles.dart';
 
 // Auth state
@@ -85,6 +86,7 @@ class AuthController extends StateNotifier<AuthState> {
         isAuthenticated: true,
         user: _authService.currentUser,
       );
+      _registerPushTokenIfPermitted();
       return true;
     } catch (e) {
       state = state.copyWith(
@@ -106,6 +108,7 @@ class AuthController extends StateNotifier<AuthState> {
         isLocked: false,
         user: _authService.currentUser,
       );
+      _registerPushTokenIfPermitted();
       return true;
     } catch (e) {
       state = state.copyWith(
@@ -132,6 +135,7 @@ class AuthController extends StateNotifier<AuthState> {
         isAuthenticated: true,
         user: _authService.currentUser,
       );
+      _registerPushTokenIfPermitted();
       return true;
     } catch (e) {
       state = state.copyWith(
@@ -160,6 +164,7 @@ class AuthController extends StateNotifier<AuthState> {
         isLocked: false,
         user: _authService.currentUser,
       );
+      _registerPushTokenIfPermitted();
       return true;
     }
 
@@ -172,6 +177,11 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     state = state.copyWith(isLoading: true);
+    try {
+      await getIt<NotificationService>().unregisterToken();
+    } catch (_) {
+      // Non-fatal — a stale token just goes unused until it expires.
+    }
     await _authService.logout();
     state = const AuthState();
   }
@@ -187,6 +197,7 @@ class AuthController extends StateNotifier<AuthState> {
           isAuthenticated: true,
           user: _authService.currentUser,
         );
+        _registerPushTokenIfPermitted();
         return true;
       }
       state = state.copyWith(
@@ -201,6 +212,23 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return false;
     }
+  }
+
+  /// Re-associates this device's push token with whichever user just
+  /// authenticated, if notification permission was already granted in a
+  /// previous session — fire-and-forget so a slow/failed network call
+  /// never delays showing the authenticated UI.
+  void _registerPushTokenIfPermitted() {
+    unawaited(() async {
+      try {
+        final notifications = getIt<NotificationService>();
+        if (await notifications.hasPermission()) {
+          await notifications.registerToken();
+        }
+      } catch (_) {
+        // Non-fatal — next cold start or explicit toggle will retry.
+      }
+    }());
   }
 
   Future<bool> isBiometricAvailable() async {
