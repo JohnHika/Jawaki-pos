@@ -617,6 +617,15 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               ),
             ),
 
+            if (widget.availableStock != null) ...[
+              const SizedBox(height: 12),
+              _StockBreakdown(
+                availableStock: widget.availableStock!,
+                pricingTiers: widget.pricingTiers,
+                baseUnit: widget.baseUnit,
+              ),
+            ],
+
             const SizedBox(height: 20),
 
             // +/- Quantity controls
@@ -1201,6 +1210,93 @@ class _QuantitySheetState extends State<_QuantitySheet> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Shows exactly how much stock is left, decomposed into every one of the
+/// product's configured tiers — e.g. "4 packs + 4 pieces left" for a
+/// product with 52 base units in stock and a 12-per-pack tier — instead of
+/// a single generic stock number disconnected from how the tiers were set
+/// up. [pricingTiers] includes the base tier as its first entry (per
+/// [PricingService.getAllPricingTiers]); everything after that is a real
+/// bulk tier with a [UnitPriceInfo.quantityPerUnit].
+class _StockBreakdown extends StatelessWidget {
+  final int availableStock;
+  final List<UnitPriceInfo> pricingTiers;
+  final String baseUnit;
+
+  const _StockBreakdown({
+    required this.availableStock,
+    required this.pricingTiers,
+    required this.baseUnit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bulkTiers = pricingTiers.where((t) => t.quantityPerUnit != null && t.quantityPerUnit! > 0).toList();
+
+    final lines = <String>[];
+    for (final tier in bulkTiers) {
+      final perUnit = tier.quantityPerUnit!.round();
+      final whole = availableStock ~/ perUnit;
+      final remainder = availableStock % perUnit;
+      lines.add(
+        remainder > 0
+            ? '$whole ${tier.unit}${whole == 1 ? '' : 's'} + $remainder $baseUnit left over'
+            : '$whole ${tier.unit}${whole == 1 ? '' : 's'} left',
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? DesignColors.darkSurfaceElevated
+            : DesignColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined,
+                  size: 14,
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary),
+              const SizedBox(width: 6),
+              Text(
+                '$availableStock $baseUnit${availableStock == 1 ? '' : 's'} in stock',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          for (final line in lines) ...[
+            const SizedBox(height: 3),
+            Padding(
+              padding: const EdgeInsets.only(left: 20),
+              child: Text(
+                line,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

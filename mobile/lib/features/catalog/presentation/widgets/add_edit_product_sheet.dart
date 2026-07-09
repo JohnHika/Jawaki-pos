@@ -371,8 +371,13 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     final pricingTiers = <Map<String, dynamic>>[];
     for (final tier in bulkTiers) {
       final tierPrice = double.tryParse(tier.priceController.text.trim());
-      final tierQty = double.tryParse(tier.qtyController.text.trim());
-      if (tierPrice == null || tierQty == null) continue;
+      if (tierPrice == null) continue;
+      // The conversion count is optional in the UI -- a priced tier
+      // shouldn't be silently dropped just because this was left blank.
+      // Default to 1 (1:1 with the primary unit) until the admin sets a
+      // real count.
+      final tierQty =
+          double.tryParse(tier.qtyController.text.trim()) ?? 1;
       pricingTiers.add({
         'unit': tier.unit,
         'quantityPerUnit': tierQty,
@@ -746,9 +751,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   const TextInputType.numberWithOptions(decimal: true),
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               decoration: InputDecoration(
-                labelText: 'How many ${_unitPriceTiers[0].unit} per ${tier.unit}?',
+                labelText:
+                    'How many ${_unitPriceTiers[0].unit} per ${tier.unit}? (optional)',
                 labelStyle: const TextStyle(fontSize: 12),
-                hintText: 'e.g. 12',
+                hintText: 'e.g. 12 — defaults to 1 if left blank',
                 hintStyle: TextStyle(
                   color: DesignColors.textTertiary,
                   fontWeight: FontWeight.normal,
@@ -771,10 +777,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
+              // Optional: only validate the format when something was
+              // typed. A blank value is fine -- _saveProduct() defaults
+              // the conversion count to 1 rather than dropping the tier.
               validator: (v) {
-                if (v == null || v.trim().isEmpty) {
-                  return 'Required';
-                }
+                if (v == null || v.trim().isEmpty) return null;
                 final parsed = double.tryParse(v.trim());
                 if (parsed == null || parsed <= 0) {
                   return 'Enter a count greater than 0';
@@ -787,16 +794,30 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
           child: isPrimary
-              ? Row(
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.star_rounded,
-                        size: 11, color: DesignColors.brand),
-                    const SizedBox(width: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded,
+                            size: 11, color: DesignColors.brand),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Primary — base for stock deductions',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: DesignColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text(
-                      'Primary — base for stock deductions',
-                      style: const TextStyle(
+                      'Tip: make this your smallest unit (e.g. Piece) — add '
+                      'bigger units like Pack or Carton as tiers below.',
+                      style: TextStyle(
                         fontSize: 11,
-                        color: DesignColors.textTertiary,
+                        color: DesignColors.textTertiary.withValues(alpha: 0.8),
                       ),
                     ),
                   ],
