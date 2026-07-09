@@ -137,6 +137,9 @@ class CartSummaryBar extends ConsumerWidget {
                           : DesignColors.textSecondary,
                       fontSize: 12,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
                   ),
                   const SizedBox(height: 2),
                   FittedBox(
@@ -165,6 +168,7 @@ class CartSummaryBar extends ConsumerWidget {
               onPressed: () => context.push('/cart'),
               height: 44,
               borderRadius: 12,
+              expanded: false,
             ),
           ],
         ),

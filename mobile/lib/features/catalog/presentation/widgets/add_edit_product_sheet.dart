@@ -13,8 +13,13 @@ import 'image_picker_section.dart';
 class _UnitPriceTier {
   String unit;
   TextEditingController priceController;
-  _UnitPriceTier({required this.unit, String? price})
-      : priceController = TextEditingController(text: price ?? '');
+  // How many of the primary (base) unit make up one of this tier's unit —
+  // e.g. 12 for "12 pieces per pack". Entered directly by the admin, not
+  // derived from price, since bulk pricing is rarely perfectly linear.
+  TextEditingController qtyController;
+  _UnitPriceTier({required this.unit, String? price, String? qty})
+      : priceController = TextEditingController(text: price ?? ''),
+        qtyController = TextEditingController(text: qty ?? '');
 }
 
 /// Add/edit product form, shown as a bottom sheet from both the products
@@ -78,9 +83,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           (widget.product!.secondaryUnitQty != null
               ? widget.product!.price * widget.product!.secondaryUnitQty!
               : null);
+      final secQty = widget.product!.secondaryUnitQty;
       _unitPriceTiers.add(_UnitPriceTier(
         unit: widget.product!.secondaryUnit!,
         price: secPrice?.toStringAsFixed(0),
+        qty: secQty != null ? _formatQty(secQty) : null,
       ));
     }
     if (widget.product?.tertiaryUnit != null) {
@@ -88,9 +95,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           (widget.product!.tertiaryUnitQty != null
               ? widget.product!.price * widget.product!.tertiaryUnitQty!
               : null);
+      final terQty = widget.product!.tertiaryUnitQty;
       _unitPriceTiers.add(_UnitPriceTier(
         unit: widget.product!.tertiaryUnit!,
         price: terPrice?.toStringAsFixed(0),
+        qty: terQty != null ? _formatQty(terQty) : null,
       ));
     }
 
@@ -107,29 +116,18 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     );
   }
 
-  /// Converts a base-unit quantity into the given tier unit using the same
-  /// conversion factors computed from the pricing tiers (qty = tierPrice / primaryPrice).
+  /// Converts a base-unit quantity into the given tier unit using the real,
+  /// admin-entered conversion count for that tier (how many base units per
+  /// one of the tier's unit).
   double _convertFromBaseUnits(double baseQty, String unit) {
     final tier = _unitPriceTiers.firstWhere(
       (t) => t.unit == unit,
       orElse: () => _unitPriceTiers[0],
     );
     if (tier == _unitPriceTiers[0]) return baseQty;
-    final factor = _tierConversionFactor(tier);
+    final factor = double.tryParse(tier.qtyController.text.trim());
     if (factor == null || factor == 0) return baseQty;
     return baseQty / factor;
-  }
-
-  /// How many base (primary) units one unit of [tier] represents, derived
-  /// from tier prices the same way _saveProduct() derives secondaryQty/tertiaryQty.
-  double? _tierConversionFactor(_UnitPriceTier tier) {
-    final primaryPrice =
-        double.tryParse(_unitPriceTiers[0].priceController.text.trim());
-    final tierPrice = double.tryParse(tier.priceController.text.trim());
-    if (primaryPrice == null || primaryPrice <= 0 || tierPrice == null) {
-      return null;
-    }
-    return tierPrice / primaryPrice;
   }
 
   String _formatQty(double qty) {
@@ -143,6 +141,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     _minStockController.dispose();
     for (final tier in _unitPriceTiers) {
       tier.priceController.dispose();
+      tier.qtyController.dispose();
     }
     super.dispose();
   }
@@ -371,16 +370,15 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         ? double.tryParse(tertiary.priceController.text.trim())
         : null;
 
-    // secondaryUnitQty: how many primary units = 1 secondary unit
-    // e.g. if piece=5, dozen=50 → qty=10 (50/5)
-    final secondaryQty =
-        (secondaryPrice != null && primaryPrice > 0)
-            ? secondaryPrice / primaryPrice
-            : null;
-    final tertiaryQty =
-        (tertiaryPrice != null && primaryPrice > 0)
-            ? tertiaryPrice / primaryPrice
-            : null;
+    // How many primary units = 1 secondary/tertiary unit — entered
+    // directly by the admin (e.g. "12" for a 12-piece pack), not derived
+    // from price, since bulk pricing often includes a discount.
+    final secondaryQty = secondary != null
+        ? double.tryParse(secondary.qtyController.text.trim())
+        : null;
+    final tertiaryQty = tertiary != null
+        ? double.tryParse(tertiary.qtyController.text.trim())
+        : null;
 
     // Convert the reorder point from whichever tier unit was selected back
     // into base units for storage, using the same tier conversion factors.
@@ -725,6 +723,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 GestureDetector(
                   onTap: () => setState(() {
                     _unitPriceTiers[index].priceController.dispose();
+                    _unitPriceTiers[index].qtyController.dispose();
                     _unitPriceTiers.removeAt(index);
                   }),
                   child: Container(
@@ -743,6 +742,56 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ],
           ),
         ),
+        // Conversion count — how many primary units make up one of this
+        // tier's unit. Entered directly, not derived from price, since
+        // bulk pricing often includes a discount that would otherwise
+        // silently corrupt the real physical count.
+        if (!isPrimary)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: TextFormField(
+              controller: tier.qtyController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'How many ${_unitPriceTiers[0].unit} per ${tier.unit}?',
+                labelStyle: const TextStyle(fontSize: 12),
+                hintText: 'e.g. 12',
+                hintStyle: TextStyle(
+                  color: DesignColors.textTertiary,
+                  fontWeight: FontWeight.normal,
+                ),
+                filled: true,
+                fillColor: isDark ? DesignColors.darkSurface : Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide:
+                      const BorderSide(color: DesignColors.brand, width: 1.5),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return 'Required';
+                }
+                final parsed = double.tryParse(v.trim());
+                if (parsed == null || parsed <= 0) {
+                  return 'Enter a count greater than 0';
+                }
+                return null;
+              },
+            ),
+          ),
         // Label below each row
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
@@ -762,7 +811,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   ],
                 )
               : Text(
-                  'Tier ${index + 1} — ratio auto-computed',
+                  'Tier ${index + 1} — set the real pack/carton size',
                   style: const TextStyle(
                     fontSize: 11,
                     color: DesignColors.textTertiary,

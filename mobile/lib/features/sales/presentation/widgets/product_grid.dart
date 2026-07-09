@@ -342,10 +342,10 @@ class _ProductCard extends ConsumerWidget {
         pricingTiers: tiers,
         availableStock: trackInventory ? stock : null,
         currentQuantity: currentQty,
-        onConfirm: (qty, tier) async {
+        onConfirm: (qty, tier, overridePrice) async {
           final conversion = tier.quantityPerUnit ?? 1;
           final baseQty = (qty * conversion).round();
-          final unitPrice = tier.price / conversion;
+          final unitPrice = (overridePrice ?? tier.price) / conversion;
           final result = currentQty > 0
               ? await ref
                     .read(cartProvider.notifier)
@@ -428,7 +428,14 @@ class _QuantitySheet extends StatefulWidget {
   final List<UnitPriceInfo> pricingTiers;
   final int? availableStock;
   final int currentQuantity;
-  final Future<void> Function(int quantity, UnitPriceInfo tier) onConfirm;
+  // overridePrice is null unless the cashier explicitly used the price
+  // override control — always the price for one of [tier]'s unit, same
+  // basis as UnitPriceInfo.price, never the product's stored catalog price.
+  final Future<void> Function(
+    int quantity,
+    UnitPriceInfo tier,
+    double? overridePrice,
+  ) onConfirm;
 
   const _QuantitySheet({
     required this.productName,
@@ -449,15 +456,9 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   late final TextEditingController _qtyController;
   bool _isCarton = false;
   late UnitPriceInfo _selectedTier;
+  double? _overridePrice;
 
   static const _quickPicks = [1, 6, 12, 24, 48];
-  static const _bulkPicks = [
-    {'label': 'Half Crate', 'qty': 12},
-    {'label': 'Crate', 'qty': 24},
-    {'label': 'Carton', 'qty': 48},
-    {'label': '2 Cartons', 'qty': 96},
-    {'label': '5 Cartons', 'qty': 240},
-  ];
 
   @override
   void initState() {
@@ -479,6 +480,34 @@ class _QuantitySheetState extends State<_QuantitySheet> {
     super.dispose();
   }
 
+  /// Effective per-unit price for the selected tier: the cashier's
+  /// override for this sale only, or the tier's real catalog price.
+  double get _effectivePrice => _overridePrice ?? _selectedTier.price;
+
+  /// Bulk-pick shortcuts derived from the selected tier's real,
+  /// admin-entered conversion count instead of hardcoded base-unit
+  /// guesses unrelated to the product's actual pack/carton size.
+  List<Map<String, Object>> get _bulkPicks {
+    final perUnit = _selectedTier.quantityPerUnit;
+    if (perUnit == null || perUnit <= 1) {
+      // No real bulk tier selected — fall back to generic multiples of
+      // the currently selected (base) unit.
+      return const [
+        {'label': '1', 'qty': 1},
+        {'label': '6', 'qty': 6},
+        {'label': '12', 'qty': 12},
+        {'label': '24', 'qty': 24},
+      ];
+    }
+    final unitLabel = _selectedTier.unit;
+    return [
+      {'label': '1 $unitLabel', 'qty': 1},
+      {'label': '2 ${unitLabel}s', 'qty': 2},
+      {'label': '5 ${unitLabel}s', 'qty': 5},
+      {'label': '10 ${unitLabel}s', 'qty': 10},
+    ];
+  }
+
   void _updateQty(int newQty) {
     if (newQty < 1) newQty = 1;
     if (newQty > 99999) newQty = 99999;
@@ -493,7 +522,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final total = _selectedTier.price * _quantity;
+    final total = _effectivePrice * _quantity;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final conversion = _selectedTier.quantityPerUnit ?? 1;
     final baseUnits = (_quantity * conversion).round();
@@ -537,14 +566,52 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'KES ${_selectedTier.price.toStringAsFixed(0)} per ${_selectedTier.unit}',
-                    style: TextStyle(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                      fontSize: 14,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_overridePrice != null) ...[
+                        Text(
+                          'KES ${_selectedTier.price.toStringAsFixed(0)}',
+                          style: TextStyle(
+                            color: isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary,
+                            fontSize: 13,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        'KES ${_effectivePrice.toStringAsFixed(0)} per ${_selectedTier.unit}',
+                        style: TextStyle(
+                          color: _overridePrice != null
+                              ? DesignColors.accent
+                              : (isDark
+                                    ? DesignColors.darkTextSecondary
+                                    : DesignColors.textSecondary),
+                          fontSize: 14,
+                          fontWeight: _overridePrice != null
+                              ? FontWeight.w700
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => _showPriceOverride(context),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.edit_rounded,
+                            size: 15,
+                            color: isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -676,10 +743,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                 spacing: 8,
                 runSpacing: 8,
                 children: widget.pricingTiers.map((tier) {
-                  final selected =
-                      identical(tier, _selectedTier) ||
-                      (tier.unit == _selectedTier.unit &&
-                          tier.price == _selectedTier.price);
+                  final selected = tier.unit == _selectedTier.unit;
                   final tierConversion = tier.quantityPerUnit ?? 1;
                   return ChoiceChip(
                     label: Text(
@@ -688,11 +752,13 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           : tier.unit,
                     ),
                     selected: selected,
-                    onSelected: (_) {
+                    onSelected: (_) => setState(() {
                       _selectedTier = tier;
+                      _overridePrice = null;
                       _isCarton = false;
-                      _updateQty(1);
-                    },
+                      _quantity = 1;
+                      _qtyController.text = '1';
+                    }),
                     selectedColor: DesignColors.accent.withValues(alpha: 0.15),
                     backgroundColor: isDark
                         ? DesignColors.darkSurfaceElevated
@@ -774,7 +840,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                   final label = pick['label'] as String;
                   final selected = _quantity == qty;
                   return ChoiceChip(
-                    label: Text('$label ($qty)'),
+                    label: Text(label),
                     selected: selected,
                     onSelected: (_) => _updateQty(qty),
                     selectedColor: DesignColors.accent.withValues(alpha: 0.15),
@@ -889,12 +955,17 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '@ KES ${_selectedTier.price.toStringAsFixed(0)}',
+                        '@ KES ${_effectivePrice.toStringAsFixed(0)}',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark
-                              ? DesignColors.darkTextTertiary
-                              : DesignColors.textTertiary,
+                          color: _overridePrice != null
+                              ? DesignColors.accent
+                              : (isDark
+                                    ? DesignColors.darkTextTertiary
+                                    : DesignColors.textTertiary),
+                          fontWeight: _overridePrice != null
+                              ? FontWeight.w700
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -937,7 +1008,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ? null
                         : () {
                             Navigator.pop(context);
-                            widget.onConfirm(_quantity, _selectedTier);
+                            widget.onConfirm(
+                                _quantity, _selectedTier, _overridePrice);
                           },
                     height: 48,
                     borderRadius: 12,
@@ -992,5 +1064,144 @@ class _QuantitySheetState extends State<_QuantitySheet> {
         ),
       );
     });
+  }
+
+  /// One-off price override for this add-to-cart action only. Never
+  /// touches the product's stored catalog price — only changes the
+  /// per-unit price used for the cart line being added right now,
+  /// matching the existing cart-screen PriceAdjustmentWidget's scope.
+  void _showPriceOverride(BuildContext context) {
+    final controller = TextEditingController(
+      text: _selectedTier.price.toStringAsFixed(0),
+    );
+    final reasonController = TextEditingController();
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Price Override',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(dialogContext),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'For this sale only — the catalog price for '
+                  '${widget.productName} is unchanged.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Icon(Icons.attach_money, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Original: KES ${_selectedTier.price.toStringAsFixed(0)} '
+                      'per ${_selectedTier.unit}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'New price per ${_selectedTier.unit} (KES)',
+                    prefixIcon: const Icon(Icons.currency_exchange),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    errorText: errorMessage,
+                    errorStyle: const TextStyle(fontSize: 12),
+                  ),
+                  onChanged: (_) {
+                    if (errorMessage != null) {
+                      setDialogState(() => errorMessage = null);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: 'Reason (optional)',
+                    hintText: 'e.g., Promotion, Customer request, etc.',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final newPrice = double.tryParse(controller.text);
+                          if (newPrice != null && newPrice >= 0) {
+                            setState(() => _overridePrice = newPrice);
+                            Navigator.pop(dialogContext);
+                          } else {
+                            setDialogState(
+                              () => errorMessage = 'Please enter a valid price',
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          backgroundColor: DesignColors.accent,
+                        ),
+                        child: const Text('Apply'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

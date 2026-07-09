@@ -71,36 +71,7 @@ class CartItemTile extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    item.saleUnit != null && item.saleQuantity != null
-                        ? '${item.saleQuantity!.toStringAsFixed(item.saleQuantity!.truncateToDouble() == item.saleQuantity ? 0 : 1)} ${item.saleUnit} @ KES ${(item.unitPrice * (item.unitConversionFactor ?? 1)).toStringAsFixed(0)}'
-                        : 'KES ${item.unitPrice.toStringAsFixed(0)} each',
-                    style: TextStyle(
-                      color: Theme.of(context).disabledColor,
-                      fontSize: 12,
-                    ),
-                  ),
-                  if (item.discount > 0) ...[
-                    const SizedBox(height: 2),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: DesignColors.success.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '-KES ${item.discount.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: DesignColors.success,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  _buildDetailBlock(context),
                 ],
               ),
             ),
@@ -145,6 +116,82 @@ class CartItemTile extends ConsumerWidget {
         originalPrice: item.unitPrice * item.quantity,
       ),
     );
+  }
+
+  /// Detailed breakdown shown under the product name: what unit it's
+  /// being sold as, the qty × unit price arithmetic behind the line
+  /// subtotal, the pre-discount amount when a discount is applied, and
+  /// the base-stock impact when the sale unit differs from the stock unit
+  /// (e.g. selling by the pack while stock is tracked in pieces).
+  Widget _buildDetailBlock(BuildContext context) {
+    final disabledColor = Theme.of(context).disabledColor;
+    final soldByTier = item.saleUnit != null && item.saleQuantity != null;
+    final displayQty = soldByTier ? item.saleQuantity! : item.quantity.toDouble();
+    final displayUnit = soldByTier ? item.saleUnit! : 'unit';
+    final perUnitPrice = soldByTier
+        ? item.unitPrice * (item.unitConversionFactor ?? 1)
+        : item.unitPrice;
+    final subtotal = item.unitPrice * item.quantity;
+    final conversion = item.unitConversionFactor ?? 1;
+    final showsStockImpact = soldByTier && conversion != 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_formatQty(displayQty)} $displayUnit × KES ${perUnitPrice.toStringAsFixed(0)} '
+          '= KES ${subtotal.toStringAsFixed(0)}',
+          style: TextStyle(color: disabledColor, fontSize: 12),
+        ),
+        if (showsStockImpact) ...[
+          const SizedBox(height: 2),
+          Text(
+            '= ${item.quantity} from stock',
+            style: TextStyle(color: disabledColor, fontSize: 11),
+          ),
+        ],
+        if (item.discount > 0) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                'KES ${subtotal.toStringAsFixed(0)}',
+                style: TextStyle(
+                  color: disabledColor,
+                  fontSize: 11,
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: DesignColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '-KES ${item.discount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: DesignColors.success,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _formatQty(double qty) {
+    return qty.truncateToDouble() == qty
+        ? qty.toStringAsFixed(0)
+        : qty.toStringAsFixed(1);
   }
 }
 

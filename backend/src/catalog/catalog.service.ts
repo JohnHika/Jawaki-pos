@@ -699,10 +699,18 @@ export class CatalogService {
     const basePrice = Number(product.basePrice);
     const secondaryUnitQty = product.secondaryUnitQty ? Number(product.secondaryUnitQty) : null;
     const tertiaryUnitQty = product.tertiaryUnitQty ? Number(product.tertiaryUnitQty) : null;
-    
-    // Calculate per-unit prices for bulk tiers (divide bulk price by quantity)
-    const secondaryUnitPrice = currentPrice / (secondaryUnitQty || 1);
-    const tertiaryUnitPrice = currentPrice / (tertiaryUnitQty || 1);
+
+    // Bulk-tier prices are real, independently-entered prices (e.g. a pack
+    // priced with a bulk discount, not just basePrice * qty) — read what
+    // was actually stored. Only fall back to a computed estimate for
+    // products saved before this field existed, or where the tier was
+    // configured with a quantity but no explicit price.
+    const secondaryUnitPrice = product.secondaryUnitPrice
+      ? Number(product.secondaryUnitPrice)
+      : currentPrice * (secondaryUnitQty || 1);
+    const tertiaryUnitPrice = product.tertiaryUnitPrice
+      ? Number(product.tertiaryUnitPrice)
+      : currentPrice * (tertiaryUnitQty || 1);
 
     return {
       id: product.id,

@@ -329,10 +329,12 @@ model Product {
   costPrice        Decimal? @db.Decimal(10, 2)
   taxRate          Decimal  @default(0) @db.Decimal(5, 2)
   unit             String   @default("piece")
-  secondaryUnit    String? // e.g., "box", "carton", "pack"
-  secondaryUnitQty Decimal? @db.Decimal(10, 3) // How many base units per secondary unit
-  tertiaryUnit     String? // e.g., "carton" if secondary is "box"
-  tertiaryUnitQty  Decimal? @db.Decimal(10, 3) // How many base units per tertiary unit
+  secondaryUnit      String? // e.g., "box", "carton", "pack"
+  secondaryUnitQty   Decimal? @db.Decimal(10, 3) // How many base units per secondary unit
+  secondaryUnitPrice Decimal? @db.Decimal(10, 2) // Real selling price for one secondary unit
+  tertiaryUnit       String? // e.g., "carton" if secondary is "box"
+  tertiaryUnitQty    Decimal? @db.Decimal(10, 3) // How many base units per tertiary unit
+  tertiaryUnitPrice  Decimal? @db.Decimal(10, 2) // Real selling price for one tertiary unit
   minStock         Int      @default(0)
   trackInventory   Boolean  @default(true)
   allowFractions   Boolean  @default(false)

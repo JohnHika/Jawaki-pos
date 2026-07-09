@@ -425,10 +425,6 @@ class ApiClient {
     double? tertiaryUnitPrice,
     int? minStock,
   }) async {
-    final metadata = <String, dynamic>{};
-    if (secondaryUnitPrice != null) metadata['secondaryUnitPrice'] = secondaryUnitPrice;
-    if (tertiaryUnitPrice != null) metadata['tertiaryUnitPrice'] = tertiaryUnitPrice;
-
     final response = await _dio.post('/catalog/products', data: {
       'name': name,
       'basePrice': basePrice,
@@ -439,10 +435,11 @@ class ApiClient {
       if (unit != null) 'unit': unit,
       if (secondaryUnit != null) 'secondaryUnit': secondaryUnit,
       if (secondaryUnitQty != null) 'secondaryUnitQty': secondaryUnitQty,
+      if (secondaryUnitPrice != null) 'secondaryUnitPrice': secondaryUnitPrice,
       if (tertiaryUnit != null) 'tertiaryUnit': tertiaryUnit,
       if (tertiaryUnitQty != null) 'tertiaryUnitQty': tertiaryUnitQty,
+      if (tertiaryUnitPrice != null) 'tertiaryUnitPrice': tertiaryUnitPrice,
       if (minStock != null) 'minStock': minStock,
-      if (metadata.isNotEmpty) 'metadata': metadata,
     });
     return response.data as Map<String, dynamic>;
   }
@@ -465,10 +462,6 @@ class ApiClient {
     int? minStock,
     bool clearImage = false,
   }) async {
-    final metadata = <String, dynamic>{};
-    if (secondaryUnitPrice != null) metadata['secondaryUnitPrice'] = secondaryUnitPrice;
-    if (tertiaryUnitPrice != null) metadata['tertiaryUnitPrice'] = tertiaryUnitPrice;
-
     final response = await _dio.patch('/catalog/products/$id', data: {
       if (name != null) 'name': name,
       if (basePrice != null) 'basePrice': basePrice,
@@ -477,10 +470,11 @@ class ApiClient {
       if (unit != null) 'unit': unit,
       if (secondaryUnit != null) 'secondaryUnit': secondaryUnit,
       if (secondaryUnitQty != null) 'secondaryUnitQty': secondaryUnitQty,
+      if (secondaryUnitPrice != null) 'secondaryUnitPrice': secondaryUnitPrice,
       if (tertiaryUnit != null) 'tertiaryUnit': tertiaryUnit,
       if (tertiaryUnitQty != null) 'tertiaryUnitQty': tertiaryUnitQty,
+      if (tertiaryUnitPrice != null) 'tertiaryUnitPrice': tertiaryUnitPrice,
       if (minStock != null) 'minStock': minStock,
-      if (metadata.isNotEmpty) 'metadata': metadata,
       if (clearImage) 'image': null,
       if (clearImage) 'imagePublicId': null,
       if (!clearImage && image != null) 'image': image,

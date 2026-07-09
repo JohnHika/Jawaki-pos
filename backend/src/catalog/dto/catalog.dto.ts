@@ -173,6 +173,14 @@ export class CreateProductDto {
   @Type(() => Number)
   secondaryUnitQty?: number;
 
+  @ApiPropertyOptional({ example: 550.0, description: 'Real selling price for one secondary unit (e.g. one pack)' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Secondary unit price must have up to 2 decimal places' })
+  @Min(0, { message: 'Secondary unit price cannot be negative' })
+  @Max(10000000, { message: 'Secondary unit price cannot exceed 10,000,000' })
+  @Type(() => Number)
+  secondaryUnitPrice?: number;
+
   @ApiPropertyOptional({ example: 'box', description: 'Tertiary selling unit' })
   @IsOptional()
   @IsString()
@@ -185,6 +193,14 @@ export class CreateProductDto {
   @Min(0)
   @Type(() => Number)
   tertiaryUnitQty?: number;
+
+  @ApiPropertyOptional({ example: 1100.0, description: 'Real selling price for one tertiary unit (e.g. one carton)' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Tertiary unit price must have up to 2 decimal places' })
+  @Min(0, { message: 'Tertiary unit price cannot be negative' })
+  @Max(10000000, { message: 'Tertiary unit price cannot exceed 10,000,000' })
+  @Type(() => Number)
+  tertiaryUnitPrice?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
