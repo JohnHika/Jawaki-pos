@@ -41,6 +41,7 @@ class Products extends Table {
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get trackInventory =>
       boolean().withDefault(const Constant(true))();
+  IntColumn get minStock => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -236,7 +237,7 @@ class AppDatabase extends _$AppDatabase {
     : super(SecureDatabaseConnection.openSecureConnection());
 
   @override
-  int get schemaVersion => 7; // v7: secondary/tertiary unit prices
+  int get schemaVersion => 8; // v8: minStock for packaging-unit-aware low stock
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -275,6 +276,11 @@ class AppDatabase extends _$AppDatabase {
         // Add price columns for secondary and tertiary units
         await m.addColumn(products, products.secondaryUnitPrice);
         await m.addColumn(products, products.tertiaryUnitPrice);
+      }
+      if (from < 8) {
+        // Add minStock so low-stock detection can use the real per-product
+        // reorder threshold instead of a hardcoded fallback
+        await m.addColumn(products, products.minStock);
       }
     },
   );
@@ -893,18 +899,18 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  // Low Stock Alerts
-  Future<List<Map<String, dynamic>>> getLowStockProducts({
-    int threshold = 10,
-  }) async {
+  // Low Stock Alerts — uses each product's real minStock (reorder threshold),
+  // matching the backend's getLowStockAlerts() semantics (quantity <= minStock),
+  // instead of a flat hardcoded threshold.
+  Future<List<Map<String, dynamic>>> getLowStockProducts() async {
     final result = await customSelect(
-      'SELECT p.id, p.name, p.sku, p.price, ls.quantity, ls.branch_id, '
+      'SELECT p.id, p.name, p.sku, p.price, p.min_stock, p.unit, '
+      'p.secondary_unit, p.secondary_unit_qty, ls.quantity, ls.branch_id, '
       '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
-      'WHERE p.is_active = 1 AND (ls.quantity IS NULL OR ls.quantity < ?) '
-      'ORDER BY ls.quantity ASC, p.name ASC',
-      variables: [Variable.withInt(threshold)],
+      'WHERE p.is_active = 1 AND COALESCE(ls.quantity, 0) <= p.min_stock '
+      'ORDER BY (p.min_stock - COALESCE(ls.quantity, 0)) DESC, p.name ASC',
     ).get();
 
     return result
@@ -914,6 +920,10 @@ class AppDatabase extends _$AppDatabase {
             'name': r.read<String>('name'),
             'sku': r.read<String>('sku'),
             'price': r.read<double>('price'),
+            'minStock': r.read<int>('min_stock'),
+            'unit': r.read<String>('unit'),
+            'secondaryUnit': r.readNullable<String>('secondary_unit'),
+            'secondaryUnitQty': r.readNullable<double>('secondary_unit_qty'),
             'quantity': r.readNullable<int>('quantity') ?? 0,
             'branchId': r.readNullable<String>('branch_id') ?? '',
             'categoryName':
@@ -1106,7 +1116,7 @@ class AppDatabase extends _$AppDatabase {
     final branchId = _storage.getBranchId();
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, p.cost_price, '
-      'COALESCE(ls.quantity, 0) as stock, COALESCE(ls.min_quantity, 0) as min_stock, '
+      'COALESCE(ls.quantity, 0) as stock, p.min_stock as min_stock, '
       'c.name as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '

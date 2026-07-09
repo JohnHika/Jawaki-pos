@@ -508,6 +508,7 @@ class SyncService {
         imageUrl: Value(data['imageUrl']),
         isActive: Value(data['isActive'] ?? true),
         trackInventory: Value(data['trackInventory'] ?? true),
+        minStock: Value((data['minStock'] as num?)?.toInt() ?? 0),
         createdAt: Value(createdAt),
         updatedAt: Value(updatedAt),
       ),

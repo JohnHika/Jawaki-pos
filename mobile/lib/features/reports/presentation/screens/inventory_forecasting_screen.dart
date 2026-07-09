@@ -37,7 +37,7 @@ class _InventoryForecastingScreenState
       final database = getIt<AppDatabase>();
 
       // Load low stock items
-      _lowStockItems = await database.getLowStockProducts(threshold: 10);
+      _lowStockItems = await database.getLowStockProducts();
 
       // Load fast moving items (top sellers)
       final now = DateTime.now();

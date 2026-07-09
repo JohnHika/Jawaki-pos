@@ -105,6 +105,32 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return Icons.check_circle_rounded;
   }
 
+  String _formatUnitQty(double qty) {
+    return qty % 1 == 0 ? qty.toStringAsFixed(0) : qty.toStringAsFixed(1);
+  }
+
+  /// Builds a packaging-unit-aware summary for a low-stock item, e.g.
+  /// "3 pieces (0.3 box) — reorder below 1 box", falling back to a
+  /// plain base-unit message when the product has no secondary unit.
+  String? _packagingSummary(
+    Map<String, dynamic> item,
+    int quantity,
+    int minStock,
+  ) {
+    final unit = item['unit'] as String? ?? 'piece';
+    final secondaryUnit = item['secondaryUnit'] as String?;
+    final secondaryUnitQty = item['secondaryUnitQty'] as double?;
+
+    if (secondaryUnit != null && secondaryUnitQty != null && secondaryUnitQty > 0) {
+      final packagingQty = quantity / secondaryUnitQty;
+      final reorderPackagingQty = minStock / secondaryUnitQty;
+      return '$quantity $unit (${_formatUnitQty(packagingQty)} $secondaryUnit)'
+          ' — reorder below ${_formatUnitQty(reorderPackagingQty)} $secondaryUnit';
+    }
+
+    return '$quantity $unit left (reorder below $minStock $unit)';
+  }
+
   List<Map<String, dynamic>> get _filteredInventoryItems {
     if (_stockSearchQuery.isEmpty) return _inventoryItems;
     final q = _stockSearchQuery.toLowerCase();
@@ -514,16 +540,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       return _buildLoadingList();
     }
 
+    // Severity is relative to each product's own reorder point (minStock),
+    // not a hardcoded quantity cutoff — matches backend's shortfall logic.
     final critical = _lowStockItems
         .where((i) => ((i['quantity'] as int?) ?? 0) == 0)
         .toList();
     final warning = _lowStockItems.where((i) {
       final qty = (i['quantity'] as int?) ?? 0;
-      return qty > 0 && qty < 5;
+      final minStock = (i['minStock'] as int?) ?? 0;
+      return qty > 0 && minStock > 0 && qty <= minStock * 0.5;
     }).toList();
     final low = _lowStockItems.where((i) {
       final qty = (i['quantity'] as int?) ?? 0;
-      return qty >= 5;
+      final minStock = (i['minStock'] as int?) ?? 0;
+      final isWarning = minStock > 0 && qty <= minStock * 0.5;
+      return qty > 0 && !isWarning;
     }).toList();
 
     return ListView(
@@ -681,8 +712,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final name = item['name'] as String? ?? 'Unknown';
     final sku = item['sku'] as String? ?? '';
     final quantity = (item['quantity'] as int?) ?? 0;
+    final minStock = (item['minStock'] as int?) ?? 0;
     final category = item['categoryName'] as String? ?? 'Uncategorised';
     final productId = item['id'] as String? ?? '';
+    final packagingSummary = _packagingSummary(item, quantity, minStock);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -743,6 +776,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       Text(category, style: TextStyle(fontSize: 11, color: tertiaryColor)),
                     ],
                   ),
+                  if (packagingSummary != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      packagingSummary,
+                      style: TextStyle(fontSize: 11, color: tertiaryColor),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),

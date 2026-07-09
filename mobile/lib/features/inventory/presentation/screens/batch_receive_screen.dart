@@ -114,7 +114,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     setState(() {
       _batches.add(
         BatchEntry(
-          batchNumberController: TextEditingController(),
           quantityController: TextEditingController(),
           costPriceController: TextEditingController(),
           notesController: TextEditingController(),
@@ -168,7 +167,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         );
 
         return {
-          'batchNumber': batch.batchNumberController.text,
           'quantity': quantity,
           'unit': batch.selectedUnit,
           'unitsPerQuantity': unitOption.conversionFactor,
@@ -195,7 +193,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         throw Exception('Missing branch ID or product ID');
       }
 
-      await apiClient.receiveBatches({
+      final result = await apiClient.receiveBatches({
         'branchId': branchId,
         'productId': widget.productId!,
         'batches': batchesData,
@@ -203,9 +201,28 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       if (!mounted) return;
 
+      final createdBatches = (result['batches'] as List?) ?? const [];
+      final batchNumbers = createdBatches
+          .map((b) => (b as Map)['batchNumber']?.toString())
+          .whereType<String>()
+          .toList();
+
+      String message;
+      if (batchNumbers.length == 1) {
+        message = 'Received — Batch: ${batchNumbers.first}';
+      } else if (batchNumbers.length > 1) {
+        final shown = batchNumbers.take(3).join(', ');
+        final remaining = batchNumbers.length - 3;
+        message = remaining > 0
+            ? 'Received batches: $shown and $remaining more'
+            : 'Received batches: $shown';
+      } else {
+        message = 'Batches received successfully';
+      }
+
       showGlassSnackBar(
         context,
-        'Batches received successfully',
+        message,
         icon: Icons.check_circle_rounded,
         color: DesignColors.success,
       );
@@ -569,26 +586,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
             const SizedBox(height: 16),
 
-            // Batch Number
-            TextFormField(
-              controller: batch.batchNumberController,
-              style: TextStyle(color: titleColor),
-              decoration: _fieldDecoration(
-                context,
-                labelText: 'Batch Number *',
-                hintText: 'e.g., BTH-2024-001',
-                prefixIcon: Icons.qr_code_rounded,
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Batch number is required';
-                }
-                return null;
-              },
-            ),
-
-            const SizedBox(height: 14),
-
             // Quantity with Unit Selector
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -942,7 +939,6 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
 /// Batch Entry Data Model
 class BatchEntry {
-  final TextEditingController batchNumberController;
   final TextEditingController quantityController;
   final TextEditingController costPriceController;
   final TextEditingController notesController;
@@ -952,7 +948,6 @@ class BatchEntry {
   DateTime? manufactureDate;
 
   BatchEntry({
-    required this.batchNumberController,
     required this.quantityController,
     required this.costPriceController,
     required this.notesController,
@@ -963,7 +958,6 @@ class BatchEntry {
   });
 
   void dispose() {
-    batchNumberController.dispose();
     quantityController.dispose();
     costPriceController.dispose();
     notesController.dispose();

@@ -31,10 +31,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
+  late final TextEditingController _minStockController;
   String? _selectedCategoryId;
   String? _imageUrl;
   String? _imagePublicId;
   late List<_UnitPriceTier> _unitPriceTiers;
+  late String _minStockUnit;
 
   final _units = [
     'piece',
@@ -91,12 +93,54 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         price: terPrice?.toStringAsFixed(0),
       ));
     }
+
+    // Reorder point: stored in base units, displayed/edited in whichever
+    // tier unit is selected (defaults to the secondary/"box" tier if one
+    // exists, since that's the most natural way staff think about restocking).
+    _minStockUnit = _unitPriceTiers.length > 1
+        ? _unitPriceTiers[1].unit
+        : _unitPriceTiers[0].unit;
+    final minStockBase = widget.product?.minStock ?? 0;
+    final minStockDisplay = _convertFromBaseUnits(minStockBase.toDouble(), _minStockUnit);
+    _minStockController = TextEditingController(
+      text: minStockBase == 0 ? '' : _formatQty(minStockDisplay),
+    );
+  }
+
+  /// Converts a base-unit quantity into the given tier unit using the same
+  /// conversion factors computed from the pricing tiers (qty = tierPrice / primaryPrice).
+  double _convertFromBaseUnits(double baseQty, String unit) {
+    final tier = _unitPriceTiers.firstWhere(
+      (t) => t.unit == unit,
+      orElse: () => _unitPriceTiers[0],
+    );
+    if (tier == _unitPriceTiers[0]) return baseQty;
+    final factor = _tierConversionFactor(tier);
+    if (factor == null || factor == 0) return baseQty;
+    return baseQty / factor;
+  }
+
+  /// How many base (primary) units one unit of [tier] represents, derived
+  /// from tier prices the same way _saveProduct() derives secondaryQty/tertiaryQty.
+  double? _tierConversionFactor(_UnitPriceTier tier) {
+    final primaryPrice =
+        double.tryParse(_unitPriceTiers[0].priceController.text.trim());
+    final tierPrice = double.tryParse(tier.priceController.text.trim());
+    if (primaryPrice == null || primaryPrice <= 0 || tierPrice == null) {
+      return null;
+    }
+    return tierPrice / primaryPrice;
+  }
+
+  String _formatQty(double qty) {
+    return qty % 1 == 0 ? qty.toStringAsFixed(0) : qty.toStringAsFixed(2);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _minStockController.dispose();
     for (final tier in _unitPriceTiers) {
       tier.priceController.dispose();
     }
@@ -237,6 +281,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             _buildPricingSection(isDark),
             const SizedBox(height: 14),
 
+            // ── Reorder Point ────────────────────────────────────────────
+            _buildReorderPointSection(isDark),
+            const SizedBox(height: 14),
+
             // Description
             TextFormField(
               controller: _descriptionController,
@@ -334,6 +382,25 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ? tertiaryPrice / primaryPrice
             : null;
 
+    // Convert the reorder point from whichever tier unit was selected back
+    // into base units for storage, using the same tier conversion factors.
+    int? minStock;
+    final minStockText = _minStockController.text.trim();
+    if (minStockText.isNotEmpty) {
+      final enteredQty = double.parse(minStockText);
+      double minStockBase;
+      if (_minStockUnit == primary.unit) {
+        minStockBase = enteredQty;
+      } else if (secondary != null && _minStockUnit == secondary.unit) {
+        minStockBase = enteredQty * (secondaryQty ?? 1);
+      } else if (tertiary != null && _minStockUnit == tertiary.unit) {
+        minStockBase = enteredQty * (tertiaryQty ?? 1);
+      } else {
+        minStockBase = enteredQty;
+      }
+      minStock = minStockBase.round();
+    }
+
     try {
       if (isEditing) {
         await apiClient.updateProduct(
@@ -351,6 +418,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           tertiaryUnit: tertiary?.unit,
           tertiaryUnitQty: tertiaryQty,
           tertiaryUnitPrice: tertiaryPrice,
+          minStock: minStock,
           clearImage: clearImage,
         );
       } else {
@@ -368,6 +436,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           tertiaryUnit: tertiary?.unit,
           tertiaryUnitQty: tertiaryQty,
           tertiaryUnitPrice: tertiaryPrice,
+          minStock: minStock,
         );
       }
 
@@ -383,6 +452,87 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         );
       }
     }
+  }
+
+  // ─── Reorder point ──────────────────────────────────────────────────────
+
+  Widget _buildReorderPointSection(bool isDark) {
+    final tierUnits = _unitPriceTiers.map((t) => t.unit).toList();
+    if (!tierUnits.contains(_minStockUnit)) {
+      _minStockUnit = tierUnits.first;
+    }
+    final fill = isDark
+        ? DesignColors.darkSurfaceElevated
+        : DesignColors.surfaceSubtle;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: TextFormField(
+            controller: _minStockController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Reorder when below (optional)',
+              hintStyle: TextStyle(color: DesignColors.textTertiary),
+              labelStyle: const TextStyle(
+                color: DesignColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+              floatingLabelBehavior: FloatingLabelBehavior.auto,
+              prefixIcon: const Icon(Icons.warning_amber_rounded,
+                  color: DesignColors.textTertiary),
+              filled: true,
+              fillColor: fill,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide:
+                    const BorderSide(color: DesignColors.brand, width: 1.5),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return null;
+              if (double.tryParse(v.trim()) == null) return 'Invalid number';
+              return null;
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            height: 52,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _minStockUnit,
+                isExpanded: true,
+                items: tierUnits
+                    .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setState(() => _minStockUnit = v);
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   // ─── Pricing section helpers ────────────────────────────────────────────

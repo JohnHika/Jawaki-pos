@@ -35,7 +35,7 @@ Future<Map<String, dynamic>> _productToPosMap(
     'isActive': product.isActive,
     'trackInventory': product.trackInventory,
     'stock': stock?.quantity ?? 0,
-    'minStock': stock?.minQuantity ?? 0,
+    'minStock': product.minStock,
   };
 }
 
@@ -180,6 +180,7 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
     imageUrl: Value(product['imageUrl']?.toString()),
     isActive: Value(product['isActive'] as bool? ?? true),
     trackInventory: Value(product['trackInventory'] as bool? ?? true),
+    minStock: Value((product['minStock'] as num?)?.toInt() ?? 0),
     createdAt: _parseTimestamp(product['createdAt']),
     updatedAt: _parseTimestamp(product['updatedAt']),
   );

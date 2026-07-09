@@ -587,6 +587,14 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("track_inventory" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _minStockMeta =
+      const VerificationMeta('minStock');
+  @override
+  late final GeneratedColumn<int> minStock = GeneratedColumn<int>(
+      'min_stock', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -618,6 +626,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         imageUrl,
         isActive,
         trackInventory,
+        minStock,
         createdAt,
         updatedAt
       ];
@@ -726,6 +735,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           trackInventory.isAcceptableOrUnknown(
               data['track_inventory']!, _trackInventoryMeta));
     }
+    if (data.containsKey('min_stock')) {
+      context.handle(_minStockMeta,
+          minStock.isAcceptableOrUnknown(data['min_stock']!, _minStockMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -781,6 +794,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       trackInventory: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}track_inventory'])!,
+      minStock: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}min_stock'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -812,6 +827,7 @@ class Product extends DataClass implements Insertable<Product> {
   final String? imageUrl;
   final bool isActive;
   final bool trackInventory;
+  final int minStock;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Product(
@@ -832,6 +848,7 @@ class Product extends DataClass implements Insertable<Product> {
       this.imageUrl,
       required this.isActive,
       required this.trackInventory,
+      required this.minStock,
       required this.createdAt,
       required this.updatedAt});
   @override
@@ -872,6 +889,7 @@ class Product extends DataClass implements Insertable<Product> {
     }
     map['is_active'] = Variable<bool>(isActive);
     map['track_inventory'] = Variable<bool>(trackInventory);
+    map['min_stock'] = Variable<int>(minStock);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -914,6 +932,7 @@ class Product extends DataClass implements Insertable<Product> {
           : Value(imageUrl),
       isActive: Value(isActive),
       trackInventory: Value(trackInventory),
+      minStock: Value(minStock),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -942,6 +961,7 @@ class Product extends DataClass implements Insertable<Product> {
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       trackInventory: serializer.fromJson<bool>(json['trackInventory']),
+      minStock: serializer.fromJson<int>(json['minStock']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -967,6 +987,7 @@ class Product extends DataClass implements Insertable<Product> {
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'isActive': serializer.toJson<bool>(isActive),
       'trackInventory': serializer.toJson<bool>(trackInventory),
+      'minStock': serializer.toJson<int>(minStock),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -990,6 +1011,7 @@ class Product extends DataClass implements Insertable<Product> {
           Value<String?> imageUrl = const Value.absent(),
           bool? isActive,
           bool? trackInventory,
+          int? minStock,
           DateTime? createdAt,
           DateTime? updatedAt}) =>
       Product(
@@ -1020,6 +1042,7 @@ class Product extends DataClass implements Insertable<Product> {
         imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
         isActive: isActive ?? this.isActive,
         trackInventory: trackInventory ?? this.trackInventory,
+        minStock: minStock ?? this.minStock,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -1058,6 +1081,7 @@ class Product extends DataClass implements Insertable<Product> {
       trackInventory: data.trackInventory.present
           ? data.trackInventory.value
           : this.trackInventory,
+      minStock: data.minStock.present ? data.minStock.value : this.minStock,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1083,6 +1107,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
+          ..write('minStock: $minStock, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1108,6 +1133,7 @@ class Product extends DataClass implements Insertable<Product> {
       imageUrl,
       isActive,
       trackInventory,
+      minStock,
       createdAt,
       updatedAt);
   @override
@@ -1131,6 +1157,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.imageUrl == this.imageUrl &&
           other.isActive == this.isActive &&
           other.trackInventory == this.trackInventory &&
+          other.minStock == this.minStock &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -1153,6 +1180,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String?> imageUrl;
   final Value<bool> isActive;
   final Value<bool> trackInventory;
+  final Value<int> minStock;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -1174,6 +1202,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
+    this.minStock = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1196,6 +1225,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
+    this.minStock = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -1224,6 +1254,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? imageUrl,
     Expression<bool>? isActive,
     Expression<bool>? trackInventory,
+    Expression<int>? minStock,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -1247,6 +1278,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (imageUrl != null) 'image_url': imageUrl,
       if (isActive != null) 'is_active': isActive,
       if (trackInventory != null) 'track_inventory': trackInventory,
+      if (minStock != null) 'min_stock': minStock,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1271,6 +1303,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<String?>? imageUrl,
       Value<bool>? isActive,
       Value<bool>? trackInventory,
+      Value<int>? minStock,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
@@ -1292,6 +1325,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       imageUrl: imageUrl ?? this.imageUrl,
       isActive: isActive ?? this.isActive,
       trackInventory: trackInventory ?? this.trackInventory,
+      minStock: minStock ?? this.minStock,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -1352,6 +1386,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (trackInventory.present) {
       map['track_inventory'] = Variable<bool>(trackInventory.value);
     }
+    if (minStock.present) {
+      map['min_stock'] = Variable<int>(minStock.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1384,6 +1421,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
+          ..write('minStock: $minStock, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -5791,6 +5829,7 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
+  Value<int> minStock,
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<int> rowid,
@@ -5813,6 +5852,7 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
+  Value<int> minStock,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
@@ -5882,6 +5922,9 @@ class $$ProductsTableFilterComposer
   ColumnFilters<bool> get trackInventory => $composableBuilder(
       column: $table.trackInventory,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get minStock => $composableBuilder(
+      column: $table.minStock, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -5957,6 +6000,9 @@ class $$ProductsTableOrderingComposer
       column: $table.trackInventory,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get minStock => $composableBuilder(
+      column: $table.minStock, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -6024,6 +6070,9 @@ class $$ProductsTableAnnotationComposer
   GeneratedColumn<bool> get trackInventory => $composableBuilder(
       column: $table.trackInventory, builder: (column) => column);
 
+  GeneratedColumn<int> get minStock =>
+      $composableBuilder(column: $table.minStock, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -6071,6 +6120,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
+            Value<int> minStock = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -6093,6 +6143,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
+            minStock: minStock,
             createdAt: createdAt,
             updatedAt: updatedAt,
             rowid: rowid,
@@ -6115,6 +6166,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
+            Value<int> minStock = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
@@ -6137,6 +6189,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
+            minStock: minStock,
             createdAt: createdAt,
             updatedAt: updatedAt,
             rowid: rowid,

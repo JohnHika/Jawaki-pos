@@ -423,6 +423,7 @@ class ApiClient {
     String? tertiaryUnit,
     double? tertiaryUnitQty,
     double? tertiaryUnitPrice,
+    int? minStock,
   }) async {
     final metadata = <String, dynamic>{};
     if (secondaryUnitPrice != null) metadata['secondaryUnitPrice'] = secondaryUnitPrice;
@@ -440,6 +441,7 @@ class ApiClient {
       if (secondaryUnitQty != null) 'secondaryUnitQty': secondaryUnitQty,
       if (tertiaryUnit != null) 'tertiaryUnit': tertiaryUnit,
       if (tertiaryUnitQty != null) 'tertiaryUnitQty': tertiaryUnitQty,
+      if (minStock != null) 'minStock': minStock,
       if (metadata.isNotEmpty) 'metadata': metadata,
     });
     return response.data as Map<String, dynamic>;
@@ -460,6 +462,7 @@ class ApiClient {
     String? tertiaryUnit,
     double? tertiaryUnitQty,
     double? tertiaryUnitPrice,
+    int? minStock,
     bool clearImage = false,
   }) async {
     final metadata = <String, dynamic>{};
@@ -476,6 +479,7 @@ class ApiClient {
       if (secondaryUnitQty != null) 'secondaryUnitQty': secondaryUnitQty,
       if (tertiaryUnit != null) 'tertiaryUnit': tertiaryUnit,
       if (tertiaryUnitQty != null) 'tertiaryUnitQty': tertiaryUnitQty,
+      if (minStock != null) 'minStock': minStock,
       if (metadata.isNotEmpty) 'metadata': metadata,
       if (clearImage) 'image': null,
       if (clearImage) 'imagePublicId': null,
@@ -794,5 +798,22 @@ class ApiClient {
     if (lower.endsWith('.png')) return MediaType('image', 'png');
     if (lower.endsWith('.webp')) return MediaType('image', 'webp');
     return MediaType('image', 'jpeg');
+  }
+
+  // Push notification token registration
+  Future<void> registerPushToken({
+    required String token,
+    String? deviceUuid,
+    String platform = 'android',
+  }) async {
+    await _dio.post('/notifications/tokens', data: {
+      'token': token,
+      if (deviceUuid != null) 'deviceUuid': deviceUuid,
+      'platform': platform,
+    });
+  }
+
+  Future<void> unregisterPushToken(String token) async {
+    await _dio.delete('/notifications/tokens', data: {'token': token});
   }
 }

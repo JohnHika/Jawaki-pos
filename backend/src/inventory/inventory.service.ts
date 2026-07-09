@@ -3,11 +3,13 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { CashFlowService } from '../cash-flow/cash-flow.service';
 import { AiService } from '../ai/ai.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   StockAdjustmentDto,
   CreateTransferDto,
@@ -29,6 +31,7 @@ export class InventoryService {
     private redisService: RedisService,
     private cashFlowService: CashFlowService,
     private aiService: AiService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async getStock(branchId: string, tenantId: string, query: StockQueryDto) {
@@ -825,6 +828,14 @@ export class InventoryService {
       const createdBatches = [];
       let totalReceived = 0;
 
+      // Auto-generate batch numbers when not supplied: <SKU>-<YYMMDD>-<seq>
+      const skuPrefix = this.getBatchSkuPrefix(product.sku);
+      const datePart = this.getBatchDatePart();
+      const batchPrefix = `${skuPrefix}-${datePart}-`;
+      let seq = await tx.stockBatch.count({
+        where: { stockId: stock.id, batchNumber: { startsWith: batchPrefix } },
+      });
+
       // Create batch records
       for (const batch of dto.batches) {
         // Unit conversion logic
@@ -863,19 +874,53 @@ export class InventoryService {
             : conversionNote
           : batch.notes;
 
-        const createdBatch = await tx.stockBatch.create({
-          data: {
-            stockId: stock.id,
-            batchNumber: batch.batchNumber,
-            quantity: baseQuantity,
-            expiryDate,
-            manufactureDate: batch.manufactureDate ? new Date(batch.manufactureDate) : null,
-            costPrice: batch.costPrice,
-            supplierRef: batch.supplierRef,
-            notes: finalNotes,
-            isBlocked: isExpired, // Auto-block expired batches
-          },
-        });
+        const suppliedBatchNumber = batch.batchNumber?.trim();
+        let createdBatch;
+
+        if (suppliedBatchNumber) {
+          createdBatch = await tx.stockBatch.create({
+            data: {
+              stockId: stock.id,
+              batchNumber: suppliedBatchNumber,
+              quantity: baseQuantity,
+              expiryDate,
+              manufactureDate: batch.manufactureDate ? new Date(batch.manufactureDate) : null,
+              costPrice: batch.costPrice,
+              supplierRef: batch.supplierRef,
+              notes: finalNotes,
+              isBlocked: isExpired, // Auto-block expired batches
+            },
+          });
+        } else {
+          const maxAttempts = 5;
+          for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            seq += 1;
+            const candidateBatchNumber = `${batchPrefix}${String(seq).padStart(3, '0')}`;
+            try {
+              createdBatch = await tx.stockBatch.create({
+                data: {
+                  stockId: stock.id,
+                  batchNumber: candidateBatchNumber,
+                  quantity: baseQuantity,
+                  expiryDate,
+                  manufactureDate: batch.manufactureDate ? new Date(batch.manufactureDate) : null,
+                  costPrice: batch.costPrice,
+                  supplierRef: batch.supplierRef,
+                  notes: finalNotes,
+                  isBlocked: isExpired, // Auto-block expired batches
+                },
+              });
+              break;
+            } catch (error) {
+              if (error.code === 'P2002' && attempt < maxAttempts - 1) {
+                continue;
+              }
+              throw new ConflictException(
+                'Could not generate a unique batch number, please retry',
+              );
+            }
+          }
+        }
 
         createdBatches.push(createdBatch);
         totalReceived += baseQuantity;
@@ -890,7 +935,7 @@ export class InventoryService {
             quantity: baseQuantity,
             previousQty: Number(stock.quantity),
             newQty: Number(stock.quantity) + baseQuantity,
-            batchNumber: batch.batchNumber,
+            batchNumber: createdBatch.batchNumber,
             expiryDate,
             reference: dto.reference,
             notes: finalNotes,
@@ -915,6 +960,25 @@ export class InventoryService {
         batches: createdBatches,
       };
     });
+  }
+
+  /**
+   * Sanitized, uppercase SKU prefix used as the human-readable part of an
+   * auto-generated batch number.
+   */
+  private getBatchSkuPrefix(sku: string): string {
+    return sku.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 10) || 'ITEM';
+  }
+
+  /**
+   * YYMMDD date part used as the second segment of an auto-generated batch number.
+   */
+  private getBatchDatePart(): string {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yy}${mm}${dd}`;
   }
 
   /**
@@ -1717,6 +1781,26 @@ export class InventoryService {
         requestedBy: { select: { firstName: true, lastName: true } },
         product: { select: { name: true, sku: true } },
         resolvedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    // Fire-and-forget: the requester should hear about the outcome, but a
+    // notification failure must never fail the resolve action itself
+    // (NotificationsService.sendToUser already fails soft internally).
+    void this.notificationsService.sendToUser(updated.requestedById, {
+      title:
+        updated.status === 'APPROVED'
+          ? 'Stock request approved'
+          : updated.status === 'FULFILLED'
+            ? 'Stock request fulfilled'
+            : 'Stock request rejected',
+      body: `${updated.product.name} (${updated.quantity} ${updated.unit}) — ${updated.branch.name}${
+        updated.resolution ? `: ${updated.resolution}` : ''
+      }`,
+      data: {
+        type: 'stock_request_resolved',
+        stockRequestId: updated.id,
+        status: updated.status,
       },
     });
 

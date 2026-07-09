@@ -161,7 +161,7 @@ class AiChatService {
       final dashboard = await db.getDashboardSummary();
       final topProducts =
           await db.getTopProducts(startOfDay, endOfDay, limit: 5);
-      final lowStock = await db.getLowStockProducts(threshold: 10);
+      final lowStock = await db.getLowStockProducts();
       final branchLowStock = branchId.isEmpty
           ? lowStock
           : lowStock.where((item) {
