@@ -492,17 +492,18 @@ class SyncService {
   Future<void> _updateLocalProduct(Map<String, dynamic> data) async {
     final createdAt = _parseTimestamp(data['createdAt']);
     final updatedAt = _parseTimestamp(data['updatedAt']);
-    
+    final productId = data['id'] as String;
+
     await _database.insertProducts([
       ProductsCompanion(
-        id: Value(data['id']),
+        id: Value(productId),
         sku: Value(data['sku']),
         name: Value(data['name']),
         description: Value(data['description']),
         categoryId: Value(data['categoryId']),
         price: Value((data['price'] as num).toDouble()),
-        costPrice: Value(data['costPrice'] != null 
-            ? (data['costPrice'] as num).toDouble() 
+        costPrice: Value(data['costPrice'] != null
+            ? (data['costPrice'] as num).toDouble()
             : null),
         unit: Value(data['unit'] ?? 'piece'),
         imageUrl: Value(data['imageUrl']),
@@ -513,6 +514,34 @@ class SyncService {
         updatedAt: Value(updatedAt),
       ),
     ]);
+
+    // Pricing tiers ride along on the raw Prisma row as a `pricingTiers`
+    // relation array (since sync.service.ts includes it on the pull
+    // query) — replace this product's local tiers with whatever the
+    // server sent, same full-replace semantics as the catalog-sync path.
+    final rawTiers = data['pricingTiers'];
+    if (rawTiers is List) {
+      final companions = <ProductPricingTiersCompanion>[];
+      for (var i = 0; i < rawTiers.length; i++) {
+        final tier = rawTiers[i];
+        if (tier is! Map) continue;
+        final unit = tier['unit']?.toString();
+        final quantityPerUnit = tier['quantityPerUnit'];
+        final price = tier['price'];
+        if (unit == null || quantityPerUnit == null || price == null) continue;
+        companions.add(
+          ProductPricingTiersCompanion.insert(
+            id: tier['id']?.toString() ?? '$productId-tier-$i',
+            productId: productId,
+            unit: unit,
+            quantityPerUnit: num.parse(quantityPerUnit.toString()).toDouble(),
+            price: num.parse(price.toString()).toDouble(),
+            sortOrder: Value((tier['sortOrder'] as num?)?.toInt() ?? i + 1),
+          ),
+        );
+      }
+      await _database.replacePricingTiersForProduct(productId, companions);
+    }
   }
   
   Future<void> _updateLocalCategory(Map<String, dynamic> data) async {

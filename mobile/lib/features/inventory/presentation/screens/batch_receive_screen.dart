@@ -66,15 +66,23 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       final product = await apiClient.getProduct(widget.productId!);
 
       if (mounted) {
+        final rawTiers = product['pricingTiers'];
+        final extraTiers = <UnitOption>[];
+        if (rawTiers is List) {
+          for (final tier in rawTiers) {
+            if (tier is! Map) continue;
+            final unit = tier['unit']?.toString();
+            final qty = (tier['quantityPerUnit'] as num?)?.toDouble();
+            if (unit == null || qty == null) continue;
+            extraTiers.add(UnitOption(name: unit, conversionFactor: qty));
+          }
+        }
         setState(() {
           _resolvedProductName =
               product['name']?.toString() ?? _resolvedProductName;
           _unitConfig = UnitConfig(
             baseUnit: product['unit'] ?? 'piece',
-            secondaryUnit: product['secondaryUnit'],
-            secondaryUnitQty: product['secondaryUnitQty']?.toDouble(),
-            tertiaryUnit: product['tertiaryUnit'],
-            tertiaryUnitQty: product['tertiaryUnitQty']?.toDouble(),
+            extraTiers: extraTiers,
           );
           _isLoadingConfig = false;
         });
@@ -84,15 +92,19 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       final localProduct = await getIt<AppDatabase>().getProduct(
         widget.productId!,
       );
+      final localTiers = await getIt<AppDatabase>()
+          .getPricingTiersForProduct(widget.productId!);
       if (mounted) {
         setState(() {
           _resolvedProductName = localProduct?.name ?? _resolvedProductName;
           _unitConfig = UnitConfig(
             baseUnit: localProduct?.unit ?? 'piece',
-            secondaryUnit: localProduct?.secondaryUnit,
-            secondaryUnitQty: localProduct?.secondaryUnitQty,
-            tertiaryUnit: localProduct?.tertiaryUnit,
-            tertiaryUnitQty: localProduct?.tertiaryUnitQty,
+            extraTiers: localTiers
+                .map((t) => UnitOption(
+                      name: t.unit,
+                      conversionFactor: t.quantityPerUnit,
+                    ))
+                .toList(),
           );
           _isLoadingConfig = false;
         });

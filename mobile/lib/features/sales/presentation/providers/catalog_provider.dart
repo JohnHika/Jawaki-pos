@@ -16,6 +16,7 @@ Future<Map<String, dynamic>> _productToPosMap(
   Product product,
 ) async {
   final stock = await database.getStockForProduct(product.id);
+  final tiers = await database.getPricingTiersForProduct(product.id);
 
   return {
     'id': product.id,
@@ -26,12 +27,14 @@ Future<Map<String, dynamic>> _productToPosMap(
     'price': product.price,
     'costPrice': product.costPrice,
     'unit': product.unit,
-    'secondaryUnit': product.secondaryUnit,
-    'secondaryUnitQty': product.secondaryUnitQty,
-    'secondaryUnitPrice': product.secondaryUnitPrice,
-    'tertiaryUnit': product.tertiaryUnit,
-    'tertiaryUnitQty': product.tertiaryUnitQty,
-    'tertiaryUnitPrice': product.tertiaryUnitPrice,
+    'pricingTiers': tiers
+        .map((t) => {
+              'unit': t.unit,
+              'quantityPerUnit': t.quantityPerUnit,
+              'price': t.price,
+              'sortOrder': t.sortOrder,
+            })
+        .toList(),
     'imageUrl': product.imageUrl,
     'isActive': product.isActive,
     'trackInventory': product.trackInventory,
@@ -115,16 +118,37 @@ CategoriesCompanion? _categoryToCompanion(Map<String, dynamic> category) {
   );
 }
 
-/// Extracts a unit price from the product's metadata JSON.
-/// [tier] is either 'secondary' or 'tertiary'.
-double? _parseMetadataPrice(Map<String, dynamic> product, String tier) {
-  final metadata = product['metadata'];
-  if (metadata is Map) {
-    final key = '${tier}UnitPrice';
-    final val = metadata[key];
-    if (val != null) return (val as num).toDouble();
+/// Extracts a product's real pricing tiers (any number) from the API
+/// response into local companions ready to insert. `sortOrder` defaults to
+/// list position when the server didn't send one.
+List<ProductPricingTiersCompanion> _pricingTiersToCompanions(
+  Map<String, dynamic> product,
+) {
+  final productId = product['id']?.toString();
+  final rawTiers = product['pricingTiers'];
+  if (productId == null || rawTiers is! List) return [];
+
+  final companions = <ProductPricingTiersCompanion>[];
+  for (var i = 0; i < rawTiers.length; i++) {
+    final tier = rawTiers[i];
+    if (tier is! Map) continue;
+    final unit = tier['unit']?.toString();
+    final quantityPerUnit = tier['quantityPerUnit'];
+    final price = tier['price'];
+    if (unit == null || quantityPerUnit == null || price == null) continue;
+
+    companions.add(
+      ProductPricingTiersCompanion.insert(
+        id: tier['id']?.toString() ?? '$productId-tier-$i',
+        productId: productId,
+        unit: unit,
+        quantityPerUnit: (quantityPerUnit as num).toDouble(),
+        price: (price as num).toDouble(),
+        sortOrder: Value((tier['sortOrder'] as num?)?.toInt() ?? i + 1),
+      ),
+    );
   }
-  return null;
+  return companions;
 }
 
 ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
@@ -156,28 +180,6 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
           : null,
     ),
     unit: Value(product['unit']?.toString() ?? 'piece'),
-    secondaryUnit: Value(product['secondaryUnit']?.toString()),
-    secondaryUnitQty: Value(
-      product['secondaryUnitQty'] != null
-          ? (product['secondaryUnitQty'] as num).toDouble()
-          : null,
-    ),
-    secondaryUnitPrice: Value(
-      product['secondaryUnitPrice'] != null
-          ? (product['secondaryUnitPrice'] as num).toDouble()
-          : _parseMetadataPrice(product, 'secondary'),
-    ),
-    tertiaryUnit: Value(product['tertiaryUnit']?.toString()),
-    tertiaryUnitQty: Value(
-      product['tertiaryUnitQty'] != null
-          ? (product['tertiaryUnitQty'] as num).toDouble()
-          : null,
-    ),
-    tertiaryUnitPrice: Value(
-      product['tertiaryUnitPrice'] != null
-          ? (product['tertiaryUnitPrice'] as num).toDouble()
-          : _parseMetadataPrice(product, 'tertiary'),
-    ),
     imageUrl: Value(product['imageUrl']?.toString()),
     isActive: Value(product['isActive'] as bool? ?? true),
     trackInventory: Value(product['trackInventory'] as bool? ?? true),
@@ -243,6 +245,9 @@ Future<void> syncCatalogCacheFromApi() async {
       .whereType<ProductsCompanion>()
       .toList();
   await database.replaceProducts(productItems);
+
+  final tierItems = productMaps.expand(_pricingTiersToCompanions).toList();
+  await database.replaceAllPricingTiers(tierItems);
 
   final branchId = storageService.getBranchId();
   if (branchId != null) {
@@ -329,12 +334,15 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
   if (connectivity.isOnline) {
     try {
       final products = await apiClient.getProducts(limit: 500);
+      final productMaps = products
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
       await database.replaceProducts(
-        products
-            .whereType<Map>()
-            .map((item) => _productToCompanion(Map<String, dynamic>.from(item)))
-            .whereType<ProductsCompanion>()
-            .toList(),
+        productMaps.map(_productToCompanion).whereType<ProductsCompanion>().toList(),
+      );
+      await database.replaceAllPricingTiers(
+        productMaps.expand(_pricingTiersToCompanions).toList(),
       );
       final localProducts = await database.getAllProducts();
       final mapped = <Map<String, dynamic>>[];
@@ -343,10 +351,7 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
       }
       if (mapped.isNotEmpty) return mapped;
 
-      return products
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList();
+      return productMaps;
     } catch (e) {
       // API unavailable
     }

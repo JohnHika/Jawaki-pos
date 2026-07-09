@@ -525,42 +525,6 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant('piece'));
-  static const VerificationMeta _secondaryUnitMeta =
-      const VerificationMeta('secondaryUnit');
-  @override
-  late final GeneratedColumn<String> secondaryUnit = GeneratedColumn<String>(
-      'secondary_unit', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _secondaryUnitQtyMeta =
-      const VerificationMeta('secondaryUnitQty');
-  @override
-  late final GeneratedColumn<double> secondaryUnitQty = GeneratedColumn<double>(
-      'secondary_unit_qty', aliasedName, true,
-      type: DriftSqlType.double, requiredDuringInsert: false);
-  static const VerificationMeta _secondaryUnitPriceMeta =
-      const VerificationMeta('secondaryUnitPrice');
-  @override
-  late final GeneratedColumn<double> secondaryUnitPrice =
-      GeneratedColumn<double>('secondary_unit_price', aliasedName, true,
-          type: DriftSqlType.double, requiredDuringInsert: false);
-  static const VerificationMeta _tertiaryUnitMeta =
-      const VerificationMeta('tertiaryUnit');
-  @override
-  late final GeneratedColumn<String> tertiaryUnit = GeneratedColumn<String>(
-      'tertiary_unit', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _tertiaryUnitQtyMeta =
-      const VerificationMeta('tertiaryUnitQty');
-  @override
-  late final GeneratedColumn<double> tertiaryUnitQty = GeneratedColumn<double>(
-      'tertiary_unit_qty', aliasedName, true,
-      type: DriftSqlType.double, requiredDuringInsert: false);
-  static const VerificationMeta _tertiaryUnitPriceMeta =
-      const VerificationMeta('tertiaryUnitPrice');
-  @override
-  late final GeneratedColumn<double> tertiaryUnitPrice =
-      GeneratedColumn<double>('tertiary_unit_price', aliasedName, true,
-          type: DriftSqlType.double, requiredDuringInsert: false);
   static const VerificationMeta _imageUrlMeta =
       const VerificationMeta('imageUrl');
   @override
@@ -617,12 +581,6 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         price,
         costPrice,
         unit,
-        secondaryUnit,
-        secondaryUnitQty,
-        secondaryUnitPrice,
-        tertiaryUnit,
-        tertiaryUnitQty,
-        tertiaryUnitPrice,
         imageUrl,
         isActive,
         trackInventory,
@@ -685,42 +643,6 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       context.handle(
           _unitMeta, unit.isAcceptableOrUnknown(data['unit']!, _unitMeta));
     }
-    if (data.containsKey('secondary_unit')) {
-      context.handle(
-          _secondaryUnitMeta,
-          secondaryUnit.isAcceptableOrUnknown(
-              data['secondary_unit']!, _secondaryUnitMeta));
-    }
-    if (data.containsKey('secondary_unit_qty')) {
-      context.handle(
-          _secondaryUnitQtyMeta,
-          secondaryUnitQty.isAcceptableOrUnknown(
-              data['secondary_unit_qty']!, _secondaryUnitQtyMeta));
-    }
-    if (data.containsKey('secondary_unit_price')) {
-      context.handle(
-          _secondaryUnitPriceMeta,
-          secondaryUnitPrice.isAcceptableOrUnknown(
-              data['secondary_unit_price']!, _secondaryUnitPriceMeta));
-    }
-    if (data.containsKey('tertiary_unit')) {
-      context.handle(
-          _tertiaryUnitMeta,
-          tertiaryUnit.isAcceptableOrUnknown(
-              data['tertiary_unit']!, _tertiaryUnitMeta));
-    }
-    if (data.containsKey('tertiary_unit_qty')) {
-      context.handle(
-          _tertiaryUnitQtyMeta,
-          tertiaryUnitQty.isAcceptableOrUnknown(
-              data['tertiary_unit_qty']!, _tertiaryUnitQtyMeta));
-    }
-    if (data.containsKey('tertiary_unit_price')) {
-      context.handle(
-          _tertiaryUnitPriceMeta,
-          tertiaryUnitPrice.isAcceptableOrUnknown(
-              data['tertiary_unit_price']!, _tertiaryUnitPriceMeta));
-    }
     if (data.containsKey('image_url')) {
       context.handle(_imageUrlMeta,
           imageUrl.isAcceptableOrUnknown(data['image_url']!, _imageUrlMeta));
@@ -776,18 +698,6 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.double, data['${effectivePrefix}cost_price']),
       unit: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}unit'])!,
-      secondaryUnit: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}secondary_unit']),
-      secondaryUnitQty: attachedDatabase.typeMapping.read(
-          DriftSqlType.double, data['${effectivePrefix}secondary_unit_qty']),
-      secondaryUnitPrice: attachedDatabase.typeMapping.read(
-          DriftSqlType.double, data['${effectivePrefix}secondary_unit_price']),
-      tertiaryUnit: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}tertiary_unit']),
-      tertiaryUnitQty: attachedDatabase.typeMapping.read(
-          DriftSqlType.double, data['${effectivePrefix}tertiary_unit_qty']),
-      tertiaryUnitPrice: attachedDatabase.typeMapping.read(
-          DriftSqlType.double, data['${effectivePrefix}tertiary_unit_price']),
       imageUrl: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}image_url']),
       isActive: attachedDatabase.typeMapping
@@ -818,12 +728,6 @@ class Product extends DataClass implements Insertable<Product> {
   final double price;
   final double? costPrice;
   final String unit;
-  final String? secondaryUnit;
-  final double? secondaryUnitQty;
-  final double? secondaryUnitPrice;
-  final String? tertiaryUnit;
-  final double? tertiaryUnitQty;
-  final double? tertiaryUnitPrice;
   final String? imageUrl;
   final bool isActive;
   final bool trackInventory;
@@ -839,12 +743,6 @@ class Product extends DataClass implements Insertable<Product> {
       required this.price,
       this.costPrice,
       required this.unit,
-      this.secondaryUnit,
-      this.secondaryUnitQty,
-      this.secondaryUnitPrice,
-      this.tertiaryUnit,
-      this.tertiaryUnitQty,
-      this.tertiaryUnitPrice,
       this.imageUrl,
       required this.isActive,
       required this.trackInventory,
@@ -866,24 +764,6 @@ class Product extends DataClass implements Insertable<Product> {
       map['cost_price'] = Variable<double>(costPrice);
     }
     map['unit'] = Variable<String>(unit);
-    if (!nullToAbsent || secondaryUnit != null) {
-      map['secondary_unit'] = Variable<String>(secondaryUnit);
-    }
-    if (!nullToAbsent || secondaryUnitQty != null) {
-      map['secondary_unit_qty'] = Variable<double>(secondaryUnitQty);
-    }
-    if (!nullToAbsent || secondaryUnitPrice != null) {
-      map['secondary_unit_price'] = Variable<double>(secondaryUnitPrice);
-    }
-    if (!nullToAbsent || tertiaryUnit != null) {
-      map['tertiary_unit'] = Variable<String>(tertiaryUnit);
-    }
-    if (!nullToAbsent || tertiaryUnitQty != null) {
-      map['tertiary_unit_qty'] = Variable<double>(tertiaryUnitQty);
-    }
-    if (!nullToAbsent || tertiaryUnitPrice != null) {
-      map['tertiary_unit_price'] = Variable<double>(tertiaryUnitPrice);
-    }
     if (!nullToAbsent || imageUrl != null) {
       map['image_url'] = Variable<String>(imageUrl);
     }
@@ -909,24 +789,6 @@ class Product extends DataClass implements Insertable<Product> {
           ? const Value.absent()
           : Value(costPrice),
       unit: Value(unit),
-      secondaryUnit: secondaryUnit == null && nullToAbsent
-          ? const Value.absent()
-          : Value(secondaryUnit),
-      secondaryUnitQty: secondaryUnitQty == null && nullToAbsent
-          ? const Value.absent()
-          : Value(secondaryUnitQty),
-      secondaryUnitPrice: secondaryUnitPrice == null && nullToAbsent
-          ? const Value.absent()
-          : Value(secondaryUnitPrice),
-      tertiaryUnit: tertiaryUnit == null && nullToAbsent
-          ? const Value.absent()
-          : Value(tertiaryUnit),
-      tertiaryUnitQty: tertiaryUnitQty == null && nullToAbsent
-          ? const Value.absent()
-          : Value(tertiaryUnitQty),
-      tertiaryUnitPrice: tertiaryUnitPrice == null && nullToAbsent
-          ? const Value.absent()
-          : Value(tertiaryUnitPrice),
       imageUrl: imageUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(imageUrl),
@@ -950,14 +812,6 @@ class Product extends DataClass implements Insertable<Product> {
       price: serializer.fromJson<double>(json['price']),
       costPrice: serializer.fromJson<double?>(json['costPrice']),
       unit: serializer.fromJson<String>(json['unit']),
-      secondaryUnit: serializer.fromJson<String?>(json['secondaryUnit']),
-      secondaryUnitQty: serializer.fromJson<double?>(json['secondaryUnitQty']),
-      secondaryUnitPrice:
-          serializer.fromJson<double?>(json['secondaryUnitPrice']),
-      tertiaryUnit: serializer.fromJson<String?>(json['tertiaryUnit']),
-      tertiaryUnitQty: serializer.fromJson<double?>(json['tertiaryUnitQty']),
-      tertiaryUnitPrice:
-          serializer.fromJson<double?>(json['tertiaryUnitPrice']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       trackInventory: serializer.fromJson<bool>(json['trackInventory']),
@@ -978,12 +832,6 @@ class Product extends DataClass implements Insertable<Product> {
       'price': serializer.toJson<double>(price),
       'costPrice': serializer.toJson<double?>(costPrice),
       'unit': serializer.toJson<String>(unit),
-      'secondaryUnit': serializer.toJson<String?>(secondaryUnit),
-      'secondaryUnitQty': serializer.toJson<double?>(secondaryUnitQty),
-      'secondaryUnitPrice': serializer.toJson<double?>(secondaryUnitPrice),
-      'tertiaryUnit': serializer.toJson<String?>(tertiaryUnit),
-      'tertiaryUnitQty': serializer.toJson<double?>(tertiaryUnitQty),
-      'tertiaryUnitPrice': serializer.toJson<double?>(tertiaryUnitPrice),
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'isActive': serializer.toJson<bool>(isActive),
       'trackInventory': serializer.toJson<bool>(trackInventory),
@@ -1002,12 +850,6 @@ class Product extends DataClass implements Insertable<Product> {
           double? price,
           Value<double?> costPrice = const Value.absent(),
           String? unit,
-          Value<String?> secondaryUnit = const Value.absent(),
-          Value<double?> secondaryUnitQty = const Value.absent(),
-          Value<double?> secondaryUnitPrice = const Value.absent(),
-          Value<String?> tertiaryUnit = const Value.absent(),
-          Value<double?> tertiaryUnitQty = const Value.absent(),
-          Value<double?> tertiaryUnitPrice = const Value.absent(),
           Value<String?> imageUrl = const Value.absent(),
           bool? isActive,
           bool? trackInventory,
@@ -1023,22 +865,6 @@ class Product extends DataClass implements Insertable<Product> {
         price: price ?? this.price,
         costPrice: costPrice.present ? costPrice.value : this.costPrice,
         unit: unit ?? this.unit,
-        secondaryUnit:
-            secondaryUnit.present ? secondaryUnit.value : this.secondaryUnit,
-        secondaryUnitQty: secondaryUnitQty.present
-            ? secondaryUnitQty.value
-            : this.secondaryUnitQty,
-        secondaryUnitPrice: secondaryUnitPrice.present
-            ? secondaryUnitPrice.value
-            : this.secondaryUnitPrice,
-        tertiaryUnit:
-            tertiaryUnit.present ? tertiaryUnit.value : this.tertiaryUnit,
-        tertiaryUnitQty: tertiaryUnitQty.present
-            ? tertiaryUnitQty.value
-            : this.tertiaryUnitQty,
-        tertiaryUnitPrice: tertiaryUnitPrice.present
-            ? tertiaryUnitPrice.value
-            : this.tertiaryUnitPrice,
         imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
         isActive: isActive ?? this.isActive,
         trackInventory: trackInventory ?? this.trackInventory,
@@ -1058,24 +884,6 @@ class Product extends DataClass implements Insertable<Product> {
       price: data.price.present ? data.price.value : this.price,
       costPrice: data.costPrice.present ? data.costPrice.value : this.costPrice,
       unit: data.unit.present ? data.unit.value : this.unit,
-      secondaryUnit: data.secondaryUnit.present
-          ? data.secondaryUnit.value
-          : this.secondaryUnit,
-      secondaryUnitQty: data.secondaryUnitQty.present
-          ? data.secondaryUnitQty.value
-          : this.secondaryUnitQty,
-      secondaryUnitPrice: data.secondaryUnitPrice.present
-          ? data.secondaryUnitPrice.value
-          : this.secondaryUnitPrice,
-      tertiaryUnit: data.tertiaryUnit.present
-          ? data.tertiaryUnit.value
-          : this.tertiaryUnit,
-      tertiaryUnitQty: data.tertiaryUnitQty.present
-          ? data.tertiaryUnitQty.value
-          : this.tertiaryUnitQty,
-      tertiaryUnitPrice: data.tertiaryUnitPrice.present
-          ? data.tertiaryUnitPrice.value
-          : this.tertiaryUnitPrice,
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       trackInventory: data.trackInventory.present
@@ -1098,12 +906,6 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('price: $price, ')
           ..write('costPrice: $costPrice, ')
           ..write('unit: $unit, ')
-          ..write('secondaryUnit: $secondaryUnit, ')
-          ..write('secondaryUnitQty: $secondaryUnitQty, ')
-          ..write('secondaryUnitPrice: $secondaryUnitPrice, ')
-          ..write('tertiaryUnit: $tertiaryUnit, ')
-          ..write('tertiaryUnitQty: $tertiaryUnitQty, ')
-          ..write('tertiaryUnitPrice: $tertiaryUnitPrice, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
@@ -1124,12 +926,6 @@ class Product extends DataClass implements Insertable<Product> {
       price,
       costPrice,
       unit,
-      secondaryUnit,
-      secondaryUnitQty,
-      secondaryUnitPrice,
-      tertiaryUnit,
-      tertiaryUnitQty,
-      tertiaryUnitPrice,
       imageUrl,
       isActive,
       trackInventory,
@@ -1148,12 +944,6 @@ class Product extends DataClass implements Insertable<Product> {
           other.price == this.price &&
           other.costPrice == this.costPrice &&
           other.unit == this.unit &&
-          other.secondaryUnit == this.secondaryUnit &&
-          other.secondaryUnitQty == this.secondaryUnitQty &&
-          other.secondaryUnitPrice == this.secondaryUnitPrice &&
-          other.tertiaryUnit == this.tertiaryUnit &&
-          other.tertiaryUnitQty == this.tertiaryUnitQty &&
-          other.tertiaryUnitPrice == this.tertiaryUnitPrice &&
           other.imageUrl == this.imageUrl &&
           other.isActive == this.isActive &&
           other.trackInventory == this.trackInventory &&
@@ -1171,12 +961,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<double> price;
   final Value<double?> costPrice;
   final Value<String> unit;
-  final Value<String?> secondaryUnit;
-  final Value<double?> secondaryUnitQty;
-  final Value<double?> secondaryUnitPrice;
-  final Value<String?> tertiaryUnit;
-  final Value<double?> tertiaryUnitQty;
-  final Value<double?> tertiaryUnitPrice;
   final Value<String?> imageUrl;
   final Value<bool> isActive;
   final Value<bool> trackInventory;
@@ -1193,12 +977,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.price = const Value.absent(),
     this.costPrice = const Value.absent(),
     this.unit = const Value.absent(),
-    this.secondaryUnit = const Value.absent(),
-    this.secondaryUnitQty = const Value.absent(),
-    this.secondaryUnitPrice = const Value.absent(),
-    this.tertiaryUnit = const Value.absent(),
-    this.tertiaryUnitQty = const Value.absent(),
-    this.tertiaryUnitPrice = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
@@ -1216,12 +994,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     required double price,
     this.costPrice = const Value.absent(),
     this.unit = const Value.absent(),
-    this.secondaryUnit = const Value.absent(),
-    this.secondaryUnitQty = const Value.absent(),
-    this.secondaryUnitPrice = const Value.absent(),
-    this.tertiaryUnit = const Value.absent(),
-    this.tertiaryUnitQty = const Value.absent(),
-    this.tertiaryUnitPrice = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
@@ -1245,12 +1017,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<double>? price,
     Expression<double>? costPrice,
     Expression<String>? unit,
-    Expression<String>? secondaryUnit,
-    Expression<double>? secondaryUnitQty,
-    Expression<double>? secondaryUnitPrice,
-    Expression<String>? tertiaryUnit,
-    Expression<double>? tertiaryUnitQty,
-    Expression<double>? tertiaryUnitPrice,
     Expression<String>? imageUrl,
     Expression<bool>? isActive,
     Expression<bool>? trackInventory,
@@ -1268,13 +1034,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (price != null) 'price': price,
       if (costPrice != null) 'cost_price': costPrice,
       if (unit != null) 'unit': unit,
-      if (secondaryUnit != null) 'secondary_unit': secondaryUnit,
-      if (secondaryUnitQty != null) 'secondary_unit_qty': secondaryUnitQty,
-      if (secondaryUnitPrice != null)
-        'secondary_unit_price': secondaryUnitPrice,
-      if (tertiaryUnit != null) 'tertiary_unit': tertiaryUnit,
-      if (tertiaryUnitQty != null) 'tertiary_unit_qty': tertiaryUnitQty,
-      if (tertiaryUnitPrice != null) 'tertiary_unit_price': tertiaryUnitPrice,
       if (imageUrl != null) 'image_url': imageUrl,
       if (isActive != null) 'is_active': isActive,
       if (trackInventory != null) 'track_inventory': trackInventory,
@@ -1294,12 +1053,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<double>? price,
       Value<double?>? costPrice,
       Value<String>? unit,
-      Value<String?>? secondaryUnit,
-      Value<double?>? secondaryUnitQty,
-      Value<double?>? secondaryUnitPrice,
-      Value<String?>? tertiaryUnit,
-      Value<double?>? tertiaryUnitQty,
-      Value<double?>? tertiaryUnitPrice,
       Value<String?>? imageUrl,
       Value<bool>? isActive,
       Value<bool>? trackInventory,
@@ -1316,12 +1069,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       price: price ?? this.price,
       costPrice: costPrice ?? this.costPrice,
       unit: unit ?? this.unit,
-      secondaryUnit: secondaryUnit ?? this.secondaryUnit,
-      secondaryUnitQty: secondaryUnitQty ?? this.secondaryUnitQty,
-      secondaryUnitPrice: secondaryUnitPrice ?? this.secondaryUnitPrice,
-      tertiaryUnit: tertiaryUnit ?? this.tertiaryUnit,
-      tertiaryUnitQty: tertiaryUnitQty ?? this.tertiaryUnitQty,
-      tertiaryUnitPrice: tertiaryUnitPrice ?? this.tertiaryUnitPrice,
       imageUrl: imageUrl ?? this.imageUrl,
       isActive: isActive ?? this.isActive,
       trackInventory: trackInventory ?? this.trackInventory,
@@ -1359,24 +1106,6 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (unit.present) {
       map['unit'] = Variable<String>(unit.value);
     }
-    if (secondaryUnit.present) {
-      map['secondary_unit'] = Variable<String>(secondaryUnit.value);
-    }
-    if (secondaryUnitQty.present) {
-      map['secondary_unit_qty'] = Variable<double>(secondaryUnitQty.value);
-    }
-    if (secondaryUnitPrice.present) {
-      map['secondary_unit_price'] = Variable<double>(secondaryUnitPrice.value);
-    }
-    if (tertiaryUnit.present) {
-      map['tertiary_unit'] = Variable<String>(tertiaryUnit.value);
-    }
-    if (tertiaryUnitQty.present) {
-      map['tertiary_unit_qty'] = Variable<double>(tertiaryUnitQty.value);
-    }
-    if (tertiaryUnitPrice.present) {
-      map['tertiary_unit_price'] = Variable<double>(tertiaryUnitPrice.value);
-    }
     if (imageUrl.present) {
       map['image_url'] = Variable<String>(imageUrl.value);
     }
@@ -1412,18 +1141,361 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('price: $price, ')
           ..write('costPrice: $costPrice, ')
           ..write('unit: $unit, ')
-          ..write('secondaryUnit: $secondaryUnit, ')
-          ..write('secondaryUnitQty: $secondaryUnitQty, ')
-          ..write('secondaryUnitPrice: $secondaryUnitPrice, ')
-          ..write('tertiaryUnit: $tertiaryUnit, ')
-          ..write('tertiaryUnitQty: $tertiaryUnitQty, ')
-          ..write('tertiaryUnitPrice: $tertiaryUnitPrice, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
           ..write('minStock: $minStock, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ProductPricingTiersTable extends ProductPricingTiers
+    with TableInfo<$ProductPricingTiersTable, ProductPricingTier> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProductPricingTiersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _productIdMeta =
+      const VerificationMeta('productId');
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+      'product_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+      'unit', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _quantityPerUnitMeta =
+      const VerificationMeta('quantityPerUnit');
+  @override
+  late final GeneratedColumn<double> quantityPerUnit = GeneratedColumn<double>(
+      'quantity_per_unit', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _priceMeta = const VerificationMeta('price');
+  @override
+  late final GeneratedColumn<double> price = GeneratedColumn<double>(
+      'price', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _sortOrderMeta =
+      const VerificationMeta('sortOrder');
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+      'sort_order', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, productId, unit, quantityPerUnit, price, sortOrder];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'product_pricing_tiers';
+  @override
+  VerificationContext validateIntegrity(Insertable<ProductPricingTier> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(_productIdMeta,
+          productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta));
+    } else if (isInserting) {
+      context.missing(_productIdMeta);
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+          _unitMeta, unit.isAcceptableOrUnknown(data['unit']!, _unitMeta));
+    } else if (isInserting) {
+      context.missing(_unitMeta);
+    }
+    if (data.containsKey('quantity_per_unit')) {
+      context.handle(
+          _quantityPerUnitMeta,
+          quantityPerUnit.isAcceptableOrUnknown(
+              data['quantity_per_unit']!, _quantityPerUnitMeta));
+    } else if (isInserting) {
+      context.missing(_quantityPerUnitMeta);
+    }
+    if (data.containsKey('price')) {
+      context.handle(
+          _priceMeta, price.isAcceptableOrUnknown(data['price']!, _priceMeta));
+    } else if (isInserting) {
+      context.missing(_priceMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(_sortOrderMeta,
+          sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProductPricingTier map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProductPricingTier(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      productId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}product_id'])!,
+      unit: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}unit'])!,
+      quantityPerUnit: attachedDatabase.typeMapping.read(
+          DriftSqlType.double, data['${effectivePrefix}quantity_per_unit'])!,
+      price: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}price'])!,
+      sortOrder: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+    );
+  }
+
+  @override
+  $ProductPricingTiersTable createAlias(String alias) {
+    return $ProductPricingTiersTable(attachedDatabase, alias);
+  }
+}
+
+class ProductPricingTier extends DataClass
+    implements Insertable<ProductPricingTier> {
+  final String id;
+  final String productId;
+  final String unit;
+  final double quantityPerUnit;
+  final double price;
+  final int sortOrder;
+  const ProductPricingTier(
+      {required this.id,
+      required this.productId,
+      required this.unit,
+      required this.quantityPerUnit,
+      required this.price,
+      required this.sortOrder});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['product_id'] = Variable<String>(productId);
+    map['unit'] = Variable<String>(unit);
+    map['quantity_per_unit'] = Variable<double>(quantityPerUnit);
+    map['price'] = Variable<double>(price);
+    map['sort_order'] = Variable<int>(sortOrder);
+    return map;
+  }
+
+  ProductPricingTiersCompanion toCompanion(bool nullToAbsent) {
+    return ProductPricingTiersCompanion(
+      id: Value(id),
+      productId: Value(productId),
+      unit: Value(unit),
+      quantityPerUnit: Value(quantityPerUnit),
+      price: Value(price),
+      sortOrder: Value(sortOrder),
+    );
+  }
+
+  factory ProductPricingTier.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProductPricingTier(
+      id: serializer.fromJson<String>(json['id']),
+      productId: serializer.fromJson<String>(json['productId']),
+      unit: serializer.fromJson<String>(json['unit']),
+      quantityPerUnit: serializer.fromJson<double>(json['quantityPerUnit']),
+      price: serializer.fromJson<double>(json['price']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'productId': serializer.toJson<String>(productId),
+      'unit': serializer.toJson<String>(unit),
+      'quantityPerUnit': serializer.toJson<double>(quantityPerUnit),
+      'price': serializer.toJson<double>(price),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+    };
+  }
+
+  ProductPricingTier copyWith(
+          {String? id,
+          String? productId,
+          String? unit,
+          double? quantityPerUnit,
+          double? price,
+          int? sortOrder}) =>
+      ProductPricingTier(
+        id: id ?? this.id,
+        productId: productId ?? this.productId,
+        unit: unit ?? this.unit,
+        quantityPerUnit: quantityPerUnit ?? this.quantityPerUnit,
+        price: price ?? this.price,
+        sortOrder: sortOrder ?? this.sortOrder,
+      );
+  ProductPricingTier copyWithCompanion(ProductPricingTiersCompanion data) {
+    return ProductPricingTier(
+      id: data.id.present ? data.id.value : this.id,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      quantityPerUnit: data.quantityPerUnit.present
+          ? data.quantityPerUnit.value
+          : this.quantityPerUnit,
+      price: data.price.present ? data.price.value : this.price,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProductPricingTier(')
+          ..write('id: $id, ')
+          ..write('productId: $productId, ')
+          ..write('unit: $unit, ')
+          ..write('quantityPerUnit: $quantityPerUnit, ')
+          ..write('price: $price, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, productId, unit, quantityPerUnit, price, sortOrder);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProductPricingTier &&
+          other.id == this.id &&
+          other.productId == this.productId &&
+          other.unit == this.unit &&
+          other.quantityPerUnit == this.quantityPerUnit &&
+          other.price == this.price &&
+          other.sortOrder == this.sortOrder);
+}
+
+class ProductPricingTiersCompanion extends UpdateCompanion<ProductPricingTier> {
+  final Value<String> id;
+  final Value<String> productId;
+  final Value<String> unit;
+  final Value<double> quantityPerUnit;
+  final Value<double> price;
+  final Value<int> sortOrder;
+  final Value<int> rowid;
+  const ProductPricingTiersCompanion({
+    this.id = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.quantityPerUnit = const Value.absent(),
+    this.price = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProductPricingTiersCompanion.insert({
+    required String id,
+    required String productId,
+    required String unit,
+    required double quantityPerUnit,
+    required double price,
+    this.sortOrder = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        productId = Value(productId),
+        unit = Value(unit),
+        quantityPerUnit = Value(quantityPerUnit),
+        price = Value(price);
+  static Insertable<ProductPricingTier> custom({
+    Expression<String>? id,
+    Expression<String>? productId,
+    Expression<String>? unit,
+    Expression<double>? quantityPerUnit,
+    Expression<double>? price,
+    Expression<int>? sortOrder,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (productId != null) 'product_id': productId,
+      if (unit != null) 'unit': unit,
+      if (quantityPerUnit != null) 'quantity_per_unit': quantityPerUnit,
+      if (price != null) 'price': price,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProductPricingTiersCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? productId,
+      Value<String>? unit,
+      Value<double>? quantityPerUnit,
+      Value<double>? price,
+      Value<int>? sortOrder,
+      Value<int>? rowid}) {
+    return ProductPricingTiersCompanion(
+      id: id ?? this.id,
+      productId: productId ?? this.productId,
+      unit: unit ?? this.unit,
+      quantityPerUnit: quantityPerUnit ?? this.quantityPerUnit,
+      price: price ?? this.price,
+      sortOrder: sortOrder ?? this.sortOrder,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (quantityPerUnit.present) {
+      map['quantity_per_unit'] = Variable<double>(quantityPerUnit.value);
+    }
+    if (price.present) {
+      map['price'] = Variable<double>(price.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProductPricingTiersCompanion(')
+          ..write('id: $id, ')
+          ..write('productId: $productId, ')
+          ..write('unit: $unit, ')
+          ..write('quantityPerUnit: $quantityPerUnit, ')
+          ..write('price: $price, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5556,6 +5628,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $ProductsTable products = $ProductsTable(this);
+  late final $ProductPricingTiersTable productPricingTiers =
+      $ProductPricingTiersTable(this);
   late final $BranchPricesTable branchPrices = $BranchPricesTable(this);
   late final $LocalStockTable localStock = $LocalStockTable(this);
   late final $DailyPurchasesTable dailyPurchases = $DailyPurchasesTable(this);
@@ -5574,6 +5648,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
         categories,
         products,
+        productPricingTiers,
         branchPrices,
         localStock,
         dailyPurchases,
@@ -5820,12 +5895,6 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   required double price,
   Value<double?> costPrice,
   Value<String> unit,
-  Value<String?> secondaryUnit,
-  Value<double?> secondaryUnitQty,
-  Value<double?> secondaryUnitPrice,
-  Value<String?> tertiaryUnit,
-  Value<double?> tertiaryUnitQty,
-  Value<double?> tertiaryUnitPrice,
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
@@ -5843,12 +5912,6 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<double> price,
   Value<double?> costPrice,
   Value<String> unit,
-  Value<String?> secondaryUnit,
-  Value<double?> secondaryUnitQty,
-  Value<double?> secondaryUnitPrice,
-  Value<String?> tertiaryUnit,
-  Value<double?> tertiaryUnitQty,
-  Value<double?> tertiaryUnitPrice,
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
@@ -5890,28 +5953,6 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get unit => $composableBuilder(
       column: $table.unit, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<String> get secondaryUnit => $composableBuilder(
-      column: $table.secondaryUnit, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<double> get secondaryUnitQty => $composableBuilder(
-      column: $table.secondaryUnitQty,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<double> get secondaryUnitPrice => $composableBuilder(
-      column: $table.secondaryUnitPrice,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<String> get tertiaryUnit => $composableBuilder(
-      column: $table.tertiaryUnit, builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<double> get tertiaryUnitQty => $composableBuilder(
-      column: $table.tertiaryUnitQty,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<double> get tertiaryUnitPrice => $composableBuilder(
-      column: $table.tertiaryUnitPrice,
-      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get imageUrl => $composableBuilder(
       column: $table.imageUrl, builder: (column) => ColumnFilters(column));
@@ -5966,30 +6007,6 @@ class $$ProductsTableOrderingComposer
   ColumnOrderings<String> get unit => $composableBuilder(
       column: $table.unit, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get secondaryUnit => $composableBuilder(
-      column: $table.secondaryUnit,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<double> get secondaryUnitQty => $composableBuilder(
-      column: $table.secondaryUnitQty,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<double> get secondaryUnitPrice => $composableBuilder(
-      column: $table.secondaryUnitPrice,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<String> get tertiaryUnit => $composableBuilder(
-      column: $table.tertiaryUnit,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<double> get tertiaryUnitQty => $composableBuilder(
-      column: $table.tertiaryUnitQty,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<double> get tertiaryUnitPrice => $composableBuilder(
-      column: $table.tertiaryUnitPrice,
-      builder: (column) => ColumnOrderings(column));
-
   ColumnOrderings<String> get imageUrl => $composableBuilder(
       column: $table.imageUrl, builder: (column) => ColumnOrderings(column));
 
@@ -6043,24 +6060,6 @@ class $$ProductsTableAnnotationComposer
   GeneratedColumn<String> get unit =>
       $composableBuilder(column: $table.unit, builder: (column) => column);
 
-  GeneratedColumn<String> get secondaryUnit => $composableBuilder(
-      column: $table.secondaryUnit, builder: (column) => column);
-
-  GeneratedColumn<double> get secondaryUnitQty => $composableBuilder(
-      column: $table.secondaryUnitQty, builder: (column) => column);
-
-  GeneratedColumn<double> get secondaryUnitPrice => $composableBuilder(
-      column: $table.secondaryUnitPrice, builder: (column) => column);
-
-  GeneratedColumn<String> get tertiaryUnit => $composableBuilder(
-      column: $table.tertiaryUnit, builder: (column) => column);
-
-  GeneratedColumn<double> get tertiaryUnitQty => $composableBuilder(
-      column: $table.tertiaryUnitQty, builder: (column) => column);
-
-  GeneratedColumn<double> get tertiaryUnitPrice => $composableBuilder(
-      column: $table.tertiaryUnitPrice, builder: (column) => column);
-
   GeneratedColumn<String> get imageUrl =>
       $composableBuilder(column: $table.imageUrl, builder: (column) => column);
 
@@ -6111,12 +6110,6 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<double> price = const Value.absent(),
             Value<double?> costPrice = const Value.absent(),
             Value<String> unit = const Value.absent(),
-            Value<String?> secondaryUnit = const Value.absent(),
-            Value<double?> secondaryUnitQty = const Value.absent(),
-            Value<double?> secondaryUnitPrice = const Value.absent(),
-            Value<String?> tertiaryUnit = const Value.absent(),
-            Value<double?> tertiaryUnitQty = const Value.absent(),
-            Value<double?> tertiaryUnitPrice = const Value.absent(),
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
@@ -6134,12 +6127,6 @@ class $$ProductsTableTableManager extends RootTableManager<
             price: price,
             costPrice: costPrice,
             unit: unit,
-            secondaryUnit: secondaryUnit,
-            secondaryUnitQty: secondaryUnitQty,
-            secondaryUnitPrice: secondaryUnitPrice,
-            tertiaryUnit: tertiaryUnit,
-            tertiaryUnitQty: tertiaryUnitQty,
-            tertiaryUnitPrice: tertiaryUnitPrice,
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
@@ -6157,12 +6144,6 @@ class $$ProductsTableTableManager extends RootTableManager<
             required double price,
             Value<double?> costPrice = const Value.absent(),
             Value<String> unit = const Value.absent(),
-            Value<String?> secondaryUnit = const Value.absent(),
-            Value<double?> secondaryUnitQty = const Value.absent(),
-            Value<double?> secondaryUnitPrice = const Value.absent(),
-            Value<String?> tertiaryUnit = const Value.absent(),
-            Value<double?> tertiaryUnitQty = const Value.absent(),
-            Value<double?> tertiaryUnitPrice = const Value.absent(),
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
@@ -6180,12 +6161,6 @@ class $$ProductsTableTableManager extends RootTableManager<
             price: price,
             costPrice: costPrice,
             unit: unit,
-            secondaryUnit: secondaryUnit,
-            secondaryUnitQty: secondaryUnitQty,
-            secondaryUnitPrice: secondaryUnitPrice,
-            tertiaryUnit: tertiaryUnit,
-            tertiaryUnitQty: tertiaryUnitQty,
-            tertiaryUnitPrice: tertiaryUnitPrice,
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
@@ -6212,6 +6187,201 @@ typedef $$ProductsTableProcessedTableManager = ProcessedTableManager<
     $$ProductsTableUpdateCompanionBuilder,
     (Product, BaseReferences<_$AppDatabase, $ProductsTable, Product>),
     Product,
+    PrefetchHooks Function()>;
+typedef $$ProductPricingTiersTableCreateCompanionBuilder
+    = ProductPricingTiersCompanion Function({
+  required String id,
+  required String productId,
+  required String unit,
+  required double quantityPerUnit,
+  required double price,
+  Value<int> sortOrder,
+  Value<int> rowid,
+});
+typedef $$ProductPricingTiersTableUpdateCompanionBuilder
+    = ProductPricingTiersCompanion Function({
+  Value<String> id,
+  Value<String> productId,
+  Value<String> unit,
+  Value<double> quantityPerUnit,
+  Value<double> price,
+  Value<int> sortOrder,
+  Value<int> rowid,
+});
+
+class $$ProductPricingTiersTableFilterComposer
+    extends Composer<_$AppDatabase, $ProductPricingTiersTable> {
+  $$ProductPricingTiersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get productId => $composableBuilder(
+      column: $table.productId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get unit => $composableBuilder(
+      column: $table.unit, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get quantityPerUnit => $composableBuilder(
+      column: $table.quantityPerUnit,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get price => $composableBuilder(
+      column: $table.price, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+}
+
+class $$ProductPricingTiersTableOrderingComposer
+    extends Composer<_$AppDatabase, $ProductPricingTiersTable> {
+  $$ProductPricingTiersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get productId => $composableBuilder(
+      column: $table.productId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+      column: $table.unit, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get quantityPerUnit => $composableBuilder(
+      column: $table.quantityPerUnit,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get price => $composableBuilder(
+      column: $table.price, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+      column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ProductPricingTiersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ProductPricingTiersTable> {
+  $$ProductPricingTiersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get productId =>
+      $composableBuilder(column: $table.productId, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<double> get quantityPerUnit => $composableBuilder(
+      column: $table.quantityPerUnit, builder: (column) => column);
+
+  GeneratedColumn<double> get price =>
+      $composableBuilder(column: $table.price, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+}
+
+class $$ProductPricingTiersTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ProductPricingTiersTable,
+    ProductPricingTier,
+    $$ProductPricingTiersTableFilterComposer,
+    $$ProductPricingTiersTableOrderingComposer,
+    $$ProductPricingTiersTableAnnotationComposer,
+    $$ProductPricingTiersTableCreateCompanionBuilder,
+    $$ProductPricingTiersTableUpdateCompanionBuilder,
+    (
+      ProductPricingTier,
+      BaseReferences<_$AppDatabase, $ProductPricingTiersTable,
+          ProductPricingTier>
+    ),
+    ProductPricingTier,
+    PrefetchHooks Function()> {
+  $$ProductPricingTiersTableTableManager(
+      _$AppDatabase db, $ProductPricingTiersTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProductPricingTiersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProductPricingTiersTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProductPricingTiersTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> productId = const Value.absent(),
+            Value<String> unit = const Value.absent(),
+            Value<double> quantityPerUnit = const Value.absent(),
+            Value<double> price = const Value.absent(),
+            Value<int> sortOrder = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ProductPricingTiersCompanion(
+            id: id,
+            productId: productId,
+            unit: unit,
+            quantityPerUnit: quantityPerUnit,
+            price: price,
+            sortOrder: sortOrder,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String productId,
+            required String unit,
+            required double quantityPerUnit,
+            required double price,
+            Value<int> sortOrder = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ProductPricingTiersCompanion.insert(
+            id: id,
+            productId: productId,
+            unit: unit,
+            quantityPerUnit: quantityPerUnit,
+            price: price,
+            sortOrder: sortOrder,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ProductPricingTiersTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ProductPricingTiersTable,
+    ProductPricingTier,
+    $$ProductPricingTiersTableFilterComposer,
+    $$ProductPricingTiersTableOrderingComposer,
+    $$ProductPricingTiersTableAnnotationComposer,
+    $$ProductPricingTiersTableCreateCompanionBuilder,
+    $$ProductPricingTiersTableUpdateCompanionBuilder,
+    (
+      ProductPricingTier,
+      BaseReferences<_$AppDatabase, $ProductPricingTiersTable,
+          ProductPricingTier>
+    ),
+    ProductPricingTier,
     PrefetchHooks Function()>;
 typedef $$BranchPricesTableCreateCompanionBuilder = BranchPricesCompanion
     Function({
@@ -8259,6 +8429,8 @@ class $AppDatabaseManager {
       $$CategoriesTableTableManager(_db, _db.categories);
   $$ProductsTableTableManager get products =>
       $$ProductsTableTableManager(_db, _db.products);
+  $$ProductPricingTiersTableTableManager get productPricingTiers =>
+      $$ProductPricingTiersTableTableManager(_db, _db.productPricingTiers);
   $$BranchPricesTableTableManager get branchPrices =>
       $$BranchPricesTableTableManager(_db, _db.branchPrices);
   $$LocalStockTableTableManager get localStock =>

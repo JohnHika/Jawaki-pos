@@ -1,43 +1,22 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/design_system.dart';
 
-/// Unit configuration model
+/// Unit configuration model — a base unit plus any number of bulk-selling
+/// tiers (dozen, carton, pallet, ...), each with a conversion factor back
+/// to the base unit.
 class UnitConfig {
   final String baseUnit;
-  final String? secondaryUnit;
-  final double? secondaryUnitQty;
-  final String? tertiaryUnit;
-  final double? tertiaryUnitQty;
+  final List<UnitOption> extraTiers;
 
   UnitConfig({
     required this.baseUnit,
-    this.secondaryUnit,
-    this.secondaryUnitQty,
-    this.tertiaryUnit,
-    this.tertiaryUnitQty,
+    this.extraTiers = const [],
   });
 
-  List<UnitOption> get availableUnits {
-    final units = <UnitOption>[
-      UnitOption(name: baseUnit, conversionFactor: 1.0),
-    ];
-
-    if (secondaryUnit != null && secondaryUnitQty != null) {
-      units.add(UnitOption(
-        name: secondaryUnit!,
-        conversionFactor: secondaryUnitQty!,
-      ));
-    }
-
-    if (tertiaryUnit != null && tertiaryUnitQty != null) {
-      units.add(UnitOption(
-        name: tertiaryUnit!,
-        conversionFactor: tertiaryUnitQty!,
-      ));
-    }
-
-    return units;
-  }
+  List<UnitOption> get availableUnits => [
+        UnitOption(name: baseUnit, conversionFactor: 1.0),
+        ...extraTiers,
+      ];
 }
 
 /// Individual unit option with conversion factor

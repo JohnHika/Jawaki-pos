@@ -70,50 +70,51 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     _selectedCategoryId = widget.product?.categoryId;
     _imageUrl = widget.product?.imageUrl;
 
-    // Build pricing tiers from existing product data (or start with one blank tier)
+    // Start with just the primary tier; any existing bulk tiers (any
+    // number) load a moment later from the local cache, once fetched.
     _unitPriceTiers = [
       _UnitPriceTier(
         unit: widget.product?.unit ?? 'piece',
         price: widget.product?.price.toStringAsFixed(0),
       ),
     ];
-    if (widget.product?.secondaryUnit != null) {
-      // Prefer stored secondaryUnitPrice; fallback to qty-based estimate
-      final secPrice = widget.product!.secondaryUnitPrice ??
-          (widget.product!.secondaryUnitQty != null
-              ? widget.product!.price * widget.product!.secondaryUnitQty!
-              : null);
-      final secQty = widget.product!.secondaryUnitQty;
-      _unitPriceTiers.add(_UnitPriceTier(
-        unit: widget.product!.secondaryUnit!,
-        price: secPrice?.toStringAsFixed(0),
-        qty: secQty != null ? _formatQty(secQty) : null,
-      ));
-    }
-    if (widget.product?.tertiaryUnit != null) {
-      final terPrice = widget.product!.tertiaryUnitPrice ??
-          (widget.product!.tertiaryUnitQty != null
-              ? widget.product!.price * widget.product!.tertiaryUnitQty!
-              : null);
-      final terQty = widget.product!.tertiaryUnitQty;
-      _unitPriceTiers.add(_UnitPriceTier(
-        unit: widget.product!.tertiaryUnit!,
-        price: terPrice?.toStringAsFixed(0),
-        qty: terQty != null ? _formatQty(terQty) : null,
-      ));
-    }
 
     // Reorder point: stored in base units, displayed/edited in whichever
-    // tier unit is selected (defaults to the secondary/"box" tier if one
-    // exists, since that's the most natural way staff think about restocking).
-    _minStockUnit = _unitPriceTiers.length > 1
-        ? _unitPriceTiers[1].unit
-        : _unitPriceTiers[0].unit;
+    // tier unit is selected — defaults to the primary tier until real
+    // tiers load, then re-picks the first bulk tier once available.
+    _minStockUnit = _unitPriceTiers[0].unit;
     final minStockBase = widget.product?.minStock ?? 0;
-    final minStockDisplay = _convertFromBaseUnits(minStockBase.toDouble(), _minStockUnit);
     _minStockController = TextEditingController(
-      text: minStockBase == 0 ? '' : _formatQty(minStockDisplay),
+      text: minStockBase == 0 ? '' : minStockBase.toString(),
     );
+
+    if (isEditing) {
+      _loadExistingPricingTiers();
+    }
+  }
+
+  Future<void> _loadExistingPricingTiers() async {
+    final database = getIt<AppDatabase>();
+    final tiers = await database.getPricingTiersForProduct(widget.product!.id);
+    if (!mounted || tiers.isEmpty) return;
+
+    setState(() {
+      for (final tier in tiers) {
+        _unitPriceTiers.add(_UnitPriceTier(
+          unit: tier.unit,
+          price: tier.price.toStringAsFixed(0),
+          qty: _formatQty(tier.quantityPerUnit),
+        ));
+      }
+      _minStockUnit = _unitPriceTiers.length > 1
+          ? _unitPriceTiers[1].unit
+          : _unitPriceTiers[0].unit;
+      final minStockBase = widget.product?.minStock ?? 0;
+      final minStockDisplay =
+          _convertFromBaseUnits(minStockBase.toDouble(), _minStockUnit);
+      _minStockController.text =
+          minStockBase == 0 ? '' : _formatQty(minStockDisplay);
+    });
   }
 
   /// Converts a base-unit quantity into the given tier unit using the real,
@@ -359,42 +360,40 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         isEditing && widget.product?.imageUrl != null && _imageUrl == null;
 
     final primary = _unitPriceTiers[0];
-    final secondary = _unitPriceTiers.length > 1 ? _unitPriceTiers[1] : null;
-    final tertiary = _unitPriceTiers.length > 2 ? _unitPriceTiers[2] : null;
+    final bulkTiers = _unitPriceTiers.sublist(1);
 
     final primaryPrice = double.parse(primary.priceController.text.trim());
-    final secondaryPrice = secondary != null
-        ? double.tryParse(secondary.priceController.text.trim())
-        : null;
-    final tertiaryPrice = tertiary != null
-        ? double.tryParse(tertiary.priceController.text.trim())
-        : null;
 
-    // How many primary units = 1 secondary/tertiary unit — entered
-    // directly by the admin (e.g. "12" for a 12-piece pack), not derived
-    // from price, since bulk pricing often includes a discount.
-    final secondaryQty = secondary != null
-        ? double.tryParse(secondary.qtyController.text.trim())
-        : null;
-    final tertiaryQty = tertiary != null
-        ? double.tryParse(tertiary.qtyController.text.trim())
-        : null;
+    // Every tier beyond the primary — any number of them — with its real,
+    // directly-entered price and conversion count (how many primary units
+    // make up one of the tier's unit; entered directly, not derived from
+    // price, since bulk pricing often includes a discount).
+    final pricingTiers = <Map<String, dynamic>>[];
+    for (final tier in bulkTiers) {
+      final tierPrice = double.tryParse(tier.priceController.text.trim());
+      final tierQty = double.tryParse(tier.qtyController.text.trim());
+      if (tierPrice == null || tierQty == null) continue;
+      pricingTiers.add({
+        'unit': tier.unit,
+        'quantityPerUnit': tierQty,
+        'price': tierPrice,
+      });
+    }
 
     // Convert the reorder point from whichever tier unit was selected back
-    // into base units for storage, using the same tier conversion factors.
+    // into base units for storage, using that tier's real conversion count.
     int? minStock;
     final minStockText = _minStockController.text.trim();
     if (minStockText.isNotEmpty) {
       final enteredQty = double.parse(minStockText);
-      double minStockBase;
-      if (_minStockUnit == primary.unit) {
-        minStockBase = enteredQty;
-      } else if (secondary != null && _minStockUnit == secondary.unit) {
-        minStockBase = enteredQty * (secondaryQty ?? 1);
-      } else if (tertiary != null && _minStockUnit == tertiary.unit) {
-        minStockBase = enteredQty * (tertiaryQty ?? 1);
-      } else {
-        minStockBase = enteredQty;
+      double minStockBase = enteredQty;
+      if (_minStockUnit != primary.unit) {
+        final matchingTier = bulkTiers.where((t) => t.unit == _minStockUnit);
+        if (matchingTier.isNotEmpty) {
+          final factor =
+              double.tryParse(matchingTier.first.qtyController.text.trim());
+          minStockBase = enteredQty * (factor ?? 1);
+        }
       }
       minStock = minStockBase.round();
     }
@@ -410,12 +409,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           image: _imageUrl,
           imagePublicId: _imagePublicId,
           unit: primary.unit,
-          secondaryUnit: secondary?.unit,
-          secondaryUnitQty: secondaryQty,
-          secondaryUnitPrice: secondaryPrice,
-          tertiaryUnit: tertiary?.unit,
-          tertiaryUnitQty: tertiaryQty,
-          tertiaryUnitPrice: tertiaryPrice,
+          pricingTiers: pricingTiers,
           minStock: minStock,
           clearImage: clearImage,
         );
@@ -428,12 +422,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           image: _imageUrl,
           imagePublicId: _imagePublicId,
           unit: primary.unit,
-          secondaryUnit: secondary?.unit,
-          secondaryUnitQty: secondaryQty,
-          secondaryUnitPrice: secondaryPrice,
-          tertiaryUnit: tertiary?.unit,
-          tertiaryUnitQty: tertiaryQty,
-          tertiaryUnitPrice: tertiaryPrice,
+          pricingTiers: pricingTiers,
           minStock: minStock,
         );
       }
@@ -572,7 +561,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                '${_unitPriceTiers.length}/3 tiers',
+                '${_unitPriceTiers.length} '
+                '${_unitPriceTiers.length == 1 ? 'tier' : 'tiers'}',
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -583,7 +573,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           ],
         ),
         const SizedBox(height: 10),
-        // Tiers container
+        // Tiers container — no cap: add as many pricing tiers (piece,
+        // dozen, carton, pallet, ...) as the business actually sells in.
         Container(
           decoration: BoxDecoration(
             color: isDark
@@ -595,7 +586,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             children: [
               for (int i = 0; i < _unitPriceTiers.length; i++)
                 _buildPricingRow(i, isDark),
-              if (_unitPriceTiers.length < 3) _buildAddTierButton(isDark),
+              _buildAddTierButton(isDark),
             ],
           ),
         ),
@@ -864,9 +855,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
   String _getNextUnit() {
     final used = _unitPriceTiers.map((t) => t.unit).toSet();
-    for (final u in ['dozen', 'box', 'pack', 'bottle', 'kg', 'litre']) {
+    for (final u in _units) {
       if (!used.contains(u)) return u;
     }
-    return 'pack';
+    // Every option in the dropdown is already used as a tier — fall back
+    // to whatever the dropdown's first entry is; the admin can still
+    // change it manually.
+    return _units.first;
   }
 }

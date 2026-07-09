@@ -59,7 +59,7 @@ class CatalogRoutes {
 
     return shelf.Response.ok(
       jsonEncode({
-        'items': paged.map((p) => _productToMap(p)).toList(),
+        'items': await Future.wait(paged.map(_productToMap)),
         'total': total,
         'page': page,
         'limit': limit,
@@ -79,7 +79,7 @@ class CatalogRoutes {
       );
     }
     return shelf.Response.ok(
-      jsonEncode(_productToMap(product)),
+      jsonEncode(await _productToMap(product)),
       headers: {'content-type': 'application/json'},
     );
   }
@@ -88,7 +88,7 @@ class CatalogRoutes {
   Future<shelf.Response> _handleGetFavorites(shelf.Request request) async {
     final favorites = await _db.getFavoriteProducts();
     return shelf.Response.ok(
-      jsonEncode(favorites.map((p) => _productToMap(p)).toList()),
+      jsonEncode(await Future.wait(favorites.map(_productToMap))),
       headers: {'content-type': 'application/json'},
     );
   }
@@ -107,7 +107,8 @@ class CatalogRoutes {
     );
   }
 
-  Map<String, dynamic> _productToMap(Product p) {
+  Future<Map<String, dynamic>> _productToMap(Product p) async {
+    final tiers = await _db.getPricingTiersForProduct(p.id);
     return {
       'id': p.id,
       'sku': p.sku,
@@ -118,10 +119,14 @@ class CatalogRoutes {
       'currentPrice': p.price,
       'costPrice': p.costPrice,
       'unit': p.unit,
-      'secondaryUnit': p.secondaryUnit,
-      'secondaryUnitQty': p.secondaryUnitQty,
-      'tertiaryUnit': p.tertiaryUnit,
-      'tertiaryUnitQty': p.tertiaryUnitQty,
+      'pricingTiers': tiers
+          .map((t) => {
+                'unit': t.unit,
+                'quantityPerUnit': t.quantityPerUnit,
+                'price': t.price,
+                'sortOrder': t.sortOrder,
+              })
+          .toList(),
       'isActive': p.isActive,
       'trackInventory': p.trackInventory,
       'categoryId': p.categoryId,

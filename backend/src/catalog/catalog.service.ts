@@ -169,7 +169,7 @@ export class CatalogService {
       throw new ConflictException('Product with this SKU already exists');
     }
 
-    const { categoryIds, ...productData } = dto;
+    const { categoryIds, pricingTiers, ...productData } = dto;
 
     const product = await this.prisma.product.create({
       data: {
@@ -181,6 +181,16 @@ export class CatalogService {
               create: categoryIds.map((categoryId) => ({ categoryId })),
             }
           : undefined,
+        pricingTiers: pricingTiers
+          ? {
+              create: pricingTiers.map((tier, index) => ({
+                unit: tier.unit,
+                quantityPerUnit: tier.quantityPerUnit,
+                price: tier.price,
+                sortOrder: index + 1,
+              })),
+            }
+          : undefined,
       },
       include: {
         categories: {
@@ -190,6 +200,7 @@ export class CatalogService {
             },
           },
         },
+        pricingTiers: { orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -279,6 +290,7 @@ export class CatalogService {
             ? { where: { branchId, isActive: true } }
             : false,
           stock: branchId ? { where: { branchId } } : false,
+          pricingTiers: { orderBy: { sortOrder: 'asc' } },
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
         skip,
@@ -313,6 +325,7 @@ export class CatalogService {
           ? { where: { branchId, isActive: true } }
           : { where: { isActive: true } },
         stock: branchId ? { where: { branchId } } : true,
+        pricingTiers: { orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -352,7 +365,7 @@ export class CatalogService {
       this.uploadsService.deleteImage(product.imagePublicId);
     }
 
-    const { categoryIds, ...updateData } = dto;
+    const { categoryIds, pricingTiers, ...updateData } = dto;
 
     // Update categories if provided
     if (categoryIds !== undefined) {
@@ -363,6 +376,27 @@ export class CatalogService {
       if (categoryIds.length > 0) {
         await this.prisma.productCategory.createMany({
           data: categoryIds.map((categoryId) => ({ productId, categoryId })),
+        });
+      }
+    }
+
+    // The form always resubmits the complete tier list, so a full
+    // replace (rather than a diff/merge) matches how it's actually used
+    // and keeps this simple -- same semantics the old fixed columns had.
+    if (pricingTiers !== undefined) {
+      await this.prisma.productPricingTier.deleteMany({
+        where: { productId },
+      });
+
+      if (pricingTiers.length > 0) {
+        await this.prisma.productPricingTier.createMany({
+          data: pricingTiers.map((tier, index) => ({
+            productId,
+            unit: tier.unit,
+            quantityPerUnit: tier.quantityPerUnit,
+            price: tier.price,
+            sortOrder: index + 1,
+          })),
         });
       }
     }
@@ -378,6 +412,7 @@ export class CatalogService {
             },
           },
         },
+        pricingTiers: { orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -415,13 +450,23 @@ export class CatalogService {
   async bulkCreateProducts(tenantId: string, products: any[]) {
     const results = await this.prisma.$transaction(
       products.map((dto) => {
-        const { categoryIds, ...productData } = dto;
+        const { categoryIds, pricingTiers, ...productData } = dto;
         return this.prisma.product.create({
           data: {
             tenantId,
             ...productData,
             categories: categoryIds
               ? { create: categoryIds.map((categoryId: string) => ({ categoryId })) }
+              : undefined,
+            pricingTiers: pricingTiers
+              ? {
+                  create: pricingTiers.map((tier: any, index: number) => ({
+                    unit: tier.unit,
+                    quantityPerUnit: tier.quantityPerUnit,
+                    price: tier.price,
+                    sortOrder: index + 1,
+                  })),
+                }
               : undefined,
           },
           include: {
@@ -430,6 +475,7 @@ export class CatalogService {
                 category: { select: { id: true, name: true } },
               },
             },
+            pricingTiers: { orderBy: { sortOrder: 'asc' } },
           },
         });
       }),
@@ -443,7 +489,7 @@ export class CatalogService {
     const results = await this.prisma.$transaction(async (tx) => {
       const updated: any[] = [];
       for (const item of products) {
-        const { id, categoryIds, ...updateData } = item;
+        const { id, categoryIds, pricingTiers, ...updateData } = item;
 
         const existing = await tx.product.findFirst({
           where: { id, tenantId },
@@ -461,6 +507,21 @@ export class CatalogService {
           }
         }
 
+        if (pricingTiers !== undefined) {
+          await tx.productPricingTier.deleteMany({ where: { productId: id } });
+          if (pricingTiers.length > 0) {
+            await tx.productPricingTier.createMany({
+              data: pricingTiers.map((tier: any, index: number) => ({
+                productId: id,
+                unit: tier.unit,
+                quantityPerUnit: tier.quantityPerUnit,
+                price: tier.price,
+                sortOrder: index + 1,
+              })),
+            });
+          }
+        }
+
         const result = await tx.product.update({
           where: { id },
           data: updateData,
@@ -470,6 +531,7 @@ export class CatalogService {
                 category: { select: { id: true, name: true } },
               },
             },
+            pricingTiers: { orderBy: { sortOrder: 'asc' } },
           },
         });
         updated.push(result);
@@ -632,6 +694,7 @@ export class CatalogService {
           ? { where: { branchId, isActive: true } }
           : false,
         stock: branchId ? { where: { branchId } } : false,
+        pricingTiers: { orderBy: { sortOrder: 'asc' } },
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       // Favorites are self-curated by staff for quick access on the POS
@@ -695,22 +758,22 @@ export class CatalogService {
       currentStock = Number(product.stock[0].quantity);
     }
 
-    // Calculate derived pricing for all unit types
     const basePrice = Number(product.basePrice);
-    const secondaryUnitQty = product.secondaryUnitQty ? Number(product.secondaryUnitQty) : null;
-    const tertiaryUnitQty = product.tertiaryUnitQty ? Number(product.tertiaryUnitQty) : null;
 
-    // Bulk-tier prices are real, independently-entered prices (e.g. a pack
-    // priced with a bulk discount, not just basePrice * qty) — read what
-    // was actually stored. Only fall back to a computed estimate for
-    // products saved before this field existed, or where the tier was
-    // configured with a quantity but no explicit price.
-    const secondaryUnitPrice = product.secondaryUnitPrice
-      ? Number(product.secondaryUnitPrice)
-      : currentPrice * (secondaryUnitQty || 1);
-    const tertiaryUnitPrice = product.tertiaryUnitPrice
-      ? Number(product.tertiaryUnitPrice)
-      : currentPrice * (tertiaryUnitQty || 1);
+    // Bulk-selling tiers beyond the base unit (e.g. dozen, carton, pallet)
+    // — any number of them, each with a real, independently-entered price
+    // and conversion count. A tier only exists if explicitly created, so
+    // there's no "estimate from base price" fallback needed here anymore.
+    const pricingTiers = (product.pricingTiers ?? [])
+      .slice()
+      .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+      .map((tier: any) => ({
+        id: tier.id,
+        unit: tier.unit,
+        quantityPerUnit: Number(tier.quantityPerUnit),
+        price: Number(tier.price),
+        sortOrder: tier.sortOrder,
+      }));
 
     return {
       id: product.id,
@@ -727,12 +790,7 @@ export class CatalogService {
       costPrice: product.costPrice ? Number(product.costPrice) : undefined,
       taxRate: Number(product.taxRate),
       unit: product.unit,
-      secondaryUnit: product.secondaryUnit ?? undefined,
-      secondaryUnitQty: secondaryUnitQty,
-      secondaryUnitPrice: secondaryUnitPrice,
-      tertiaryUnit: product.tertiaryUnit ?? undefined,
-      tertiaryUnitQty: tertiaryUnitQty,
-      tertiaryUnitPrice: tertiaryUnitPrice,
+      pricingTiers,
       minStock: product.minStock,
       trackInventory: product.trackInventory,
       allowFractions: product.allowFractions,
@@ -750,12 +808,6 @@ export class CatalogService {
         basePrice,
         currentPrice,
         unit: product.unit,
-        secondaryUnit: product.secondaryUnit,
-        secondaryUnitQty: secondaryUnitQty,
-        secondaryUnitPrice: secondaryUnitPrice,
-        tertiaryUnit: product.tertiaryUnit,
-        tertiaryUnitQty: tertiaryUnitQty,
-        tertiaryUnitPrice: tertiaryUnitPrice,
       },
     };
   }

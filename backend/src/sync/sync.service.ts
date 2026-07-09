@@ -197,6 +197,7 @@ export class SyncService {
           stock: {
             where: { branchId },
           },
+          pricingTiers: { orderBy: { sortOrder: 'asc' } },
         },
         take: limit,
         orderBy: { updatedAt: 'asc' },

@@ -111,21 +111,25 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   /// Builds a packaging-unit-aware summary for a low-stock item, e.g.
   /// "3 pieces (0.3 box) — reorder below 1 box", falling back to a
-  /// plain base-unit message when the product has no secondary unit.
+  /// plain base-unit message when the product has no bulk pricing tier.
   String? _packagingSummary(
     Map<String, dynamic> item,
     int quantity,
     int minStock,
   ) {
     final unit = item['unit'] as String? ?? 'piece';
-    final secondaryUnit = item['secondaryUnit'] as String?;
-    final secondaryUnitQty = item['secondaryUnitQty'] as double?;
+    final rawTiers = item['pricingTiers'];
+    final firstTier = rawTiers is List && rawTiers.isNotEmpty
+        ? rawTiers.first as Map
+        : null;
+    final tierUnit = firstTier?['unit'] as String?;
+    final tierQty = (firstTier?['quantityPerUnit'] as num?)?.toDouble();
 
-    if (secondaryUnit != null && secondaryUnitQty != null && secondaryUnitQty > 0) {
-      final packagingQty = quantity / secondaryUnitQty;
-      final reorderPackagingQty = minStock / secondaryUnitQty;
-      return '$quantity $unit (${_formatUnitQty(packagingQty)} $secondaryUnit)'
-          ' — reorder below ${_formatUnitQty(reorderPackagingQty)} $secondaryUnit';
+    if (tierUnit != null && tierQty != null && tierQty > 0) {
+      final packagingQty = quantity / tierQty;
+      final reorderPackagingQty = minStock / tierQty;
+      return '$quantity $unit (${_formatUnitQty(packagingQty)} $tierUnit)'
+          ' — reorder below ${_formatUnitQty(reorderPackagingQty)} $tierUnit';
     }
 
     return '$quantity $unit left (reorder below $minStock $unit)';

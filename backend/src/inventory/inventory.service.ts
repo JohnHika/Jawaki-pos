@@ -798,7 +798,10 @@ export class InventoryService {
     // Verify branch and product
     const [branch, product] = await Promise.all([
       this.prisma.branch.findFirst({ where: { id: dto.branchId, tenantId } }),
-      this.prisma.product.findFirst({ where: { id: dto.productId, tenantId } }),
+      this.prisma.product.findFirst({
+        where: { id: dto.productId, tenantId },
+        include: { pricingTiers: true },
+      }),
     ]);
 
     if (!branch) throw new NotFoundException('Branch not found');
@@ -991,18 +994,10 @@ export class InventoryService {
     // If it's the base unit, no conversion needed
     if (unitLower === baseUnit) return 1;
 
-    // Check secondary unit
-    if (product.secondaryUnit && unitLower === product.secondaryUnit.toLowerCase()) {
-      return Number(product.secondaryUnitQty) || null;
-    }
-
-    // Check tertiary unit
-    if (product.tertiaryUnit && unitLower === product.tertiaryUnit.toLowerCase()) {
-      return Number(product.tertiaryUnitQty) || null;
-    }
-
-    // No matching unit found
-    return null;
+    const tier = (product.pricingTiers ?? []).find(
+      (t: any) => t.unit.toLowerCase() === unitLower,
+    );
+    return tier ? Number(tier.quantityPerUnit) || null : null;
   }
 
   /**

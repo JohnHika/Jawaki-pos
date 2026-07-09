@@ -329,12 +329,6 @@ model Product {
   costPrice        Decimal? @db.Decimal(10, 2)
   taxRate          Decimal  @default(0) @db.Decimal(5, 2)
   unit             String   @default("piece")
-  secondaryUnit      String? // e.g., "box", "carton", "pack"
-  secondaryUnitQty   Decimal? @db.Decimal(10, 3) // How many base units per secondary unit
-  secondaryUnitPrice Decimal? @db.Decimal(10, 2) // Real selling price for one secondary unit
-  tertiaryUnit       String? // e.g., "carton" if secondary is "box"
-  tertiaryUnitQty    Decimal? @db.Decimal(10, 3) // How many base units per tertiary unit
-  tertiaryUnitPrice  Decimal? @db.Decimal(10, 2) // Real selling price for one tertiary unit
   minStock         Int      @default(0)
   trackInventory   Boolean  @default(true)
   allowFractions   Boolean  @default(false)
@@ -353,9 +347,31 @@ model Product {
   stockMovements       StockMovement[]
   stockRequests        StockRequest[]
   supplierInvoiceItems SupplierInvoiceItem[]
+  pricingTiers         ProductPricingTier[]
 
   @@unique([tenantId, sku])
   @@map("products")
+}
+
+// A product can be sold in any number of bulk units beyond its base unit
+// (e.g. piece, dozen, carton, pallet) — each with its own real price and
+// how many base units it represents. Replaces the old fixed
+// secondary/tertiary columns, which capped every product at exactly 2
+// extra tiers regardless of how the shop actually sells.
+model ProductPricingTier {
+  id              String   @id @default(uuid())
+  productId       String
+  unit            String
+  quantityPerUnit Decimal  @db.Decimal(10, 3) // how many base units = 1 of this tier's unit
+  price           Decimal  @db.Decimal(10, 2) // real price for one of this tier's unit
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_pricing_tiers")
 }
 
 model ProductCategory {

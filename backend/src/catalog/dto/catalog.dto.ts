@@ -11,9 +11,33 @@ import {
   MaxLength,
   Matches,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+
+// A single bulk-selling tier beyond the product's base unit (e.g. one
+// "dozen" or one "carton"), with its own real price and how many base
+// units it represents. A product can have any number of these — no cap.
+export class ProductPricingTierDto {
+  @ApiProperty({ example: 'dozen', description: 'The unit name for this tier' })
+  @IsString()
+  @MaxLength(20)
+  unit: string;
+
+  @ApiProperty({ example: 12, description: 'How many base units make up one of this tier\'s unit' })
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity per unit must have up to 3 decimal places' })
+  @Min(0.001, { message: 'Quantity per unit must be greater than 0' })
+  @Type(() => Number)
+  quantityPerUnit: number;
+
+  @ApiProperty({ example: 550.0, description: 'Real selling price for one of this tier\'s unit' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Tier price must have up to 2 decimal places' })
+  @Min(0, { message: 'Tier price cannot be negative' })
+  @Max(10000000, { message: 'Tier price cannot exceed 10,000,000' })
+  @Type(() => Number)
+  price: number;
+}
 
 // Category DTOs
 export class CreateCategoryDto {
@@ -160,47 +184,15 @@ export class CreateProductDto {
   @IsUUID('4', { each: true, message: 'Each category ID must be a valid UUID' })
   categoryIds?: string[];
 
-  @ApiPropertyOptional({ example: 'dozen', description: 'Secondary selling unit' })
+  @ApiPropertyOptional({
+    description: 'Bulk-selling tiers beyond the base unit (e.g. dozen, carton). No limit on how many a product can have.',
+    type: [ProductPricingTierDto],
+  })
   @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  secondaryUnit?: string;
-
-  @ApiPropertyOptional({ example: 12, description: 'Quantity of primary units per secondary unit (for stock deduction)' })
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 3 })
-  @Min(0)
-  @Type(() => Number)
-  secondaryUnitQty?: number;
-
-  @ApiPropertyOptional({ example: 550.0, description: 'Real selling price for one secondary unit (e.g. one pack)' })
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Secondary unit price must have up to 2 decimal places' })
-  @Min(0, { message: 'Secondary unit price cannot be negative' })
-  @Max(10000000, { message: 'Secondary unit price cannot exceed 10,000,000' })
-  @Type(() => Number)
-  secondaryUnitPrice?: number;
-
-  @ApiPropertyOptional({ example: 'box', description: 'Tertiary selling unit' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  tertiaryUnit?: string;
-
-  @ApiPropertyOptional({ example: 24, description: 'Quantity of primary units per tertiary unit (for stock deduction)' })
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 3 })
-  @Min(0)
-  @Type(() => Number)
-  tertiaryUnitQty?: number;
-
-  @ApiPropertyOptional({ example: 1100.0, description: 'Real selling price for one tertiary unit (e.g. one carton)' })
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Tertiary unit price must have up to 2 decimal places' })
-  @Min(0, { message: 'Tertiary unit price cannot be negative' })
-  @Max(10000000, { message: 'Tertiary unit price cannot exceed 10,000,000' })
-  @Type(() => Number)
-  tertiaryUnitPrice?: number;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductPricingTierDto)
+  pricingTiers?: ProductPricingTierDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -409,13 +401,13 @@ export class ProductResponseDto {
     basePrice: number;
     currentPrice: number;
     unit: string;
-    secondaryUnit?: string;
-    secondaryUnitQty?: number;
-    secondaryUnitPrice?: number;
-    tertiaryUnit?: string;
-    tertiaryUnitQty?: number;
-    tertiaryUnitPrice?: number;
   };
+
+  @ApiPropertyOptional({
+    description: 'Bulk-selling tiers beyond the base unit, ordered by sortOrder. No limit on count.',
+    type: [ProductPricingTierDto],
+  })
+  pricingTiers?: { id: string; unit: string; quantityPerUnit: number; price: number; sortOrder: number }[];
 
   @ApiPropertyOptional()
   sortOrder?: number;

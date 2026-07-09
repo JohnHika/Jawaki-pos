@@ -55,16 +55,15 @@ class PricingService {
     );
   }
 
-  /// Get all pricing tiers for a product
+  /// Get all pricing tiers for a product — the base unit plus any number
+  /// of bulk-selling tiers (dozen, carton, pallet, ...) the shop owner has
+  /// configured. No cap: however many tiers exist in `pricingTiers` are
+  /// all returned.
   static List<UnitPriceInfo> getAllPricingTiers(Map<String, dynamic> product) {
     final tiers = <UnitPriceInfo>[];
 
     final basePrice = (product['basePrice'] as num?)?.toDouble() ?? 0;
     final price = (product['price'] as num?)?.toDouble() ?? basePrice;
-    final secondaryUnit = product['secondaryUnit'] as String?;
-    final secondaryUnitQty = (product['secondaryUnitQty'] as num?)?.toDouble();
-    final tertiaryUnit = product['tertiaryUnit'] as String?;
-    final tertiaryUnitQty = (product['tertiaryUnitQty'] as num?)?.toDouble();
 
     // Base tier (per unit)
     tiers.add(
@@ -75,40 +74,35 @@ class PricingService {
       ),
     );
 
-    // Secondary tier (dozen, box, etc.)
-    if (secondaryUnit != null &&
-        secondaryUnit.isNotEmpty &&
-        secondaryUnitQty != null &&
-        secondaryUnitQty > 0) {
-      tiers.add(
-        UnitPriceInfo(
-          unit: secondaryUnit,
-          price:
-              (product['secondaryUnitPrice'] as num?)?.toDouble() ??
-              (basePrice * secondaryUnitQty),
-          quantityPerUnit: secondaryUnitQty,
-          unitTypeLabel:
-              secondaryUnit[0].toUpperCase() + secondaryUnit.substring(1),
-        ),
-      );
-    }
+    final rawTiers = product['pricingTiers'];
+    if (rawTiers is List) {
+      final sorted = rawTiers.whereType<Map>().toList()
+        ..sort((a, b) {
+          final aOrder = (a['sortOrder'] as num?)?.toInt() ?? 0;
+          final bOrder = (b['sortOrder'] as num?)?.toInt() ?? 0;
+          return aOrder.compareTo(bOrder);
+        });
 
-    // Tertiary tier (carton, crate, etc.)
-    if (tertiaryUnit != null &&
-        tertiaryUnit.isNotEmpty &&
-        tertiaryUnitQty != null &&
-        tertiaryUnitQty > 0) {
-      tiers.add(
-        UnitPriceInfo(
-          unit: tertiaryUnit,
-          price:
-              (product['tertiaryUnitPrice'] as num?)?.toDouble() ??
-              (basePrice * tertiaryUnitQty),
-          quantityPerUnit: tertiaryUnitQty,
-          unitTypeLabel:
-              tertiaryUnit[0].toUpperCase() + tertiaryUnit.substring(1),
-        ),
-      );
+      for (final tier in sorted) {
+        final unit = tier['unit'] as String?;
+        final quantityPerUnit = (tier['quantityPerUnit'] as num?)?.toDouble();
+        final tierPrice = (tier['price'] as num?)?.toDouble();
+        if (unit == null ||
+            unit.isEmpty ||
+            quantityPerUnit == null ||
+            quantityPerUnit <= 0 ||
+            tierPrice == null) {
+          continue;
+        }
+        tiers.add(
+          UnitPriceInfo(
+            unit: unit,
+            price: tierPrice,
+            quantityPerUnit: quantityPerUnit,
+            unitTypeLabel: unit[0].toUpperCase() + unit.substring(1),
+          ),
+        );
+      }
     }
 
     return tiers;

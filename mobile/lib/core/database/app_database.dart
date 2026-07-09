@@ -31,12 +31,6 @@ class Products extends Table {
   RealColumn get price => real()();
   RealColumn get costPrice => real().nullable()();
   TextColumn get unit => text().withDefault(const Constant('piece'))();
-  TextColumn get secondaryUnit => text().nullable()();
-  RealColumn get secondaryUnitQty => real().nullable()();
-  RealColumn get secondaryUnitPrice => real().nullable()();
-  TextColumn get tertiaryUnit => text().nullable()();
-  RealColumn get tertiaryUnitQty => real().nullable()();
-  RealColumn get tertiaryUnitPrice => real().nullable()();
   TextColumn get imageUrl => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get trackInventory =>
@@ -44,6 +38,22 @@ class Products extends Table {
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// Bulk-selling tiers beyond a product's base unit (e.g. dozen, carton,
+// pallet) — any number per product, each with a real price and how many
+// base units it represents. Replaces the old fixed secondary/tertiary
+// columns, which capped every product at exactly 2 extra tiers.
+class ProductPricingTiers extends Table {
+  TextColumn get id => text()();
+  TextColumn get productId => text()();
+  TextColumn get unit => text()();
+  RealColumn get quantityPerUnit => real()();
+  RealColumn get price => real()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -218,6 +228,7 @@ class SupplierPayments extends Table {
   tables: [
     Categories,
     Products,
+    ProductPricingTiers,
     BranchPrices,
     LocalStock,
     DailyPurchases,
@@ -237,7 +248,7 @@ class AppDatabase extends _$AppDatabase {
     : super(SecureDatabaseConnection.openSecureConnection());
 
   @override
-  int get schemaVersion => 8; // v8: minStock for packaging-unit-aware low stock
+  int get schemaVersion => 9; // v9: unlimited pricing tiers table, replaces fixed secondary/tertiary columns
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -252,13 +263,10 @@ class AppDatabase extends _$AppDatabase {
         await m.drop(syncQueue);
         await m.createTable(syncQueue);
       }
-      if (from < 3) {
-        // Add multi-unit fields to products table
-        await m.addColumn(products, products.secondaryUnit);
-        await m.addColumn(products, products.secondaryUnitQty);
-        await m.addColumn(products, products.tertiaryUnit);
-        await m.addColumn(products, products.tertiaryUnitQty);
-      }
+      // (from < 3 used to add secondary/tertiary unit columns here — those
+      // columns and their v7 price counterparts no longer exist; the v9
+      // step below drops and recreates `products` unconditionally for any
+      // pre-v9 database, so those intermediate column additions are moot.)
       if (from < 4) {
         // Normalize status values
         await customStatement("UPDATE sync_queue SET status = LOWER(status)");
@@ -272,15 +280,22 @@ class AppDatabase extends _$AppDatabase {
       if (from < 6) {
         await _createSupplierFinanceTables();
       }
-      if (from < 7) {
-        // Add price columns for secondary and tertiary units
-        await m.addColumn(products, products.secondaryUnitPrice);
-        await m.addColumn(products, products.tertiaryUnitPrice);
-      }
+      // (from < 7 used to add secondary/tertiary price columns here — see
+      // note above; superseded by the v9 drop-and-recreate step.)
       if (from < 8) {
         // Add minStock so low-stock detection can use the real per-product
         // reorder threshold instead of a hardcoded fallback
         await m.addColumn(products, products.minStock);
+      }
+      if (from < 9) {
+        // Replace the fixed secondary/tertiary pricing columns with a
+        // proper pricing-tiers table (any number of tiers per product).
+        // Products is purely a cache rebuilt from the API on every catalog
+        // sync, so there's no local data to preserve -- drop and recreate
+        // instead of a fragile per-column migration.
+        await m.drop(products);
+        await m.createTable(products);
+        await m.createTable(productPricingTiers);
       }
     },
   );
@@ -423,6 +438,50 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Product?> getProduct(String id) {
     return (select(products)..where((p) => p.id.equals(id))).getSingleOrNull();
+  }
+
+  // Pricing tiers — any number of bulk-selling units beyond a product's
+  // base unit (e.g. dozen, carton, pallet), each with a real price.
+  Future<List<ProductPricingTier>> getPricingTiersForProduct(
+    String productId,
+  ) {
+    return (select(productPricingTiers)
+          ..where((t) => t.productId.equals(productId))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .get();
+  }
+
+  Future<void> replacePricingTiersForProduct(
+    String productId,
+    List<ProductPricingTiersCompanion> tiers,
+  ) async {
+    await transaction(() async {
+      await (delete(productPricingTiers)
+            ..where((t) => t.productId.equals(productId)))
+          .go();
+      if (tiers.isNotEmpty) {
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(productPricingTiers, tiers);
+        });
+      }
+    });
+  }
+
+  /// Replaces the entire local pricing-tiers cache in one pass — mirrors
+  /// [replaceProducts]'s full delete+reinsert pattern, used during
+  /// [syncCatalogCacheFromApi] since every product's tiers are refetched
+  /// together, not one product at a time.
+  Future<void> replaceAllPricingTiers(
+    List<ProductPricingTiersCompanion> items,
+  ) async {
+    await transaction(() async {
+      await delete(productPricingTiers).go();
+      if (items.isNotEmpty) {
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(productPricingTiers, items);
+        });
+      }
+    });
   }
 
   // Cart
@@ -905,7 +964,7 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getLowStockProducts() async {
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, p.min_stock, p.unit, '
-      'p.secondary_unit, p.secondary_unit_qty, ls.quantity, ls.branch_id, '
+      'ls.quantity, ls.branch_id, '
       '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
@@ -913,7 +972,7 @@ class AppDatabase extends _$AppDatabase {
       'ORDER BY (p.min_stock - COALESCE(ls.quantity, 0)) DESC, p.name ASC',
     ).get();
 
-    return result
+    final rows = result
         .map(
           (r) => <String, dynamic>{
             'id': r.read<String>('id'),
@@ -922,8 +981,6 @@ class AppDatabase extends _$AppDatabase {
             'price': r.read<double>('price'),
             'minStock': r.read<int>('min_stock'),
             'unit': r.read<String>('unit'),
-            'secondaryUnit': r.readNullable<String>('secondary_unit'),
-            'secondaryUnitQty': r.readNullable<double>('secondary_unit_qty'),
             'quantity': r.readNullable<int>('quantity') ?? 0,
             'branchId': r.readNullable<String>('branch_id') ?? '',
             'categoryName':
@@ -931,6 +988,21 @@ class AppDatabase extends _$AppDatabase {
           },
         )
         .toList();
+
+    // Attach each product's real pricing tiers (any number) instead of the
+    // old hardcoded secondary-only fields.
+    for (final row in rows) {
+      final tiers = await getPricingTiersForProduct(row['id'] as String);
+      row['pricingTiers'] = tiers
+          .map((t) => {
+                'unit': t.unit,
+                'quantityPerUnit': t.quantityPerUnit,
+                'price': t.price,
+              })
+          .toList();
+    }
+
+    return rows;
   }
 
   Future<List<Map<String, dynamic>>> getOutOfStockProducts() async {

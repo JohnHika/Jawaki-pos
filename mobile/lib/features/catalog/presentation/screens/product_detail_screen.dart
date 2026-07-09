@@ -17,6 +17,7 @@ class ProductDetailScreen extends ConsumerStatefulWidget {
 
 class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Product? _product;
+  List<ProductPricingTier> _pricingTiers = [];
   String _categoryName = '';
   bool _isLoading = true;
 
@@ -35,9 +36,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         final categoryMap = {
           for (var c in categories) c.id: c.name
         };
+        final tiers = await db.getPricingTiersForProduct(widget.productId);
         if (mounted) {
           setState(() {
             _product = product;
+            _pricingTiers = tiers;
             _categoryName =
                 categoryMap[product.categoryId] ?? 'Unknown';
             _isLoading = false;
@@ -341,22 +344,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               _divider(border),
               _detailRow(Icons.straighten_rounded, 'Unit', product.unit,
                   secondaryColor, titleColor),
-              if (product.secondaryUnit != null) ...[
+              for (final tier in _pricingTiers) ...[
                 _divider(border),
                 _detailRow(
                   Icons.inventory_2_outlined,
-                  'Secondary Unit',
-                  '${product.secondaryUnit} (${product.secondaryUnitQty} per base)',
-                  secondaryColor,
-                  titleColor,
-                ),
-              ],
-              if (product.tertiaryUnit != null) ...[
-                _divider(border),
-                _detailRow(
-                  Icons.inventory_2_outlined,
-                  'Tertiary Unit',
-                  '${product.tertiaryUnit} (${product.tertiaryUnitQty} per base)',
+                  '${tier.unit[0].toUpperCase()}${tier.unit.substring(1)} Pricing',
+                  '${tier.unit} (${tier.quantityPerUnit} ${product.unit}) — '
+                      'KES ${tier.price.toStringAsFixed(0)}',
                   secondaryColor,
                   titleColor,
                 ),
