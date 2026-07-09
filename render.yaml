@@ -58,18 +58,18 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.27"
+        value: "1.0.28"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.27"
+        value: "Axon POS 1.0.28"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2032"
+        value: "2033"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
         value: "1"
       - key: ANDROID_APP_FORCE_UPDATE
-        value: "true"
+        value: "false"
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Fixes a crash right after login caused by the new update-notification screens, which was breaking the app for some accounts (including product catalog loading). Update banners are now shown as in-app overlays instead of navigator-pushed screens."
+        value: "Adds push notifications for stock request approvals, fixes biometric fingerprint unlock not appearing, fixes the post-update what's new screen, auto-generates batch numbers when receiving stock, and aligns low-stock alerts to each product's real reorder point shown in boxes/cartons."
