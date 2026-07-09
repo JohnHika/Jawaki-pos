@@ -5,6 +5,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/services/storage_service.dart';
 
 // State providers for search/filter
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
@@ -186,12 +187,42 @@ ProductsCompanion? _productToCompanion(Map<String, dynamic> product) {
   );
 }
 
+/// The catalog endpoint embeds each product's current stock for the
+/// caller's branch (`currentStock`), but that number previously never made
+/// it past this function — it was read off the response and discarded,
+/// since `_productToCompanion`/`replaceProducts` only touch the `Products`
+/// table. The actual on-device stock number (checked by the POS screen
+/// before allowing a sale) lives in the separate `LocalStock` table, which
+/// is otherwise only written by sync-pull `STOCK_ADJUSTED` events — a path
+/// nothing in the app currently triggers. So a stock change made anywhere
+/// else (another device, a direct DB correction) would fetch correctly
+/// here but never reach `LocalStock`, leaving the POS screen stuck showing
+/// stale/zero stock. Writing it here, on every catalog refresh, closes
+/// that gap without needing the unused pull-sync trigger to exist.
+LocalStockCompanion? _stockToCompanion(
+  Map<String, dynamic> product,
+  String branchId,
+) {
+  final productId = product['id']?.toString();
+  final currentStock = product['currentStock'];
+  if (productId == null || currentStock == null) return null;
+
+  return LocalStockCompanion.insert(
+    id: 'stock-$branchId-$productId',
+    productId: productId,
+    branchId: branchId,
+    quantity: (currentStock as num).toInt(),
+    updatedAt: DateTime.now(),
+  );
+}
+
 Future<void> syncCatalogCacheFromApi() async {
   final connectivity = getIt<ConnectivityService>();
   if (!connectivity.isOnline) return;
 
   final apiClient = getIt<ApiClient>();
   final database = getIt<AppDatabase>();
+  final storageService = getIt<StorageService>();
 
   final categoriesResponse = await apiClient.getCategories();
   final flatCategories = _flattenCategories(categoriesResponse);
@@ -202,12 +233,27 @@ Future<void> syncCatalogCacheFromApi() async {
   await database.replaceCategories(categoryItems);
 
   final productsResponse = await apiClient.getProducts(limit: 500);
-  final productItems = productsResponse
+  final productMaps = productsResponse
       .whereType<Map>()
-      .map((item) => _productToCompanion(Map<String, dynamic>.from(item)))
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList();
+
+  final productItems = productMaps
+      .map(_productToCompanion)
       .whereType<ProductsCompanion>()
       .toList();
   await database.replaceProducts(productItems);
+
+  final branchId = storageService.getBranchId();
+  if (branchId != null) {
+    final stockItems = productMaps
+        .map((p) => _stockToCompanion(p, branchId))
+        .whereType<LocalStockCompanion>()
+        .toList();
+    if (stockItems.isNotEmpty) {
+      await database.updateLocalStock(stockItems);
+    }
+  }
 }
 
 // Filter params

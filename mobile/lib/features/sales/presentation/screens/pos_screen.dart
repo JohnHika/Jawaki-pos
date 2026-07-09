@@ -42,6 +42,28 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   bool _showFavorites = false;
 
   @override
+  void initState() {
+    super.initState();
+    // The grid renders instantly from the local cache via
+    // filteredProductsProvider, which never talks to the API on its own —
+    // nothing else refreshes stock/prices for a cashier who lands here
+    // straight from login without ever visiting the Products screen. Kick
+    // off a background refresh so stock changes made elsewhere (other
+    // devices, admin corrections) show up without requiring a detour
+    // through Products first.
+    Future.microtask(() async {
+      try {
+        await syncCatalogCacheFromApi();
+      } catch (_) {
+        return;
+      }
+      if (!mounted) return;
+      ref.invalidate(filteredProductsProvider);
+      ref.invalidate(favoriteProductsProvider);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final parkedSales = ref.watch(parkedSalesProvider);
