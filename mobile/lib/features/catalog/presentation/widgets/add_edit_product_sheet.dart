@@ -42,6 +42,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   String? _imagePublicId;
   late List<_UnitPriceTier> _unitPriceTiers;
   late String _minStockUnit;
+  bool _isSaving = false;
 
   final _units = [
     'piece',
@@ -339,7 +340,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             GradientButton(
               label: isEditing ? 'Save Changes' : 'Add Product',
               icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
-              onPressed: _saveProduct,
+              onPressed: _isSaving ? null : _saveProduct,
+              isLoading: _isSaving,
               height: 52,
               borderRadius: 12,
             ),
@@ -352,6 +354,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
     final apiClient = getIt<ApiClient>();
     final description = _descriptionController.text.trim().isEmpty
         ? null
@@ -443,6 +446,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
