@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -146,11 +145,11 @@ class ReceiptScreen extends ConsumerWidget {
                 final db = getIt<AppDatabase>();
                 await db.customStatement(
                   'DELETE FROM pending_sales WHERE id = ?',
-                  [Variable.withString(saleId)],
+                  [saleId],
                 );
                 await db.customStatement(
                   'DELETE FROM pending_sale_items WHERE sale_id = ?',
-                  [Variable.withString(saleId)],
+                  [saleId],
                 );
 
                 if (context.mounted) {

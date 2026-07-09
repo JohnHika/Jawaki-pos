@@ -1541,9 +1541,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> deleteBranch(String id) async {
-    await customStatement('DELETE FROM branches WHERE id = ?', [
-      Variable.withString(id),
-    ]);
+    await customStatement('DELETE FROM branches WHERE id = ?', [id]);
   }
 
   Future<void> updateBranch(
@@ -1554,12 +1552,7 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     await customStatement(
       'UPDATE branches SET name = ?, location = ?, phone = ? WHERE id = ?',
-      [
-        Variable.withString(name),
-        Variable.withString(location),
-        Variable.withString(phone),
-        Variable.withString(id),
-      ],
+      [name, location, phone, id],
     );
   }
 
@@ -1665,8 +1658,8 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'UPDATE customer_installments SET status = \'paid\', paid_at = ? WHERE id = ?',
       [
-        Variable.withString(DateTime.now().toIso8601String()),
-        Variable.withString(installmentId),
+        DateTime.now().toIso8601String(),
+        installmentId,
       ],
     );
   }
@@ -1767,14 +1760,14 @@ class AppDatabase extends _$AppDatabase {
       // Update contact/location details if provided
       if (phone != null && phone.isNotEmpty) {
         await customStatement('UPDATE customers SET phone = ? WHERE id = ?', [
-          Variable.withString(phone),
-          Variable.withString(existingId),
+          phone,
+          existingId,
         ]);
       }
       if (location != null && location.isNotEmpty) {
         await customStatement(
           'UPDATE customers SET location = ? WHERE id = ?',
-          [Variable.withString(location), Variable.withString(existingId)],
+          [location, existingId],
         );
       }
       return existingId;
@@ -1799,19 +1792,23 @@ class AppDatabase extends _$AppDatabase {
   }
 
   // Customer Debt/Balance Management
+  // NOTE: customStatement takes a positional List of RAW values, not
+  // Variable wrappers (those belong to customSelect/customInsert's named
+  // `variables:` argument). Passing Variable objects here throws
+  // "Allowed parameters must either be null or bool, int, num, String...".
   Future<void> updateCustomerBalance(String customerId, double amount) async {
     await createCustomersTable();
     await customStatement(
       'UPDATE customers SET balance = balance + ? WHERE id = ?',
-      [Variable.withReal(amount), Variable.withString(customerId)],
+      [amount, customerId],
     );
   }
 
   Future<void> setCustomerBalance(String customerId, double amount) async {
     await createCustomersTable();
     await customStatement('UPDATE customers SET balance = ? WHERE id = ?', [
-      Variable.withReal(amount),
-      Variable.withString(customerId),
+      amount,
+      customerId,
     ]);
   }
 
@@ -1819,7 +1816,7 @@ class AppDatabase extends _$AppDatabase {
     await createCustomersTable();
     await customStatement(
       'UPDATE customers SET credit_limit = ? WHERE id = ?',
-      [Variable.withReal(limit), Variable.withString(customerId)],
+      [limit, customerId],
     );
   }
 
@@ -1827,7 +1824,7 @@ class AppDatabase extends _$AppDatabase {
     await createCustomersTable();
     await customStatement(
       'UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
-      [Variable.withInt(points), Variable.withString(customerId)],
+      [points, customerId],
     );
   }
 
@@ -1835,11 +1832,7 @@ class AppDatabase extends _$AppDatabase {
     await createCustomersTable();
     await customStatement(
       'UPDATE customers SET loyalty_points = loyalty_points - ? WHERE id = ? AND loyalty_points >= ?',
-      [
-        Variable.withInt(points),
-        Variable.withString(customerId),
-        Variable.withInt(points),
-      ],
+      [points, customerId, points],
     );
   }
 
@@ -1868,9 +1861,9 @@ class AppDatabase extends _$AppDatabase {
       'UPDATE customers SET total_purchases = total_purchases + 1, '
       'total_spent = total_spent + ?, last_purchase_at = ? WHERE id = ?',
       [
-        Variable.withReal(amount),
-        Variable.withString(DateTime.now().toIso8601String()),
-        Variable.withString(customerId),
+        amount,
+        DateTime.now().toIso8601String(),
+        customerId,
       ],
     );
   }
