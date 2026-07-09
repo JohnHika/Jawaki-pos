@@ -2042,6 +2042,55 @@ class AxonLogoTitle extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  TENANT BRAND MARK
+//  Renders the logged-in company's own uploaded logo once inside the
+//  authenticated app (Axon's mark is otherwise the only thing shown,
+//  even on a tenant's own dashboard). Falls back to the generic Axon
+//  mark when the tenant hasn't uploaded one yet, so this never shows
+//  a broken image.
+// ═══════════════════════════════════════════════════════════════
+class TenantBrandMark extends StatelessWidget {
+  final String? logoUrl;
+  final double size;
+
+  const TenantBrandMark({super.key, required this.logoUrl, this.size = 28});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = logoUrl?.trim();
+    if (url == null || url.isEmpty) {
+      return AxonLogoTitle(logoSize: size);
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.28),
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            AxonLogoTitle(logoSize: size),
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return SizedBox(
+            width: size,
+            height: size,
+            child: const Center(
+              child: SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 1.6),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  BRANDED APP BAR
 // ═══════════════════════════════════════════════════════════════
 class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {

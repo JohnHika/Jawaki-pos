@@ -816,4 +816,18 @@ class ApiClient {
   Future<void> unregisterPushToken(String token) async {
     await _dio.delete('/notifications/tokens', data: {'token': token});
   }
+
+  /// Vision-parses an already-uploaded receipt/invoice photo. Returns the
+  /// backend's ParsedReceiptResult shape, including isReceipt: false with a
+  /// rejectionReason when the image doesn't look like a receipt at all.
+  Future<Map<String, dynamic>> scanReceiptImage({
+    required String imageUrl,
+    String? branchId,
+  }) async {
+    final response = await _dio.post('/ai/receipts/scan', data: {
+      'imageUrl': imageUrl,
+      if (branchId != null) 'branchId': branchId,
+    });
+    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+  }
 }

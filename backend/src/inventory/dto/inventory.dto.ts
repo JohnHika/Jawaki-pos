@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -98,8 +100,8 @@ export class ReceiveBatchDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BatchDto)
-  @MinLength(1, { message: 'At least one batch is required' })
-  @MaxLength(100, { message: 'Cannot receive more than 100 batches at once' })
+  @ArrayMinSize(1, { message: 'At least one batch is required' })
+  @ArrayMaxSize(100, { message: 'Cannot receive more than 100 batches at once' })
   batches: BatchDto[];
 
   @ApiPropertyOptional({ description: 'Reference (e.g., PO number, invoice)' })
@@ -202,8 +204,8 @@ export class StockAdjustmentDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StockAdjustmentItemDto)
-  @MinLength(1, { message: 'At least one item is required' })
-  @MaxLength(500, { message: 'Cannot adjust more than 500 items at once' })
+  @ArrayMinSize(1, { message: 'At least one item is required' })
+  @ArrayMaxSize(500, { message: 'Cannot adjust more than 500 items at once' })
   items: StockAdjustmentItemDto[];
 
   @ApiPropertyOptional()
@@ -246,8 +248,8 @@ export class CreateTransferDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TransferItemDto)
-  @MinLength(1, { message: 'At least one item is required' })
-  @MaxLength(500, { message: 'Cannot transfer more than 500 items at once' })
+  @ArrayMinSize(1, { message: 'At least one item is required' })
+  @ArrayMaxSize(500, { message: 'Cannot transfer more than 500 items at once' })
   items: TransferItemDto[];
 
   @ApiPropertyOptional()
@@ -262,7 +264,7 @@ export class ReceiveTransferDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TransferItemDto)
-  @MinLength(1, { message: 'At least one item is required' })
+  @ArrayMinSize(1, { message: 'At least one item is required' })
   receivedItems: TransferItemDto[];
 
   @ApiPropertyOptional()

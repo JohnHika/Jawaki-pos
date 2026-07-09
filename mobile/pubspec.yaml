@@ -1,7 +1,7 @@
 name: axon_pos
 description: Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 publish_to: 'none'
-version: 1.0.28+2034
+version: 1.0.29+2035
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -59,8 +59,12 @@ dependencies:
   # Background Work & Sync
   workmanager: ^0.9.0+3
   
-  # Printing & Receipts
-  esc_pos_utils: ^1.1.0
+  # Printing & Receipts — using the esc_pos_utils_plus fork (same
+  # package:esc_pos_utils import path, drop-in) because it depends on
+  # image ^4.x, needed for compatibility with the pdf/printing packages
+  # added for multi-format export; the original esc_pos_utils pins image
+  # ^3.0.2 and conflicts with pdf.
+  esc_pos_utils_plus: ^2.0.4
   # TODO: Add bluetooth printing support with updated package
 
   # QR Code (for payments)
@@ -100,6 +104,10 @@ dependencies:
 
   # Share Plus
   share_plus: ^7.2.1
+
+  # Branded PDF report/export generation
+  pdf: ^3.11.1
+  printing: ^5.13.1
 
   # Supplier receipt capture and on-device OCR
   image_picker: ^1.1.2

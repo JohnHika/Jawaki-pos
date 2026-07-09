@@ -2,14 +2,16 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
+import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/theme/share_format_sheet.dart';
+import '../../../../core/providers/tenant_provider.dart';
 import '../providers/sales_provider.dart';
 
 class ReceiptScreen extends ConsumerWidget {
@@ -77,7 +79,7 @@ class ReceiptScreen extends ConsumerWidget {
                   const Icon(Icons.share_outlined, size: 20, color: DesignColors.accent),
             ),
             tooltip: 'Share receipt',
-            onPressed: () {
+            onPressed: () async {
               final receipt = receiptAsync.valueOrNull;
               if (receipt == null) {
                 showGlassSnackBar(
@@ -88,7 +90,22 @@ class ReceiptScreen extends ConsumerWidget {
                 );
                 return;
               }
-              Share.share(_buildShareText(receipt));
+              final format = await showShareFormatSheet(
+                context,
+                title: 'Share Receipt',
+                formats: const [
+                  ShareFormatOption.pdf,
+                  ShareFormatOption.plainText,
+                ],
+              );
+              if (format == null || !context.mounted) return;
+
+              if (format == ShareFormat.plainText) {
+                await ExportDocumentService.sharePlainText(
+                    _buildShareText(receipt));
+                return;
+              }
+              await _shareReceiptPdf(ref, receipt);
             },
           ),
           IconButton(
@@ -697,6 +714,56 @@ class ReceiptScreen extends ConsumerWidget {
     buffer.writeln('Thank you for your purchase!');
 
     return buffer.toString();
+  }
+
+  Future<void> _shareReceiptPdf(
+      WidgetRef ref, Map<String, dynamic> receipt) async {
+    final items = receipt['items'] as List? ?? [];
+    final identity = ref.read(tenantIdentityProvider);
+    final logoBytes = await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+
+    final subtotal = ((receipt['subtotal'] as num?) ?? 0).toStringAsFixed(2);
+    final discount = (receipt['discount'] as num?) ?? 0;
+    final tax = (receipt['tax'] as num?) ?? 0;
+    final total = ((receipt['total'] as num?) ?? 0).toStringAsFixed(2);
+    final showTax = getIt<AuthService>().showTaxOnReceipt && tax > 0;
+
+    final summaryRows = <List<String>>[
+      ['Subtotal', 'KES $subtotal'],
+      if (discount > 0) ['Discount', '-KES ${discount.toStringAsFixed(2)}'],
+      if (showTax) ['Tax', 'KES ${tax.toStringAsFixed(2)}'],
+      ['Total', 'KES $total'],
+      ['Payment', '${receipt['paymentMethod'] ?? 'CASH'}'],
+    ];
+
+    final bytes = await ExportDocumentService.buildPdfReport(
+      title: 'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}',
+      companyName: (receipt['branchName'] as String?)?.isNotEmpty == true
+          ? receipt['branchName']
+          : identity.companyName,
+      subtitle: _formatDateTime(receipt['createdAt']),
+      logoBytes: logoBytes,
+      sections: [
+        PdfReportSection(
+          heading: 'Items',
+          headers: const ['Item', 'Qty', 'Total'],
+          rows: [
+            for (final item in items)
+              [
+                '${item['productName'] ?? ''}',
+                '${item['quantity']}',
+                'KES ${((item['total'] as num?) ?? 0).toStringAsFixed(2)}',
+              ],
+          ],
+        ),
+        PdfReportSection(
+          heading: 'Summary',
+          headers: const ['', ''],
+          rows: summaryRows,
+        ),
+      ],
+    );
+    await ExportDocumentService.sharePdf(bytes, 'receipt_${receipt['receiptNumber'] ?? saleId}');
   }
 
   /// Silent counterpart to [_printReceipt] for the "auto-print after each

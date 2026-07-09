@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/theme/axon_ai_icon.dart';
+import '../../../../core/theme/share_format_sheet.dart';
+import '../../../../core/services/export_document_service.dart';
+import '../../../../core/providers/tenant_provider.dart';
+import '../../../ai/presentation/screens/ai_chat_service.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -22,6 +26,13 @@ final _todaysCostProvider = FutureProvider.autoDispose<double>((ref) async {
   final branchId = getIt<AuthService>().branchId;
   if (branchId == null) return 0.0;
   return getIt<AppDatabase>().getTodaysTotalPurchases(branchId);
+});
+
+/// Real AI-generated brief for the dashboard, replacing the previous
+/// hardcoded template snippets. Null means "no live brief available" —
+/// the UI falls back to the templated snippets rather than failing.
+final _aiDailyBriefProvider = FutureProvider.autoDispose<String?>((ref) async {
+  return AiChatService().fetchDailyBrief();
 });
 
 final _recentSalesProvider = StreamProvider<List<PendingSale>>((ref) {
@@ -44,11 +55,16 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
-    final companyName = _companyDisplayName();
+    final identity = ref.watch(tenantIdentityProvider);
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Dashboard',
         showBackButton: false,
+        showLogo: false,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: TenantBrandMark(logoUrl: identity.logoUrl, size: 28),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -80,11 +96,22 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Good ${_getGreeting()}, $companyName',
+                      identity.userFirstName.isNotEmpty
+                          ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
+                          : 'Good ${_getGreeting()}',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                         color: DesignColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      identity.companyName,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: DesignColors.accent,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -106,7 +133,7 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     _buildSummaryGrid(context, summary),
                     const SizedBox(height: 12),
-                    _buildAiBrief(context, summary),
+                    _buildAiBrief(context, ref, summary),
                     const SizedBox(height: 12),
                     _buildCostAndProfitCard(context, ref, summary),
                   ],
@@ -309,35 +336,13 @@ class DashboardScreen extends ConsumerWidget {
     return 'Evening';
   }
 
-  String _companyDisplayName() {
-    final auth = getIt<AuthService>();
-    final user = auth.currentUser;
-    final tenant = user?['tenant'];
-    final tenantMap = tenant is Map<String, dynamic>
-        ? tenant
-        : <String, dynamic>{};
-    final candidates = [
-      tenantMap['name'],
-      user?['tenantName'],
-      user?['companyName'],
-      auth.tenantSlug,
-      'Your Company',
-    ];
-
-    for (final candidate in candidates) {
-      final value = candidate?.toString().trim();
-      if (value != null && value.isNotEmpty) return value;
-    }
-    return 'Your Company';
-  }
-
-  Widget _buildAiBrief(BuildContext context, Map<String, dynamic> summary) {
+  List<String> _fallbackBriefSnippets(Map<String, dynamic> summary) {
     final revenue = (summary['totalRevenue'] as num?)?.toDouble() ?? 0;
     final transactions = (summary['transactionCount'] as num?)?.toInt() ?? 0;
     final avgTicket = (summary['avgTicket'] as num?)?.toDouble() ?? 0;
     final itemsSold = (summary['itemsSold'] as num?)?.toInt() ?? 0;
 
-    final snippets = <String>[
+    return <String>[
       transactions == 0
           ? 'No sales have landed today yet. Start with fast-moving items and watch stock before checkout.'
           : '$transactions transactions have brought in ${_currencyFmt.format(revenue)} today.',
@@ -348,8 +353,13 @@ class DashboardScreen extends ConsumerWidget {
           ? 'Keep an eye on inventory after each sale so zero-stock items stay blocked from POS.'
           : 'Inventory and POS are linked, so received stock becomes sellable immediately.',
     ];
+  }
 
+  Widget _buildAiBrief(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> summary) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final briefAsync = ref.watch(_aiDailyBriefProvider);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -373,10 +383,9 @@ class DashboardScreen extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
-                color: DesignColors.accent,
-                size: 16,
+              AxonAiIcon(
+                tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
+                size: 18,
               ),
               const SizedBox(width: 8),
               Text(
@@ -393,7 +402,66 @@ class DashboardScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          ...snippets.map(
+          briefAsync.when(
+            data: (brief) {
+              // A real AI-generated brief was returned — show it as-is
+              // instead of the templated fallback snippets.
+              if (brief != null && brief.trim().isNotEmpty) {
+                return Text(
+                  brief.trim(),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                  ),
+                );
+              }
+              return _buildBriefSnippets(
+                  _fallbackBriefSnippets(summary), isDark);
+            },
+            loading: () => Row(
+              children: [
+                SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Thinking about today\'s numbers...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+            // Offline / AI unreachable — degrade to the templated snippets
+            // instead of showing an error where a business insight was
+            // expected.
+            error: (_, __) =>
+                _buildBriefSnippets(_fallbackBriefSnippets(summary), isDark),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBriefSnippets(List<String> snippets, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: snippets
+          .map(
             (snippet) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
@@ -407,9 +475,8 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          )
+          .toList(),
     );
   }
 
@@ -565,10 +632,20 @@ class DashboardScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
+    final format = await showShareFormatSheet(
+      context,
+      title: 'Share Daily Report',
+      formats: const [ShareFormatOption.pdf, ShareFormatOption.plainText],
+    );
+    if (format == null || !context.mounted) return;
+
     final db = getIt<AppDatabase>();
     final summary = await db.getDashboardSummary();
-    final report =
-        '''
+    final identity = ref.read(tenantIdentityProvider);
+
+    if (format == ShareFormat.plainText) {
+      final report =
+          '''
   Daily Summary
   ═════════════
 ${_dateFmt.format(DateTime.now())}
@@ -580,6 +657,30 @@ Items Sold:  ${summary['itemsSold'] ?? 0}
 
 Sent from your POS workspace
 ''';
-    await Share.share(report, subject: 'Daily Sales Report');
+      await ExportDocumentService.sharePlainText(report,
+          subject: 'Daily Sales Report');
+      return;
+    }
+
+    final logoBytes = await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+    final bytes = await ExportDocumentService.buildPdfReport(
+      title: 'Daily Sales Report',
+      companyName: identity.companyName,
+      subtitle: _dateFmt.format(DateTime.now()),
+      logoBytes: logoBytes,
+      sections: [
+        PdfReportSection(
+          heading: 'Summary',
+          headers: const ['Metric', 'Value'],
+          rows: [
+            ['Revenue', _currencyFmt.format(summary['totalRevenue'] ?? 0)],
+            ['Transactions', '${summary['transactionCount'] ?? 0}'],
+            ['Avg Ticket', _currencyFmt.format(summary['avgTicket'] ?? 0)],
+            ['Items Sold', '${summary['itemsSold'] ?? 0}'],
+          ],
+        ),
+      ],
+    );
+    await ExportDocumentService.sharePdf(bytes, 'daily_sales_report');
   }
 }

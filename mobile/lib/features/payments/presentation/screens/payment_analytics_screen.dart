@@ -608,23 +608,29 @@ class _PaymentAnalyticsScreenState
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'KSh ${total.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: color,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 110),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'KSh ${total.toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: color,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${trafficShare.toStringAsFixed(1)}% of traffic',
-                          style: TextStyle(fontSize: 11, color: secondaryColor),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            '${trafficShare.toStringAsFixed(1)}% of traffic',
+                            style: TextStyle(fontSize: 11, color: secondaryColor),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

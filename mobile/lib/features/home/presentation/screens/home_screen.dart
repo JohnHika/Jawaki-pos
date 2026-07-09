@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import 'home_nav_keys.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final Widget child;
@@ -16,6 +19,30 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  List<_NavItem> _latestMoreItems = const [];
+  bool _isMoreSheetOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    HomeNavKeys.moreSheetOpenRequest.addListener(_handleMoreSheetRequest);
+  }
+
+  @override
+  void dispose() {
+    HomeNavKeys.moreSheetOpenRequest.removeListener(_handleMoreSheetRequest);
+    super.dispose();
+  }
+
+  void _handleMoreSheetRequest() {
+    final shouldOpen = HomeNavKeys.moreSheetOpenRequest.value;
+    if (shouldOpen && !_isMoreSheetOpen) {
+      _showMoreSheet(_latestMoreItems);
+    } else if (!shouldOpen && _isMoreSheetOpen && mounted) {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
     // AI Assistant — the app's primary destination, first in the row.
@@ -106,16 +133,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return bestMatchIndex;
   }
 
-  /// The AI chat screen owns its own floating input bar in place of the
-  /// bottom nav, so the two don't stack into a "boxed-in" double bar. The
-  /// tab is still reachable via its own back/nav affordances within the
-  /// chat screen itself.
-  bool _isOnAiTab() {
-    final location = GoRouterState.of(context).uri.toString();
-    return location == '/ai' || location.startsWith('/ai/');
-  }
-
   void _showMoreSheet(List<_NavItem> moreItems) {
+    _isMoreSheetOpen = true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     showModalBottomSheet(
@@ -174,30 +193,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SizedBox(height: 12),
             ...moreItems.asMap().entries.map((entry) {
               final item = entry.value;
-              return ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                      color: DesignColors.brandSubtle,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Icon(item.icon, color: DesignColors.brand, size: 20),
-                ),
-                title: Text(item.label,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go(item.path);
+              return KeyedSubtree(
+                key: switch (item.path) {
+                  '/inventory' => HomeNavKeys.moreSheetInventory,
+                  '/reports' => HomeNavKeys.moreSheetReports,
+                  '/settings' => HomeNavKeys.moreSheetSettings,
+                  _ => null,
                 },
+                child: ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        color: DesignColors.brandSubtle,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Icon(item.icon, color: DesignColors.brand, size: 20),
+                  ),
+                  title: Text(item.label,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    context.go(item.path);
+                  },
+                ),
               );
             }),
           ],
         ),
       ),
-    );
+    ).then((_) {
+      _isMoreSheetOpen = false;
+      if (HomeNavKeys.moreSheetOpenRequest.value) {
+        HomeNavKeys.moreSheetOpenRequest.value = false;
+      }
+    });
   }
 
   @override
@@ -211,9 +243,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         hasMore ? allNavItems.take(maxVisible).toList() : allNavItems;
     final moreItems =
         hasMore ? allNavItems.skip(maxVisible).toList() : <_NavItem>[];
+    _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
-    final hideBottomNav = _isOnAiTab();
 
     return Scaffold(
       body: Column(
@@ -261,9 +293,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(child: widget.child),
         ],
       ),
-      bottomNavigationBar: hideBottomNav
-          ? null
-          : Container(
+      bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: isDark ? DesignColors.darkBg : DesignColors.surface,
           border: Border(
@@ -286,25 +316,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   final item = entry.value;
                   final isSelected = currentIndex == idx;
                   return Expanded(
-                      child: _NavItemWidget(
-                          item: item,
-                          isSelected: isSelected,
-                          isPrimary: idx == 0,
-                          onTap: () => context.go(item.path),
-                          isDark: isDark));
+                      child: KeyedSubtree(
+                        key: item.path == '/' ? HomeNavKeys.pos : null,
+                        child: _NavItemWidget(
+                            item: item,
+                            isSelected: isSelected,
+                            isPrimary: idx == 0,
+                            onTap: () => context.go(item.path),
+                            isDark: isDark),
+                      ));
                 }),
                 if (hasMore)
                   Expanded(
-                      child: _NavItemWidget(
-                        item: _NavItem(
-                            icon: Icons.apps_outlined,
-                            activeIcon: Icons.apps_rounded,
-                            label: 'More',
-                            path: ''),
-                        isSelected: currentIndex >= maxVisible,
-                        isPrimary: false,
-                        onTap: () => _showMoreSheet(moreItems),
-                        isDark: isDark,
+                      child: KeyedSubtree(
+                        key: HomeNavKeys.more,
+                        child: _NavItemWidget(
+                          item: _NavItem(
+                              icon: Icons.apps_outlined,
+                              activeIcon: Icons.apps_rounded,
+                              label: 'More',
+                              path: ''),
+                          isSelected: currentIndex >= maxVisible,
+                          isPrimary: false,
+                          onTap: () => _showMoreSheet(moreItems),
+                          isDark: isDark,
+                        ),
                       )),
               ],
             ),
@@ -327,7 +363,7 @@ class _NavItem {
       required this.path});
 }
 
-class _NavItemWidget extends StatelessWidget {
+class _NavItemWidget extends ConsumerWidget {
   final _NavItem item;
   final bool isSelected;
   final bool isPrimary;
@@ -342,7 +378,7 @@ class _NavItemWidget extends StatelessWidget {
       required this.isDark});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final inactiveColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
 
@@ -350,6 +386,7 @@ class _NavItemWidget extends StatelessWidget {
     // rest of the row instead of matching their pill highlight — it is
     // meant to be found by shape alone, not just by color when active.
     if (isPrimary) {
+      final tenantLogoUrl = ref.watch(tenantIdentityProvider).logoUrl;
       return GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -380,10 +417,11 @@ class _NavItemWidget extends StatelessWidget {
                           width: 1.2,
                         ),
                 ),
-                child: Icon(
-                  isSelected ? item.activeIcon : item.icon,
-                  color: isSelected ? Colors.black : DesignColors.accent,
-                  size: 25,
+                child: Center(
+                  child: AxonAiIcon(
+                    tenantLogoUrl: tenantLogoUrl,
+                    size: 28,
+                  ),
                 ),
               ),
             ),

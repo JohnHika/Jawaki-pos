@@ -14,6 +14,7 @@ import '../services/local_server_service.dart';
 import '../services/update_check_service.dart';
 import '../services/receipt_printer_service.dart';
 import '../services/notification_service.dart';
+import '../services/receipt_vision_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 
 final getIt = GetIt.instance;
@@ -159,6 +160,15 @@ Future<void> configureDependencies() async {
       ),
     );
     debugPrint('[DI] NotificationService registered');
+
+    // ============================================
+    // STEP 12: Receipt Vision Service (AI receipt scanning)
+    // ============================================
+    debugPrint('[DI] Registering ReceiptVisionService...');
+    getIt.registerSingleton<ReceiptVisionService>(
+      ReceiptVisionService(apiClient: getIt<ApiClient>()),
+    );
+    debugPrint('[DI] ReceiptVisionService registered');
 
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {

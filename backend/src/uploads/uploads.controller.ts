@@ -28,7 +28,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
-const VALID_TYPES: ImageType[] = ['logo', 'category', 'product', 'stock-request'];
+const VALID_TYPES: ImageType[] = ['logo', 'category', 'product', 'stock-request', 'supplier-invoice'];
 
 @ApiTags('uploads')
 @Controller({ path: 'uploads', version: '1' })
@@ -59,7 +59,7 @@ export class UploadsController {
       },
     },
   })
-  @ApiQuery({ name: 'type', enum: ['logo', 'category', 'product', 'stock-request'] })
+  @ApiQuery({ name: 'type', enum: ['logo', 'category', 'product', 'stock-request', 'supplier-invoice'] })
   @ApiResponse({ status: 201, description: 'Image uploaded successfully' })
   @UseInterceptors(
     FileInterceptor('file', {

@@ -1346,7 +1346,9 @@ class AppDatabase extends _$AppDatabase {
     return result
         .map(
           (r) => {
-            'hour': r.read<int>('hour'),
+            // strftime('%H', ...) returns a zero-padded string (e.g. "09"),
+            // not an int — matches getHourlySales()'s read type above.
+            'hour': int.parse(r.read<String>('hour')),
             'transactionCount': r.read<int>('transaction_count'),
             'totalAmount': r.read<double>('total_amount'),
           },

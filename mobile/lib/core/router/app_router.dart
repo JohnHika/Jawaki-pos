@@ -6,7 +6,9 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/pin_login_screen.dart';
 import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
+import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
+import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
 import '../../features/sales/presentation/screens/pos_screen.dart';
@@ -25,6 +27,7 @@ import '../../features/reports/presentation/screens/analytics_dashboard_screen.d
 import '../../features/reports/presentation/screens/inventory_forecasting_screen.dart';
 import '../../features/payments/presentation/screens/payment_analytics_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
@@ -53,8 +56,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // Provider is first evaluated.
   final String initialLocation;
   if (authService.isAuthenticated) {
-    // Returning user with a valid token → go straight to the POS screen.
-    initialLocation = '/';
+    // Returning user with a valid token → go straight to the POS screen,
+    // unless this device hasn't run the first-login staff tour yet (e.g.
+    // the app was killed mid-tour on a previous launch).
+    initialLocation = storageService.hasSeenStaffTour() ? '/' : '/staff-tour';
   } else if (authService.isLocked) {
     // Session exists but is soft-locked (backgrounded past the auto-lock
     // window, or "remember me" kept it across a relaunch) — send them to
@@ -102,9 +107,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return '/company-choice';
       }
 
-      // If logged in and on setup/login page, go to main app
+      // If logged in and on setup/login page, go to main app — unless this
+      // device has never seen the first-login staff tour yet, in which
+      // case that runs once before the user ever reaches the real POS
+      // screen unguided. The tour itself sets hasSeenStaffTour(true) when
+      // it finishes/is skipped, so this only ever fires once per device.
       if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
-        return '/';
+        return storageService.hasSeenStaffTour() ? '/' : '/staff-tour';
       }
 
       // Role-based route guards
@@ -142,6 +151,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'company-setup',
         builder: (context, state) => const CompanySetupScreen(),
       ),
+      GoRoute(
+        path: '/owner-welcome',
+        name: 'owner-welcome',
+        builder: (context, state) =>
+            OwnerWelcomeScreen(companyName: state.extra as String?),
+      ),
 
       // Auth Routes
       GoRoute(
@@ -178,6 +193,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 },
               ),
             ],
+          ),
+
+          // First-login staff coach-mark tour (see redirect logic above)
+          GoRoute(
+            path: '/staff-tour',
+            name: 'staff-tour',
+            builder: (context, state) => const StaffTourScreen(),
           ),
 
           // POS / Sales Screen
@@ -330,6 +352,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             name: 'settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+
+          // User Guide (Help & Support)
+          GoRoute(
+            path: '/user-guide',
+            name: 'user-guide',
+            builder: (context, state) => const UserGuideScreen(),
           ),
 
           // User & role management

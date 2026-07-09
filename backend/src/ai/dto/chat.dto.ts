@@ -106,6 +106,11 @@ class BusinessContextDto {
   @IsString()
   @IsOptional()
   time_range?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  user_first_name?: string;
 }
 
 export class ChatMessageDto {

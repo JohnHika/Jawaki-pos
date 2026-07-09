@@ -1,15 +1,14 @@
-import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/theme_provider.dart';
+import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/sync_service.dart';
@@ -18,7 +17,9 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/update_check_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/services/export_document_service.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 // Settings keys for SharedPreferences. Printer keys delegate to
@@ -272,18 +273,20 @@ class SettingsScreen extends ConsumerWidget {
                     : 'No tax applied to sales',
                 onTap: () => _showTaxRateDialog(context),
               ),
-              SettingsRow(
-                icon: Icons.download_rounded,
-                title: 'Data Export',
-                subtitle: 'Export sales & reports',
-                onTap: () => _showDataExport(context),
-              ),
-              SettingsRow(
-                icon: Icons.history_rounded,
-                title: 'Audit Trail',
-                subtitle: 'View system activity log',
-                onTap: () => _showAuditTrail(context),
-              ),
+              if (perms.canExportData)
+                SettingsRow(
+                  icon: Icons.download_rounded,
+                  title: 'Data Export',
+                  subtitle: 'Export sales & reports',
+                  onTap: () => _showDataExport(context, ref),
+                ),
+              if (perms.canSeeAuditTrail)
+                SettingsRow(
+                  icon: Icons.history_rounded,
+                  title: 'Audit Trail',
+                  subtitle: 'View system activity log',
+                  onTap: () => _showAuditTrail(context),
+                ),
             ]),
           ],
 
@@ -834,7 +837,7 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: 'How to use the POS system',
                     onTap: () {
                       Navigator.pop(context);
-                      _showUserGuide(context);
+                      context.push('/user-guide');
                     },
                   ),
                 ],
@@ -896,51 +899,6 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showUserGuide(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => SettingsDialog(
-        title: 'User Guide',
-        content: const SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('1. Making a Sale',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              SizedBox(height: 4),
-              Text(
-                  '• Go to POS tab\n• Search or browse for products\n• Tap a product and set quantity\n• Review cart and proceed to payment\n• Choose payment method and complete'),
-              SizedBox(height: 16),
-              Text('2. Managing Products',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              SizedBox(height: 4),
-              Text(
-                  '• Go to Products tab\n• Tap + to add new products\n• Long-press to delete\n• Tap to edit details\n• Use the category button to manage categories'),
-              SizedBox(height: 16),
-              Text('3. Reports',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              SizedBox(height: 4),
-              Text(
-                  '• Go to Reports tab\n• View daily/weekly/monthly sales\n• Track revenue and top products'),
-              SizedBox(height: 16),
-              Text('4. Inventory',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              SizedBox(height: 4),
-              Text(
-                  '• Go to Inventory tab\n• Check stock levels\n• Receive new stock deliveries'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'))
-        ],
-      ),
-    );
-  }
-
   // ===== ABOUT =====
   void _showAboutInfo(BuildContext context) async {
     final info = await PackageInfo.fromPlatform();
@@ -957,54 +915,90 @@ class SettingsScreen extends ConsumerWidget {
         final border =
             isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
         final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-        return AboutDialog(
-        applicationName: 'Point of Sale',
-        applicationVersion: _formatReleaseName(info.version),
-        applicationLegalese:
-            'Licensed for your company workspace. Contact your administrator for licence documents.',
-        applicationIcon: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: DesignColors.brand,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.storefront, color: Colors.white, size: 28),
-        ),
-        children: [
-          Text(
-            'A complete point-of-sale system for managing sales, inventory, and business operations.',
-            style: TextStyle(color: titleColor),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: border),
-            ),
+        // Deliberately a plain Dialog, not Flutter's AboutDialog — that
+        // widget always injects a "VIEW LICENSES" button surfacing every
+        // open-source package's license text, which is developer-facing
+        // noise a customer has no use for and no way to hide.
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text('Built by Arche Axon Intelligence',
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: DesignColors.brand,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.storefront, color: Colors.white, size: 30),
+                ),
+                const SizedBox(height: 16),
+                Text('Axon POS',
                     style: TextStyle(
-                        color: secondaryColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                SelectableText(
-                  'Licence folder: https://drive.google.com/drive/folders/11tFlwbpTixoRIdkrgrlKJAKdGsqqofBX',
-                  style: TextStyle(color: secondaryColor, fontSize: 12),
+                        fontSize: 18, fontWeight: FontWeight.w800, color: titleColor)),
+                const SizedBox(height: 4),
+                Text(_formatReleaseName(info.version),
+                    style: TextStyle(fontSize: 13, color: secondaryColor)),
+                const SizedBox(height: 16),
+                Text(
+                  'A complete point-of-sale system for managing sales, inventory, and business operations.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: titleColor, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text('Powered by Arche Axon Intelligence',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: secondaryColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => launchUrl(
+                          Uri.parse('https://arche-axon.xyz'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        child: Text(
+                          'arche-axon.xyz',
+                          style: TextStyle(
+                              color: DesignColors.brand,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Text('© 2026 POS Platform',
-                    style: TextStyle(color: secondaryColor, fontSize: 12)),
+                Text('© 2026 Arche Axon Intelligence',
+                    style: TextStyle(color: secondaryColor, fontSize: 11)),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ),
               ],
             ),
           ),
-        ],
         );
       },
     );
@@ -1179,7 +1173,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   // ===== ADMIN-ONLY: DATA EXPORT =====
-  void _showDataExport(BuildContext context) {
+  void _showDataExport(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1193,28 +1187,28 @@ class SettingsScreen extends ConsumerWidget {
             SettingsRow(
               icon: Icons.receipt_long_rounded,
               title: 'Export Sales Data',
-              subtitle: 'CSV format',
+              subtitle: 'PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
-                await _exportSalesData(context);
+                await _exportSalesData(context, ref);
               },
             ),
             SettingsRow(
               icon: Icons.inventory_rounded,
               title: 'Export Inventory',
-              subtitle: 'CSV format',
+              subtitle: 'PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
-                await _exportInventory(context);
+                await _exportInventory(context, ref);
               },
             ),
             SettingsRow(
               icon: Icons.category_rounded,
               title: 'Export Products',
-              subtitle: 'CSV format',
+              subtitle: 'PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
-                await _exportProducts(context);
+                await _exportProducts(context, ref);
               },
             ),
           ],
@@ -1223,7 +1217,14 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportSalesData(BuildContext context) async {
+  Future<void> _exportSalesData(BuildContext context, WidgetRef ref) async {
+    final format = await showShareFormatSheet(
+      context,
+      title: 'Export Sales Data',
+      formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
+    );
+    if (format == null || !context.mounted) return;
+
     try {
       _showSnack(context, 'Generating sales export...');
       final db = getIt<AppDatabase>();
@@ -1233,106 +1234,180 @@ class SettingsScreen extends ConsumerWidget {
         DateTime(now.year, now.month, now.day, 23, 59, 59),
       );
 
-      final buffer = StringBuffer();
-      buffer.writeln(
-          'Receipt Number,Date,Subtotal,Discount,Tax,Total,Payment Method,Cashier ID,Branch ID,Status');
-      for (final s in sales) {
-        buffer.writeln(
-            '${_csvEscape(s.receiptNumber)},${s.createdAt.toIso8601String()},'
-            '${s.subtotal},${s.discount},${s.tax},${s.total},'
-            '${_csvEscape(s.paymentMethod)},${_csvEscape(s.cashierId)},'
-            '${_csvEscape(s.branchId)},${_csvEscape(s.status)}');
-      }
+      const headers = [
+        'Receipt Number',
+        'Date',
+        'Subtotal',
+        'Discount',
+        'Tax',
+        'Total',
+        'Payment Method',
+        'Cashier ID',
+        'Branch ID',
+        'Status',
+      ];
+      final rows = [
+        for (final s in sales)
+          [
+            s.receiptNumber,
+            s.createdAt.toIso8601String(),
+            '${s.subtotal}',
+            '${s.discount}',
+            '${s.tax}',
+            '${s.total}',
+            s.paymentMethod,
+            s.cashierId,
+            s.branchId,
+            s.status,
+          ],
+      ];
 
-      final path = await _saveExportFile('sales_export', buffer.toString());
       if (!context.mounted) return;
-      await _shareExportFile(context, path, '${sales.length} sales records');
+      if (format == ShareFormat.csv) {
+        final csv = ExportDocumentService.buildCsv(headers, rows);
+        await ExportDocumentService.shareCsv(csv, 'sales_export');
+      } else {
+        final identity = ref.read(tenantIdentityProvider);
+        final logoBytes =
+            await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+        final bytes = await ExportDocumentService.buildPdfReport(
+          title: 'Sales Export',
+          companyName: identity.companyName,
+          subtitle: 'Month to date — ${sales.length} records',
+          logoBytes: logoBytes,
+          sections: [
+            PdfReportSection(heading: 'Sales', headers: headers, rows: rows),
+          ],
+        );
+        await ExportDocumentService.sharePdf(bytes, 'sales_export');
+      }
     } catch (e) {
       if (context.mounted) _showSnack(context, 'Export failed: $e');
     }
   }
 
-  Future<void> _exportInventory(BuildContext context) async {
+  Future<void> _exportInventory(BuildContext context, WidgetRef ref) async {
+    final format = await showShareFormatSheet(
+      context,
+      title: 'Export Inventory',
+      formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
+    );
+    if (format == null || !context.mounted) return;
+
     try {
       _showSnack(context, 'Generating inventory export...');
       final db = getIt<AppDatabase>();
       final data = await db.getInventoryReport();
 
-      final buffer = StringBuffer();
-      buffer.writeln(
-          'Product ID,Name,SKU,Category,Price,Cost Price,Stock,Min Stock');
-      for (final d in data) {
-        buffer.writeln(
-            '${_csvEscape(d['id'] as String)},${_csvEscape(d['name'] as String)},'
-            '${_csvEscape(d['sku'] as String)},${_csvEscape(d['categoryName'] as String)},'
-            '${d['price']},${d['costPrice']},${d['stock']},${d['minStock']}');
-      }
+      const headers = [
+        'Product ID',
+        'Name',
+        'SKU',
+        'Category',
+        'Price',
+        'Cost Price',
+        'Stock',
+        'Min Stock',
+      ];
+      final rows = [
+        for (final d in data)
+          [
+            d['id'] as String,
+            d['name'] as String,
+            d['sku'] as String,
+            d['categoryName'] as String,
+            '${d['price']}',
+            '${d['costPrice']}',
+            '${d['stock']}',
+            '${d['minStock']}',
+          ],
+      ];
 
-      final path = await _saveExportFile('inventory_export', buffer.toString());
       if (!context.mounted) return;
-      await _shareExportFile(context, path, '${data.length} inventory items');
+      if (format == ShareFormat.csv) {
+        final csv = ExportDocumentService.buildCsv(headers, rows);
+        await ExportDocumentService.shareCsv(csv, 'inventory_export');
+      } else {
+        final identity = ref.read(tenantIdentityProvider);
+        final logoBytes =
+            await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+        final bytes = await ExportDocumentService.buildPdfReport(
+          title: 'Inventory Export',
+          companyName: identity.companyName,
+          subtitle: '${data.length} items',
+          logoBytes: logoBytes,
+          sections: [
+            PdfReportSection(
+                heading: 'Inventory', headers: headers, rows: rows),
+          ],
+        );
+        await ExportDocumentService.sharePdf(bytes, 'inventory_export');
+      }
     } catch (e) {
       if (context.mounted) _showSnack(context, 'Export failed: $e');
     }
   }
 
-  Future<void> _exportProducts(BuildContext context) async {
+  Future<void> _exportProducts(BuildContext context, WidgetRef ref) async {
+    final format = await showShareFormatSheet(
+      context,
+      title: 'Export Products',
+      formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
+    );
+    if (format == null || !context.mounted) return;
+
     try {
       _showSnack(context, 'Generating products export...');
       final db = getIt<AppDatabase>();
       final products = await db.getAllProducts();
 
-      final buffer = StringBuffer();
-      buffer.writeln('ID,SKU,Name,Category ID,Price,Cost Price,Unit,Active');
-      for (final p in products) {
-        buffer.writeln(
-            '${_csvEscape(p.id)},${_csvEscape(p.sku)},${_csvEscape(p.name)},'
-            '${_csvEscape(p.categoryId)},${p.price},${p.costPrice ?? 0},'
-            '${_csvEscape(p.unit)},${p.isActive}');
-      }
+      const headers = [
+        'ID',
+        'SKU',
+        'Name',
+        'Category ID',
+        'Price',
+        'Cost Price',
+        'Unit',
+        'Active',
+      ];
+      final rows = [
+        for (final p in products)
+          [
+            p.id,
+            p.sku,
+            p.name,
+            p.categoryId,
+            '${p.price}',
+            '${p.costPrice ?? 0}',
+            p.unit,
+            '${p.isActive}',
+          ],
+      ];
 
-      final path = await _saveExportFile('products_export', buffer.toString());
       if (!context.mounted) return;
-      await _shareExportFile(context, path, '${products.length} products');
+      if (format == ShareFormat.csv) {
+        final csv = ExportDocumentService.buildCsv(headers, rows);
+        await ExportDocumentService.shareCsv(csv, 'products_export');
+      } else {
+        final identity = ref.read(tenantIdentityProvider);
+        final logoBytes =
+            await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+        final bytes = await ExportDocumentService.buildPdfReport(
+          title: 'Products Export',
+          companyName: identity.companyName,
+          subtitle: '${products.length} products',
+          logoBytes: logoBytes,
+          sections: [
+            PdfReportSection(
+                heading: 'Products', headers: headers, rows: rows),
+          ],
+        );
+        await ExportDocumentService.sharePdf(bytes, 'products_export');
+      }
     } catch (e) {
       if (context.mounted) _showSnack(context, 'Export failed: $e');
     }
-  }
-
-  /// Opens the OS share sheet for a generated export file. Exports are
-  /// written to app-private storage (invisible to the user's Files app),
-  /// so a raw success message with a filesystem path would be a dead end —
-  /// sharing is the only way the user can actually get the file out to
-  /// email, WhatsApp, Drive, etc.
-  Future<void> _shareExportFile(
-      BuildContext context, String path, String description) async {
-    try {
-      await Share.shareXFiles(
-        [XFile(path)],
-        subject: 'Axon POS export',
-        text: 'Exported $description',
-      );
-    } catch (e) {
-      if (context.mounted) {
-        _showSnack(context, 'Export saved but could not open share sheet: $e');
-      }
-    }
-  }
-
-  Future<String> _saveExportFile(String prefix, String content) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final timestamp =
-        DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-    final file = File('${dir.path}/${prefix}_$timestamp.csv');
-    await file.writeAsString(content);
-    return file.path;
-  }
-
-  String _csvEscape(String value) {
-    if (value.contains(',') || value.contains('"') || value.contains('\n')) {
-      return '"${value.replaceAll('"', '""')}"';
-    }
-    return value;
   }
 
   // ===== ADMIN-ONLY: AUDIT TRAIL =====

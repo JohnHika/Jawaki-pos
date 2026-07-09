@@ -1,10 +1,12 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
 import { ChatRequestDto } from './dto/chat.dto';
+import { ScanReceiptDto } from './dto/receipt-scan.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AiAccessGuard } from '../ai-billing/ai-billing.guard';
+import { PrismaService } from '../common/prisma/prisma.service';
 
 @Controller('ai')
 export class AiController {
@@ -12,6 +14,7 @@ export class AiController {
     private readonly aiService: AiService,
     private readonly aiWebService: AiWebService,
     private readonly aiCognitiveService: AiCognitiveService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('chat')
@@ -37,6 +40,32 @@ export class AiController {
       data: {
         reply: result.reply,
         model: result.model,
+      },
+    };
+  }
+
+  // Pre-generated once daily by AiDailyBriefTask — near-instant read for
+  // the dashboard's "AI Brief" card. Returns null content when the cron
+  // hasn't produced one yet for today (new tenant, or ran before this
+  // branch subscribed); the mobile app falls back to a live /ai/chat call
+  // in that case.
+  @Get('daily-brief')
+  @UseGuards(AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async getDailyBrief(@Query('branchId') branchId: string) {
+    const today = new Date();
+    const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+    const brief = await this.prisma.dailyBrief.findUnique({
+      where: { branchId_date: { branchId, date } },
+    });
+
+    return {
+      success: true,
+      data: {
+        content: brief?.content ?? null,
+        model: brief?.model ?? null,
+        date: date.toISOString(),
       },
     };
   }
@@ -128,5 +157,13 @@ export class AiController {
       success: true,
       message: `AI model set to ${model}`,
     };
+  }
+
+  @Post('receipts/scan')
+  @UseGuards(AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async scanReceipt(@Body() dto: ScanReceiptDto) {
+    const data = await this.aiService.parseReceiptImage(dto.imageUrl);
+    return { success: true, data };
   }
 }

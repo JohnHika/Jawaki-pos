@@ -196,7 +196,19 @@ List<_ReleaseNote> _parseAndCategorize(String raw) {
       .where((line) => line.isNotEmpty)
       .toList();
 
-  final source = lines.isEmpty ? [trimmed] : lines;
+  // Release notes are sometimes written as one long sentence with no line
+  // breaks (e.g. "Adds X, fixes Y, improves Z.") — split that into
+  // comma-separated clauses instead of rendering it as a single wall-of-text
+  // paragraph. Only kicks in when there's no real line structure already
+  // and the single line is long enough that a reader would actually want
+  // it broken up.
+  final source = lines.length > 1
+      ? lines
+      : lines.isEmpty
+          ? _splitLongSentence(trimmed)
+          : lines.first.length > 60
+              ? _splitLongSentence(lines.first)
+              : lines;
 
   return source.map((line) {
     final lower = line.toLowerCase();
@@ -211,4 +223,35 @@ List<_ReleaseNote> _parseAndCategorize(String raw) {
     }
     return _ReleaseNote(line, _ReleaseCategory.general);
   }).toList();
+}
+
+/// Splits a single free-form sentence into clause-sized chunks a reader can
+/// actually scan, using commas as the natural break point (release notes
+/// written this way tend to be lists of "did X, fixed Y, improved Z"
+/// clauses joined with commas). Falls back to the original text unsplit if
+/// splitting would produce fragments too short to be meaningful on their
+/// own.
+List<String> _splitLongSentence(String sentence) {
+  final parts = sentence
+      .split(RegExp(r',\s*(?=[a-z])'))
+      .map((part) =>
+          part.trim().replaceFirst(RegExp(r'^and\s+', caseSensitive: false), ''))
+      .where((part) => part.isNotEmpty)
+      .toList();
+
+  if (parts.length < 2 || parts.any((part) => part.length < 8)) {
+    return [sentence];
+  }
+
+  return [
+    for (var i = 0; i < parts.length; i++)
+      i == parts.length - 1
+          ? _capitalize(parts[i])
+          : '${_capitalize(parts[i])}.',
+  ];
+}
+
+String _capitalize(String text) {
+  if (text.isEmpty) return text;
+  return text[0].toUpperCase() + text.substring(1);
 }

@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/theme/axon_ai_icon.dart';
+import '../../../../core/providers/tenant_provider.dart';
 import 'ai_chat_service.dart';
 import 'ai_quick_actions.dart';
 
-class AiChatScreen extends StatefulWidget {
+class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
 
   @override
-  State<AiChatScreen> createState() => _AiChatScreenState();
+  ConsumerState<AiChatScreen> createState() => _AiChatScreenState();
 }
 
-class _AiChatScreenState extends State<AiChatScreen> {
+class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final AiChatService _aiService = AiChatService();
@@ -145,8 +148,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 color: DesignColors.accent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.auto_awesome,
-                  size: 40, color: DesignColors.accent),
+              child: Center(
+                child: AxonAiIcon(
+                  tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
+                  size: 44,
+                ),
+              ),
             ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
             const SizedBox(height: 20),
             Text(
@@ -285,14 +292,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 }
 
-class _ChatBubble extends StatelessWidget {
+class _ChatBubble extends ConsumerWidget {
   final String message;
   final bool isUser;
 
   const _ChatBubble({required this.message, required this.isUser});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -307,8 +314,10 @@ class _ChatBubble extends StatelessWidget {
             CircleAvatar(
               radius: 16,
               backgroundColor: DesignColors.accent.withValues(alpha: 0.15),
-              child: const Icon(Icons.auto_awesome,
-                  size: 16, color: DesignColors.accent),
+              child: AxonAiIcon(
+                tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 8),
           ],

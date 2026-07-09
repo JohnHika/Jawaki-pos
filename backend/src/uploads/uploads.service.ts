@@ -17,7 +17,7 @@ export interface UploadResult {
   bytes?: number;
 }
 
-export type ImageType = 'logo' | 'category' | 'product' | 'stock-request';
+export type ImageType = 'logo' | 'category' | 'product' | 'stock-request' | 'supplier-invoice';
 
 @Injectable()
 export class UploadsService {
@@ -61,6 +61,10 @@ export class UploadsService {
               ? [{ width: 400, height: 400, crop: 'limit', quality: 'auto:good' }]
               : type === 'category'
               ? [{ width: 800, height: 600, crop: 'limit', quality: 'auto:good' }]
+              : type === 'supplier-invoice'
+              // Larger than product photos — receipt text needs to stay legible
+              // for the AI vision model to read it accurately.
+              ? [{ width: 1600, height: 1600, crop: 'limit', quality: 'auto:good' }]
               : [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto:good' }]),
           ],
         },

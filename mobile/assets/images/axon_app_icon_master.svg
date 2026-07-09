@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgGlow" cx="38%" cy="34%" r="75%">
+      <stop offset="0%" stop-color="#15142A"/>
+      <stop offset="100%" stop-color="#0B0A0F"/>
+    </radialGradient>
+    <linearGradient id="hexEdge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B9BFF"/>
+      <stop offset="100%" stop-color="#6B7BFF"/>
+    </linearGradient>
+    <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Background: rounded square, dark default -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#bgGlow)"/>
+
+  <!-- Axon hex mark group: ~3/4 scale, nudged up-left to balance the shop badge -->
+  <g transform="translate(-30,-36) scale(1.0)" filter="url(#softShadow)">
+    <polygon points="452,150 782,344 782,732 452,926 122,732 122,344"
+      fill="#0A0C18" stroke="url(#hexEdge)" stroke-width="14" stroke-linejoin="round"/>
+    <polygon points="452,226 712,368 712,708 452,850 192,708 192,368"
+      fill="none" stroke="#6B7BFF" stroke-width="4" stroke-opacity="0.22" stroke-linejoin="round"/>
+
+    <!-- spokes -->
+    <line x1="452" y1="470" x2="452" y2="182" stroke="#6B7BFF" stroke-width="22" stroke-linecap="round"/>
+    <line x1="510" y1="502" x2="734" y2="360" stroke="#8B9BFF" stroke-width="18" stroke-linecap="round"/>
+    <line x1="510" y1="562" x2="700" y2="676" stroke="#A78BFA" stroke-width="15" stroke-linecap="round" opacity=".9"/>
+    <line x1="452" y1="594" x2="452" y2="884" stroke="#A78BFA" stroke-width="13" stroke-linecap="round" opacity=".7"/>
+    <line x1="394" y1="562" x2="170" y2="694" stroke="#A78BFA" stroke-width="15" stroke-linecap="round" opacity=".9"/>
+    <line x1="394" y1="502" x2="170" y2="360" stroke="#8B9BFF" stroke-width="18" stroke-linecap="round"/>
+
+    <!-- outer nodes -->
+    <circle cx="452" cy="164" r="34" fill="#ffffff"/>
+    <circle cx="452" cy="164" r="17" fill="#6B7BFF"/>
+    <circle cx="748" cy="352" r="30" fill="#8B9BFF"/>
+    <circle cx="748" cy="352" r="13" fill="#EEF0FF"/>
+    <circle cx="452" cy="898" r="22" fill="#A78BFA" opacity=".7"/>
+    <circle cx="156" cy="704" r="28" fill="#A78BFA" opacity=".9"/>
+    <circle cx="156" cy="352" r="30" fill="#8B9BFF"/>
+    <circle cx="156" cy="352" r="13" fill="#EEF0FF"/>
+
+    <!-- center hub -->
+    <circle cx="452" cy="528" r="58" fill="#6B7BFF"/>
+    <circle cx="452" cy="528" r="27" fill="#BDC3FF"/>
+  </g>
+
+  <!-- Shop badge: ~1/4 weight, bottom-right, overlapping hex edge -->
+  <g transform="translate(706,706)">
+    <circle cx="0" cy="0" r="198" fill="#0B0A0F"/>
+    <circle cx="0" cy="0" r="182" fill="#FF7A33"/>
+    <circle cx="0" cy="0" r="182" fill="none" stroke="#FFB07A" stroke-width="5" stroke-opacity="0.55"/>
+
+    <!-- storefront glyph, centered in badge -->
+    <g transform="translate(-96,-92)">
+      <!-- awning: gently arched canopy -->
+      <path d="M14 62 Q96 18 178 62 L178 78 Q96 40 14 78 Z" fill="#FFF7F1"/>
+      <!-- scalloped awning valance -->
+      <path d="M14 78 Q22 100 30.7 78 Q39.3 100 48 78 Q56.7 100 65.3 78 Q74 100 82.7 78 Q91.3 100 100 78 Q108.7 100 117.3 78 Q126 100 134.7 78 Q143.3 100 152 78 Q160.7 100 169.3 78 Q174 100 178 78 L178 78 Q96 40 14 78 Z"
+        fill="#FF7A33" stroke="#0B0A0F" stroke-width="0"/>
+      <path d="M14 62 Q96 18 178 62" fill="none" stroke="#0B0A0F" stroke-width="10" stroke-linecap="round"/>
+      <path d="M14 78 Q22 100 30.7 78 Q39.3 100 48 78 Q56.7 100 65.3 78 Q74 100 82.7 78 Q91.3 100 100 78 Q108.7 100 117.3 78 Q126 100 134.7 78 Q143.3 100 152 78 Q160.7 100 169.3 78 Q174 100 178 78"
+        fill="none" stroke="#0B0A0F" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/>
+      <line x1="14" y1="62" x2="14" y2="78" stroke="#0B0A0F" stroke-width="10" stroke-linecap="round"/>
+      <line x1="178" y1="62" x2="178" y2="78" stroke="#0B0A0F" stroke-width="10" stroke-linecap="round"/>
+
+      <!-- shop facade -->
+      <path d="M26 96 L26 176 L166 176 L166 96" fill="#FFF7F1" stroke="#0B0A0F" stroke-width="10" stroke-linejoin="round"/>
+
+      <!-- windows -->
+      <rect x="40" y="112" width="34" height="34" rx="4" fill="#0B0A0F"/>
+      <rect x="118" y="112" width="34" height="34" rx="4" fill="#0B0A0F"/>
+
+      <!-- door -->
+      <rect x="80" y="122" width="32" height="54" rx="3" fill="#0B0A0F"/>
+      <circle cx="102" cy="150" r="3" fill="#FFF7F1"/>
+
+      <!-- base -->
+      <line x1="18" y1="176" x2="174" y2="176" stroke="#0B0A0F" stroke-width="12" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

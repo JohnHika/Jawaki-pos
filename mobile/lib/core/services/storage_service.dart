@@ -33,6 +33,7 @@ class StorageService {
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
   static const String keyAuthLocked = 'auth_locked';
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
+  static const String keyHasSeenStaffTour = 'has_seen_staff_tour';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -285,6 +286,19 @@ class StorageService {
   Future<void> setRequireUnlockOnResume(bool enabled) async {
     _checkInitialized();
     await _prefs!.setBool(keyRequireUnlockOnResume, enabled);
+  }
+
+  // Per-device flag: has this device already shown the first-login staff
+  // coach-mark tour? Not user-scoped (same convention as
+  // last_seen_update_notice in UpdateCheckService) — a device that's
+  // already seen the tour once doesn't need it again for a different user.
+  bool hasSeenStaffTour() {
+    return _prefs?.getBool(keyHasSeenStaffTour) ?? false;
+  }
+
+  Future<void> setHasSeenStaffTour(bool value) async {
+    _checkInitialized();
+    await _prefs!.setBool(keyHasSeenStaffTour, value);
   }
 
   int getAutoLockMinutes() {

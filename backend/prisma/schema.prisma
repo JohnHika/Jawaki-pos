@@ -63,6 +63,7 @@ model Branch {
   cashSettings          BranchCashSettings?
   cashLedgerEntries     CashLedgerEntry[]
   cashReconciliations   CashReconciliation[]
+  dailyBriefs           DailyBrief[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -1068,6 +1069,25 @@ model AiPayment {
   @@index([status])
   @@index([createdAt])
   @@map("ai_payments")
+}
+
+// Pre-generated once daily by a cron job (see AiDailyBriefTask) so the
+// dashboard's "AI Brief" card can show a real insight instantly instead of
+// waiting on a live model call every time the dashboard opens. One row per
+// branch per day; `content` is the assistant's own natural-language text.
+model DailyBrief {
+  id        String   @id @default(uuid())
+  branchId  String
+  date      DateTime @db.Date
+  content   String
+  model     String?
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, date])
+  @@index([branchId, date])
+  @@map("daily_briefs")
 }
 
 // ==================== SUPPLIERS & RESTOCKING ====================

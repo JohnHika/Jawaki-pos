@@ -10,8 +10,9 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
-import '../../../../core/services/sync_service.dart';
+import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/theme/design_system.dart';
+import 'invoice_review_screen.dart';
 
 /// Cash till vs credit — mirrors CashFundingSource on the backend.
 enum FundingSource { cashTill, creditSupplier }
@@ -85,9 +86,18 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     }
   }
 
+  Future<void> _openInvoiceReview(SupplierReceiptScan scan) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => InvoiceReviewScreen(scan: scan)),
+    );
+    if (saved == true) {
+      ref.invalidate(_supplierBalancesProvider);
+    }
+  }
+
   Future<void> _showPrefilledInvoiceDialog(RestockPrefill prefill) async {
-    await _showInvoiceReviewDialog(
-      scan: SupplierReceiptScan(
+    await _openInvoiceReview(
+      SupplierReceiptScan(
         imagePath: '',
         rawText: '',
         suggestedSupplierName: '',
@@ -262,9 +272,71 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
 
     setState(() => _isScanning = true);
     try {
-      final scan = await _ocr.scan(File(image.path));
-      if (!mounted) return;
-      await _showInvoiceReviewDialog(scan: scan);
+      final isOnline = getIt<ConnectivityService>().isOnline;
+      if (!isOnline) {
+        // No network — vision scanning isn't possible at all, go straight
+        // to on-device OCR as before. The eventual offline save keeps
+        // imagePath as the local file path (the sync queue can't upload
+        // it either without connectivity).
+        final scan = await _ocr.scan(File(image.path));
+        if (!mounted) return;
+        await _openInvoiceReview(scan);
+        return;
+      }
+
+      final branchId = getIt<AuthService>().branchId;
+      String? uploadedUrl;
+      try {
+        final uploadResult = await getIt<ApiClient>().uploadImage(
+          filePath: image.path,
+          fileName: image.name,
+          type: 'supplier-invoice',
+        );
+        uploadedUrl = uploadResult['url'] as String?;
+      } catch (e) {
+        debugPrint('Finance: receipt upload failed, falling back to OCR ($e)');
+      }
+
+      if (uploadedUrl == null) {
+        // Upload itself failed (not a vision/gateway problem) — fall back
+        // to on-device OCR on the local file; imagePath stays local since
+        // there's no uploaded URL to use.
+        final scan = await _ocr.scan(File(image.path));
+        if (!mounted) return;
+        await _openInvoiceReview(scan);
+        return;
+      }
+
+      try {
+        final scan = await getIt<ReceiptVisionService>().scan(
+          imageUrl: uploadedUrl,
+          branchId: branchId,
+        );
+        if (!mounted) return;
+        await _openInvoiceReview(scan);
+      } on NotAReceiptException catch (e) {
+        if (!mounted) return;
+        await _showNotAReceiptSheet(e.reason);
+      } catch (e) {
+        // Vision scan unavailable (gateway down, no AI subscription, etc.)
+        // — fall back to on-device OCR, but keep the already-uploaded URL
+        // so the saved invoice's receiptImageUrl is still a real, viewable
+        // link instead of a local device path.
+        debugPrint('Finance: vision scan failed, falling back to OCR ($e)');
+        final ocrScan = await _ocr.scan(File(image.path));
+        if (!mounted) return;
+        await _openInvoiceReview(
+          SupplierReceiptScan(
+            imagePath: uploadedUrl,
+            rawText: ocrScan.rawText,
+            suggestedSupplierName: ocrScan.suggestedSupplierName,
+            invoiceNumber: ocrScan.invoiceNumber,
+            totalAmount: ocrScan.totalAmount,
+            items: ocrScan.items,
+            summary: 'AI scan unavailable — used basic text recognition instead. ${ocrScan.summary}',
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         showGlassSnackBar(context, 'Receipt scan failed: $e',
@@ -275,9 +347,56 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     }
   }
 
+  Future<void> _showNotAReceiptSheet(String reason) async {
+    if (!mounted) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.image_not_supported_rounded, color: DesignColors.warning),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('This doesn\'t look like a receipt',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(reason, style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 16),
+              ListTile(
+                  leading: const Icon(Icons.photo_camera_rounded),
+                  title: const Text('Try another photo'),
+                  onTap: () => Navigator.pop(ctx, 'retry')),
+              ListTile(
+                  leading: const Icon(Icons.edit_note_rounded),
+                  title: const Text('Enter manually'),
+                  onTap: () => Navigator.pop(ctx, 'manual')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (action == 'retry') {
+      await _pickAndScanReceipt();
+    } else if (action == 'manual') {
+      await _showManualInvoiceDialog();
+    }
+  }
+
   Future<void> _showManualInvoiceDialog() async {
-    await _showInvoiceReviewDialog(
-      scan: const SupplierReceiptScan(
+    await _openInvoiceReview(
+      const SupplierReceiptScan(
         imagePath: '',
         rawText: '',
         suggestedSupplierName: '',
@@ -287,256 +406,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         summary: 'Manual supplier invoice.',
       ),
     );
-  }
-
-  Future<void> _showInvoiceReviewDialog(
-      {required SupplierReceiptScan scan}) async {
-    final supplierController = TextEditingController(
-        text: scan.suggestedSupplierName == 'Unknown Supplier'
-            ? ''
-            : scan.suggestedSupplierName);
-    final invoiceController =
-        TextEditingController(text: scan.invoiceNumber ?? '');
-    final paidController = TextEditingController(text: '0');
-    final termsController = TextEditingController(text: 'Pay later');
-    DateTime? dueDate = DateTime.now().add(const Duration(days: 30));
-    FundingSource fundingSource = FundingSource.cashTill;
-    final itemRows = scan.items.isEmpty
-        ? [_InvoiceItemDraft()]
-        : scan.items.map((item) => _InvoiceItemDraft.fromScan(item)).toList();
-
-    final saved = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final total =
-              itemRows.fold<double>(0, (sum, item) => sum + item.lineTotal);
-          final paid = double.tryParse(paidController.text) ?? 0;
-          final due = (total - paid).clamp(0, double.infinity).toDouble();
-          final dialogIsDark = Theme.of(ctx).brightness == Brightness.dark;
-          final dialogSecondary = dialogIsDark
-              ? DesignColors.darkTextSecondary
-              : DesignColors.textSecondary;
-
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                const Icon(Icons.fact_check_rounded, color: DesignColors.brand),
-                const SizedBox(width: 8),
-                const Expanded(child: Text('Review Supplier Invoice')),
-                IconButton(
-                    tooltip: 'Add item',
-                    onPressed: () =>
-                        setDialogState(() => itemRows.add(_InvoiceItemDraft())),
-                    icon: const Icon(Icons.add_circle_outline_rounded)),
-              ],
-            ),
-            content: SizedBox(
-              width: 520,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (scan.rawText.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                            color: DesignColors.brand.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Text(scan.summary,
-                            style: TextStyle(
-                                fontSize: 12, color: dialogSecondary)),
-                      ),
-                    TextField(
-                        controller: supplierController,
-                        decoration: const InputDecoration(
-                            labelText: 'Supplier name',
-                            prefixIcon: Icon(Icons.business_rounded))),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: TextField(
-                                controller: invoiceController,
-                                decoration: const InputDecoration(
-                                    labelText: 'Invoice/receipt number'))),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: TextField(
-                                controller: termsController,
-                                decoration:
-                                    const InputDecoration(labelText: 'Terms'))),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: TextField(
-                                controller: paidController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                    labelText: 'Paid now (KES)'),
-                                onChanged: (_) => setDialogState(() {}))),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final picked = await showDatePicker(
-                                context: ctx,
-                                initialDate: dueDate ?? DateTime.now(),
-                                firstDate: DateTime.now()
-                                    .subtract(const Duration(days: 365)),
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 3650)),
-                              );
-                              if (picked != null) {
-                                setDialogState(() => dueDate = picked);
-                              }
-                            },
-                            icon: const Icon(Icons.event_rounded),
-                            label: Text(dueDate == null
-                                ? 'No due date'
-                                : DateFormat('dd MMM yyyy').format(dueDate!)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text('Funding source',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: dialogSecondary)),
-                    const SizedBox(height: 6),
-                    SegmentedButton<FundingSource>(
-                      segments: const [
-                        ButtonSegment(
-                          value: FundingSource.cashTill,
-                          label: Text('Cash till'),
-                          icon: Icon(Icons.payments_outlined),
-                        ),
-                        ButtonSegment(
-                          value: FundingSource.creditSupplier,
-                          label: Text('Credit'),
-                          icon: Icon(Icons.schedule_outlined),
-                        ),
-                      ],
-                      selected: {fundingSource},
-                      onSelectionChanged: (selection) =>
-                          setDialogState(() => fundingSource = selection.first),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Items',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    ...itemRows
-                        .asMap()
-                        .entries
-                        .map((entry) => _InvoiceItemEditor(
-                              item: entry.value,
-                              onChanged: () => setDialogState(() {}),
-                              onRemove: itemRows.length == 1
-                                  ? null
-                                  : () => setDialogState(
-                                      () => itemRows.removeAt(entry.key)),
-                            )),
-                    const SizedBox(height: 12),
-                    _InvoiceTotals(total: total, paid: paid, due: due),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
-              FilledButton.icon(
-                onPressed: supplierController.text.trim().isEmpty ||
-                        itemRows.every((item) => item.name.trim().isEmpty)
-                    ? null
-                    : () => Navigator.pop(ctx, true),
-                icon: const Icon(Icons.save_rounded),
-                label: const Text('Save Invoice'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    if (saved == true && mounted) {
-      final branchId = getIt<AuthService>().branchId;
-      if (branchId == null) {
-        showGlassSnackBar(context, 'No branch selected — cannot save invoice',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
-        return;
-      }
-
-      final items = itemRows
-          .where((item) => item.name.trim().isNotEmpty)
-          .map((item) => {
-                'productName': item.name,
-                'quantity': item.quantity,
-                'unit': 'piece',
-                'unitCost': item.unitCost,
-              })
-          .toList();
-
-      final payload = {
-        'branchId': branchId,
-        'supplierName': supplierController.text.trim(),
-        'invoiceNumber': invoiceController.text.trim().isEmpty
-            ? null
-            : invoiceController.text.trim(),
-        'receiptImageUrl': scan.imagePath.isEmpty ? null : scan.imagePath,
-        'items': items,
-        'paidAmount': double.tryParse(paidController.text) ?? 0,
-        'fundingSource': fundingSource.wireName,
-        'dueDate': dueDate?.toIso8601String(),
-      };
-
-      try {
-        if (getIt<ConnectivityService>().isOnline) {
-          await getIt<ApiClient>().createSupplierInvoice(payload);
-          if (mounted) {
-            showGlassSnackBar(
-                context, 'Supplier invoice saved and stock updated',
-                icon: Icons.check_circle_rounded, color: DesignColors.success);
-          }
-        } else {
-          final authService = getIt<AuthService>();
-          await getIt<SyncService>().queueSyncItem(
-            tableName: 'suppliers',
-            recordId: 'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
-            action: SyncAction.create,
-            eventType: SyncEventType.supplierInvoiceCreated,
-            data: {
-              ...payload,
-              'offlineId': 'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
-            },
-            deviceId: authService.deviceId ?? '',
-            userId: authService.userId ?? '',
-          );
-          if (mounted) {
-            showGlassSnackBar(context,
-                'Offline — invoice will sync once you\'re back online',
-                icon: Icons.cloud_off_rounded, color: DesignColors.warning);
-          }
-        }
-        ref.invalidate(_supplierBalancesProvider);
-      } catch (e) {
-        if (mounted) {
-          showGlassSnackBar(context, 'Could not save invoice: $e',
-              icon: Icons.error_outline_rounded, color: DesignColors.error);
-        }
-      }
-    }
   }
 
   Future<void> _recordPayment(
@@ -948,165 +817,3 @@ class _SupplierBalanceCard extends StatelessWidget {
   }
 }
 
-class _InvoiceItemDraft {
-  final TextEditingController nameController;
-  final TextEditingController quantityController;
-  final TextEditingController unitCostController;
-  final TextEditingController skuController;
-  final String rawText;
-  final double confidence;
-
-  _InvoiceItemDraft(
-      {String name = '',
-      double quantity = 1,
-      double unitCost = 0,
-      String? sku,
-      this.rawText = '',
-      this.confidence = 0})
-      : nameController = TextEditingController(text: name),
-        quantityController = TextEditingController(
-            text: quantity.toStringAsFixed(
-                quantity.truncateToDouble() == quantity ? 0 : 2)),
-        unitCostController = TextEditingController(
-            text: unitCost == 0 ? '' : unitCost.toStringAsFixed(0)),
-        skuController = TextEditingController(text: sku ?? '');
-
-  factory _InvoiceItemDraft.fromScan(SupplierReceiptLineItem item) =>
-      _InvoiceItemDraft(
-          name: item.name,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-          sku: item.sku,
-          rawText: item.rawText,
-          confidence: item.confidence);
-
-  String get name => nameController.text.trim();
-  double get quantity => double.tryParse(quantityController.text) ?? 1;
-  double get unitCost => double.tryParse(unitCostController.text) ?? 0;
-  double get lineTotal => quantity * unitCost;
-
-  Map<String, dynamic> toMap() => {
-        'name': name,
-        'sku': skuController.text.trim().isEmpty
-            ? null
-            : skuController.text.trim(),
-        'quantity': quantity,
-        'unit': 'piece',
-        'unitCost': unitCost,
-        'lineTotal': lineTotal,
-        'confidence': confidence,
-        'rawText': rawText,
-      };
-}
-
-class _InvoiceItemEditor extends StatelessWidget {
-  final _InvoiceItemDraft item;
-  final VoidCallback onChanged;
-  final VoidCallback? onRemove;
-
-  const _InvoiceItemEditor(
-      {required this.item, required this.onChanged, this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      decoration:
-          BoxDecoration(border: Border.all(color: border), borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                  flex: 3,
-                  child: TextField(
-                      controller: item.nameController,
-                      decoration: const InputDecoration(labelText: 'Product'),
-                      onChanged: (_) => onChanged())),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: TextField(
-                      controller: item.quantityController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Qty'),
-                      onChanged: (_) => onChanged())),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: TextField(
-                      controller: item.unitCostController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Cost'),
-                      onChanged: (_) => onChanged())),
-              if (onRemove != null)
-                IconButton(
-                    tooltip: 'Remove',
-                    onPressed: onRemove,
-                    icon: const Icon(Icons.remove_circle_outline_rounded,
-                        color: DesignColors.error)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                  child: TextField(
-                      controller: item.skuController,
-                      decoration:
-                          const InputDecoration(labelText: 'SKU optional'),
-                      onChanged: (_) => onChanged())),
-              const SizedBox(width: 8),
-              Text(FinanceScreen.currencyFmt.format(item.lineTotal),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InvoiceTotals extends StatelessWidget {
-  final double total;
-  final double paid;
-  final double due;
-
-  const _InvoiceTotals(
-      {required this.total, required this.paid, required this.due});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fill = isDark
-        ? DesignColors.darkSurfaceElevated
-        : DesignColors.surfaceBorder.withValues(alpha: 0.2);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(12)),
-      child: Column(children: [
-        _row('Total', total),
-        _row('Paid', paid),
-        const Divider(height: 16),
-        _row('Balance due', due, isStrong: true)
-      ]),
-    );
-  }
-
-  Widget _row(String label, double value, {bool isStrong = false}) {
-    return Row(
-      children: [
-        Text(label,
-            style: TextStyle(
-                fontWeight: isStrong ? FontWeight.w800 : FontWeight.w500)),
-        const Spacer(),
-        Text(FinanceScreen.currencyFmt.format(value),
-            style: TextStyle(
-                fontWeight: isStrong ? FontWeight.w800 : FontWeight.w600)),
-      ],
-    );
-  }
-}

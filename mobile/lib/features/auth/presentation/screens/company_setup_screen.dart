@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 
@@ -183,7 +184,12 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
 
         if (!mounted) return;
         unawaited(getIt<UpdateCheckService>().checkAfterLogin());
-        context.go('/');
+        // The owner already gets a dedicated welcome screen right after
+        // signup — running the generic staff coach-mark tour immediately
+        // afterward on the same device would be redundant.
+        await getIt<StorageService>().setHasSeenStaffTour(true);
+        if (!mounted) return;
+        context.go('/owner-welcome', extra: companyName);
       }
     } catch (e) {
       String errorMsg;

@@ -118,6 +118,76 @@ class AiChatService {
     }
   }
 
+  /// Fetches a short proactive business brief for the dashboard's "AI
+  /// Brief" card — distinct from [sendMessage]: this never touches
+  /// [_messages] (the real chat history), since it's a background,
+  /// dashboard-driven read rather than something the user asked in chat.
+  ///
+  /// Tries the pre-generated nightly brief first (near-instant, produced by
+  /// the backend cron) and only falls back to a live `/ai/chat` call when
+  /// none exists yet for today (e.g. a brand new tenant, or the cron
+  /// hasn't run yet this morning).
+  Future<String?> fetchDailyBrief() async {
+    final pregenerated = await _fetchPregeneratedBrief();
+    if (pregenerated != null) return pregenerated;
+    return _fetchLiveBrief();
+  }
+
+  Future<String?> _fetchPregeneratedBrief() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/ai/daily-brief?branchId=$branchId'),
+        headers: {'X-Branch-Id': branchId},
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final content = data['data']?['content'] as String?;
+        if (content != null && content.trim().isNotEmpty) return content;
+      }
+      return null;
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiChat] Pregenerated brief error: $e');
+      return null;
+    }
+  }
+
+  Future<String?> _fetchLiveBrief() async {
+    try {
+      final businessContext = _buildBusinessContext();
+      final dataContext = await _buildDataContext();
+
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/ai/chat'),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Branch-Id': branchId,
+            },
+            body: jsonEncode({
+              'messages': const [],
+              'user_question':
+                  "Give me a short 2-3 sentence brief on today's business performance and one concrete suggestion.",
+              'context': 'daily_brief',
+              'includeData': dataContext.isNotEmpty,
+              'business_context': businessContext,
+              'data_context': dataContext,
+              'ai_task': 'analyze_and_recommend',
+              'response_style': 'concise',
+              'branchId': branchId,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      return data['data']['reply'] as String?;
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiChat] Live brief error: $e');
+      return null;
+    }
+  }
+
   Map<String, dynamic> _buildBusinessContext() {
     final storage = getIt<StorageService>();
     final user = storage.getUser() ?? {};
@@ -147,6 +217,7 @@ class AiChatService {
           primaryBranch?['name'] ??
           branchId,
       'role': user['role'] ?? '',
+      'user_first_name': user['firstName'] ?? '',
       'time_range': 'today',
     };
   }
