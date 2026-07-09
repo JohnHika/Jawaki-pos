@@ -58,11 +58,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.36"
+        value: "1.0.37"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.36"
+        value: "Axon POS 1.0.37"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2042"
+        value: "2043"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -72,4 +72,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Shows a loading spinner on the Save button while a product is being saved, so it's clear the app is working instead of looking unresponsive."
+        value: "Big fix: sales now properly reduce inventory and receipts load reliably. Adds selling on debt (customer pays later) and part-cash-part-debt split payments that track what each customer owes. Money figures now show comma separators, and cluttered floating buttons were moved into clean toolbars."
