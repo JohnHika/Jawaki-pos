@@ -62,7 +62,7 @@ services:
       - key: ANDROID_APP_RELEASE_NAME
         value: "Axon POS 1.0.28"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2033"
+        value: "2034"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
