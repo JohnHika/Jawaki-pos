@@ -538,8 +538,49 @@ class SyncService {
     // Update branch price override
   }
   
+  /// Applies a STOCK_ADJUSTED pull event to the on-device stock cache.
+  /// The payload is a backend StockMovement row; `newQty` is the absolute
+  /// quantity after the movement, so applying events in their pulled
+  /// (createdAt-ascending) order converges the local value to the server's
+  /// latest — no need to replay deltas. This was previously an empty stub,
+  /// which meant server-side stock changes (receiving batches on another
+  /// device, admin corrections, bulk initializations) never reached this
+  /// device's POS/inventory screens at all.
   Future<void> _updateLocalStock(Map<String, dynamic> data) async {
-    // Update local stock from server event
+    final productId = data['productId'] as String?;
+    final branchId = data['branchId'] as String?;
+    final rawNewQty = data['newQty'];
+    if (productId == null || branchId == null || rawNewQty == null) return;
+
+    // Prisma Decimal fields serialize as strings over JSON; plain ints
+    // arrive as numbers. Accept both.
+    final newQty =
+        rawNewQty is num ? rawNewQty : num.tryParse(rawNewQty.toString());
+    if (newQty == null) return;
+
+    final now = DateTime.now();
+    final existing = await _database.getProductStock(productId, branchId);
+    if (existing != null) {
+      await (_database.update(_database.localStock)..where(
+            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
+          ))
+          .write(
+            LocalStockCompanion(
+              quantity: Value(newQty.round()),
+              updatedAt: Value(now),
+            ),
+          );
+    } else {
+      await _database.into(_database.localStock).insert(
+            LocalStockCompanion.insert(
+              id: 'stock-$branchId-$productId',
+              productId: productId,
+              branchId: branchId,
+              quantity: newQty.round(),
+              updatedAt: now,
+            ),
+          );
+    }
   }
   
   Future<void> _sendHeartbeat() async {
