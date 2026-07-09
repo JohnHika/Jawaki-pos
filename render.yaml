@@ -58,11 +58,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.35"
+        value: "1.0.36"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.35"
+        value: "Axon POS 1.0.36"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2041"
+        value: "2042"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -72,4 +72,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Makes the pack/carton size field optional when pricing a product, and the sale screen now shows exactly how much stock is left in each unit (e.g. packs and pieces), not just a single number."
+        value: "Shows a loading spinner on the Save button while a product is being saved, so it's clear the app is working instead of looking unresponsive."
