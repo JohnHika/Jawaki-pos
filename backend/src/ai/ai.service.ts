@@ -2,6 +2,59 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatMessageDto, ChatRequestDto } from './dto/chat.dto';
 import { ParsedReceiptResult } from './dto/receipt-scan.dto';
+import { AiToolsService, AiToolCallContext } from './ai-tools.service';
+
+type AnthropicRole = 'user' | 'assistant';
+
+interface AnthropicTextBlock {
+  type: 'text';
+  text: string;
+}
+
+interface AnthropicToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, any>;
+}
+
+interface AnthropicToolResultBlock {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string;
+}
+
+type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
+
+interface AnthropicMessage {
+  role: AnthropicRole;
+  content: string | AnthropicContentBlock[];
+}
+
+interface AnthropicMessagesResponse {
+  content?: AnthropicContentBlock[];
+  model?: string;
+  stop_reason?: 'end_turn' | 'tool_use' | string;
+  detail?: string;
+}
+
+/** Result of a gateway /v1/messages turn: either a final reply, or a
+ * paused turn awaiting the user (AskUserQuestion) or confirmation
+ * (a mutating tool call) before the agent loop can continue. */
+export type GatewayMessagesResult =
+  | { kind: 'reply'; reply: string; model: string }
+  | {
+      kind: 'pending_question';
+      model: string;
+      pendingToolCall: { id: string; name: string; input: Record<string, any> };
+      questions: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }>;
+    }
+  | {
+      kind: 'pending_confirmation';
+      model: string;
+      pendingToolCall: { id: string; name: string; input: Record<string, any> };
+      summary: string;
+    };
 
 type NvidiaRole = 'system' | 'user' | 'assistant';
 
@@ -53,7 +106,10 @@ export class AiService {
   private readonly baseUrl: string;
   private model: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly tools: AiToolsService,
+  ) {
     this.gatewayApiKey = this.configService.get<string>('AXON_GATEWAY_API_KEY') || '';
     this.gatewayBaseUrl =
       this.configService.get<string>('AXON_GATEWAY_BASE_URL') ||
@@ -72,8 +128,28 @@ export class AiService {
     }
   }
 
-  async chat(dto: ChatRequestDto): Promise<{ reply: string; model: string }> {
+  /// Public entry point. Normalizes every code path (tool-calling agent
+  /// loop, plain-text gateway, NVIDIA direct, local fallback) to a single
+  /// GatewayMessagesResult shape so callers only need to switch on `kind`.
+  async chat(dto: ChatRequestDto, toolCtx?: AiToolCallContext): Promise<GatewayMessagesResult> {
     const normalized = this.normalizeRequest(dto);
+
+    // Tool-calling path: only available when the mobile "Tool access" toggle
+    // is on, the gateway is configured, and we have enough context (tenant)
+    // to scope tool calls safely. Falls through to the plain-text gateway
+    // path otherwise — tool access is an enhancement, not a requirement.
+    if (this.gatewayApiKey && dto.tool_access && toolCtx?.tenantId) {
+      const agentResult = await this.chatViaAxonGatewayMessages(normalized, toolCtx);
+      if (agentResult) return agentResult;
+      // Fall through to the plain-text gateway path on any failure.
+    }
+
+    const plain = await this.chatPlainText(normalized);
+    return { kind: 'reply', ...plain };
+  }
+
+  private async chatPlainText(dto: ChatRequestDto): Promise<{ reply: string; model: string }> {
+    const normalized = dto;
 
     if (this.gatewayApiKey) {
       const gatewayResult = await this.chatViaAxonGateway(normalized);
@@ -185,6 +261,237 @@ export class AiService {
       this.logger.error(`Axon Gateway request failed: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
+  }
+
+  /// Real agentic tool-calling via the gateway's Anthropic-format
+  /// POST /v1/messages endpoint (distinct from the plain-text /chat/
+  /// endpoint above — /v1/messages honours the caller's own `system`
+  /// message instead of overriding it, and returns tool_use content
+  /// blocks + stop_reason: "tool_use" for the caller to act on).
+  ///
+  /// Read tools (get_sales_summary, get_low_stock_items, get_top_products)
+  /// execute immediately and the loop continues automatically. The
+  /// AskUserQuestion tool and the one mutating tool (create_stock_reorder)
+  /// always pause the loop and hand control back to the caller — the
+  /// mobile app resumes the same turn on a follow-up request carrying
+  /// `pending_tool_call` + either `question_answers` or `tool_confirmed`.
+  ///
+  /// Returns null (not a thrown error) on any failure so `chat()` can fall
+  /// through to the plain-text gateway path.
+  private async chatViaAxonGatewayMessages(
+    dto: ChatRequestDto,
+    toolCtx: AiToolCallContext,
+  ): Promise<GatewayMessagesResult | null> {
+    try {
+      const systemPrompt = this.buildSystemPrompt(dto) + this.buildToolUsageInstructions();
+      const messages = this.buildAnthropicMessages(dto);
+      const toolDefs = this.tools.getToolDefinitions();
+      const anthropicTools = toolDefs.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.input_schema,
+      }));
+
+      // Resuming a paused turn: replay the assistant's tool_use block, then
+      // supply the tool_result the user just produced (an answered
+      // question, or a mutate confirm/decline), before continuing the loop.
+      if (dto.pending_tool_call) {
+        const resumed = await this.resumePendingToolCall(dto, toolCtx);
+        if (!resumed) return null;
+        messages.push(
+          { role: 'assistant', content: [resumed.toolUseBlock] },
+          { role: 'user', content: [resumed.toolResultBlock] },
+        );
+      }
+
+      const maxIterations = 4;
+      for (let i = 0; i < maxIterations; i++) {
+        const response = await fetch(`${this.gatewayBaseUrl}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.gatewayApiKey}`,
+          },
+          body: JSON.stringify({
+            system: systemPrompt,
+            messages,
+            tools: anthropicTools,
+            max_tokens: 1400,
+            stream: false,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => '');
+          this.logger.error(`Axon Gateway /v1/messages error: ${response.status} - ${errorBody}`);
+          return null;
+        }
+
+        const data = (await response.json()) as AnthropicMessagesResponse;
+        const content = data.content || [];
+        const model = data.model || 'axon-gateway';
+
+        if (data.stop_reason !== 'tool_use') {
+          const text = content
+            .filter((b): b is AnthropicTextBlock => b.type === 'text')
+            .map((b) => b.text)
+            .join('\n')
+            .trim();
+          if (!text) {
+            this.logger.error('Axon Gateway /v1/messages returned no text on end_turn');
+            return null;
+          }
+          return { kind: 'reply', reply: text, model };
+        }
+
+        const toolUseBlock = content.find((b): b is AnthropicToolUseBlock => b.type === 'tool_use');
+        if (!toolUseBlock) {
+          this.logger.error('Axon Gateway /v1/messages returned tool_use stop_reason with no tool_use block');
+          return null;
+        }
+
+        const toolDef = toolDefs.find((t) => t.name === toolUseBlock.name);
+
+        if (toolUseBlock.name === 'ask_user_question') {
+          const questions = Array.isArray(toolUseBlock.input?.questions) ? toolUseBlock.input.questions : [];
+          return {
+            kind: 'pending_question',
+            model,
+            pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input },
+            questions,
+          };
+        }
+
+        if (toolDef?.mutating) {
+          return {
+            kind: 'pending_confirmation',
+            model,
+            pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input },
+            summary: this.describeMutatingToolCall(toolUseBlock.name, toolUseBlock.input),
+          };
+        }
+
+        // Read tool: execute now and continue the loop with the result fed
+        // back as a tool_result block.
+        let resultText: string;
+        try {
+          const result = await this.tools.executeReadTool(toolUseBlock.name, toolUseBlock.input, toolCtx);
+          resultText = JSON.stringify(result);
+        } catch (error) {
+          resultText = `Error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+
+        messages.push(
+          { role: 'assistant', content: [toolUseBlock] },
+          {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: resultText }],
+          },
+        );
+      }
+
+      this.logger.warn('Axon Gateway /v1/messages agent loop hit max iterations without a final reply');
+      return null;
+    } catch (error) {
+      this.logger.error(`Axon Gateway /v1/messages request failed: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  /// Builds the tool_use/tool_result blocks needed to resume a paused turn:
+  /// an answered AskUserQuestion, or an approved/declined mutating tool
+  /// call. Executes the mutating tool here if confirmed.
+  private async resumePendingToolCall(
+    dto: ChatRequestDto,
+    toolCtx: AiToolCallContext,
+  ): Promise<{ toolUseBlock: AnthropicToolUseBlock; toolResultBlock: AnthropicToolResultBlock } | null> {
+    const pending = dto.pending_tool_call;
+    if (!pending) return null;
+
+    const toolUseBlock: AnthropicToolUseBlock = {
+      type: 'tool_use',
+      id: pending.id,
+      name: pending.name,
+      input: pending.input,
+    };
+
+    if (pending.name === 'ask_user_question') {
+      const answers = dto.question_answers || {};
+      const answerText = Object.entries(answers)
+        .map(([question, answer]) => `"${question}"="${answer}"`)
+        .join(', ');
+      return {
+        toolUseBlock,
+        toolResultBlock: {
+          type: 'tool_result',
+          tool_use_id: pending.id,
+          content: `User has answered your questions: ${answerText}`,
+        },
+      };
+    }
+
+    // Mutating tool resume (create_stock_reorder).
+    if (!dto.tool_confirmed) {
+      return {
+        toolUseBlock,
+        toolResultBlock: {
+          type: 'tool_result',
+          tool_use_id: pending.id,
+          content: 'User declined this action. Do not attempt it again unless they explicitly ask.',
+        },
+      };
+    }
+
+    try {
+      const result = await this.tools.executeStockReorder(pending.input as any, toolCtx);
+      return {
+        toolUseBlock,
+        toolResultBlock: {
+          type: 'tool_result',
+          tool_use_id: pending.id,
+          content: `User confirmed. Action completed: ${JSON.stringify(result)}`,
+        },
+      };
+    } catch (error) {
+      return {
+        toolUseBlock,
+        toolResultBlock: {
+          type: 'tool_result',
+          tool_use_id: pending.id,
+          content: `User confirmed, but the action failed: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      };
+    }
+  }
+
+  private buildToolUsageInstructions(): string {
+    return `
+
+Tool use:
+- You have tools to fetch fresher or more specific POS data (get_sales_summary, get_low_stock_items, get_top_products) than what was pre-attached to this message — use them when the question needs a different date range or more current figures than what's already provided.
+- Use ask_user_question when a request is genuinely ambiguous (e.g. which product, which branch, which date range) instead of guessing — but don't ask when the answer is already obvious from context.
+- create_stock_reorder raises a real stock request that a supervisor must approve. Only call it after the user has explicitly confirmed they want to raise it, with a clear product and quantity. Never call it speculatively or as a suggestion.`;
+  }
+
+  private describeMutatingToolCall(name: string, input: Record<string, any>): string {
+    if (name === 'create_stock_reorder') {
+      const qty = input?.quantity ?? '?';
+      return `Raise a stock request for ${qty} unit(s) of product ${input?.productId ?? 'unknown'}${input?.reason ? ` — ${input.reason}` : ''}?`;
+    }
+    return `Run ${name}?`;
+  }
+
+  private buildAnthropicMessages(dto: ChatRequestDto): AnthropicMessage[] {
+    const conversation = (dto.messages || [])
+      .filter((message) => Boolean(message?.content) && message.role !== 'system')
+      .map((message): AnthropicMessage => ({
+        role: message.role === 'assistant' ? 'assistant' : 'user',
+        content: message.content,
+      }));
+
+    const messages: AnthropicMessage[] = [...conversation];
+    messages.push({ role: 'user', content: this.buildStructuredUserMessage(dto) });
+    return messages;
   }
 
   private buildGatewayMessages(dto: ChatRequestDto): Array<{ role: string; content: string }> {

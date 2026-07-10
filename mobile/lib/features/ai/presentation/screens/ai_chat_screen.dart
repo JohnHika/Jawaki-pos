@@ -75,6 +75,32 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     _scrollToBottom();
   }
 
+  /// Resumes a paused agent turn (AskUserQuestion answered, or a mutating
+  /// tool call approved/declined) — mirrors [_sendMessage] but doesn't
+  /// touch the text input, since the pending-turn UI itself is the input.
+  Future<void> _resumePendingTurn({
+    Map<String, String>? questionAnswers,
+    bool? toolConfirmed,
+  }) async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    _scrollToBottom();
+
+    try {
+      await _aiService.resumePendingTurn(
+        questionAnswers: questionAnswers,
+        toolConfirmed: toolConfirmed,
+      );
+    } on AiSubscriptionRequiredException {
+      if (mounted) {
+        context.push('/ai/trial', extra: _aiService.branchId);
+      }
+    }
+
+    if (mounted) setState(() => _isLoading = false);
+    _scrollToBottom();
+  }
+
   Future<void> _newConversation() async {
     await _aiService.startNewSharedConversation();
     if (mounted) {
@@ -129,6 +155,15 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   @override
   Widget build(BuildContext context) {
     final messages = _aiService.messages;
+    final pending = _aiService.pendingTurn;
+    // Extra trailing list items: the typing indicator while loading, or the
+    // interactive pending-turn card (question / confirm-mutate) once the
+    // agent has paused and is waiting on the user.
+    final trailingCount = _isLoading
+        ? 1
+        : pending != null
+            ? 1
+            : 0;
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -148,16 +183,27 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         children: [
           // Chat messages
           Expanded(
-            child: messages.isEmpty
+            child: messages.isEmpty && pending == null
                 ? _buildWelcomeScreen()
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 12),
-                    itemCount: messages.length + (_isLoading ? 1 : 0),
+                    itemCount: messages.length + trailingCount,
                     itemBuilder: (context, index) {
                       if (index == messages.length) {
-                        return _buildTypingIndicator();
+                        if (_isLoading) return _buildTypingIndicator();
+                        return _PendingTurnCard(
+                          pending: pending!,
+                          onAnswerQuestions: (answers) =>
+                              _resumePendingTurn(questionAnswers: answers),
+                          onConfirmMutation: (confirmed) =>
+                              _resumePendingTurn(toolConfirmed: confirmed),
+                        ).animate().fadeIn(duration: 300.ms).slideY(
+                              begin: 0.1,
+                              end: 0,
+                              duration: 300.ms,
+                            );
                       }
                       final msg = messages[index];
                       final isUser = msg['role'] == 'user';
@@ -335,6 +381,366 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                         ),
                       ),
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Renders a paused agent turn: an AskUserQuestion (multiple-choice
+/// question(s), each with an auto-added "Other" free-text option) or a
+/// confirm-before-mutate card for a mutating tool call (e.g. raising a
+/// stock reorder). Answering/confirming resolves the turn via the
+/// callbacks, which resume the same backend agent loop.
+class _PendingTurnCard extends StatefulWidget {
+  final AiPendingTurn pending;
+  final ValueChanged<Map<String, String>> onAnswerQuestions;
+  final ValueChanged<bool> onConfirmMutation;
+
+  const _PendingTurnCard({
+    required this.pending,
+    required this.onAnswerQuestions,
+    required this.onConfirmMutation,
+  });
+
+  @override
+  State<_PendingTurnCard> createState() => _PendingTurnCardState();
+}
+
+class _PendingTurnCardState extends State<_PendingTurnCard> {
+  // question -> selected label(s) (multiSelect joins with comma when submitted)
+  final Map<String, Set<String>> _selections = {};
+  final Map<String, TextEditingController> _otherControllers = {};
+  bool _submitted = false;
+
+  @override
+  void dispose() {
+    for (final c in _otherControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _toggle(AiPendingQuestion q, String label) {
+    if (_submitted) return;
+    setState(() {
+      final set = _selections.putIfAbsent(q.question, () => {});
+      if (q.multiSelect) {
+        if (set.contains(label)) {
+          set.remove(label);
+        } else {
+          set.add(label);
+        }
+      } else {
+        set
+          ..clear()
+          ..add(label);
+      }
+    });
+  }
+
+  bool _canSubmit() {
+    for (final q in widget.pending.questions) {
+      final selected = _selections[q.question] ?? const {};
+      if (selected.isEmpty) return false;
+      if (selected.contains('Other')) {
+        final text = _otherControllers[q.question]?.text.trim() ?? '';
+        if (text.isEmpty) return false;
+      }
+    }
+    return true;
+  }
+
+  void _submitQuestions() {
+    if (!_canSubmit()) return;
+    final answers = <String, String>{};
+    for (final q in widget.pending.questions) {
+      final selected = _selections[q.question] ?? const {};
+      final resolved = selected.map((label) {
+        if (label == 'Other') {
+          return _otherControllers[q.question]?.text.trim() ?? '';
+        }
+        return label;
+      }).where((s) => s.isNotEmpty);
+      answers[q.question] = resolved.join(', ');
+    }
+    setState(() => _submitted = true);
+    widget.onAnswerQuestions(answers);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.pending.type == 'confirmation') {
+      return _buildConfirmation(context);
+    }
+    return _buildQuestions(context);
+  }
+
+  Widget _buildQuestions(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final q in widget.pending.questions) ...[
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: DesignColors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      q.header,
+                      style: const TextStyle(
+                        color: DesignColors.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                q.question,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ...q.options.map((opt) => _buildOption(q, opt.label, opt.description, textColor, secondaryColor, border)),
+              _buildOption(q, 'Other', 'Type your own answer', textColor, secondaryColor, border),
+              if ((_selections[q.question] ?? const {}).contains('Other'))
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 2, right: 2),
+                  child: TextField(
+                    controller: _otherControllers.putIfAbsent(
+                      q.question,
+                      () => TextEditingController(),
+                    ),
+                    enabled: !_submitted,
+                    onChanged: (_) => setState(() {}),
+                    style: TextStyle(color: textColor, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Your answer...',
+                      hintStyle: TextStyle(color: secondaryColor),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: DesignColors.accent),
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 4),
+            ],
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: (_submitted || !_canSubmit()) ? null : _submitQuestions,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: (_submitted || !_canSubmit())
+                        ? border
+                        : DesignColors.accent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _submitted ? 'Sent' : 'Submit',
+                    style: TextStyle(
+                      color: (_submitted || !_canSubmit()) ? secondaryColor : Colors.black,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOption(
+    AiPendingQuestion q,
+    String label,
+    String description,
+    Color textColor,
+    Color secondaryColor,
+    Color border,
+  ) {
+    final selected = (_selections[q.question] ?? const {}).contains(label);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        onTap: () => _toggle(q, label),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? DesignColors.accent.withValues(alpha: 0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? DesignColors.accent : border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                q.multiSelect
+                    ? (selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded)
+                    : (selected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded),
+                size: 18,
+                color: selected ? DesignColors.accent : secondaryColor,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (description.isNotEmpty)
+                      Text(
+                        description,
+                        style: TextStyle(color: secondaryColor, fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConfirmation(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.bolt_rounded, size: 18, color: DesignColors.accent),
+                SizedBox(width: 6),
+                Text(
+                  'Confirm action',
+                  style: TextStyle(
+                    color: DesignColors.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.pending.summary ?? 'Run this action?',
+              style: TextStyle(color: textColor, fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (!_submitted) ...[
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _submitted = true);
+                      widget.onConfirmMutation(false);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _submitted = true);
+                      widget.onConfirmMutation(true);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Approve',
+                        style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ] else
+                  Text(
+                    'Sent',
+                    style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+              ],
             ),
           ],
         ),

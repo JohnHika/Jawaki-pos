@@ -73,17 +73,19 @@ export class AiController {
       }
     }
 
-    const result = await this.aiService.chat(workingDto);
+    const toolCtx = tenantId ? { tenantId, branchId, userId: user.sub as string | undefined } : undefined;
+    const result = await this.aiService.chat(workingDto, toolCtx);
 
-    // Persist both turns to the shop's shared thread so every staff member
-    // sees the same conversation. Best-effort: a persistence hiccup must
-    // never fail the actual AI reply.
+    // Persist turns to the shop's shared thread so every staff member sees
+    // the same conversation. Best-effort: a persistence hiccup must never
+    // fail the actual AI reply. Only persist the user's question on the
+    // *initial* ask, not when resuming a paused tool turn (that question
+    // was already appended) — and only persist an assistant turn once we
+    // have real reply text (a pending question/confirmation has none yet).
     if (tenantId) {
       try {
-        // The JWT only carries email (no name) — use it as the attribution
-        // label so staff can see who asked what in the shared thread.
         const userName = (user.email as string | undefined) || null;
-        if (dto.user_question) {
+        if (dto.user_question && !dto.pending_tool_call) {
           await this.conversations.appendMessage({
             tenantId,
             branchId,
@@ -93,15 +95,47 @@ export class AiController {
             createdByName: userName,
           });
         }
-        await this.conversations.appendMessage({
-          tenantId,
-          branchId,
-          role: 'assistant',
-          content: result.reply,
-        });
+        if (result.kind === 'reply') {
+          await this.conversations.appendMessage({
+            tenantId,
+            branchId,
+            role: 'assistant',
+            content: result.reply,
+          });
+        }
       } catch {
         // swallow — reply already produced
       }
+    }
+
+    if (result.kind === 'pending_question') {
+      return {
+        success: true,
+        data: {
+          reply: null,
+          model: result.model,
+          pending: {
+            type: 'question',
+            tool_call: result.pendingToolCall,
+            questions: result.questions,
+          },
+        },
+      };
+    }
+
+    if (result.kind === 'pending_confirmation') {
+      return {
+        success: true,
+        data: {
+          reply: null,
+          model: result.model,
+          pending: {
+            type: 'confirmation',
+            tool_call: result.pendingToolCall,
+            summary: result.summary,
+          },
+        },
+      };
     }
 
     return {
@@ -218,13 +252,16 @@ export class AiController {
     // Enhance the request with current web insights
     const enhancedDto = await this.aiWebService.enhanceWithWebInsights(dto);
 
-    // Process with AI service
+    // Process with AI service. No tenant context is passed here, so the
+    // tool-calling agent path never engages and the result is always a
+    // plain reply.
     const result = await this.aiService.chat(enhancedDto);
+    const reply = result.kind === 'reply' ? result.reply : null;
 
     return {
       success: true,
       data: {
-        reply: result.reply,
+        reply,
         model: result.model,
         web_insights: enhancedDto.data_context?.web_insights,
         web_sources: enhancedDto.data_context?.web_sources,

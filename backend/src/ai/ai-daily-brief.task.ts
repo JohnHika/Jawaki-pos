@@ -64,7 +64,7 @@ export class AiDailyBriefTask {
       branchId,
     });
 
-    const { reply, model } = await this.aiService.chat({
+    const result = await this.aiService.chat({
       user_question:
         "Give me a short 2-3 sentence brief on yesterday's business performance and one concrete suggestion for today. " +
         'This will be shown in a narrow mobile card, so if you need to list specific items, use a short ' +
@@ -95,13 +95,20 @@ export class AiDailyBriefTask {
       },
     });
 
+    // tool_access is never set on this request, so the agent tool-calling
+    // path never engages and the result is always a plain reply.
+    if (result.kind !== 'reply') {
+      this.logger.warn(`Daily brief for branch ${branchId} got unexpected result kind: ${result.kind}`);
+      return;
+    }
+
     const today = new Date();
     const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     await this.prisma.dailyBrief.upsert({
       where: { branchId_date: { branchId, date } },
-      create: { branchId, date, content: reply, model },
-      update: { content: reply, model },
+      create: { branchId, date, content: result.reply, model: result.model },
+      update: { content: result.reply, model: result.model },
     });
   }
 }

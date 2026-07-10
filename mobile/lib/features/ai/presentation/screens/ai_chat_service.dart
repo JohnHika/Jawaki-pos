@@ -15,6 +15,90 @@ class AiSubscriptionRequiredException implements Exception {
   const AiSubscriptionRequiredException();
 }
 
+/// A single AskUserQuestion question, matching the backend/gateway schema
+/// (question/header/options[label,description]/multiSelect).
+class AiPendingQuestion {
+  final String question;
+  final String header;
+  final List<AiPendingQuestionOption> options;
+  final bool multiSelect;
+
+  AiPendingQuestion({
+    required this.question,
+    required this.header,
+    required this.options,
+    required this.multiSelect,
+  });
+
+  factory AiPendingQuestion.fromJson(Map<String, dynamic> json) {
+    return AiPendingQuestion(
+      question: (json['question'] ?? '').toString(),
+      header: (json['header'] ?? '').toString(),
+      options: ((json['options'] as List?) ?? const [])
+          .map((o) => AiPendingQuestionOption.fromJson(o as Map<String, dynamic>))
+          .toList(),
+      multiSelect: json['multiSelect'] == true,
+    );
+  }
+}
+
+class AiPendingQuestionOption {
+  final String label;
+  final String description;
+
+  AiPendingQuestionOption({required this.label, required this.description});
+
+  factory AiPendingQuestionOption.fromJson(Map<String, dynamic> json) {
+    return AiPendingQuestionOption(
+      label: (json['label'] ?? '').toString(),
+      description: (json['description'] ?? '').toString(),
+    );
+  }
+}
+
+/// A paused agent turn awaiting the user — either a multiple-choice
+/// question (AskUserQuestion) or a yes/no confirmation before a mutating
+/// tool (e.g. raising a stock reorder) is allowed to run. Ephemeral: never
+/// persisted to the shared conversation, mirroring the backend which only
+/// persists once the turn resolves to a real reply.
+class AiPendingTurn {
+  final String type; // 'question' | 'confirmation'
+  final Map<String, dynamic> toolCall;
+  final List<AiPendingQuestion> questions;
+  final String? summary;
+
+  AiPendingTurn({
+    required this.type,
+    required this.toolCall,
+    this.questions = const [],
+    this.summary,
+  });
+
+  factory AiPendingTurn.fromJson(Map<String, dynamic> json) {
+    final type = (json['type'] ?? '').toString();
+    return AiPendingTurn(
+      type: type,
+      toolCall: (json['tool_call'] as Map?)?.cast<String, dynamic>() ?? const {},
+      questions: type == 'question'
+          ? ((json['questions'] as List?) ?? const [])
+              .map((q) => AiPendingQuestion.fromJson(q as Map<String, dynamic>))
+              .toList()
+          : const [],
+      summary: json['summary'] as String?,
+    );
+  }
+}
+
+/// Result of a send/resume call: either a final text reply, or a paused
+/// turn the UI must render interactively before the conversation can
+/// continue.
+class AiSendResult {
+  final String? reply;
+  final AiPendingTurn? pending;
+
+  AiSendResult({this.reply, this.pending});
+}
+
 class AiChatService {
   AiChatService._internal();
   static final AiChatService _instance = AiChatService._internal();
@@ -22,6 +106,11 @@ class AiChatService {
 
   final List<Map<String, String>> _messages = [];
   final Map<String, dynamic> _storeInfo = {};
+
+  /// The current paused agent turn awaiting the user, if any. Cleared once
+  /// resolved (answered/confirmed/declined) or when a new conversation
+  /// starts.
+  AiPendingTurn? pendingTurn;
 
   String get _baseUrl {
     final storage = getIt<StorageService>();
@@ -67,6 +156,7 @@ class AiChatService {
 
   void clearHistory() {
     _messages.clear();
+    pendingTurn = null;
   }
 
   /// Loads the shop's shared AI conversation from the backend so every
@@ -83,6 +173,7 @@ class AiChatService {
       final data = jsonDecode(response.body);
       final msgs = data['data']?['messages'] as List?;
       if (msgs == null) return;
+      pendingTurn = null;
       _messages
         ..clear()
         ..addAll(msgs.map((m) => {
@@ -98,6 +189,7 @@ class AiChatService {
   /// so "New conversation" starts fresh for everyone.
   Future<void> startNewSharedConversation() async {
     _messages.clear();
+    pendingTurn = null;
     try {
       await http
           .post(
@@ -123,11 +215,12 @@ class AiChatService {
     _messages.add({'role': 'user', 'content': content});
   }
 
-  Future<String> sendMessage({
+  Future<AiSendResult> sendMessage({
     required String content,
     String context = 'general',
   }) async {
     addUserMessage(content);
+    pendingTurn = null;
 
     try {
       final businessContext = _buildBusinessContext();
@@ -153,25 +246,7 @@ class AiChatService {
           )
           .timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final reply = data['data']['reply'] as String;
-        _messages.add({'role': 'assistant', 'content': reply});
-        return reply;
-      } else if (response.statusCode == 402) {
-        // Remove the pending user message — this turn never produced a
-        // reply, and re-sending after subscribing shouldn't leave a
-        // duplicate in history.
-        if (_messages.isNotEmpty && _messages.last['role'] == 'user') {
-          _messages.removeLast();
-        }
-        throw const AiSubscriptionRequiredException();
-      } else {
-        final error =
-            'Sorry, the AI service is unavailable right now. (${response.statusCode})';
-        _messages.add({'role': 'assistant', 'content': error});
-        return error;
-      }
+      return _handleChatResponse(response);
     } on AiSubscriptionRequiredException {
       rethrow;
     } catch (e) {
@@ -179,7 +254,89 @@ class AiChatService {
       const error =
           'Could not reach the AI service. Check your connection and try again.';
       _messages.add({'role': 'assistant', 'content': error});
-      return error;
+      return AiSendResult(reply: error);
+    }
+  }
+
+  /// Resumes a paused agent turn ([pendingTurn]) with the user's answer(s)
+  /// to an AskUserQuestion, or their approve/decline on a mutating tool
+  /// call — the counterpart to the backend's `pending_tool_call` +
+  /// `question_answers`/`tool_confirmed` resume contract. Does not add a
+  /// new user-visible chat bubble; the question/confirmation UI itself
+  /// stands in for that turn.
+  Future<AiSendResult> resumePendingTurn({
+    Map<String, String>? questionAnswers,
+    bool? toolConfirmed,
+  }) async {
+    final pending = pendingTurn;
+    if (pending == null) {
+      return AiSendResult(reply: null);
+    }
+    pendingTurn = null;
+
+    try {
+      final businessContext = _buildBusinessContext();
+      final dataContext = await _buildDataContext();
+
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/ai/chat'),
+            headers: _headers(),
+            body: jsonEncode({
+              'messages': _messages,
+              'context': 'general',
+              'includeData': dataContext['data_read_failed'] != true,
+              'business_context': businessContext,
+              'data_context': dataContext,
+              'ai_task': 'analyze_and_recommend',
+              'response_style': 'actionable_partner',
+              'branchId': branchId,
+              'web_search': AiChatPrefs.instance.webSearch,
+              'tool_access': AiChatPrefs.instance.toolAccess,
+              'pending_tool_call': pending.toolCall,
+              if (questionAnswers != null) 'question_answers': questionAnswers,
+              if (toolConfirmed != null) 'tool_confirmed': toolConfirmed,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      return _handleChatResponse(response);
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiChat] Resume error: $e');
+      const error =
+          'Could not reach the AI service. Check your connection and try again.';
+      _messages.add({'role': 'assistant', 'content': error});
+      return AiSendResult(reply: error);
+    }
+  }
+
+  AiSendResult _handleChatResponse(http.Response response) {
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final payload = data['data'] as Map<String, dynamic>;
+      final pendingJson = payload['pending'] as Map<String, dynamic>?;
+
+      if (pendingJson != null) {
+        pendingTurn = AiPendingTurn.fromJson(pendingJson);
+        return AiSendResult(pending: pendingTurn);
+      }
+
+      final reply = payload['reply'] as String;
+      _messages.add({'role': 'assistant', 'content': reply});
+      return AiSendResult(reply: reply);
+    } else if (response.statusCode == 402) {
+      // Remove the pending user message — this turn never produced a
+      // reply, and re-sending after subscribing shouldn't leave a
+      // duplicate in history.
+      if (_messages.isNotEmpty && _messages.last['role'] == 'user') {
+        _messages.removeLast();
+      }
+      throw const AiSubscriptionRequiredException();
+    } else {
+      final error =
+          'Sorry, the AI service is unavailable right now. (${response.statusCode})';
+      _messages.add({'role': 'assistant', 'content': error});
+      return AiSendResult(reply: error);
     }
   }
 

@@ -165,6 +165,24 @@ export class ChatMessageDto {
   content: string;
 }
 
+// Echoes a paused gateway tool_use block (AskUserQuestion, or the mutating
+// create_stock_reorder awaiting confirmation) back to the client. The
+// client round-trips it verbatim in `pending_tool_call` on the follow-up
+// request so the server can resume the same agent turn without needing to
+// persist tool_use/tool_result blocks server-side.
+export class PendingToolCallDto {
+  @IsString()
+  @MaxLength(200)
+  id: string;
+
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @IsObject()
+  input: Record<string, any>;
+}
+
 export class ChatRequestDto {
   @IsOptional()
   @IsString()
@@ -228,4 +246,25 @@ export class ChatRequestDto {
   @IsOptional()
   @IsBoolean()
   tool_access?: boolean;
+
+  // Set when resuming a paused agent turn (AskUserQuestion answered, or a
+  // mutating tool call approved/declined). Must be the exact tool_use block
+  // the server returned as `pending_tool_call` on the previous response.
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => PendingToolCallDto)
+  pending_tool_call?: PendingToolCallDto;
+
+  // The user's answers to an AskUserQuestion tool call — question text ->
+  // chosen answer string (comma-joined for multiSelect), matching the
+  // gateway's expected tool_result text format.
+  @IsOptional()
+  @IsObject()
+  question_answers?: Record<string, string>;
+
+  // Set when resuming a paused mutating tool call (create_stock_reorder).
+  @IsOptional()
+  @IsBoolean()
+  tool_confirmed?: boolean;
 }
