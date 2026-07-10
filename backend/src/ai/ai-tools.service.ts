@@ -244,19 +244,27 @@ export class AiToolsService {
     }
   }
 
-  /** Coerces raw todo_write tool input into a strict shape, same defensive
-   * treatment as ask_user_question — drops entries missing a required
-   * field rather than trusting model output verbatim. */
+  /** Coerces raw todo_write tool input into a strict shape. Live testing
+   * showed the model sometimes uses `text`/`name` instead of `content` and
+   * frequently omits `activeForm` entirely — rather than dropping those
+   * items (as ask_user_question's stricter sanitizer does), backfill
+   * activeForm from content since a checklist item without a present-form
+   * label is still useful, whereas an AskUserQuestion option without a
+   * label is not. Only content truly missing drops the item. */
   sanitizeTodos(raw: unknown): SanitizedTodoItem[] {
     const todosIn = Array.isArray(raw) ? raw : [];
     const validStatuses = new Set(['pending', 'in_progress', 'completed']);
 
     return todosIn
       .map((t: any) => {
-        const content = typeof t?.content === 'string' ? t.content.trim() : '';
-        const activeForm = typeof t?.activeForm === 'string' ? t.activeForm.trim() : '';
+        const content =
+          (typeof t?.content === 'string' && t.content.trim()) ||
+          (typeof t?.text === 'string' && t.text.trim()) ||
+          (typeof t?.name === 'string' && t.name.trim()) ||
+          '';
+        if (!content) return null;
+        const activeForm = typeof t?.activeForm === 'string' && t.activeForm.trim() ? t.activeForm.trim() : content;
         const status: SanitizedTodoItem['status'] = validStatuses.has(t?.status) ? t.status : 'pending';
-        if (!content || !activeForm) return null;
         return { content, status, activeForm };
       })
       .filter((t): t is SanitizedTodoItem => Boolean(t));
