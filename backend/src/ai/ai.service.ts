@@ -297,7 +297,7 @@ export class AiService {
     toolCtx: AiToolCallContext,
   ): Promise<GatewayMessagesResult | null> {
     try {
-      const systemPrompt = this.buildSystemPrompt(dto) + this.buildToolUsageInstructions();
+      const systemPrompt = this.buildSystemPrompt(dto) + this.buildToolUsageInstructions(dto);
       const messages = this.buildAnthropicMessages(dto);
       const toolDefs = this.tools.getToolDefinitions();
       const anthropicTools = toolDefs.map((t) => ({
@@ -547,8 +547,8 @@ export class AiService {
     }
   }
 
-  private buildToolUsageInstructions(): string {
-    return `
+  private buildToolUsageInstructions(dto: ChatRequestDto): string {
+    const base = `
 
 Tool use:
 - You have tools to fetch fresher or more specific POS data (get_sales_summary, get_low_stock_items, get_top_products) than what was pre-attached to this message — use them when the question needs a different date range or more current figures than what's already provided.
@@ -556,6 +556,54 @@ Tool use:
 - create_stock_reorder raises a real stock request that a supervisor must approve. Only call it after the user has explicitly confirmed they want to raise it, with a clear product and quantity. Never call it speculatively or as a suggestion.
 - Use todo_write proactively for any request with 3+ distinct steps (e.g. "check stock, then sales, then suggest a promotion") so the user can see progress — keep exactly one item in_progress, mark items completed immediately as you finish them, and always send the full current list, not just changed items.
 - For multi-step or ambiguous work, use propose_plan to lay out what you intend to check/do (a short markdown list, in order) and wait for approval before proceeding — don't use ask_user_question to ask "is this plan okay?", propose_plan itself is the approval request. Skip it for a single simple question or a single tool call.`;
+
+    // The model reliably CALLS todo_write when directed but, given a soft
+    // "use it proactively" nudge competing with several other tools, it
+    // usually just narrates a checklist in prose instead. When we detect a
+    // multi-step request server-side, append a hard directive for this turn
+    // only. This lives in the `system` field (not the user message), which
+    // the gateway's prompt-injection firewall does NOT inspect and the
+    // model does not treat as a jailbreak — unlike a forceful instruction
+    // in the user's own message, which trips both.
+    if (this.looksMultiStep(dto)) {
+      return (
+        base +
+        `
+
+MANDATORY FOR THIS REQUEST: the user's message describes multiple distinct steps. Before writing any prose answer, your FIRST action MUST be a todo_write tool call listing each step as a separate item (one item in_progress, the rest pending). Each item MUST use the field name "content" for its text plus "status" and "activeForm". Do not describe the checklist in text instead of calling the tool — the app renders todo_write output as a live checklist, so a prose list is not shown as tasks. Update it via todo_write as you complete each step.`
+      );
+    }
+    return base;
+  }
+
+  /// Heuristic: does the user's message describe a multi-step task worth
+  /// tracking as a checklist? Deliberately conservative — only trips on
+  /// clear signals (an explicit "checklist/track" ask, an enumerated list,
+  /// or several conjoined actions) so single questions never get a spurious
+  /// checklist forced on them.
+  private looksMultiStep(dto: ChatRequestDto): boolean {
+    const q = (dto.user_question || '').toLowerCase();
+    if (!q) return false;
+
+    // Explicit request to track / make a checklist.
+    if (/\b(check ?list|to-?do list|track (this|these|my|the)|step by step|one by one)\b/.test(q)) {
+      return true;
+    }
+
+    // An enumerated list in the message (1. / 2) / bullet dashes on ≥3 lines,
+    // or "3 things" style counts).
+    if (/\b([3-9]|ten|\d{2,})\s+(things|tasks|steps|items)\b/.test(q)) return true;
+    const enumerated = (q.match(/(^|\n)\s*(\d+[.)]|[-*•])\s+/g) || []).length;
+    if (enumerated >= 3) return true;
+
+    // Several conjoined imperative actions ("check X, check Y, and check Z" /
+    // "do A then B then C"). Count action verbs joined by commas/"and"/"then".
+    const actionVerbs = /\b(check|review|analyze|analyse|compare|find|list|show|pull|calculate|summarize|summarise|look at|go through|see)\b/g;
+    const verbCount = (q.match(actionVerbs) || []).length;
+    const connectors = (q.match(/\b(then|and|after that|next|also)\b/g) || []).length;
+    if (verbCount >= 3 && connectors >= 1) return true;
+
+    return false;
   }
 
   /// The underlying model doesn't always obey the ask_user_question nested

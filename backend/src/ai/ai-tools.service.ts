@@ -244,31 +244,64 @@ export class AiToolsService {
     }
   }
 
-  /** Coerces raw todo_write tool input into a strict shape. Live testing
-   * showed the model uses several different field names for the task label
-   * depending on the call (`text`, `name`, `title` all observed across
-   * repeated live calls with the same tool schema) and frequently omits
-   * `activeForm` entirely — rather than dropping those items (as
-   * ask_user_question's stricter sanitizer does), backfill activeForm from
-   * content since a checklist item without a present-form label is still
-   * useful, whereas an AskUserQuestion option without a label is not. Only
-   * a genuinely unlabeled item drops. */
+  /** Coerces raw todo_write tool input into a strict shape.
+   *
+   * The model is inconsistent about field names for the task label across
+   * calls with the exact same tool schema — `content`, `text`, `name`, and
+   * `title` have all been observed live — and frequently omits `activeForm`.
+   * Rather than maintaining an ever-growing alias list (whack-a-mole: each
+   * new field name silently drops every item until patched), this resolves
+   * the label from a preferred-key list and then falls back to the first
+   * non-status string value on the object, so any reasonable shape the
+   * model emits still yields a usable checklist item. activeForm is
+   * backfilled from the label when missing (a checklist item without a
+   * present-form label is still useful; only a genuinely unlabeled item
+   * drops). */
   sanitizeTodos(raw: unknown): SanitizedTodoItem[] {
     const todosIn = Array.isArray(raw) ? raw : [];
     const validStatuses = new Set(['pending', 'in_progress', 'completed']);
+    // Keys that are NOT the label, so the first-string-value fallback below
+    // never mistakes them for the task text.
+    const nonLabelKeys = new Set(['status', 'state', 'activeform', 'active_form', 'id', 'index', 'order', 'priority', 'done', 'completed']);
+
+    const pickLabel = (t: any): string => {
+      if (!t || typeof t !== 'object') {
+        return typeof t === 'string' ? t.trim() : '';
+      }
+      for (const key of ['content', 'text', 'name', 'title', 'task', 'label', 'description', 'todo', 'item', 'step']) {
+        if (typeof t[key] === 'string' && t[key].trim()) return t[key].trim();
+      }
+      // Fallback: first non-empty string value that isn't a known metadata key.
+      for (const [key, val] of Object.entries(t)) {
+        if (nonLabelKeys.has(key.toLowerCase())) continue;
+        if (typeof val === 'string' && val.trim()) return val.trim();
+      }
+      return '';
+    };
+
+    const pickStatus = (t: any): SanitizedTodoItem['status'] => {
+      const raw = (typeof t?.status === 'string' ? t.status : typeof t?.state === 'string' ? t.state : '')
+        .toLowerCase()
+        .trim()
+        .replace(/[\s-]+/g, '_');
+      if (validStatuses.has(raw)) return raw as SanitizedTodoItem['status'];
+      if (raw === 'inprogress' || raw === 'active' || raw === 'doing' || raw === 'current') return 'in_progress';
+      if (raw === 'done' || raw === 'complete' || raw === 'finished') return 'completed';
+      if (t?.completed === true || t?.done === true) return 'completed';
+      return 'pending';
+    };
 
     return todosIn
       .map((t: any) => {
-        const content =
-          (typeof t?.content === 'string' && t.content.trim()) ||
-          (typeof t?.text === 'string' && t.text.trim()) ||
-          (typeof t?.name === 'string' && t.name.trim()) ||
-          (typeof t?.title === 'string' && t.title.trim()) ||
-          '';
+        const content = pickLabel(t);
         if (!content) return null;
-        const activeForm = typeof t?.activeForm === 'string' && t.activeForm.trim() ? t.activeForm.trim() : content;
-        const status: SanitizedTodoItem['status'] = validStatuses.has(t?.status) ? t.status : 'pending';
-        return { content, status, activeForm };
+        const activeForm =
+          typeof t?.activeForm === 'string' && t.activeForm.trim()
+            ? t.activeForm.trim()
+            : typeof t?.active_form === 'string' && t.active_form.trim()
+              ? t.active_form.trim()
+              : content;
+        return { content, status: pickStatus(t), activeForm };
       })
       .filter((t): t is SanitizedTodoItem => Boolean(t));
   }
