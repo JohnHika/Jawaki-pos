@@ -245,12 +245,14 @@ export class AiToolsService {
   }
 
   /** Coerces raw todo_write tool input into a strict shape. Live testing
-   * showed the model sometimes uses `text`/`name` instead of `content` and
-   * frequently omits `activeForm` entirely — rather than dropping those
-   * items (as ask_user_question's stricter sanitizer does), backfill
-   * activeForm from content since a checklist item without a present-form
-   * label is still useful, whereas an AskUserQuestion option without a
-   * label is not. Only content truly missing drops the item. */
+   * showed the model uses several different field names for the task label
+   * depending on the call (`text`, `name`, `title` all observed across
+   * repeated live calls with the same tool schema) and frequently omits
+   * `activeForm` entirely — rather than dropping those items (as
+   * ask_user_question's stricter sanitizer does), backfill activeForm from
+   * content since a checklist item without a present-form label is still
+   * useful, whereas an AskUserQuestion option without a label is not. Only
+   * a genuinely unlabeled item drops. */
   sanitizeTodos(raw: unknown): SanitizedTodoItem[] {
     const todosIn = Array.isArray(raw) ? raw : [];
     const validStatuses = new Set(['pending', 'in_progress', 'completed']);
@@ -261,6 +263,7 @@ export class AiToolsService {
           (typeof t?.content === 'string' && t.content.trim()) ||
           (typeof t?.text === 'string' && t.text.trim()) ||
           (typeof t?.name === 'string' && t.name.trim()) ||
+          (typeof t?.title === 'string' && t.title.trim()) ||
           '';
         if (!content) return null;
         const activeForm = typeof t?.activeForm === 'string' && t.activeForm.trim() ? t.activeForm.trim() : content;

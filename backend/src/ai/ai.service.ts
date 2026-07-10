@@ -305,8 +305,6 @@ export class AiService {
         description: t.description,
         input_schema: t.input_schema,
       }));
-      // TEMP DEBUG (remove after diagnosing todo_write reliability):
-      this.logger.warn(`[TODO_DEBUG] tools=${anthropicTools.map((t) => t.name).join(',')} systemPromptLen=${systemPrompt.length}`);
       // Seeded from the client's echoed list (stateless, like `messages`)
       // and updated whenever todo_write runs mid-loop, so a final reply
       // always carries the latest list even if todo_write wasn't the last
@@ -353,8 +351,6 @@ export class AiService {
         const data = (await response.json()) as AnthropicMessagesResponse;
         const content = data.content || [];
         const model = data.model || 'axon-gateway';
-        // TEMP DEBUG (remove after diagnosing todo_write reliability):
-        this.logger.warn(`[TODO_DEBUG] stop_reason=${data.stop_reason} content=${JSON.stringify(content)}`);
 
         if (data.stop_reason !== 'tool_use') {
           const text = content
