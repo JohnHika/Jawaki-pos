@@ -6,6 +6,7 @@ import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/connectivity_service.dart';
 import 'package:axon_pos/core/di/injection.dart';
+import 'ai_chat_prefs.dart';
 
 /// Thrown when the backend rejects an AI request with 402 Payment
 /// Required — this branch has no active AI subscription.
@@ -54,6 +55,14 @@ class AiChatService {
     _messages.clear();
   }
 
+  /// Drops every message from [index] onward — used by "edit & resubmit":
+  /// the edited user message and everything after it is removed so the
+  /// conversation can continue fresh from that point.
+  void truncateFrom(int index) {
+    if (index < 0 || index >= _messages.length) return;
+    _messages.removeRange(index, _messages.length);
+  }
+
   void addUserMessage(String content) {
     _messages.add({'role': 'user', 'content': content});
   }
@@ -85,6 +94,8 @@ class AiChatService {
               'ai_task': 'analyze_and_recommend',
               'response_style': 'actionable_partner',
               'branchId': branchId,
+              'web_search': AiChatPrefs.instance.webSearch,
+              'tool_access': AiChatPrefs.instance.toolAccess,
             }),
           )
           .timeout(const Duration(seconds: 30));

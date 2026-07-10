@@ -202,4 +202,15 @@ export class ChatRequestDto {
   @IsOptional()
   @IsBoolean()
   includeData?: boolean;
+
+  // Toggles from the mobile "Add to chat" sheet. Accepted now so the
+  // payload validates; wired to real web-search / tool-calling behaviour
+  // in later phases.
+  @IsOptional()
+  @IsBoolean()
+  web_search?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  tool_access?: boolean;
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +8,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import 'ai_chat_service.dart';
-import 'ai_quick_actions.dart';
+import 'ai_add_to_chat_sheet.dart';
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -21,7 +22,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final AiChatService _aiService = AiChatService();
   bool _isLoading = false;
-  bool _showQuickActions = true;
 
   @override
   void dispose() {
@@ -47,7 +47,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     final message = text.trim();
     _controller.clear();
-    _showQuickActions = false;
 
     setState(() => _isLoading = true);
     _scrollToBottom();
@@ -67,9 +66,50 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   void _newConversation() {
     _aiService.clearHistory();
     setState(() {
-      _showQuickActions = true;
       _isLoading = false;
     });
+  }
+
+  void _copyMessage(String content) {
+    Clipboard.setData(ClipboardData(text: content));
+    if (!mounted) return;
+    showGlassSnackBar(
+      context,
+      'Copied to clipboard',
+      icon: Icons.check_circle_outline_rounded,
+      color: DesignColors.success,
+    );
+  }
+
+  /// Edit & resubmit: put the message back in the input, drop it and
+  /// everything after it from history, so the user can rephrase and send
+  /// again from that point.
+  void _editMessage(int index, String content) {
+    if (_isLoading) return;
+    _aiService.truncateFrom(index);
+    _controller.text = content;
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: _controller.text.length),
+    );
+    setState(() {});
+  }
+
+  Future<void> _openAddToChat() async {
+    if (_isLoading) return;
+    await showAddToChatSheet(
+      context,
+      onAttachmentText: (label, extractedText) {
+        // Attaching a photo/file surfaces its extracted text into the
+        // input so it becomes part of the next question to the AI.
+        final existing = _controller.text.trim();
+        final block = '[$label]\n$extractedText';
+        _controller.text = existing.isEmpty ? block : '$existing\n\n$block';
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length),
+        );
+        setState(() {});
+      },
+    );
   }
 
   @override
@@ -107,9 +147,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                       }
                       final msg = messages[index];
                       final isUser = msg['role'] == 'user';
+                      final content = msg['content']!;
                       return _ChatBubble(
-                        message: msg['content']!,
+                        message: content,
                         isUser: isUser,
+                        onCopy: isUser ? null : () => _copyMessage(content),
+                        onEdit: isUser ? () => _editMessage(index, content) : null,
                       ).animate().fadeIn(duration: 300.ms).slideX(
                             begin: isUser ? 20 : -20,
                             end: 0,
@@ -118,12 +161,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     },
                   ),
           ),
-          // Quick actions (shown before first message)
-          if (_showQuickActions)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: AiQuickActions(onTap: _sendMessage),
-            ),
           // Input bar
           _buildInputBar(),
         ],
@@ -219,8 +256,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
           children: [
             IconButton(
               icon: Icon(Icons.add_rounded, color: iconColor),
-              onPressed: _isLoading ? null : () {},
-              tooltip: 'Attach',
+              onPressed: _isLoading ? null : _openAddToChat,
+              tooltip: 'Add to chat',
             ),
             Expanded(
               child: TextField(
@@ -295,14 +332,23 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 class _ChatBubble extends ConsumerWidget {
   final String message;
   final bool isUser;
+  final VoidCallback? onCopy;
+  final VoidCallback? onEdit;
 
-  const _ChatBubble({required this.message, required this.isUser});
+  const _ChatBubble({
+    required this.message,
+    required this.isUser,
+    this.onCopy,
+    this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final actionColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -322,38 +368,77 @@ class _ChatBubble extends ConsumerWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: ConstrainedBox(
-              // AI replies get a wider ceiling than user bubbles — a
-              // markdown table needs real horizontal room to render as an
-              // actual table instead of squeezing cells onto separate
-              // wrapped lines.
-              constraints: BoxConstraints(
-                maxWidth: isUser
-                    ? MediaQuery.of(context).size.width * 0.78
-                    : MediaQuery.of(context).size.width * 0.92,
-              ),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isUser
-                      ? DesignColors.accent.withValues(alpha: 0.1)
-                      : (isDark
-                          ? DesignColors.darkSurfaceElevated
-                          : DesignColors.surfaceMuted),
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16),
-                    topRight: const Radius.circular(16),
-                    bottomLeft: Radius.circular(isUser ? 16 : 4),
-                    bottomRight: Radius.circular(isUser ? 4 : 16),
+            child: Column(
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                ConstrainedBox(
+                  // AI replies get a wider ceiling than user bubbles — a
+                  // markdown table needs real horizontal room to render as an
+                  // actual table instead of squeezing cells onto separate
+                  // wrapped lines.
+                  constraints: BoxConstraints(
+                    maxWidth: isUser
+                        ? MediaQuery.of(context).size.width * 0.78
+                        : MediaQuery.of(context).size.width * 0.92,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? DesignColors.accent.withValues(alpha: 0.1)
+                          : (isDark
+                              ? DesignColors.darkSurfaceElevated
+                              : DesignColors.surfaceMuted),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isUser ? 16 : 4),
+                        bottomRight: Radius.circular(isUser ? 4 : 16),
+                      ),
+                    ),
+                    child: _buildMessageContent(textColor),
                   ),
                 ),
-                child: _buildMessageContent(textColor),
-              ),
+                // Per-message actions: copy on AI replies, edit on the
+                // user's own messages (standard chat UX).
+                _buildActions(context, actionColor),
+              ],
             ),
           ),
           if (isUser) const SizedBox(width: 8),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context, Color color) {
+    final children = <Widget>[];
+    if (!isUser && onCopy != null) {
+      children.add(_actionButton(Icons.copy_rounded, 'Copy', onCopy!, color));
+    }
+    if (isUser && onEdit != null) {
+      children.add(_actionButton(Icons.edit_rounded, 'Edit', onEdit!, color));
+    }
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _actionButton(
+      IconData icon, String tooltip, VoidCallback onTap, Color color) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, size: 15, color: color),
       ),
     );
   }
