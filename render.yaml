@@ -55,6 +55,13 @@ services:
         sync: false
       - key: NVIDIA_MODEL
         value: nvidia/nemotron-3-super-120b-a12b
+      # Axon Gateway (arche-axon.xyz) — primary AI provider. Key set in the
+      # Render dashboard (sync:false managed secret); base URL has a code
+      # default but is declared here for clarity.
+      - key: AXON_GATEWAY_API_KEY
+        sync: false
+      - key: AXON_GATEWAY_BASE_URL
+        value: https://api.arche-axon.xyz/v1
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
