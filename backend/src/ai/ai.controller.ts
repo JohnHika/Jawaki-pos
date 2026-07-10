@@ -43,17 +43,28 @@ export class AiController {
     const tenantId = user.tenantId as string | undefined;
     const branchId = (dto.branchId || user.branchId) as string | undefined;
 
+    // Web search grounding when the user enabled the toggle in the
+    // "Add to chat" sheet — injects live web results into the context.
+    let workingDto = dto;
+    if (dto.web_search) {
+      try {
+        workingDto = await this.aiWebService.enhanceWithWebInsights(dto);
+      } catch {
+        workingDto = dto; // best-effort; never block the reply
+      }
+    }
+
     // Inject durable shop memories relevant to this question so the AI
     // recalls owner preferences / policies / customer notes across sessions.
     if (tenantId) {
       try {
         const relevant = await this.memories.selectRelevant(
           tenantId,
-          dto.user_question || '',
+          workingDto.user_question || '',
         );
         if (relevant.length > 0) {
-          dto.data_context = {
-            ...(dto.data_context || {}),
+          workingDto.data_context = {
+            ...(workingDto.data_context || {}),
             shop_memories: relevant,
           };
         }
@@ -62,7 +73,7 @@ export class AiController {
       }
     }
 
-    const result = await this.aiService.chat(dto);
+    const result = await this.aiService.chat(workingDto);
 
     // Persist both turns to the shop's shared thread so every staff member
     // sees the same conversation. Best-effort: a persistence hiccup must

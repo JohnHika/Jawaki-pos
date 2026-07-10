@@ -20,42 +20,127 @@ export class AiWebService {
     insights: string[],
     sources: { url: string; title: string }[]
   }> {
-    if (!this.braveSearchApiKey) {
-      this.logger.warn('BRAVE_SEARCH_API_KEY not configured - using cached insights');
-      return this.getCachedInsights(query);
+    // Tier 1: Brave (sturdiest) when a key is configured.
+    if (this.braveSearchApiKey) {
+      try {
+        const response = await fetch(`${this.braveSearchUrl}?q=${encodeURIComponent(query)}&count=5`, {
+          headers: {
+            'Accept': 'application/json',
+            'X-Subscription-Token': this.braveSearchApiKey,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const results = data.web?.results || [];
+          if (results.length > 0) {
+            return {
+              insights: results.map(
+                (item) => `• ${item.title}: ${item.description || 'No description available'}`,
+              ),
+              sources: results.map((item) => ({ url: item.url, title: item.title })),
+            };
+          }
+        } else {
+          this.logger.warn(`Brave search ${response.status}; trying DuckDuckGo.`);
+        }
+      } catch (error) {
+        this.logger.warn(`Brave search failed (${error.message}); trying DuckDuckGo.`);
+      }
     }
 
-    try {
-      const response = await fetch(`${this.braveSearchUrl}?q=${encodeURIComponent(query)}&count=5`, {
-        headers: {
-          'Accept': 'application/json',
-          'X-Subscription-Token': this.braveSearchApiKey,
-        },
-      });
+    // Tier 2: keyless DuckDuckGo HTML search — real live results, no API key.
+    const ddg = await this.searchDuckDuckGo(query);
+    if (ddg.sources.length > 0) return ddg;
 
-      if (!response.ok) {
-        const error = await response.text();
-        this.logger.error(`Brave search error: ${response.status} - ${error}`);
-        return this.getCachedInsights(query);
+    // Tier 3: curated cached insights as a last resort.
+    this.logger.warn('No live web results; using cached insights.');
+    return this.getCachedInsights(query);
+  }
+
+  /**
+   * Keyless web search via DuckDuckGo's HTML endpoint. Scrapes the result
+   * titles/snippets/links with a regex — no API key, no paid provider.
+   * (Unofficial and best-effort; the tiered fallback above covers failures.)
+   */
+  private async searchDuckDuckGo(query: string): Promise<{
+    insights: string[];
+    sources: { url: string; title: string }[];
+  }> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const response = await fetch('https://html.duckduckgo.com/html/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+        },
+        body: `q=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!response.ok) return { insights: [], sources: [] };
+
+      const html = await response.text();
+      const insights: string[] = [];
+      const sources: { url: string; title: string }[] = [];
+
+      // Each result: <a class="result__a" href="...">Title</a> with a
+      // following <a class="result__snippet">snippet</a>.
+      const linkRe =
+        /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+      const snippetRe =
+        /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+
+      const links: Array<{ url: string; title: string }> = [];
+      let m: RegExpExecArray | null;
+      while ((m = linkRe.exec(html)) !== null && links.length < 6) {
+        const url = this.decodeDdgUrl(m[1]);
+        const title = this.stripHtml(m[2]);
+        if (url && title) links.push({ url, title });
+      }
+      const snippets: string[] = [];
+      while ((m = snippetRe.exec(html)) !== null && snippets.length < 6) {
+        snippets.push(this.stripHtml(m[1]));
       }
 
-      const data = await response.json();
-      const results = data.web?.results || [];
-
-      const insights = results.map(item => {
-        return `• ${item.title}: ${item.description || 'No description available'}`;
+      links.forEach((link, i) => {
+        sources.push(link);
+        const snip = snippets[i] || '';
+        insights.push(`• ${link.title}${snip ? `: ${snip}` : ''}`);
       });
 
-      const sources = results.map(item => ({
-        url: item.url,
-        title: item.title,
-      }));
-
       return { insights, sources };
-
     } catch (error) {
-      this.logger.error(`Web search failed: ${error.message}`);
-      return this.getCachedInsights(query);
+      this.logger.warn(`DuckDuckGo search failed: ${error.message}`);
+      return { insights: [], sources: [] };
+    }
+  }
+
+  private stripHtml(s: string): string {
+    return s
+      .replace(/<[^>]*>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#x27;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // DuckDuckGo wraps result links as /l/?uddg=<encoded-real-url>.
+  private decodeDdgUrl(href: string): string {
+    try {
+      const match = href.match(/[?&]uddg=([^&]+)/);
+      if (match) return decodeURIComponent(match[1]);
+      if (href.startsWith('//')) return `https:${href}`;
+      return href;
+    } catch {
+      return href;
     }
   }
 
