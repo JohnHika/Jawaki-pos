@@ -58,11 +58,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.38"
+        value: "1.0.39"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.38"
+        value: "Axon POS 1.0.39"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2044"
+        value: "2045"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -72,4 +72,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Fixes a crash when recording a sale against a customer or selling on debt. (Sales now properly reduce inventory, receipts load reliably, and you can sell on debt or split part-cash-part-debt with per-customer balances.)"
+        value: "Fixes the dashboard showing yesterday's revenue on a new day. Today's sales figures now correctly reset to zero at midnight and stay accurate for the current day automatically."
