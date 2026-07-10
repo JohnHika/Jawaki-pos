@@ -21,6 +21,12 @@ export interface AiToolCallContext {
   userId?: string;
 }
 
+export interface SanitizedTodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  activeForm: string;
+}
+
 /**
  * Read/write POS actions the gateway's tool-calling loop can invoke mid
  * conversation, letting the AI pull fresher or more specific data than
@@ -166,6 +172,47 @@ export class AiToolsService {
           required: ['productId', 'quantity'],
         },
       },
+      {
+        name: 'todo_write',
+        description:
+          'Update the visible task checklist for the current multi-step request. Use proactively for any request with 3+ distinct steps, or when the user explicitly asks for a checklist — not for a single trivial question. Always include every task (not just changed ones): exactly one must be in_progress at a time, mark a task completed immediately when done (never batch), and never mark one completed if it failed or is only partially done.',
+        mutating: false,
+        input_schema: {
+          type: 'object',
+          properties: {
+            todos: {
+              type: 'array',
+              description: 'The full current list of tasks, replacing whatever list existed before.',
+              items: {
+                type: 'object',
+                properties: {
+                  content: { type: 'string', description: 'Imperative form, e.g. "Check low stock items".' },
+                  status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+                  activeForm: { type: 'string', description: 'Present-continuous form shown while in progress, e.g. "Checking low stock items".' },
+                },
+                required: ['content', 'status', 'activeForm'],
+              },
+            },
+          },
+          required: ['todos'],
+        },
+      },
+      {
+        name: 'propose_plan',
+        description:
+          "Propose a short plan for a multi-step or ambiguous piece of work and pause for the user's approval before proceeding — use before taking several actions in sequence (e.g. checking several data points then raising a reorder), not for a single simple answer or a single tool call. Do not use ask_user_question to ask 'is this plan okay?' — this tool IS the approval request.",
+        mutating: true,
+        input_schema: {
+          type: 'object',
+          properties: {
+            plan: {
+              type: 'string',
+              description: 'The plan, as short markdown (a few bullet points of what you intend to check/do, in order). Plain language, no more than ~6 steps.',
+            },
+          },
+          required: ['plan'],
+        },
+      },
     ];
   }
 
@@ -186,9 +233,33 @@ export class AiToolsService {
           this.toFilter(input, ctx),
           typeof input?.limit === 'number' ? input.limit : 5,
         );
+      case 'todo_write':
+        // No server-side state to write to — the sanitized list is handed
+        // back to AiService, which surfaces it in the /ai/chat response so
+        // the client can render it; the client echoes it back on the next
+        // turn via `todos` (stateless, like the rest of this tool suite).
+        return this.sanitizeTodos(input?.todos);
       default:
         throw new Error(`Unknown or non-read tool: ${toolName}`);
     }
+  }
+
+  /** Coerces raw todo_write tool input into a strict shape, same defensive
+   * treatment as ask_user_question — drops entries missing a required
+   * field rather than trusting model output verbatim. */
+  sanitizeTodos(raw: unknown): SanitizedTodoItem[] {
+    const todosIn = Array.isArray(raw) ? raw : [];
+    const validStatuses = new Set(['pending', 'in_progress', 'completed']);
+
+    return todosIn
+      .map((t: any) => {
+        const content = typeof t?.content === 'string' ? t.content.trim() : '';
+        const activeForm = typeof t?.activeForm === 'string' ? t.activeForm.trim() : '';
+        const status: SanitizedTodoItem['status'] = validStatuses.has(t?.status) ? t.status : 'pending';
+        if (!content || !activeForm) return null;
+        return { content, status, activeForm };
+      })
+      .filter((t): t is SanitizedTodoItem => Boolean(t));
   }
 
   /** Executes the one mutating tool. Only called after explicit user confirmation. */

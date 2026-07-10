@@ -2,7 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatMessageDto, ChatRequestDto } from './dto/chat.dto';
 import { ParsedReceiptResult } from './dto/receipt-scan.dto';
-import { AiToolsService, AiToolCallContext } from './ai-tools.service';
+import { AiToolsService, AiToolCallContext, SanitizedTodoItem } from './ai-tools.service';
 
 type AnthropicRole = 'user' | 'assistant';
 
@@ -46,10 +46,11 @@ export interface SanitizedAskUserQuestion {
 }
 
 /** Result of a gateway /v1/messages turn: either a final reply, or a
- * paused turn awaiting the user (AskUserQuestion) or confirmation
- * (a mutating tool call) before the agent loop can continue. */
+ * paused turn awaiting the user (AskUserQuestion), confirmation (a
+ * mutating tool call), or plan approval before the agent loop can
+ * continue. */
 export type GatewayMessagesResult =
-  | { kind: 'reply'; reply: string; model: string }
+  | { kind: 'reply'; reply: string; model: string; todos?: SanitizedTodoItem[] }
   | {
       kind: 'pending_question';
       model: string;
@@ -61,6 +62,12 @@ export type GatewayMessagesResult =
       model: string;
       pendingToolCall: { id: string; name: string; input: Record<string, any> };
       summary: string;
+    }
+  | {
+      kind: 'pending_plan';
+      model: string;
+      pendingToolCall: { id: string; name: string; input: Record<string, any> };
+      plan: string;
     };
 
 type NvidiaRole = 'system' | 'user' | 'assistant';
@@ -298,6 +305,13 @@ export class AiService {
         description: t.description,
         input_schema: t.input_schema,
       }));
+      // Seeded from the client's echoed list (stateless, like `messages`)
+      // and updated whenever todo_write runs mid-loop, so a final reply
+      // always carries the latest list even if todo_write wasn't the last
+      // tool called this turn.
+      let latestTodos: SanitizedTodoItem[] | undefined = Array.isArray(dto.todos)
+        ? this.tools.sanitizeTodos(dto.todos)
+        : undefined;
 
       // Resuming a paused turn: replay the assistant's tool_use block, then
       // supply the tool_result the user just produced (an answered
@@ -348,7 +362,7 @@ export class AiService {
             this.logger.error('Axon Gateway /v1/messages returned no text on end_turn');
             return null;
           }
-          return { kind: 'reply', reply: text, model };
+          return { kind: 'reply', reply: text, model, todos: latestTodos };
         }
 
         const toolUseBlock = content.find((b): b is AnthropicToolUseBlock => b.type === 'tool_use');
@@ -388,6 +402,32 @@ export class AiService {
           };
         }
 
+        if (toolUseBlock.name === 'propose_plan') {
+          const plan = typeof toolUseBlock.input?.plan === 'string' ? toolUseBlock.input.plan.trim() : '';
+          if (!plan) {
+            messages.push(
+              { role: 'assistant', content: [toolUseBlock] },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: toolUseBlock.id,
+                    content: 'Error: plan must be a non-empty markdown string. Retry, or proceed directly if a plan is not needed.',
+                  },
+                ],
+              },
+            );
+            continue;
+          }
+          return {
+            kind: 'pending_plan',
+            model,
+            pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input },
+            plan,
+          };
+        }
+
         if (toolDef?.mutating) {
           return {
             kind: 'pending_confirmation',
@@ -402,6 +442,9 @@ export class AiService {
         let resultText: string;
         try {
           const result = await this.tools.executeReadTool(toolUseBlock.name, toolUseBlock.input, toolCtx);
+          if (toolUseBlock.name === 'todo_write') {
+            latestTodos = result as SanitizedTodoItem[];
+          }
           resultText = JSON.stringify(result);
         } catch (error) {
           resultText = `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -456,7 +499,21 @@ export class AiService {
       };
     }
 
-    // Mutating tool resume (create_stock_reorder).
+    if (pending.name === 'propose_plan') {
+      return {
+        toolUseBlock,
+        toolResultBlock: {
+          type: 'tool_result',
+          tool_use_id: pending.id,
+          content: dto.tool_confirmed
+            ? 'Plan approved. Proceed with it now — update the todo list via todo_write if applicable, then carry out the steps.'
+            : "Plan rejected. Do not proceed. Ask the user what they'd like to change or do instead.",
+        },
+      };
+    }
+
+    // Mutating tool resume (create_stock_reorder) — everything else that
+    // reaches here executes a real backend action once confirmed.
     if (!dto.tool_confirmed) {
       return {
         toolUseBlock,
@@ -496,7 +553,9 @@ export class AiService {
 Tool use:
 - You have tools to fetch fresher or more specific POS data (get_sales_summary, get_low_stock_items, get_top_products) than what was pre-attached to this message — use them when the question needs a different date range or more current figures than what's already provided.
 - Use ask_user_question when a request is genuinely ambiguous (e.g. which product, which branch, which date range) instead of guessing — but don't ask when the answer is already obvious from context.
-- create_stock_reorder raises a real stock request that a supervisor must approve. Only call it after the user has explicitly confirmed they want to raise it, with a clear product and quantity. Never call it speculatively or as a suggestion.`;
+- create_stock_reorder raises a real stock request that a supervisor must approve. Only call it after the user has explicitly confirmed they want to raise it, with a clear product and quantity. Never call it speculatively or as a suggestion.
+- Use todo_write proactively for any request with 3+ distinct steps (e.g. "check stock, then sales, then suggest a promotion") so the user can see progress — keep exactly one item in_progress, mark items completed immediately as you finish them, and always send the full current list, not just changed items.
+- For multi-step or ambiguous work, use propose_plan to lay out what you intend to check/do (a short markdown list, in order) and wait for approval before proceeding — don't use ask_user_question to ask "is this plan okay?", propose_plan itself is the approval request. Skip it for a single simple question or a single tool call.`;
   }
 
   /// The underlying model doesn't always obey the ask_user_question nested
@@ -937,6 +996,10 @@ In 2-3 short sentences, explain why this plan makes sense and what to prioritize
 
     if (dto.data_context) {
       parts.push(`Available POS data: ${JSON.stringify(dto.data_context)}`);
+    }
+
+    if (Array.isArray(dto.todos) && dto.todos.length > 0) {
+      parts.push(`Current todo list (update via todo_write if it needs to change): ${JSON.stringify(dto.todos)}`);
     }
 
     return parts.join('\n');

@@ -147,6 +147,22 @@ export class AiController {
       };
     }
 
+    if (result.kind === 'pending_plan') {
+      return {
+        success: true,
+        data: {
+          reply: null,
+          model: result.model,
+          userMessageId,
+          pending: {
+            type: 'plan',
+            tool_call: result.pendingToolCall,
+            plan: result.plan,
+          },
+        },
+      };
+    }
+
     return {
       success: true,
       data: {
@@ -154,6 +170,7 @@ export class AiController {
         model: result.model,
         userMessageId,
         assistantMessageId,
+        todos: result.todos,
       },
     };
   }

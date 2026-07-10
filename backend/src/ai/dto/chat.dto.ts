@@ -183,6 +183,24 @@ export class PendingToolCallDto {
   input: Record<string, any>;
 }
 
+// Mirrors the CLI's TodoWrite item shape. The client echoes back the
+// current list each turn (like `messages`) so the AI can see/update it
+// without server-side session state — same stateless pattern as the rest
+// of the tool-calling suite.
+export class TodoItemDto {
+  @IsString()
+  @MaxLength(200)
+  content: string;
+
+  @IsString()
+  @IsEnum(['pending', 'in_progress', 'completed'])
+  status: 'pending' | 'in_progress' | 'completed';
+
+  @IsString()
+  @MaxLength(200)
+  activeForm: string;
+}
+
 export class ChatRequestDto {
   @IsOptional()
   @IsString()
@@ -263,8 +281,17 @@ export class ChatRequestDto {
   @IsObject()
   question_answers?: Record<string, string>;
 
-  // Set when resuming a paused mutating tool call (create_stock_reorder).
+  // Set when resuming a paused mutating tool call (create_stock_reorder or
+  // propose_plan awaiting approval).
   @IsOptional()
   @IsBoolean()
   tool_confirmed?: boolean;
+
+  // Current todo list, echoed back each turn (stateless, like `messages`)
+  // so the AI can see and update it via the todo_write tool.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TodoItemDto)
+  todos?: TodoItemDto[];
 }

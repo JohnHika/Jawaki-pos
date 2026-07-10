@@ -215,6 +215,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       ),
       body: Column(
         children: [
+          if (_aiService.todos.isNotEmpty) _buildTodoChecklist(),
           // Chat messages
           Expanded(
             child: messages.isEmpty && pending == null
@@ -261,6 +262,76 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
           ),
           // Input bar
           _buildInputBar(),
+        ],
+      ),
+    );
+  }
+
+  /// A compact, persistent checklist for the AI's current TodoWrite list —
+  /// shown above the conversation whenever the AI is tracking a multi-step
+  /// task, so progress stays visible without scrolling back through chat.
+  Widget _buildTodoChecklist() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final todos = _aiService.todos;
+    final completedCount = todos.where((t) => t.status == 'completed').length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tasks · $completedCount/${todos.length}',
+            style: TextStyle(color: secondaryColor, fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          for (final todo in todos)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    todo.status == 'completed'
+                        ? Icons.check_circle_rounded
+                        : todo.status == 'in_progress'
+                            ? Icons.autorenew_rounded
+                            : Icons.circle_outlined,
+                    size: 15,
+                    color: todo.status == 'completed'
+                        ? DesignColors.success
+                        : todo.status == 'in_progress'
+                            ? DesignColors.accent
+                            : secondaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      todo.status == 'in_progress' ? todo.activeForm : todo.content,
+                      style: TextStyle(
+                        color: todo.status == 'completed' ? secondaryColor : textColor,
+                        fontSize: 13,
+                        decoration: todo.status == 'completed' ? TextDecoration.lineThrough : null,
+                        fontWeight: todo.status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -512,6 +583,9 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
   Widget build(BuildContext context) {
     if (widget.pending.type == 'confirmation') {
       return _buildConfirmation(context);
+    }
+    if (widget.pending.type == 'plan') {
+      return _buildPlan(context);
     }
     return _buildQuestions(context);
   }
@@ -769,6 +843,97 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
                       ),
                       child: const Text(
                         'Approve',
+                        style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ] else
+                  Text(
+                    'Sent',
+                    style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlan(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.checklist_rounded, size: 18, color: DesignColors.accent),
+                SizedBox(width: 6),
+                Text(
+                  'Proposed plan',
+                  style: TextStyle(
+                    color: DesignColors.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            GptMarkdown(
+              widget.pending.plan ?? '',
+              style: TextStyle(color: textColor, fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (!_submitted) ...[
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _submitted = true);
+                      widget.onConfirmMutation(false);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Text(
+                        'Reject',
+                        style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _submitted = true);
+                      widget.onConfirmMutation(true);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Approve plan',
                         style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ),

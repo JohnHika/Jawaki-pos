@@ -56,22 +56,25 @@ class AiPendingQuestionOption {
   }
 }
 
-/// A paused agent turn awaiting the user — either a multiple-choice
-/// question (AskUserQuestion) or a yes/no confirmation before a mutating
-/// tool (e.g. raising a stock reorder) is allowed to run. Ephemeral: never
-/// persisted to the shared conversation, mirroring the backend which only
-/// persists once the turn resolves to a real reply.
+/// A paused agent turn awaiting the user — a multiple-choice question
+/// (AskUserQuestion), a yes/no confirmation before a mutating tool (e.g.
+/// raising a stock reorder) is allowed to run, or a proposed plan awaiting
+/// approval before a multi-step task proceeds. Ephemeral: never persisted
+/// to the shared conversation, mirroring the backend which only persists
+/// once the turn resolves to a real reply.
 class AiPendingTurn {
-  final String type; // 'question' | 'confirmation'
+  final String type; // 'question' | 'confirmation' | 'plan'
   final Map<String, dynamic> toolCall;
   final List<AiPendingQuestion> questions;
   final String? summary;
+  final String? plan;
 
   AiPendingTurn({
     required this.type,
     required this.toolCall,
     this.questions = const [],
     this.summary,
+    this.plan,
   });
 
   factory AiPendingTurn.fromJson(Map<String, dynamic> json) {
@@ -85,8 +88,33 @@ class AiPendingTurn {
               .toList()
           : const [],
       summary: json['summary'] as String?,
+      plan: json['plan'] as String?,
     );
   }
+}
+
+/// A single TodoWrite task — mirrors the backend's TodoItemDto exactly so
+/// it can be echoed back verbatim on the next turn.
+class AiTodoItem {
+  final String content;
+  final String status; // 'pending' | 'in_progress' | 'completed'
+  final String activeForm;
+
+  AiTodoItem({required this.content, required this.status, required this.activeForm});
+
+  factory AiTodoItem.fromJson(Map<String, dynamic> json) {
+    return AiTodoItem(
+      content: (json['content'] ?? '').toString(),
+      status: (json['status'] ?? 'pending').toString(),
+      activeForm: (json['activeForm'] ?? '').toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'content': content,
+        'status': status,
+        'activeForm': activeForm,
+      };
 }
 
 /// Result of a send/resume call: either a final text reply, or a paused
@@ -111,6 +139,11 @@ class AiChatService {
   /// resolved (answered/confirmed/declined) or when a new conversation
   /// starts.
   AiPendingTurn? pendingTurn;
+
+  /// The AI's current live task checklist (TodoWrite), echoed back on every
+  /// request so the model can see/update it without server-side session
+  /// state. Cleared on a new conversation.
+  List<AiTodoItem> todos = [];
 
   String get _baseUrl {
     final storage = getIt<StorageService>();
@@ -157,6 +190,7 @@ class AiChatService {
   void clearHistory() {
     _messages.clear();
     pendingTurn = null;
+    todos = [];
   }
 
   /// Loads the shop's shared AI conversation from the backend so every
@@ -174,6 +208,7 @@ class AiChatService {
       final msgs = data['data']?['messages'] as List?;
       if (msgs == null) return;
       pendingTurn = null;
+      todos = [];
       _messages
         ..clear()
         ..addAll(msgs.map((m) => {
@@ -191,6 +226,7 @@ class AiChatService {
   Future<void> startNewSharedConversation() async {
     _messages.clear();
     pendingTurn = null;
+    todos = [];
     try {
       await http
           .post(
@@ -292,6 +328,7 @@ class AiChatService {
               'branchId': branchId,
               'web_search': AiChatPrefs.instance.webSearch,
               'tool_access': AiChatPrefs.instance.toolAccess,
+              if (todos.isNotEmpty) 'todos': todos.map((t) => t.toJson()).toList(),
             }),
           )
           .timeout(const Duration(seconds: 30));
@@ -343,6 +380,7 @@ class AiChatService {
               'branchId': branchId,
               'web_search': AiChatPrefs.instance.webSearch,
               'tool_access': AiChatPrefs.instance.toolAccess,
+              if (todos.isNotEmpty) 'todos': todos.map((t) => t.toJson()).toList(),
               'pending_tool_call': pending.toolCall,
               if (questionAnswers != null) 'question_answers': questionAnswers,
               if (toolConfirmed != null) 'tool_confirmed': toolConfirmed,
@@ -381,6 +419,13 @@ class AiChatService {
       if (pendingJson != null) {
         pendingTurn = AiPendingTurn.fromJson(pendingJson);
         return AiSendResult(pending: pendingTurn);
+      }
+
+      final todosJson = payload['todos'] as List?;
+      if (todosJson != null) {
+        todos = todosJson
+            .map((t) => AiTodoItem.fromJson(t as Map<String, dynamic>))
+            .toList();
       }
 
       final reply = payload['reply'] as String;
