@@ -1,10 +1,12 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
+import { AiConversationService } from './ai-conversation.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ScanReceiptDto } from './dto/receipt-scan.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { AiAccessGuard } from '../ai-billing/ai-billing.guard';
 import { PrismaService } from '../common/prisma/prisma.service';
 
@@ -14,6 +16,7 @@ export class AiController {
     private readonly aiService: AiService,
     private readonly aiWebService: AiWebService,
     private readonly aiCognitiveService: AiCognitiveService,
+    private readonly conversations: AiConversationService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -31,10 +34,44 @@ export class AiController {
   }
 
   @Post('chat')
-  @UseGuards(AiAccessGuard)
+  @UseGuards(OptionalJwtAuthGuard, AiAccessGuard)
   @HttpCode(HttpStatus.OK)
-  async chat(@Body() dto: ChatRequestDto) {
+  async chat(@Body() dto: ChatRequestDto, @Request() req: any) {
+    const user = req.user || {};
+    const tenantId = user.tenantId as string | undefined;
+    const branchId = (dto.branchId || user.branchId) as string | undefined;
+
     const result = await this.aiService.chat(dto);
+
+    // Persist both turns to the shop's shared thread so every staff member
+    // sees the same conversation. Best-effort: a persistence hiccup must
+    // never fail the actual AI reply.
+    if (tenantId) {
+      try {
+        // The JWT only carries email (no name) — use it as the attribution
+        // label so staff can see who asked what in the shared thread.
+        const userName = (user.email as string | undefined) || null;
+        if (dto.user_question) {
+          await this.conversations.appendMessage({
+            tenantId,
+            branchId,
+            role: 'user',
+            content: dto.user_question,
+            createdById: user.sub ?? null,
+            createdByName: userName,
+          });
+        }
+        await this.conversations.appendMessage({
+          tenantId,
+          branchId,
+          role: 'assistant',
+          content: result.reply,
+        });
+      } catch {
+        // swallow — reply already produced
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -42,6 +79,36 @@ export class AiController {
         model: result.model,
       },
     };
+  }
+
+  // The shop's shared AI conversation — every staff member loads and
+  // continues the same thread.
+  @Get('conversation')
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async getConversation(
+    @Request() req: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (!tenantId) return { success: true, data: { messages: [] } };
+    const resolvedBranch = branchId || req.user?.branchId || null;
+    const data = await this.conversations.getMessages(tenantId, resolvedBranch);
+    return { success: true, data };
+  }
+
+  @Post('conversation/new')
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async newConversation(
+    @Request() req: any,
+    @Body() body: { branchId?: string },
+  ) {
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (!tenantId) return { success: true };
+    const resolvedBranch = body?.branchId || req.user?.branchId || null;
+    await this.conversations.startNew(tenantId, resolvedBranch);
+    return { success: true };
   }
 
   // Pre-generated once daily by AiDailyBriefTask — near-instant read for

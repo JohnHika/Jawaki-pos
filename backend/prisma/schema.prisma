@@ -1108,6 +1108,58 @@ model DailyBrief {
   @@map("daily_briefs")
 }
 
+// ==================== AI CHAT (shared per shop) ====================
+
+// One shared AI conversation thread, scoped to a tenant (+ optional
+// branch). All staff of that shop see and continue the same thread, so the
+// AI history is a shop asset, not a per-device silo. "New conversation"
+// archives the current active thread and starts a fresh one.
+model AiConversation {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  status    String   @default("active") // active | archived
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages AiMessage[]
+
+  @@index([tenantId, branchId, status])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String // user | assistant
+  content        String
+  attachments    Json     @default("[]")
+  createdById    String? // the staff member who sent it (user turns)
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+// Durable, tenant-scoped memory the AI recalls across sessions (owner
+// preferences, recurring customers, store policies, facts). Shared like
+// the chat. Relevance selection is keyword/recency for now (no vector DB).
+model AiMemory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  type      String // preference | customer | policy | fact
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, type])
+  @@map("ai_memories")
+}
+
 // ==================== SUPPLIERS & RESTOCKING ====================
 
 model Supplier {

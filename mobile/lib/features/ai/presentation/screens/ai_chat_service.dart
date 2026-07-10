@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/connectivity_service.dart';
+import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'ai_chat_prefs.dart';
 
@@ -44,6 +45,19 @@ class AiChatService {
     return getIt<StorageService>().getBranchId() ?? '';
   }
 
+  // The AI endpoints are now JWT-guarded (shared per-shop history is scoped
+  // by the authenticated tenant), so every request must carry the bearer
+  // token. This service uses raw http (not the Dio client), so the header
+  // is attached explicitly here.
+  Map<String, String> _headers({bool json = true}) {
+    final token = getIt<AuthService>().accessToken;
+    return {
+      if (json) 'Content-Type': 'application/json',
+      'X-Branch-Id': branchId,
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
+
   List<Map<String, String>> get messages => List.unmodifiable(_messages);
 
   void setStoreInfo(Map<String, dynamic> info) {
@@ -53,6 +67,48 @@ class AiChatService {
 
   void clearHistory() {
     _messages.clear();
+  }
+
+  /// Loads the shop's shared AI conversation from the backend so every
+  /// staff member sees the same thread. Called when the chat screen opens.
+  /// Silent no-op on failure (offline/new tenant) — the in-memory list
+  /// remains whatever it was.
+  Future<void> loadSharedHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/ai/conversation?branchId=$branchId'),
+        headers: _headers(json: false),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(response.body);
+      final msgs = data['data']?['messages'] as List?;
+      if (msgs == null) return;
+      _messages
+        ..clear()
+        ..addAll(msgs.map((m) => {
+              'role': (m['role'] ?? 'assistant').toString(),
+              'content': (m['content'] ?? '').toString(),
+            }));
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiChat] Load shared history error: $e');
+    }
+  }
+
+  /// Archives the shop's shared thread on the backend and clears locally,
+  /// so "New conversation" starts fresh for everyone.
+  Future<void> startNewSharedConversation() async {
+    _messages.clear();
+    try {
+      await http
+          .post(
+            Uri.parse('$_baseUrl/ai/conversation/new'),
+            headers: _headers(),
+            body: jsonEncode({'branchId': branchId}),
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiChat] New conversation error: $e');
+    }
   }
 
   /// Drops every message from [index] onward — used by "edit & resubmit":
@@ -80,10 +136,7 @@ class AiChatService {
       final response = await http
           .post(
             Uri.parse('$_baseUrl/ai/chat'),
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Branch-Id': branchId,
-            },
+            headers: _headers(),
             body: jsonEncode({
               'messages': _messages,
               'user_question': content,
@@ -149,7 +202,7 @@ class AiChatService {
     try {
       final response = await http.get(
         Uri.parse('$_baseUrl/ai/daily-brief?branchId=$branchId'),
-        headers: {'X-Branch-Id': branchId},
+        headers: _headers(json: false),
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
@@ -172,10 +225,7 @@ class AiChatService {
       final response = await http
           .post(
             Uri.parse('$_baseUrl/ai/chat'),
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Branch-Id': branchId,
-            },
+            headers: _headers(),
             body: jsonEncode({
               'messages': const [],
               'user_question':

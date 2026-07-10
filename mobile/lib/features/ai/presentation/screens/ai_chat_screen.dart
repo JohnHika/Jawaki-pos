@@ -24,6 +24,18 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Pull the shop's shared conversation so every staff member on this
+    // shop sees and continues the same thread.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _aiService.loadSharedHistory();
+      if (mounted) setState(() {});
+      _scrollToBottom();
+    });
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
@@ -63,11 +75,13 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     _scrollToBottom();
   }
 
-  void _newConversation() {
-    _aiService.clearHistory();
-    setState(() {
-      _isLoading = false;
-    });
+  Future<void> _newConversation() async {
+    await _aiService.startNewSharedConversation();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _copyMessage(String content) {
