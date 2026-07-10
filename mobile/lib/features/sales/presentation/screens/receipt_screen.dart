@@ -206,469 +206,150 @@ class ReceiptScreen extends ConsumerWidget {
     );
   }
 
+  // Character width of the physical 58mm thermal roll (esc_pos_utils
+  // PaperSize.mm58). The on-screen preview lays everything out to the exact
+  // same width and monospace grid the printer uses, so what you see is what
+  // prints — name on the left, amount right-aligned, ASCII rules, etc.
+  static const int _receiptCols = 32;
+
   Widget _buildReceipt(BuildContext context, Map<String, dynamic> receipt) {
     final items = receipt['items'] as List? ?? [];
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final lines = _renderReceiptLines(receipt, items);
+
+    // Paper background is always light (like real thermal paper) with dark
+    // ink, regardless of app theme, so the preview reads as a printout.
+    const paperColor = Color(0xFFFAFAF7);
+    const inkColor = Color(0xFF1A1A1A);
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: GlassCard(
-        padding: const EdgeInsets.all(20),
-        borderRadius: 20,
-        blur: 12,
-        tint: isDark
-            ? DesignColors.darkSurfaceElevated.withValues(alpha:0.95)
-            : Colors.white.withValues(alpha:0.95),
-        borderColor:
-            isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Center(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Success Icon
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: DesignColors.success.withValues(alpha:0.1),
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: DesignColors.success.withValues(alpha:0.2), width: 2),
-              ),
-              child: const Icon(
-                Icons.check_circle_rounded,
-                color: DesignColors.success,
-                size: 44,
-              ),
-            ),
-            const SizedBox(height: 16),
-
+            // A little "Preview of printed receipt (58mm)" caption so it's
+            // clear this mirrors the physical printout.
             Text(
-              'Payment Successful',
+              'PREVIEW · 58mm THERMAL',
               style: TextStyle(
-                fontSize: 22,
+                fontSize: 10,
+                letterSpacing: 1.5,
                 fontWeight: FontWeight.w700,
-                color: DesignColors.success,
-                letterSpacing: -0.5,
+                color: isDark
+                    ? DesignColors.darkTextTertiary
+                    : DesignColors.textTertiary,
               ),
             ),
-            const SizedBox(height: 6),
-
+            const SizedBox(height: 10),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              // ~58mm of paper: a fixed narrow column. The monospace font at
+              // this size fits 32 chars, matching the printer's line width.
+              width: 280,
+              padding: const EdgeInsets.fromLTRB(14, 18, 14, 22),
               decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha:0.08),
-                borderRadius: BorderRadius.circular(8),
+                color: paperColor,
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Text(
-                'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? DesignColors.darkTextSecondary
-                      : DesignColors.textSecondary,
-                  fontWeight: FontWeight.w500,
+                lines,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: inkColor,
+                  letterSpacing: 0,
                 ),
               ),
             ),
-
-            const SizedBox(height: 20),
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Store Info
-            Text(
-              receipt['branchName'] ?? 'POS Store',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: isDark
-                    ? DesignColors.darkTextPrimary
-                    : DesignColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              receipt['branchAddress'] ?? '',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark
-                    ? DesignColors.darkTextSecondary
-                    : DesignColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            const SizedBox(height: 16),
-
-            // Customer Info (if available)
-            if (receipt['customerName'] != null ||
-                receipt['customerPhone'] != null) ...[
-              GlassCard(
-                padding: const EdgeInsets.all(12),
-                borderRadius: 12,
-                blur: 4,
-                tint: DesignColors.accent.withValues(alpha:0.04),
-                borderColor: DesignColors.accent.withValues(alpha:0.12),
-                child: Column(
-                  children: [
-                    _buildReceiptRow(context,
-                        'Customer', receipt['customerName'] ?? 'N/A'),
-                    if (receipt['customerPhone'] != null) ...[
-                      const SizedBox(height: 6),
-                      _buildReceiptRow(context,
-                          'Phone', receipt['customerPhone'] ?? ''),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Date & Time
-            GlassCard(
-              padding: const EdgeInsets.all(12),
-              borderRadius: 12,
-              blur: 4,
-              tint: isDark ? DesignColors.glassDark : DesignColors.glassWhite,
-              borderColor: isDark
-                  ? DesignColors.glassDarkBorder
-                  : DesignColors.glassBorder,
-              child: Column(
-                children: [
-                  _buildReceiptRow(context, 'Date',
-                      _formatDateTime(receipt['createdAt'])),
-                  const SizedBox(height: 6),
-                  _buildReceiptRow(context,
-                      'Cashier', receipt['cashierName'] ?? 'N/A'),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Items header
-            Row(
-              children: [
-                Text(
-                  'Items',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${items.length} item${items.length != 1 ? 's' : ''}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Items
-            ...items.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              return Padding(
-                padding: EdgeInsets.only(bottom: index < items.length - 1 ? 10 : 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: DesignColors.accent.withValues(alpha:0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${item['quantity']}x',
-                          style: const TextStyle(
-                            color: DesignColors.accent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item['productName'] ?? '',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: isDark
-                                  ? DesignColors.darkTextPrimary
-                                  : DesignColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${item['quantity']} x KES ${(item['unitPrice'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark
-                                  ? DesignColors.darkTextTertiary
-                                  : DesignColors.textTertiary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Text(
-                        'KES ${(item['total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-
-            const SizedBox(height: 16),
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Totals
-            _buildTotalRow(context, 'Subtotal', receipt['subtotal']),
-            const SizedBox(height: 6),
-            if ((receipt['discount'] as num?) != null &&
-                (receipt['discount'] as num) > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: _buildTotalRow(context, 'Discount', receipt['discount'],
-                    isDiscount: true),
-              ),
-            if (getIt<AuthService>().showTaxOnReceipt &&
-                (receipt['tax'] as num?) != null &&
-                (receipt['tax'] as num) > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: _buildTotalRow(context, 'Tax', receipt['tax']),
-              ),
-            const SizedBox(height: 12),
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? DesignColors.darkBorder
-                    : DesignColors.surfaceBorder,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildTotalRow(context,
-              'Total',
-              receipt['total'],
-              isBold: true,
-              isPrimary: true,
-            ),
-
-            const SizedBox(height: 20),
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                    isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-                    (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder)
-                        .withValues(alpha:0.1),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Payment Info
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Payment Method',
-                  style: TextStyle(
-                    color: isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary,
-                    fontSize: 14,
-                  ),
-                ),
-                PaymentChip(
-                  method: receipt['paymentMethod'] ?? 'CASH',
-                  isSelected: true,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Thank you message
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha:0.06),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: DesignColors.accent.withValues(alpha:0.12)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.favorite_rounded,
-                      size: 16, color: DesignColors.error),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Thank you for your purchase!',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? DesignColors.darkTextPrimary
-                          : DesignColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildReceiptRow(BuildContext context, String label, String value) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: isDark
-                ? DesignColors.darkTextSecondary
-                : DesignColors.textSecondary,
-            fontSize: 13,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-            color: isDark
-                ? DesignColors.darkTextPrimary
-                : DesignColors.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
+  /// Builds the exact monospace text block the receipt would print as, so
+  /// the on-screen preview matches the 58mm thermal output line for line.
+  String _renderReceiptLines(Map<String, dynamic> receipt, List items) {
+    final b = StringBuffer();
+    const w = _receiptCols;
 
-  Widget _buildTotalRow(BuildContext context,
-    String label,
-    dynamic amount, {
-    bool isBold = false,
-    bool isPrimary = false,
-    bool isDiscount = false,
-  }) {
-    final amountValue = (amount as num?)?.toDouble() ?? 0.0;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    String center(String s) {
+      if (s.length >= w) return s.substring(0, w);
+      final pad = (w - s.length) ~/ 2;
+      return '${' ' * pad}$s';
+    }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
-            fontSize: isBold ? 16 : 14,
-            color: isDark
-                ? DesignColors.darkTextSecondary
-                : DesignColors.textSecondary,
-          ),
-        ),
-        Text(
-          '${isDiscount ? '- ' : ''}KES ${amountValue.toStringAsFixed(2)}',
-          style: DesignType.numeric(
-            fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-            fontSize: isBold ? 20 : 14,
-            color: isDiscount
-                ? DesignColors.success
-                : isPrimary
-                    ? DesignColors.accent
-                    : (isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary),
-          ),
-        ),
-      ],
-    );
+    // A left label and a right value on the same line, right-justified.
+    String lr(String left, String right) {
+      final maxLeft = w - right.length - 1;
+      var l = left;
+      if (l.length > maxLeft) l = l.substring(0, maxLeft);
+      final gap = w - l.length - right.length;
+      return '$l${' ' * (gap < 1 ? 1 : gap)}$right';
+    }
+
+    final rule = '-' * w;
+
+    // Header — store name + address, centered.
+    b.writeln(center((receipt['branchName'] ?? 'POS Store').toString().toUpperCase()));
+    final addr = (receipt['branchAddress'] ?? '').toString();
+    if (addr.isNotEmpty) b.writeln(center(addr));
+    b.writeln(rule);
+
+    // Receipt meta.
+    final rcp = receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
+    b.writeln('Receipt #$rcp');
+    b.writeln(_formatDateTime(receipt['createdAt']));
+    if (receipt['cashierName'] != null) {
+      b.writeln('Cashier: ${receipt['cashierName']}');
+    }
+    if (receipt['customerName'] != null) {
+      b.writeln('Customer: ${receipt['customerName']}');
+    }
+    if (receipt['customerPhone'] != null) {
+      b.writeln('Phone: ${receipt['customerPhone']}');
+    }
+    b.writeln(rule);
+
+    // Items — "qty x name" on its own line, then the line total right-aligned
+    // beneath it, matching how narrow thermal receipts wrap long names.
+    for (final item in items) {
+      final qty = item['quantity'];
+      final name = (item['productName'] ?? item['name'] ?? '').toString();
+      final unit = (item['unitPrice'] as num?)?.toDouble() ?? 0;
+      final total = (item['total'] as num?)?.toDouble() ?? 0;
+      b.writeln('$qty x $name');
+      b.writeln(lr('  @ ${unit.toStringAsFixed(2)}', total.toStringAsFixed(2)));
+    }
+    b.writeln(rule);
+
+    // Totals.
+    final subtotal = (receipt['subtotal'] as num?)?.toDouble() ?? 0;
+    b.writeln(lr('Subtotal', subtotal.toStringAsFixed(2)));
+    final discount = (receipt['discount'] as num?)?.toDouble() ?? 0;
+    if (discount > 0) {
+      b.writeln(lr('Discount', '-${discount.toStringAsFixed(2)}'));
+    }
+    final tax = (receipt['tax'] as num?)?.toDouble() ?? 0;
+    if (getIt<AuthService>().showTaxOnReceipt && tax > 0) {
+      b.writeln(lr('Tax', tax.toStringAsFixed(2)));
+    }
+    final grand = (receipt['total'] as num?)?.toDouble() ?? 0;
+    b.writeln(rule);
+    b.writeln(lr('TOTAL  KES', grand.toStringAsFixed(2)));
+    b.writeln(lr('Payment', (receipt['paymentMethod'] ?? 'CASH').toString()));
+    b.writeln(rule);
+    b.writeln(center('Thank you for your purchase!'));
+
+    return b.toString().trimRight();
   }
 
   String _formatDateTime(dynamic dateTime) {

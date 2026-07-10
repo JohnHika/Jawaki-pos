@@ -272,7 +272,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       children: sales.take(10).toList().asMap().entries.map((entry) {
                         final isLast = entry.key == sales.take(10).length - 1;
                         final sale = entry.value;
-                        return Container(
+                        return InkWell(
+                          onTap: () => context.push('/receipt/${sale.id}'),
+                          child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 13,
@@ -321,6 +323,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 ),
                               ),
                             ],
+                          ),
                           ),
                         );
                       }).toList(),
