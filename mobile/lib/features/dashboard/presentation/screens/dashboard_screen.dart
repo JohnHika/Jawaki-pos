@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -41,9 +43,15 @@ final _recentSalesProvider = StreamProvider<List<PendingSale>>((ref) {
   return db.watchTodaysSales();
 });
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
+  @override
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with WidgetsBindingObserver {
   static final _currencyFmt = NumberFormat.currency(
     locale: 'en_KE',
     symbol: 'KES ',
@@ -52,8 +60,77 @@ class DashboardScreen extends ConsumerWidget {
   static final _timeFmt = DateFormat('hh:mm a');
   static final _dateFmt = DateFormat('EEEE, d MMMM yyyy');
 
+  Timer? _midnightTimer;
+  // The calendar day the currently-shown "today" figures belong to. If the
+  // clock rolls into a new day (either while the app is open, or between the
+  // app being backgrounded and resumed), the dashboard must recompute
+  // against the new day instead of keeping yesterday's totals on screen.
+  late DateTime _shownDay;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _shownDay = _todayDate();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleMidnightRollover();
+  }
+
+  @override
+  void dispose() {
+    _midnightTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshIfDayChanged();
+    }
+  }
+
+  DateTime _todayDate() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  void _scheduleMidnightRollover() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    // +2s cushion so we're firmly into the new day when it fires.
+    final untilMidnight =
+        nextMidnight.difference(now) + const Duration(seconds: 2);
+    _midnightTimer = Timer(untilMidnight, () {
+      if (!mounted) return;
+      _rolloverToNewDay();
+      _scheduleMidnightRollover();
+    });
+  }
+
+  void _refreshIfDayChanged() {
+    if (_todayDate() != _shownDay) {
+      _rolloverToNewDay();
+      // Re-arm the timer since the previous one was aligned to the old day.
+      _scheduleMidnightRollover();
+    }
+  }
+
+  /// The core of the fix: on a new day, rebuild the streams/futures so their
+  /// "today" boundary is recomputed, and reset the day the AI brief and
+  /// cost figures reflect. Without this the day-boundary captured when the
+  /// streams were first created keeps yesterday's sales showing as "today".
+  void _rolloverToNewDay() {
+    _shownDay = _todayDate();
+    ref.invalidate(_dashboardSummaryProvider);
+    ref.invalidate(_recentSalesProvider);
+    ref.invalidate(_todaysCostProvider);
+    ref.invalidate(_aiDailyBriefProvider);
+    if (mounted) setState(() {}); // refresh the header date too
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final summaryAsync = ref.watch(_dashboardSummaryProvider);
     final salesAsync = ref.watch(_recentSalesProvider);
     final identity = ref.watch(tenantIdentityProvider);
