@@ -38,6 +38,13 @@ interface AnthropicMessagesResponse {
   detail?: string;
 }
 
+export interface SanitizedAskUserQuestion {
+  question: string;
+  header: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
 /** Result of a gateway /v1/messages turn: either a final reply, or a
  * paused turn awaiting the user (AskUserQuestion) or confirmation
  * (a mutating tool call) before the agent loop can continue. */
@@ -47,7 +54,7 @@ export type GatewayMessagesResult =
       kind: 'pending_question';
       model: string;
       pendingToolCall: { id: string; name: string; input: Record<string, any> };
-      questions: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }>;
+      questions: SanitizedAskUserQuestion[];
     }
   | {
       kind: 'pending_confirmation';
@@ -353,7 +360,26 @@ export class AiService {
         const toolDef = toolDefs.find((t) => t.name === toolUseBlock.name);
 
         if (toolUseBlock.name === 'ask_user_question') {
-          const questions = Array.isArray(toolUseBlock.input?.questions) ? toolUseBlock.input.questions : [];
+          const questions = this.sanitizeAskUserQuestions(toolUseBlock.input?.questions);
+          if (questions.length === 0) {
+            // The model called the tool but produced no usable questions —
+            // treat this like a failed tool call and let the loop continue
+            // rather than showing the user an empty question card.
+            messages.push(
+              { role: 'assistant', content: [toolUseBlock] },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: toolUseBlock.id,
+                    content: 'Error: questions must be a non-empty array of {question, header, options: [{label, description}] (2-4 items), multiSelect}. Retry with the correct shape, or answer directly if a question is not needed.',
+                  },
+                ],
+              },
+            );
+            continue;
+          }
           return {
             kind: 'pending_question',
             model,
@@ -471,6 +497,51 @@ Tool use:
 - You have tools to fetch fresher or more specific POS data (get_sales_summary, get_low_stock_items, get_top_products) than what was pre-attached to this message — use them when the question needs a different date range or more current figures than what's already provided.
 - Use ask_user_question when a request is genuinely ambiguous (e.g. which product, which branch, which date range) instead of guessing — but don't ask when the answer is already obvious from context.
 - create_stock_reorder raises a real stock request that a supervisor must approve. Only call it after the user has explicitly confirmed they want to raise it, with a clear product and quantity. Never call it speculatively or as a suggestion.`;
+  }
+
+  /// The underlying model doesn't always obey the ask_user_question nested
+  /// schema exactly (e.g. plain string options instead of
+  /// {label, description}, missing header, more than 4 options) — normalize
+  /// into the strict shape the mobile client renders, rather than trusting
+  /// raw model output. Drops anything that can't be salvaged into a
+  /// question with at least 2 usable options.
+  private sanitizeAskUserQuestions(raw: unknown): SanitizedAskUserQuestion[] {
+    const questionsIn = Array.isArray(raw) ? raw : [];
+    const out: SanitizedAskUserQuestion[] = [];
+
+    for (const q of questionsIn.slice(0, 4)) {
+      const question = typeof q?.question === 'string' ? q.question.trim() : '';
+      if (!question) continue;
+
+      const optionsIn = Array.isArray(q?.options) ? q.options : [];
+      const options = optionsIn
+        .map((opt: any) => {
+          if (typeof opt === 'string') {
+            return { label: opt.trim(), description: '' };
+          }
+          const label = typeof opt?.label === 'string' ? opt.label.trim() : '';
+          const description = typeof opt?.description === 'string' ? opt.description.trim() : '';
+          return label ? { label, description } : null;
+        })
+        .filter((opt: any): opt is { label: string; description: string } => Boolean(opt))
+        .slice(0, 4);
+
+      if (options.length < 2) continue;
+
+      const header =
+        typeof q?.header === 'string' && q.header.trim()
+          ? q.header.trim().slice(0, 20)
+          : question.slice(0, 12);
+
+      out.push({
+        question,
+        header,
+        options,
+        multiSelect: q?.multiSelect === true,
+      });
+    }
+
+    return out;
   }
 
   private describeMutatingToolCall(name: string, input: Record<string, any>): string {
