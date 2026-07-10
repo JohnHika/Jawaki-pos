@@ -200,15 +200,15 @@ export class AiService {
       { role: 'user', content: systemPrompt },
     ];
 
+    // Prior turns first (so the model has the conversation), then the
+    // current question + fresh POS data as the final user turn. Exactly
+    // one structured-data message is appended — previously it could be
+    // sent twice (once here, once in the trailing block) when both
+    // conversation history and data_context were present.
     if (conversation.length > 0) {
       messages.push(...conversation);
-    } else {
-      messages.push({ role: 'user', content: this.buildStructuredUserMessage(dto) });
     }
-
-    if (dto.data_context || dto.business_context) {
-      messages.push({ role: 'user', content: this.buildStructuredUserMessage(dto) });
-    }
+    messages.push({ role: 'user', content: this.buildStructuredUserMessage(dto) });
 
     return messages;
   }
@@ -584,13 +584,17 @@ ${addressingInstruction}
 
 Analyze sales, inventory, customers, staff activity, expenses, and branch performance. Detect risks and opportunities, then recommend specific next steps with expected business impact.
 
+Data is the source of truth — read it like a business partner, not a technician:
+- The POS data provided to you is the authoritative, current state of this business (it comes straight from the POS database). Trust it.
+- A zero or empty value means that thing genuinely has not happened yet — e.g. "total_sales: 0" / "has_sales_today: false" means NO SALES HAVE BEEN MADE YET TODAY. State that plainly as a fact and give a real next step (e.g. a promotion, a fast-moving item to push), the way a shop partner would.
+- NEVER tell the user to "check your connection", "verify the POS is online", "confirm syncing", "ensure staff are logging sales", or otherwise blame connectivity/technical issues for zero or low numbers. Zero is a real business fact, not a data problem.
+- The ONLY exception: if the provided data has "is_offline": true, then figures may be the last synced snapshot — in that case add ONE short line noting the numbers reflect the last synced data, then still answer normally. If "is_offline" is false or absent, do not mention connectivity at all.
+- If "data_read_failed": true is present, say only that live figures could not be read right now and give general guidance.
+
 Response rules:
 - Use plain business language.
 - Format currency as KES.
-- Do not invent sales, stock, customer, staff, or payment facts.
-- If the POS data does not include something, say the data is not available and explain what would be needed.
-- If POS data is provided, base the answer on that data.
-- If data is missing, say what data would improve the answer and still provide useful guidance.
+- Do not invent sales, stock, customer, staff, or payment facts beyond what the data shows.
 - ${styleInstruction}
 
 Formatting rules (the client renders Markdown):

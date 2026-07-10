@@ -47,6 +47,33 @@ class ProductSummaryDto {
 }
 
 class SalesSummaryDto {
+  // Grounding signals so the AI treats this data as the authoritative,
+  // current state of the business (a zero means "hasn't happened yet",
+  // not "offline/missing"). See buildSystemPrompt's data-source rules.
+  @IsOptional()
+  @IsString()
+  data_source?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  data_is_authoritative?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_offline?: boolean;
+
+  @IsOptional()
+  @IsString()
+  data_freshness?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  has_sales_today?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  data_read_failed?: boolean;
+
   @IsOptional()
   @IsNumber()
   total_sales?: number;

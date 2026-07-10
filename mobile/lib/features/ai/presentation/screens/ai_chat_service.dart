@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/services/connectivity_service.dart';
 import 'package:axon_pos/core/di/injection.dart';
 
 /// Thrown when the backend rejects an AI request with 402 Payment
@@ -78,7 +79,7 @@ class AiChatService {
               'messages': _messages,
               'user_question': content,
               'context': context,
-              'includeData': dataContext.isNotEmpty,
+              'includeData': dataContext['data_read_failed'] != true,
               'business_context': businessContext,
               'data_context': dataContext,
               'ai_task': 'analyze_and_recommend',
@@ -171,7 +172,7 @@ class AiChatService {
                   "This will be shown in a narrow mobile card, so if you need to list specific items, use a short "
                   "bullet list (max 3 items, one line each) instead of a markdown table.",
               'context': 'daily_brief',
-              'includeData': dataContext.isNotEmpty,
+              'includeData': dataContext['data_read_failed'] != true,
               'business_context': businessContext,
               'data_context': dataContext,
               'ai_task': 'analyze_and_recommend',
@@ -225,6 +226,11 @@ class AiChatService {
   }
 
   Future<Map<String, dynamic>> _buildDataContext() async {
+    // Whether the device currently has connectivity. This is the ONE signal
+    // that legitimately explains missing/stale data — everything else the
+    // AI sees is the real, current state of the business.
+    final isOffline = getIt<ConnectivityService>().isOffline;
+
     try {
       final db = getIt<AppDatabase>();
       final now = DateTime.now();
@@ -242,9 +248,22 @@ class AiChatService {
               return itemBranchId.isEmpty || itemBranchId == branchId;
             }).toList();
 
+      final transactions =
+          (dashboard['transactionCount'] as num?)?.toInt() ?? 0;
+
       return {
+        // --- Grounding signals: tell the AI this data is authoritative so
+        // it stops speculating about connectivity/sync when it sees zeros.
+        // A zero here means the thing genuinely hasn't happened yet today,
+        // NOT that data is missing or the POS is offline.
+        'data_source': 'local_pos_database',
+        'data_is_authoritative': true,
+        'is_offline': isOffline,
+        'data_freshness': isOffline ? 'last_known' : 'live',
+        'has_sales_today': transactions > 0,
+        // --- Actual figures ---
         'total_sales': dashboard['totalRevenue'] ?? 0,
-        'transactions': dashboard['transactionCount'] ?? 0,
+        'transactions': transactions,
         'average_ticket': dashboard['avgTicket'] ?? 0,
         'items_sold': dashboard['itemsSold'] ?? 0,
         'top_products': topProducts
@@ -268,7 +287,15 @@ class AiChatService {
       };
     } catch (e) {
       if (!kReleaseMode) debugPrint('[AiChat] Data context error: $e');
-      return {};
+      // Even on failure, still tell the AI whether we're offline and that
+      // no data could be read — never leave it to guess.
+      return {
+        'data_source': 'local_pos_database',
+        'data_is_authoritative': true,
+        'is_offline': isOffline,
+        'data_freshness': isOffline ? 'last_known' : 'live',
+        'data_read_failed': true,
+      };
     }
   }
 }
