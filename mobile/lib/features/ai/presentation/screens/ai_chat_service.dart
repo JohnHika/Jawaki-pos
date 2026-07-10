@@ -177,6 +177,7 @@ class AiChatService {
       _messages
         ..clear()
         ..addAll(msgs.map((m) => {
+              'id': (m['id'] ?? '').toString(),
               'role': (m['role'] ?? 'assistant').toString(),
               'content': (m['content'] ?? '').toString(),
             }));
@@ -203,17 +204,66 @@ class AiChatService {
     }
   }
 
-  /// Drops every message from [index] onward — used by "edit & resubmit":
-  /// the edited user message and everything after it is removed so the
-  /// conversation can continue fresh from that point.
-  void truncateFrom(int index) {
+  /// Drops every message from [index] onward, locally and (best-effort) on
+  /// the shared backend thread so every staff member's view stays in sync —
+  /// used by "edit & resubmit", "regenerate", and "rewind". The anchor for
+  /// the backend truncate is the message *at* [index] (the first one being
+  /// dropped): the server removes it and everything created at or after it.
+  Future<void> truncateFrom(int index) async {
     if (index < 0 || index >= _messages.length) return;
+    final anchorId = _messages[index]['id'];
     _messages.removeRange(index, _messages.length);
+
+    if (anchorId == null || anchorId.isEmpty) return;
+    try {
+      await http
+          .post(
+            Uri.parse('$_baseUrl/ai/conversation/truncate'),
+            headers: _headers(),
+            body: jsonEncode({'branchId': branchId, 'messageId': anchorId}),
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      if (!kReleaseMode) debugPrint('[AiChat] Truncate error: $e');
+    }
   }
 
   void addUserMessage(String content) {
-    _messages.add({'role': 'user', 'content': content});
+    _messages.add({'id': '', 'role': 'user', 'content': content});
   }
+
+  /// The backend's ChatMessageDto only knows `role`/`content` — sending the
+  /// local-only `id` field would trip the global ValidationPipe's
+  /// `forbidNonWhitelisted` and 400 the request.
+  List<Map<String, String>> get _wireMessages =>
+      _messages.map((m) => {'role': m['role']!, 'content': m['content']!}).toList();
+
+  /// Re-runs the last AI response: drops it (and, if the very last message,
+  /// nothing else) from the shared thread, then resends the preceding user
+  /// question fresh. No-op if the conversation doesn't end with an
+  /// assistant reply (nothing to regenerate) or is empty.
+  Future<AiSendResult> regenerateLast() async {
+    if (_messages.isEmpty || _messages.last['role'] != 'assistant') {
+      return AiSendResult(reply: null);
+    }
+    final lastUserIndex = _messages.lastIndexWhere((m) => m['role'] == 'user');
+    if (lastUserIndex == -1) return AiSendResult(reply: null);
+
+    final question = _messages[lastUserIndex]['content'] ?? '';
+    // Truncate back to (and including) that user turn — it gets re-added
+    // by sendMessage — so the backend thread and local list both drop the
+    // stale assistant reply plus this duplicate user turn.
+    await truncateFrom(lastUserIndex);
+    return sendMessage(content: question);
+  }
+
+  /// Rewinds the conversation back to (and excluding) the message at
+  /// [index]: everything from that point on is dropped, locally and on the
+  /// shared backend thread. If the anchor was a user message, the caller
+  /// typically repopulates the input with its content so the user can
+  /// retype/resend from there (mirrors "edit & resubmit" but reachable from
+  /// any earlier message, not just the latest).
+  Future<void> rewindTo(int index) => truncateFrom(index);
 
   Future<AiSendResult> sendMessage({
     required String content,
@@ -231,7 +281,7 @@ class AiChatService {
             Uri.parse('$_baseUrl/ai/chat'),
             headers: _headers(),
             body: jsonEncode({
-              'messages': _messages,
+              'messages': _wireMessages,
               'user_question': content,
               'context': context,
               'includeData': dataContext['data_read_failed'] != true,
@@ -253,7 +303,7 @@ class AiChatService {
       if (!kReleaseMode) debugPrint('[AiChat] Error: $e');
       const error =
           'Could not reach the AI service. Check your connection and try again.';
-      _messages.add({'role': 'assistant', 'content': error});
+      _messages.add({'id': '', 'role': 'assistant', 'content': error});
       return AiSendResult(reply: error);
     }
   }
@@ -283,7 +333,7 @@ class AiChatService {
             Uri.parse('$_baseUrl/ai/chat'),
             headers: _headers(),
             body: jsonEncode({
-              'messages': _messages,
+              'messages': _wireMessages,
               'context': 'general',
               'includeData': dataContext['data_read_failed'] != true,
               'business_context': businessContext,
@@ -305,7 +355,7 @@ class AiChatService {
       if (!kReleaseMode) debugPrint('[AiChat] Resume error: $e');
       const error =
           'Could not reach the AI service. Check your connection and try again.';
-      _messages.add({'role': 'assistant', 'content': error});
+      _messages.add({'id': '', 'role': 'assistant', 'content': error});
       return AiSendResult(reply: error);
     }
   }
@@ -315,6 +365,18 @@ class AiChatService {
       final data = jsonDecode(response.body);
       final payload = data['data'] as Map<String, dynamic>;
       final pendingJson = payload['pending'] as Map<String, dynamic>?;
+      final userMessageId = (payload['userMessageId'] as String?) ?? '';
+
+      // Backfill the id the server assigned to the user turn we already
+      // added locally (in addUserMessage/sendMessage), so a later
+      // regenerate/rewind anchored on it can hit the real backend truncate
+      // endpoint instead of silently no-op'ing (empty id == local-only).
+      if (userMessageId.isNotEmpty) {
+        final idx = _messages.lastIndexWhere(
+          (m) => m['role'] == 'user' && (m['id'] ?? '').isEmpty,
+        );
+        if (idx != -1) _messages[idx]['id'] = userMessageId;
+      }
 
       if (pendingJson != null) {
         pendingTurn = AiPendingTurn.fromJson(pendingJson);
@@ -322,7 +384,8 @@ class AiChatService {
       }
 
       final reply = payload['reply'] as String;
-      _messages.add({'role': 'assistant', 'content': reply});
+      final assistantMessageId = (payload['assistantMessageId'] as String?) ?? '';
+      _messages.add({'id': assistantMessageId, 'role': 'assistant', 'content': reply});
       return AiSendResult(reply: reply);
     } else if (response.statusCode == 402) {
       // Remove the pending user message — this turn never produced a
@@ -335,7 +398,7 @@ class AiChatService {
     } else {
       final error =
           'Sorry, the AI service is unavailable right now. (${response.statusCode})';
-      _messages.add({'role': 'assistant', 'content': error});
+      _messages.add({'id': '', 'role': 'assistant', 'content': error});
       return AiSendResult(reply: error);
     }
   }

@@ -82,11 +82,16 @@ export class AiController {
     // *initial* ask, not when resuming a paused tool turn (that question
     // was already appended) — and only persist an assistant turn once we
     // have real reply text (a pending question/confirmation has none yet).
+    // Message ids of the turn(s) just persisted — returned to the client so
+    // it can later target this exact turn for regenerate/rewind without
+    // guessing positions in a list that may differ from the server's.
+    let userMessageId: string | null = null;
+    let assistantMessageId: string | null = null;
     if (tenantId) {
       try {
         const userName = (user.email as string | undefined) || null;
         if (dto.user_question && !dto.pending_tool_call) {
-          await this.conversations.appendMessage({
+          const saved = await this.conversations.appendMessage({
             tenantId,
             branchId,
             role: 'user',
@@ -94,14 +99,16 @@ export class AiController {
             createdById: user.sub ?? null,
             createdByName: userName,
           });
+          userMessageId = saved.id;
         }
         if (result.kind === 'reply') {
-          await this.conversations.appendMessage({
+          const saved = await this.conversations.appendMessage({
             tenantId,
             branchId,
             role: 'assistant',
             content: result.reply,
           });
+          assistantMessageId = saved.id;
         }
       } catch {
         // swallow — reply already produced
@@ -114,6 +121,7 @@ export class AiController {
         data: {
           reply: null,
           model: result.model,
+          userMessageId,
           pending: {
             type: 'question',
             tool_call: result.pendingToolCall,
@@ -129,6 +137,7 @@ export class AiController {
         data: {
           reply: null,
           model: result.model,
+          userMessageId,
           pending: {
             type: 'confirmation',
             tool_call: result.pendingToolCall,
@@ -143,6 +152,8 @@ export class AiController {
       data: {
         reply: result.reply,
         model: result.model,
+        userMessageId,
+        assistantMessageId,
       },
     };
   }
@@ -174,6 +185,24 @@ export class AiController {
     if (!tenantId) return { success: true };
     const resolvedBranch = body?.branchId || req.user?.branchId || null;
     await this.conversations.startNew(tenantId, resolvedBranch);
+    return { success: true };
+  }
+
+  // Truncates the shared thread back to (and excluding) a given message —
+  // backs both "edit & resubmit" and "rewind": removing an earlier message
+  // and everything after it so every staff member's view stays in sync,
+  // not just the device that triggered it.
+  @Post('conversation/truncate')
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async truncateConversation(
+    @Request() req: any,
+    @Body() body: { branchId?: string; messageId?: string },
+  ) {
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (!tenantId || !body?.messageId) return { success: false };
+    const resolvedBranch = body.branchId || req.user?.branchId || null;
+    await this.conversations.truncateFromMessage(tenantId, resolvedBranch, body.messageId);
     return { success: true };
   }
 

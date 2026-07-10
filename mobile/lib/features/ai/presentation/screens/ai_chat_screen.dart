@@ -124,14 +124,48 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   /// Edit & resubmit: put the message back in the input, drop it and
   /// everything after it from history, so the user can rephrase and send
   /// again from that point.
-  void _editMessage(int index, String content) {
+  Future<void> _editMessage(int index, String content) async {
     if (_isLoading) return;
-    _aiService.truncateFrom(index);
+    await _aiService.truncateFrom(index);
     _controller.text = content;
     _controller.selection = TextSelection.fromPosition(
       TextPosition(offset: _controller.text.length),
     );
-    setState(() {});
+    if (mounted) setState(() {});
+  }
+
+  /// Re-runs the last AI response with a fresh answer to the same question.
+  Future<void> _regenerate() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    _scrollToBottom();
+
+    try {
+      await _aiService.regenerateLast();
+    } on AiSubscriptionRequiredException {
+      if (mounted) {
+        context.push('/ai/trial', extra: _aiService.branchId);
+      }
+    }
+
+    if (mounted) setState(() => _isLoading = false);
+    _scrollToBottom();
+  }
+
+  /// Rewinds to an earlier message: drops it and everything after it from
+  /// the shared thread. If it was a user message, repopulates the input
+  /// with its content (mirrors edit & resubmit); AI messages just vanish
+  /// along with what followed, ready for a fresh question.
+  Future<void> _rewindTo(int index, String role, String content) async {
+    if (_isLoading) return;
+    await _aiService.rewindTo(index);
+    if (role == 'user') {
+      _controller.text = content;
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _openAddToChat() async {
@@ -208,11 +242,15 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                       final msg = messages[index];
                       final isUser = msg['role'] == 'user';
                       final content = msg['content']!;
+                      final isLastAssistant =
+                          !isUser && index == messages.length - 1 && pending == null;
                       return _ChatBubble(
                         message: content,
                         isUser: isUser,
                         onCopy: isUser ? null : () => _copyMessage(content),
                         onEdit: isUser ? () => _editMessage(index, content) : null,
+                        onRegenerate: isLastAssistant ? _regenerate : null,
+                        onRewind: () => _rewindTo(index, msg['role']!, content),
                       ).animate().fadeIn(duration: 300.ms).slideX(
                             begin: isUser ? 20 : -20,
                             end: 0,
@@ -754,12 +792,16 @@ class _ChatBubble extends ConsumerWidget {
   final bool isUser;
   final VoidCallback? onCopy;
   final VoidCallback? onEdit;
+  final VoidCallback? onRegenerate;
+  final VoidCallback? onRewind;
 
   const _ChatBubble({
     required this.message,
     required this.isUser,
     this.onCopy,
     this.onEdit,
+    this.onRegenerate,
+    this.onRewind,
   });
 
   @override
@@ -840,6 +882,12 @@ class _ChatBubble extends ConsumerWidget {
     }
     if (isUser && onEdit != null) {
       children.add(_actionButton(Icons.edit_rounded, 'Edit', onEdit!, color));
+    }
+    if (onRegenerate != null) {
+      children.add(_actionButton(Icons.refresh_rounded, 'Regenerate', onRegenerate!, color));
+    }
+    if (onRewind != null) {
+      children.add(_actionButton(Icons.history_rounded, 'Rewind here', onRewind!, color));
     }
     if (children.isEmpty) return const SizedBox.shrink();
     return Padding(
