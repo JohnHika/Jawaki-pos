@@ -793,4 +793,438 @@ export class ReportingService {
 
     return results;
   }
+
+  /**
+   * Get dead / slow-moving stock: products with stock on hand but no sale in the last N days
+   */
+  async getDeadStock(
+    tenantId: string,
+    branchId?: string,
+    daysWithoutSale = 30,
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      sku: string;
+      currentStock: number;
+      stockValue: number;
+      lastSoldAt: string | null;
+      daysSinceLastSale: number | null;
+    }>
+  > {
+    const now = new Date();
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - daysWithoutSale);
+
+    const branchFilter = branchId ? { branchId } : { branch: { tenantId } };
+
+    // Get all stock on hand (quantity > 0) for the branch(es)
+    const stocks = await this.prisma.stock.findMany({
+      where: {
+        ...branchFilter,
+        quantity: { gt: 0 },
+        product: { tenantId, isActive: true },
+      },
+      include: {
+        product: {
+          select: { id: true, name: true, sku: true, basePrice: true },
+        },
+      },
+    });
+
+    // Aggregate stock on hand per product (may span multiple branches)
+    const productStock = new Map<
+      string,
+      { name: string; sku: string; basePrice: number; quantity: number }
+    >();
+
+    for (const stock of stocks) {
+      const existing = productStock.get(stock.productId);
+      if (existing) {
+        existing.quantity += Number(stock.quantity);
+      } else {
+        productStock.set(stock.productId, {
+          name: stock.product.name,
+          sku: stock.product.sku,
+          basePrice: Number(stock.product.basePrice),
+          quantity: Number(stock.quantity),
+        });
+      }
+    }
+
+    const productIds = Array.from(productStock.keys());
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    // Find the most recent sale date per product within this tenant.
+    // groupBy can't _max a relation field, so read SaleItems newest-first and
+    // keep the first (latest) one seen per product.
+    const saleFilter = branchId ? { branchId } : { branch: { tenantId } };
+    const recentSaleItems = await this.prisma.saleItem.findMany({
+      where: {
+        productId: { in: productIds },
+        sale: {
+          ...saleFilter,
+          status: 'COMPLETED',
+        },
+      },
+      select: {
+        productId: true,
+        sale: { select: { createdAt: true } },
+      },
+      orderBy: { sale: { createdAt: 'desc' } },
+    });
+
+    const lastSoldMap = new Map<string, Date>();
+    for (const item of recentSaleItems) {
+      if (!lastSoldMap.has(item.productId)) {
+        lastSoldMap.set(item.productId, item.sale.createdAt);
+      }
+    }
+
+    // Keep products with no sale in the last N days (never sold, or last sold before cutoff)
+    const rows = productIds
+      .map((productId) => {
+        const info = productStock.get(productId)!;
+        const lastSold = lastSoldMap.get(productId) || null;
+        const daysSinceLastSale = lastSold
+          ? Math.floor((now.getTime() - lastSold.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        return {
+          id: productId,
+          name: info.name,
+          sku: info.sku,
+          currentStock: info.quantity,
+          stockValue: info.quantity * info.basePrice,
+          lastSoldAt: lastSold ? lastSold.toISOString() : null,
+          daysSinceLastSale,
+        };
+      })
+      .filter((row) => !lastSoldMap.get(row.id) || lastSoldMap.get(row.id)! < cutoff)
+      // Most stale first: never-sold (null) before recently sold, then by daysSinceLastSale desc
+      .sort((a, b) => {
+        if (a.daysSinceLastSale === null && b.daysSinceLastSale === null) return 0;
+        if (a.daysSinceLastSale === null) return -1;
+        if (b.daysSinceLastSale === null) return 1;
+        return b.daysSinceLastSale - a.daysSinceLastSale;
+      })
+      .slice(0, 30);
+
+    return rows;
+  }
+
+  /**
+   * Get profit by product for COMPLETED sales in range (revenue, cost, gross profit, margin)
+   */
+  async getProfitByProduct(
+    tenantId: string,
+    filter: ReportFilterDto,
+    limit = 10,
+  ): Promise<
+    Array<{
+      productId: string;
+      productName: string;
+      sku: string;
+      quantitySold: number;
+      revenue: number;
+      cost: number;
+      grossProfit: number;
+      marginPct: number;
+    }>
+  > {
+    const { start, end } = this.getDateRange(filter);
+    const branchFilter = filter.branchId ? { branchId: filter.branchId } : {};
+
+    // Aggregate revenue and quantity per product for completed sales
+    const productSales = await this.prisma.saleItem.groupBy({
+      by: ['productId'],
+      where: {
+        sale: {
+          branch: { tenantId },
+          ...branchFilter,
+          createdAt: { gte: start, lte: end },
+          status: 'COMPLETED',
+        },
+      },
+      _sum: {
+        quantity: true,
+        totalAmount: true,
+      },
+    });
+
+    if (productSales.length === 0) {
+      return [];
+    }
+
+    // Fetch product cost/base price details
+    const productIds = productSales.map((p) => p.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, sku: true, costPrice: true, basePrice: true },
+    });
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    return productSales
+      .map((item) => {
+        const product = productMap.get(item.productId);
+        const quantitySold = Number(item._sum.quantity) || 0;
+        const revenue = Number(item._sum.totalAmount) || 0;
+        // Match getDailyProfitAndLoss cost fallback: costPrice, else 70% of base price
+        const unitCost = product?.costPrice
+          ? Number(product.costPrice)
+          : Number(product?.basePrice || 0) * 0.7;
+        const cost = unitCost * quantitySold;
+        const grossProfit = revenue - cost;
+        const marginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+        return {
+          productId: item.productId,
+          productName: product?.name || 'Unknown',
+          sku: product?.sku || '',
+          quantitySold,
+          revenue,
+          cost,
+          grossProfit,
+          marginPct,
+        };
+      })
+      .sort((a, b) => b.grossProfit - a.grossProfit)
+      .slice(0, limit);
+  }
+
+  /**
+   * Gross profit rolled up by product category. Same COGS convention as
+   * getProfitByProduct / getDailyProfitAndLoss (costPrice, else 70% of base
+   * price). Products map to their first category via the many-to-many
+   * ProductCategory join, falling back to "Uncategorized".
+   */
+  async getProfitByCategory(
+    tenantId: string,
+    filter: ReportFilterDto,
+  ): Promise<
+    Array<{
+      categoryId: string;
+      categoryName: string;
+      revenue: number;
+      cost: number;
+      grossProfit: number;
+      marginPct: number;
+    }>
+  > {
+    const { start, end } = this.getDateRange(filter);
+    const branchFilter = filter.branchId ? { branchId: filter.branchId } : {};
+
+    const productSales = await this.prisma.saleItem.groupBy({
+      by: ['productId'],
+      where: {
+        sale: {
+          branch: { tenantId },
+          ...branchFilter,
+          createdAt: { gte: start, lte: end },
+          status: 'COMPLETED',
+        },
+      },
+      _sum: { quantity: true, totalAmount: true },
+    });
+
+    if (productSales.length === 0) {
+      return [];
+    }
+
+    const productIds = productSales.map((s) => s.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        costPrice: true,
+        basePrice: true,
+        categories: { include: { category: true } },
+      },
+    });
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    const categoryMap = new Map<
+      string,
+      { name: string; revenue: number; cost: number }
+    >();
+
+    for (const item of productSales) {
+      const product = productMap.get(item.productId);
+      const category = product?.categories?.[0]?.category;
+      const categoryId = category?.id || 'uncategorized';
+      const categoryName = category?.name || 'Uncategorized';
+
+      const quantitySold = Number(item._sum.quantity) || 0;
+      const revenue = Number(item._sum.totalAmount) || 0;
+      const unitCost = product?.costPrice
+        ? Number(product.costPrice)
+        : Number(product?.basePrice || 0) * 0.7;
+      const cost = unitCost * quantitySold;
+
+      const existing = categoryMap.get(categoryId) || {
+        name: categoryName,
+        revenue: 0,
+        cost: 0,
+      };
+      existing.revenue += revenue;
+      existing.cost += cost;
+      categoryMap.set(categoryId, existing);
+    }
+
+    return Array.from(categoryMap.entries())
+      .map(([categoryId, data]) => {
+        const grossProfit = data.revenue - data.cost;
+        return {
+          categoryId,
+          categoryName: data.name,
+          revenue: data.revenue,
+          cost: data.cost,
+          grossProfit,
+          marginPct: data.revenue > 0 ? (grossProfit / data.revenue) * 100 : 0,
+        };
+      })
+      .sort((a, b) => b.grossProfit - a.grossProfit);
+  }
+
+  /**
+   * Slow-moving / dead stock: products with stock on hand that have NOT sold
+   * within `daysWithoutSale` days, sorted by tied-up stock value descending.
+   * These are the items quietly holding cash hostage on the shelf.
+   */
+  async getSlowMovingProducts(
+    tenantId: string,
+    branchId?: string,
+    daysWithoutSale = 30,
+    limit = 20,
+  ): Promise<
+    Array<{
+      productId: string;
+      name: string;
+      sku: string;
+      category: string;
+      remaining_stock: number;
+      stock_value: number;
+      idle_at_least_days: number;
+    }>
+  > {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysWithoutSale);
+
+    // Products this tenant tracks that currently have stock on hand.
+    const products = await this.prisma.product.findMany({
+      where: { tenantId, trackInventory: true, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        costPrice: true,
+        basePrice: true,
+        categories: { include: { category: true } },
+        stock: branchId ? { where: { branchId } } : true,
+      },
+    });
+
+    // In-stock products only.
+    const inStock = products
+      .map((p) => ({ product: p, remaining: p.stock.reduce((sum, s) => sum + Number(s.quantity), 0) }))
+      .filter((x) => x.remaining > 0);
+
+    // Products that HAVE sold within the window — one batched query over the
+    // recent completed sales (SaleItem has no timestamp of its own; the date
+    // lives on the parent Sale, so we filter on the relation). Any product
+    // appearing here is not slow; everything else in stock is.
+    const recentlySold = inStock.length
+      ? await this.prisma.saleItem.findMany({
+          where: {
+            productId: { in: inStock.map((x) => x.product.id) },
+            sale: {
+              branch: { tenantId },
+              ...(branchId ? { branchId } : {}),
+              status: 'COMPLETED',
+              createdAt: { gte: cutoff },
+            },
+          },
+          select: { productId: true },
+        })
+      : [];
+    const soldRecently = new Set(recentlySold.map((r) => r.productId));
+
+    const results = inStock
+      .filter(({ product }) => !soldRecently.has(product.id))
+      .map(({ product, remaining: remainingStock }) => {
+        const unitCost = product.costPrice
+          ? Number(product.costPrice)
+          : Number(product.basePrice || 0) * 0.7;
+        return {
+          productId: product.id,
+          name: product.name,
+          sku: product.sku,
+          category: product.categories?.[0]?.category?.name || 'Uncategorized',
+          remaining_stock: remainingStock,
+          stock_value: unitCost * remainingStock,
+          // These products have NOT sold within the last `daysWithoutSale`
+          // days — i.e. idle for at least that long. The exact last-sold date
+          // is intentionally omitted (would need a per-product query); the
+          // tool's value is surfacing the tied-up cash, not precise idle days.
+          idle_at_least_days: daysWithoutSale,
+        };
+      });
+
+    return results
+      .sort((a, b) => b.stock_value - a.stock_value)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get sales heatmap: day-of-week (0-6) x hour (0-23) grid of sales counts and revenue
+   */
+  async getSalesHeatmap(
+    tenantId: string,
+    filter: ReportFilterDto,
+  ): Promise<
+    Array<{
+      dayOfWeek: number;
+      hour: number;
+      salesCount: number;
+      revenue: number;
+    }>
+  > {
+    const { start, end } = this.getDateRange(filter);
+    const branchFilter = filter.branchId ? { branchId: filter.branchId } : {};
+
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        branch: { tenantId },
+        ...branchFilter,
+        createdAt: { gte: start, lte: end },
+        status: 'COMPLETED',
+      },
+      select: { createdAt: true, totalAmount: true },
+    });
+
+    // Bucket by dayOfWeek + hour
+    const grid = new Map<string, { salesCount: number; revenue: number }>();
+
+    for (const sale of sales) {
+      const date = new Date(sale.createdAt);
+      const dayOfWeek = date.getDay();
+      const hour = date.getHours();
+      const key = `${dayOfWeek}-${hour}`;
+      const existing = grid.get(key) || { salesCount: 0, revenue: 0 };
+      existing.salesCount++;
+      existing.revenue += Number(sale.totalAmount);
+      grid.set(key, existing);
+    }
+
+    return Array.from(grid.entries()).map(([key, data]) => {
+      const [dayOfWeek, hour] = key.split('-').map(Number);
+      return {
+        dayOfWeek,
+        hour,
+        salesCount: data.salesCount,
+        revenue: data.revenue,
+      };
+    });
+  }
 }

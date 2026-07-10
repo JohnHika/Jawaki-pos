@@ -327,7 +327,11 @@ export class AiService {
 
       const maxIterations = 4;
       for (let i = 0; i < maxIterations; i++) {
-        const response = await fetch(`${this.gatewayBaseUrl}/messages`, {
+        // POS-dedicated endpoint: its own GLM model + business-partner
+        // persona + skill library, isolated in the gateway's axon/pos module.
+        // Same Anthropic /v1/messages wire format, so the tool-calling loop
+        // below is unchanged — only the model/persona behind it differs.
+        const response = await fetch(`${this.gatewayBaseUrl}/pos/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

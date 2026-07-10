@@ -1,7 +1,10 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ReportingService } from '../reporting/reporting.service';
 import { InventoryService } from '../inventory/inventory.service';
-import { ReportFilterDto, ReportPeriod } from '../reporting/dto/reporting.dto';
+import { ExpensesService } from '../expenses/expenses.service';
+import { CustomersService } from '../customers/customers.service';
+import { SalesService } from '../sales/sales.service';
+import { ReportFilterDto, ReportPeriod, ReportGroupBy } from '../reporting/dto/reporting.dto';
 
 export interface AiToolDefinition {
   name: string;
@@ -30,10 +33,13 @@ export interface SanitizedTodoItem {
 /**
  * Read/write POS actions the gateway's tool-calling loop can invoke mid
  * conversation, letting the AI pull fresher or more specific data than
- * what the mobile client pre-attaches to the request. Read tools execute
- * immediately server-side; the one mutating tool (create_stock_reorder)
- * is only ever invoked after the caller has resolved a confirm-before-mutate
- * round-trip — see AiService.chatViaAxonGatewayMessages().
+ * what the mobile client pre-attaches to the request. A broad read-tool
+ * suite (sales, products, profit, payments, expenses, customers, debtors,
+ * stock health, staff, branches, trends, heatmap) backs the POS skill
+ * library. Read tools execute immediately server-side; the one mutating
+ * tool (create_stock_reorder) is only ever invoked after the caller has
+ * resolved a confirm-before-mutate round-trip — see
+ * AiService.chatViaAxonGatewayMessages().
  */
 @Injectable()
 export class AiToolsService {
@@ -43,6 +49,9 @@ export class AiToolsService {
     private readonly reporting: ReportingService,
     @Inject(forwardRef(() => InventoryService))
     private readonly inventory: InventoryService,
+    private readonly expenses: ExpensesService,
+    private readonly customers: CustomersService,
+    private readonly sales: SalesService,
   ) {}
 
   getToolDefinitions(): AiToolDefinition[] {
@@ -157,6 +166,132 @@ export class AiToolsService {
         },
       },
       {
+        name: 'get_payment_breakdown',
+        description:
+          'Get how sales were paid for over a date range — the split across cash, M-Pesa, card, and credit (buy-now-pay-later). Use for cash-flow, cash-up, and "how are people paying" questions.',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_sales_by_category',
+        description:
+          'Get sales revenue broken down by product category for a date range, with each category\'s share of total. Use to see which parts of the shop drive revenue.',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_sales_trend',
+        description:
+          'Get the sales trend over time for a date range, grouped by hour, day, week, or month. Use for "how have sales moved", trend, and growth questions.',
+        mutating: false,
+        input_schema: this.periodSchema({
+          groupBy: { type: 'string', enum: ['HOUR', 'DAY', 'WEEK', 'MONTH'], description: 'Time bucket. Defaults to DAY.' },
+        }),
+      },
+      {
+        name: 'get_sales_heatmap',
+        description:
+          'Get a day-of-week x hour-of-day grid of sales (revenue and transaction counts) over a date range, plus the single busiest slot. Use to find peak trading hours and quiet times worth a promotion.',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_staff_performance',
+        description:
+          "Get each cashier/staff member's sales performance (sales count, revenue, average ticket, refunds) over a date range. Use for staff comparison and performance questions.",
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_branch_comparison',
+        description:
+          'Compare all branches of this shop over a date range (sales count, revenue, average ticket, top product per branch). Use for multi-branch and "which branch is doing best" questions.',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_profit_loss',
+        description:
+          'Get profit & loss for a date range: revenue, cost of goods sold, gross profit, gross margin, and net profit. Use for profit, margin, and bottom-line questions (not just top-line sales).',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_profit_by_product',
+        description:
+          'Get gross profit and margin for each product over a date range (revenue, cost, gross profit, margin %, units sold), sorted by profit. Use to find which products actually make money, not just which sell most.',
+        mutating: false,
+        input_schema: this.periodSchema({ limit: { type: 'number', description: 'Max products, default 10.' } }),
+      },
+      {
+        name: 'get_profit_by_category',
+        description:
+          'Get gross profit and margin per product category over a date range. Use to see which categories are most/least profitable.',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_expenses_summary',
+        description:
+          'Get a summary of this shop\'s expenses over a date range, broken down by category and status. Use for expense, spending, and cost-control questions.',
+        mutating: false,
+        input_schema: this.periodSchema(),
+      },
+      {
+        name: 'get_inventory_valuation',
+        description:
+          'Get the current inventory valuation for this shop: total stock value, plus counts of low-stock, out-of-stock, and overstock items. Use for "how much stock is on the shelf worth" and stock-health questions.',
+        mutating: false,
+        input_schema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'get_slow_moving_stock',
+        description:
+          'Get slow-moving / dead stock: products with stock on hand that have not sold within a number of days, sorted by tied-up cash value. Use to find stock quietly holding cash hostage that could be cleared.',
+        mutating: false,
+        input_schema: {
+          type: 'object',
+          properties: {
+            daysWithoutSale: { type: 'number', description: 'Consider a product slow if unsold this many days. Default 30.' },
+            limit: { type: 'number', description: 'Max products, default 20.' },
+          },
+        },
+      },
+      {
+        name: 'get_restock_suggestions',
+        description:
+          'Get a budget-aware restock plan for this branch: which low-stock items to reorder, suggested quantities, and estimated cost, capped to available cash and prioritized by how fast they sell. Use for "what should I restock" and reorder-planning questions.',
+        mutating: false,
+        input_schema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'get_debtors',
+        description:
+          'Get who owes this shop money: outstanding credit (buy-now-pay-later) balances aggregated per customer, sorted by amount owed, with the oldest unpaid date. Use for debt collection and credit-risk questions.',
+        mutating: false,
+        input_schema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'get_top_customers',
+        description:
+          'Get this shop\'s highest-spending customers over a date range. Use for loyalty, VIP, and "who are my best customers" questions.',
+        mutating: false,
+        input_schema: this.periodSchema({ limit: { type: 'number', description: 'Max customers, default 10.' } }),
+      },
+      {
+        name: 'get_inactive_customers',
+        description:
+          "Get customers who haven't bought in a while (no purchase for a number of days). Use for win-back campaigns and lapsed-customer questions.",
+        mutating: false,
+        input_schema: {
+          type: 'object',
+          properties: {
+            inactiveDays: { type: 'number', description: 'Consider a customer inactive after this many days without a purchase. Default 60.' },
+            limit: { type: 'number', description: 'Max customers, default 20.' },
+          },
+        },
+      },
+      {
         name: 'create_stock_reorder',
         description:
           "Raise an internal stock request for a specific product at this branch, to be reviewed and approved by a supervisor. Only call this after the user has explicitly confirmed they want to raise the request — never call it speculatively. Always ask for the product and quantity first if either is unclear.",
@@ -232,6 +367,58 @@ export class AiToolsService {
           ctx.tenantId,
           this.toFilter(input, ctx),
           typeof input?.limit === 'number' ? input.limit : 5,
+        );
+      case 'get_payment_breakdown':
+        return this.reporting.getPaymentMethodBreakdown(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_sales_by_category':
+        return this.reporting.getCategorySales(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_sales_trend':
+        return this.reporting.getSalesTrend(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_sales_heatmap':
+        return this.reporting.getSalesHeatmap(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_staff_performance':
+        return this.reporting.getCashierPerformance(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_branch_comparison':
+        return this.reporting.getBranchComparison(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_profit_loss':
+        return this.reporting.getProfitAndLossRange(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_profit_by_product':
+        return this.reporting.getProfitByProduct(
+          ctx.tenantId,
+          this.toFilter(input, ctx),
+          typeof input?.limit === 'number' ? input.limit : 10,
+        );
+      case 'get_profit_by_category':
+        return this.reporting.getProfitByCategory(ctx.tenantId, this.toFilter(input, ctx));
+      case 'get_expenses_summary': {
+        const { startDate, endDate } = this.toDateRange(input, ctx);
+        return this.expenses.getSummary(ctx.tenantId, ctx.branchId, startDate, endDate);
+      }
+      case 'get_inventory_valuation':
+        return this.reporting.getInventoryReport(ctx.tenantId, ctx.branchId);
+      case 'get_slow_moving_stock':
+        return this.reporting.getSlowMovingProducts(
+          ctx.tenantId,
+          ctx.branchId,
+          typeof input?.daysWithoutSale === 'number' ? input.daysWithoutSale : 30,
+          typeof input?.limit === 'number' ? input.limit : 20,
+        );
+      case 'get_restock_suggestions':
+        if (!ctx.branchId) throw new Error('A branch is required for restock suggestions.');
+        return this.inventory.getRestockSuggestions(ctx.tenantId, ctx.branchId);
+      case 'get_debtors':
+        return this.sales.getDebtorsByCustomer(ctx.tenantId);
+      case 'get_top_customers':
+        return this.customers.getTopCustomers(
+          ctx.tenantId,
+          this.toFilter(input, ctx),
+          typeof input?.limit === 'number' ? input.limit : 10,
+        );
+      case 'get_inactive_customers':
+        return this.customers.getInactiveCustomers(
+          ctx.tenantId,
+          typeof input?.inactiveDays === 'number' ? input.inactiveDays : 60,
+          typeof input?.limit === 'number' ? input.limit : 20,
         );
       case 'todo_write':
         // No server-side state to write to — the sanitized list is handed
@@ -337,6 +524,85 @@ export class AiToolsService {
     } else {
       filter.period = ReportPeriod.TODAY;
     }
+    if (input?.groupBy && Object.values(ReportGroupBy).includes(input.groupBy)) {
+      filter.groupBy = input.groupBy as ReportGroupBy;
+    }
     return filter;
+  }
+
+  /** For services that take explicit startDate/endDate strings (e.g.
+   * ExpensesService.getSummary) rather than a ReportFilterDto — resolves the
+   * same period/date-range input into concrete ISO strings, defaulting to
+   * the current month when nothing is specified. */
+  private toDateRange(
+    input: Record<string, any>,
+    _ctx: AiToolCallContext,
+  ): { startDate?: string; endDate?: string } {
+    if (input?.startDate && input?.endDate) {
+      return { startDate: input.startDate, endDate: input.endDate };
+    }
+    // ExpensesService.getSummary treats undefined dates as "all time", which
+    // is a reasonable default for expense questions; a named period is
+    // resolved to concrete bounds so the AI can still scope it.
+    const period: ReportPeriod | undefined =
+      input?.period && Object.values(ReportPeriod).includes(input.period)
+        ? (input.period as ReportPeriod)
+        : undefined;
+    if (!period) return {};
+    const now = new Date();
+    let start: Date;
+    const end = new Date(now);
+    switch (period) {
+      case ReportPeriod.TODAY:
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case ReportPeriod.YESTERDAY:
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        break;
+      case ReportPeriod.THIS_WEEK:
+        start = new Date(now);
+        start.setDate(now.getDate() - now.getDay());
+        break;
+      case ReportPeriod.THIS_MONTH:
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case ReportPeriod.LAST_MONTH:
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        break;
+      case ReportPeriod.THIS_YEAR:
+        start = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    return { startDate: start.toISOString(), endDate: end.toISOString() };
+  }
+
+  /** Shared JSON-schema builder for tools that accept a date range (a named
+   * `period` OR explicit startDate/endDate), plus any extra properties. Keeps
+   * the ~10 period-based tool schemas DRY. */
+  private periodSchema(extra: Record<string, unknown> = {}): AiToolDefinition['input_schema'] {
+    return {
+      type: 'object',
+      properties: {
+        period: {
+          type: 'string',
+          enum: [
+            'TODAY',
+            'YESTERDAY',
+            'THIS_WEEK',
+            'LAST_WEEK',
+            'THIS_MONTH',
+            'LAST_MONTH',
+            'THIS_QUARTER',
+            'THIS_YEAR',
+          ],
+          description: 'Named date range. Omit if using startDate/endDate instead.',
+        },
+        startDate: { type: 'string', description: 'ISO date, inclusive. Use with endDate instead of period.' },
+        endDate: { type: 'string', description: 'ISO date, inclusive. Use with startDate instead of period.' },
+        ...extra,
+      },
+    };
   }
 }

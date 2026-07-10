@@ -10,6 +10,9 @@ import { AiDailyBriefTask } from './ai-daily-brief.task';
 import { AiBillingModule } from '../ai-billing/ai-billing.module';
 import { ReportingModule } from '../reporting/reporting.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { ExpensesModule } from '../expenses/expenses.module';
+import { CustomersModule } from '../customers/customers.module';
+import { SalesModule } from '../sales/sales.module';
 import { PrismaModule } from '../common/prisma/prisma.module';
 
 @Module({
@@ -22,6 +25,10 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     // cycle so AiToolsService can call InventoryService.getLowStockAlerts /
     // createStockRequest.
     forwardRef(() => InventoryModule),
+    // New tool-backing modules (none import AiModule, so no cycle).
+    ExpensesModule,
+    CustomersModule,
+    SalesModule,
   ],
   controllers: [AiController],
   providers: [

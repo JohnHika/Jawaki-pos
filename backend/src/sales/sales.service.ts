@@ -824,6 +824,74 @@ export class SalesService {
     };
   }
 
+  async getDebtorsByCustomer(tenantId: string) {
+    // Reuse the credit-sale outstanding-balance query logic, then aggregate per customer.
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        branch: { tenantId },
+        paymentMethod: PaymentMethod.CREDIT,
+        status: SaleStatus.COMPLETED,
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Only sales that still have an outstanding balance
+    const salesWithOutstanding = sales.filter((s) => {
+      const outstanding = (s.metadata as any)?.outstandingBalance ?? 0;
+      return Number(outstanding) > 0;
+    });
+
+    // Group by customerId; sales with no linked customer fall into a shared bucket.
+    const UNLINKED_KEY = 'unlinked';
+    const grouped = new Map<
+      string,
+      {
+        customerId: string | null;
+        customerName: string;
+        phone: string | null;
+        totalOutstanding: number;
+        creditSaleCount: number;
+        oldestUnpaidAt: Date;
+      }
+    >();
+
+    for (const sale of salesWithOutstanding) {
+      const outstanding = Number((sale.metadata as any)?.outstandingBalance ?? 0);
+      const key = sale.customerId ?? UNLINKED_KEY;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.totalOutstanding += outstanding;
+        existing.creditSaleCount++;
+        if (sale.createdAt < existing.oldestUnpaidAt) {
+          existing.oldestUnpaidAt = sale.createdAt;
+        }
+      } else {
+        grouped.set(key, {
+          customerId: sale.customerId ?? null,
+          customerName: sale.customer?.name ?? 'Walk-in / unlinked',
+          phone: sale.customer?.phone ?? null,
+          totalOutstanding: outstanding,
+          creditSaleCount: 1,
+          oldestUnpaidAt: sale.createdAt,
+        });
+      }
+    }
+
+    return Array.from(grouped.values())
+      .map((d) => ({
+        customerId: d.customerId,
+        customerName: d.customerName,
+        phone: d.phone,
+        totalOutstanding: d.totalOutstanding,
+        creditSaleCount: d.creditSaleCount,
+        oldestUnpaidAt: d.oldestUnpaidAt.toISOString(),
+      }))
+      .sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+  }
+
   // ==================== BULK SALES OPERATIONS ====================
 
   async bulkCreateSales(userId: string, tenantId: string, sales: any[]) {
