@@ -1100,11 +1100,15 @@ Formatting rules (the client renders Markdown):
 Specificity rules — every claim must be traceable to a number, name, or comparison from the data, never a generic statement:
 - Forbidden: vague filler like "sales look good", "consider promoting popular items", "monitor your inventory regularly" with no specifics attached.
 - Required: name the actual product/branch/staff member and the actual number, e.g. "Milk 500ml sold 340 units (KES 34,000), your #1 seller this week" not "your top product is performing well".
-- If a recommendation is generic advice because the data needed to make it specific wasn't provided, say exactly what data is missing instead of giving the generic version anyway.
+${dto.tool_access
+  ? '- If the specific numbers are not already in this message, DO NOT say you lack the data — you have tools that fetch it. Call the relevant tool (get_sales_summary, get_top_products, get_low_stock_items, get_profit_loss, etc.) first, then answer from what it returns. Only after a tool itself comes back empty do you say what is genuinely missing.'
+  : '- If a recommendation is generic advice because the data needed to make it specific wasn\'t provided, say exactly what data is missing instead of giving the generic version anyway.'}
 
 Current context: ${dto.context || 'general'}
 AI task: ${dto.ai_task || 'analyze_and_recommend'}
-Real POS data included: ${dto.includeData ? 'yes' : 'no'}`;
+${dto.tool_access
+  ? 'Live POS data may not be attached to this message — when it is not, fetch what you need with your tools rather than deferring.'
+  : `Real POS data included: ${dto.includeData ? 'yes' : 'no'}`}`;
   }
 
   private localBusinessResponse(dto: ChatRequestDto, model: string): { reply: string; model: string } {
