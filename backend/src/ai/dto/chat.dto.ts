@@ -74,6 +74,21 @@ class SalesSummaryDto {
   @IsBoolean()
   data_read_failed?: boolean;
 
+  // Durable shop memories the backend injects (owner prefs, policies,
+  // customer notes) — loosely typed since it's server-populated context.
+  @IsOptional()
+  @IsArray()
+  shop_memories?: any[];
+
+  // Web-search grounding results the backend may inject.
+  @IsOptional()
+  @IsArray()
+  web_insights?: any[];
+
+  @IsOptional()
+  @IsArray()
+  web_sources?: any[];
+
   @IsOptional()
   @IsNumber()
   total_sales?: number;

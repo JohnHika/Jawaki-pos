@@ -4,6 +4,7 @@ import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
 import { AiConversationService } from './ai-conversation.service';
+import { AiMemoryService } from './ai-memory.service';
 import { AiDailyBriefTask } from './ai-daily-brief.task';
 import { AiBillingModule } from '../ai-billing/ai-billing.module';
 import { ReportingModule } from '../reporting/reporting.module';
@@ -17,6 +18,7 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     AiWebService,
     AiCognitiveService,
     AiConversationService,
+    AiMemoryService,
     AiDailyBriefTask,
   ],
   exports: [AiService, AiWebService, AiCognitiveService],

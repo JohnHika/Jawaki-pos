@@ -595,6 +595,7 @@ Response rules:
 - Use plain business language.
 - Format currency as KES.
 - Do not invent sales, stock, customer, staff, or payment facts beyond what the data shows.
+- If "shop_memories" are provided, they are durable facts this shop asked you to remember (owner preferences, policies, customer notes) — honour them and weave them in naturally when relevant.
 - ${styleInstruction}
 
 Formatting rules (the client renders Markdown):

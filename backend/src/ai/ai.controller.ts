@@ -3,6 +3,7 @@ import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
 import { AiConversationService } from './ai-conversation.service';
+import { AiMemoryService } from './ai-memory.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ScanReceiptDto } from './dto/receipt-scan.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -17,6 +18,7 @@ export class AiController {
     private readonly aiWebService: AiWebService,
     private readonly aiCognitiveService: AiCognitiveService,
     private readonly conversations: AiConversationService,
+    private readonly memories: AiMemoryService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -40,6 +42,25 @@ export class AiController {
     const user = req.user || {};
     const tenantId = user.tenantId as string | undefined;
     const branchId = (dto.branchId || user.branchId) as string | undefined;
+
+    // Inject durable shop memories relevant to this question so the AI
+    // recalls owner preferences / policies / customer notes across sessions.
+    if (tenantId) {
+      try {
+        const relevant = await this.memories.selectRelevant(
+          tenantId,
+          dto.user_question || '',
+        );
+        if (relevant.length > 0) {
+          dto.data_context = {
+            ...(dto.data_context || {}),
+            shop_memories: relevant,
+          };
+        }
+      } catch {
+        // memory is best-effort context, never block the reply
+      }
+    }
 
     const result = await this.aiService.chat(dto);
 
@@ -108,6 +129,48 @@ export class AiController {
     if (!tenantId) return { success: true };
     const resolvedBranch = body?.branchId || req.user?.branchId || null;
     await this.conversations.startNew(tenantId, resolvedBranch);
+    return { success: true };
+  }
+
+  // Durable shop memory the AI recalls across sessions (owner preferences,
+  // policies, customer notes). Tenant-scoped and shared per shop.
+  @Get('memory')
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async listMemories(@Request() req: any) {
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (!tenantId) return { success: true, data: [] };
+    const data = await this.memories.list(tenantId);
+    return { success: true, data };
+  }
+
+  @Post('memory')
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async saveMemory(
+    @Request() req: any,
+    @Body() body: { type?: string; title?: string; content?: string },
+  ) {
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (!tenantId || !body?.content) {
+      return { success: false };
+    }
+    const memory = await this.memories.save({
+      tenantId,
+      type: body.type || 'fact',
+      title: body.title || body.content.slice(0, 60),
+      content: body.content,
+    });
+    return { success: true, data: memory };
+  }
+
+  @Post('memory/delete')
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async deleteMemory(@Request() req: any, @Body() body: { id?: string }) {
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (!tenantId || !body?.id) return { success: false };
+    await this.memories.remove(tenantId, body.id);
     return { success: true };
   }
 
