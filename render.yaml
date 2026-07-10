@@ -58,11 +58,11 @@ services:
       - key: AI_BILLING_DISABLED
         value: "false"
       - key: ANDROID_APP_LATEST_VERSION
-        value: "1.0.39"
+        value: "1.0.40"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.39"
+        value: "Axon POS 1.0.40"
       - key: ANDROID_APP_BUILD_NUMBER
-        value: "2045"
+        value: "2046"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION
         value: "1.0.0"
       - key: ANDROID_APP_MIN_SUPPORTED_BUILD_NUMBER
@@ -72,4 +72,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Fixes the dashboard showing yesterday's revenue on a new day. Today's sales figures now correctly reset to zero at midnight and stay accurate for the current day automatically."
+        value: "Smarter AI assistant: it now reads your real POS data as fact (no more 'check your connection' when you simply have no sales yet), a cleaner chat with a working + button to attach camera/photos/files (reads text from images), copy and edit on messages, and the receipt now previews exactly as it prints."
