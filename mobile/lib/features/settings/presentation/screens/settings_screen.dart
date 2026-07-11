@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -271,7 +274,13 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: getIt<AuthService>().taxRatePercent > 0
                     ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% applied to every sale'
                     : 'No tax applied to sales',
-                onTap: () => _showTaxRateDialog(context),
+                onTap: () => _showTaxRateDialog(context, ref),
+              ),
+              SettingsRow(
+                icon: Icons.image_rounded,
+                title: 'Company Logo',
+                subtitle: 'Update your logo, or trace it into a crisp SVG',
+                onTap: () => _showLogoDialog(context, ref),
               ),
               SettingsRow(
                 icon: Icons.schedule_rounded,
@@ -1037,7 +1046,7 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== ADMIN-ONLY: BRANCH MANAGEMENT =====
   // ===== ADMIN-ONLY: TAX RATE =====
-  void _showTaxRateDialog(BuildContext context) {
+  void _showTaxRateDialog(BuildContext context, WidgetRef ref) {
     final controller = TextEditingController(
       text: getIt<AuthService>().taxRatePercent > 0
           ? getIt<AuthService>().taxRatePercent.toString()
@@ -1133,6 +1142,7 @@ class SettingsScreen extends ConsumerWidget {
                     'name': updated['name'],
                     'settings': updated['settings'],
                   });
+                  ref.read(authControllerProvider.notifier).refreshFromService();
                   if (dialogContext.mounted) {
                     Navigator.of(dialogContext).pop();
                   }
@@ -1155,6 +1165,213 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
           ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Update the tenant's logo, optionally tracing it into a scalable SVG
+  /// (deterministic vectorization via the backend, no AI involved). Mirrors
+  /// the picker used at first-time company setup, but reachable any time so
+  /// existing shops can swap or vectorize their logo later.
+  void _showLogoDialog(BuildContext context, WidgetRef ref) {
+    File? logoFile;
+    bool vectorize = false;
+    bool isSaving = false;
+    String? error;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+          final secondary = isDark
+              ? DesignColors.darkTextSecondary
+              : DesignColors.textSecondary;
+
+          Future<void> pickLogo() async {
+            final picker = ImagePicker();
+            final image = await picker.pickImage(
+              source: ImageSource.gallery,
+              maxWidth: 512,
+              maxHeight: 512,
+              imageQuality: 85,
+            );
+            if (image == null) return;
+            setDialogState(() {
+              logoFile = File(image.path);
+              error = null;
+            });
+          }
+
+          return SettingsDialog(
+            title: 'Company Logo',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pick a new logo image, or trace your existing one into a crisp scalable SVG.',
+                  style: TextStyle(fontSize: 13, color: secondary),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: isSaving ? null : pickLogo,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? DesignColors.darkSurfaceElevated
+                          : DesignColors.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorder,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? DesignColors.darkBorder
+                                : DesignColors.surfaceBorder,
+                            shape: BoxShape.circle,
+                          ),
+                          child: logoFile != null
+                              ? ClipOval(
+                                  child: Image.file(logoFile!, fit: BoxFit.cover),
+                                )
+                              : Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                  size: 24,
+                                  color: secondary,
+                                ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            logoFile != null ? 'New logo selected' : 'Choose an image',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: isDark
+                                  ? DesignColors.darkTextPrimary
+                                  : DesignColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.chevron_right_rounded, color: secondary),
+                      ],
+                    ),
+                  ),
+                ),
+                if (logoFile != null) ...[
+                  const SizedBox(height: 14),
+                  GroupedCard(
+                    margin: EdgeInsets.zero,
+                    children: [
+                      SettingsRow(
+                        icon: Icons.auto_fix_high_rounded,
+                        title: 'Make it a crisp SVG logo',
+                        subtitle:
+                            'Traces your image into a scalable vector — stays sharp at any size. Best for clean, simple logos.',
+                        trailing: Switch(
+                          value: vectorize,
+                          activeThumbColor: DesignColors.accent,
+                          onChanged: (v) => setDialogState(() => vectorize = v),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!, style: const TextStyle(color: DesignColors.error, fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              SettingsPrimaryButton(
+                label: 'Save',
+                isLoading: isSaving,
+                onPressed: logoFile == null
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          isSaving = true;
+                          error = null;
+                        });
+                        try {
+                          final apiClient = getIt<ApiClient>();
+                          final authService = getIt<AuthService>();
+                          final fileName = logoFile!.uri.pathSegments.isNotEmpty
+                              ? logoFile!.uri.pathSegments.last
+                              : 'company-logo.jpg';
+
+                          String? logoUrl;
+                          String? logoPublicId;
+                          if (vectorize) {
+                            final v = await apiClient.vectorizeLogo(
+                              filePath: logoFile!.path,
+                              fileName: fileName,
+                            );
+                            logoUrl = (v['svgUrl'] ?? v['rasterUrl']) as String?;
+                            logoPublicId = v['publicId'] as String?;
+                          } else {
+                            final uploadResult = await apiClient.uploadImage(
+                              filePath: logoFile!.path,
+                              fileName: fileName,
+                              type: 'logo',
+                            );
+                            logoUrl = uploadResult['url'] as String?;
+                            logoPublicId = uploadResult['publicId'] as String?;
+                          }
+
+                          final updated = await apiClient.updateCurrentTenant(
+                            logo: logoUrl,
+                            logoPublicId: logoPublicId,
+                          );
+                          await authService.updateTenantSession({
+                            'id': updated['id'],
+                            'name': updated['name'],
+                            'logo': updated['logo'],
+                            'logoPublicId': updated['logoPublicId'],
+                            'settings': updated['settings'],
+                          });
+                          ref.read(authControllerProvider.notifier).refreshFromService();
+
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          if (context.mounted) {
+                            showGlassSnackBar(
+                              context,
+                              vectorize
+                                  ? 'Logo updated with a crisp SVG version'
+                                  : 'Logo updated',
+                              icon: Icons.check_circle_rounded,
+                              color: DesignColors.success,
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            isSaving = false;
+                            error = 'Could not save. Check your connection.';
+                          });
+                        }
+                      },
+              ),
+            ],
           );
         },
       ),

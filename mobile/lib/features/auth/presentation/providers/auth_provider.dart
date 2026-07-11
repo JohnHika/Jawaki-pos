@@ -49,7 +49,7 @@ class AuthController extends StateNotifier<AuthState> {
   AuthController(this._authService) : super(const AuthState()) {
     _initAuth();
     _authStatusSubscription =
-        _authService.authStatusStream.listen((_) => _syncFromService());
+        _authService.authStatusStream.listen((_) => refreshFromService());
   }
 
   @override
@@ -58,9 +58,16 @@ class AuthController extends StateNotifier<AuthState> {
     super.dispose();
   }
 
-  void _initAuth() => _syncFromService();
+  void _initAuth() => refreshFromService();
 
-  void _syncFromService() {
+  /// Re-reads the current user/tenant snapshot from [AuthService] into
+  /// provider state. Called automatically on auth status changes (login,
+  /// logout, lock/unlock) — but AuthService.updateTenantSession() mutates
+  /// the session in place without emitting one of those events, so any
+  /// caller that updates tenant data (e.g. logo, name) directly must call
+  /// this afterward, or dependents like tenantIdentityProvider stay stale
+  /// until the next login.
+  void refreshFromService() {
     state = state.copyWith(
       isAuthenticated: _authService.isAuthenticated,
       isLocked: _authService.isLocked,
