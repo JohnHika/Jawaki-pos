@@ -28,6 +28,7 @@ import '../../features/reports/presentation/screens/inventory_forecasting_screen
 import '../../features/payments/presentation/screens/payment_analytics_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/screens/user_guide_screen.dart';
+import '../../features/settings/presentation/screens/operating_hours_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
@@ -359,6 +360,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/user-guide',
             name: 'user-guide',
             builder: (context, state) => const UserGuideScreen(),
+          ),
+
+          // Per-branch operating hours
+          GoRoute(
+            path: '/settings/operating-hours',
+            name: 'operating-hours',
+            builder: (context, state) => const OperatingHoursScreen(),
           ),
 
           // User & role management

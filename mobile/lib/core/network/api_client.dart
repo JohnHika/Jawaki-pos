@@ -284,6 +284,7 @@ class ApiClient {
     String? phone,
     String? email,
     bool? isActive,
+    Map<String, dynamic>? settings,
   }) async {
     final response = await _dio.patch('/branches/$id', data: {
       if (name != null) 'name': name,
@@ -292,7 +293,17 @@ class ApiClient {
       if (phone != null) 'phone': phone,
       if (email != null) 'email': email,
       if (isActive != null) 'isActive': isActive,
+      // Backend merges settings onto the existing blob, so sending only
+      // { operatingHours: ... } preserves tax and other settings.
+      if (settings != null) 'settings': settings,
     });
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Fetches a single branch (includes its `settings` JSON — operating
+  /// hours, tax config, etc.).
+  Future<Map<String, dynamic>> getBranch(String id) async {
+    final response = await _dio.get('/branches/$id');
     return response.data as Map<String, dynamic>;
   }
 

@@ -273,6 +273,12 @@ class SettingsScreen extends ConsumerWidget {
                     : 'No tax applied to sales',
                 onTap: () => _showTaxRateDialog(context),
               ),
+              SettingsRow(
+                icon: Icons.schedule_rounded,
+                title: 'Operating Hours',
+                subtitle: 'Set open & close times per day',
+                onTap: () => context.push('/settings/operating-hours'),
+              ),
               if (perms.canExportData)
                 SettingsRow(
                   icon: Icons.download_rounded,

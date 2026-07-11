@@ -10,6 +10,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { AiAccessGuard } from '../ai-billing/ai-billing.guard';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { normalizeOperatingHours, computeOpenStatus } from '../common/operating-hours';
 
 @Controller('ai')
 export class AiController {
@@ -70,6 +71,31 @@ export class AiController {
         }
       } catch {
         // memory is best-effort context, never block the reply
+      }
+    }
+
+    // Inject the branch's user-configured operating hours + live open/closed
+    // status so the assistant reasons over the real trading window (e.g.
+    // "you close in 90 minutes", "closed today") instead of guessing or
+    // relying on a freeform memory. Best-effort.
+    if (tenantId && branchId) {
+      try {
+        const branch = await this.prisma.branch.findFirst({
+          where: { id: branchId, tenantId },
+          select: { settings: true, timezone: true },
+        });
+        const rawHours = (branch?.settings as Record<string, any>)?.operatingHours;
+        const hours = normalizeOperatingHours(rawHours);
+        if (hours) {
+          const status = computeOpenStatus(hours, branch?.timezone || 'Africa/Nairobi');
+          workingDto.data_context = {
+            ...(workingDto.data_context || {}),
+            operating_hours: hours,
+            open_status: status,
+          };
+        }
+      } catch {
+        // hours are best-effort context, never block the reply
       }
     }
 

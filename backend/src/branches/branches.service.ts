@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
+import { normalizeOperatingHours } from '../common/operating-hours';
 import {
   CreateTenantDto,
   UpdateTenantDto,
@@ -227,9 +228,33 @@ export class BranchesService {
       throw new NotFoundException('Branch not found');
     }
 
+    // `settings` is a JSON blob holding several independent features
+    // (tax config, operating hours, …). A raw `data: dto` would overwrite
+    // the whole blob, wiping keys the caller didn't send — so merge the
+    // incoming settings onto what's already stored instead of replacing.
+    const { settings: incomingSettings, ...rest } = dto as Record<string, any>;
+    const data: Record<string, any> = { ...rest };
+    if (incomingSettings !== undefined) {
+      const merged = {
+        ...((branch.settings as Record<string, any>) ?? {}),
+        ...incomingSettings,
+      };
+      // Defensively normalize operating hours so malformed client input
+      // can't corrupt the blob (drops bad times, fills sane defaults).
+      if (incomingSettings.operatingHours !== undefined) {
+        const normalized = normalizeOperatingHours(incomingSettings.operatingHours);
+        if (normalized) {
+          merged.operatingHours = normalized;
+        } else {
+          delete merged.operatingHours;
+        }
+      }
+      data.settings = merged;
+    }
+
     const updated = await this.prisma.branch.update({
       where: { id: branchId },
-      data: dto,
+      data,
     });
 
     await this.redisService.del(`branches:${tenantId}`);
