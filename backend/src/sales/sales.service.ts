@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { CashFlowService } from '../cash-flow/cash-flow.service';
 import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
 import {
@@ -717,10 +718,14 @@ export class SalesService {
   }
 
   async getDailySummary(branchId: string, date: string, tenantId: string) {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+      select: { timezone: true },
+    });
+    const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
+      date,
+      branch?.timezone ?? 'Africa/Nairobi',
+    );
 
     const [sales, refunds] = await Promise.all([
       this.prisma.sale.findMany({
@@ -919,22 +924,22 @@ export class SalesService {
   private async generateReceiptNumber(branchId: string): Promise<string> {
     const branch = await this.prisma.branch.findUnique({
       where: { id: branchId },
-      select: { code: true },
+      select: { code: true, timezone: true },
     });
 
-    const today = new Date();
-    const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const timezone = branch?.timezone ?? 'Africa/Nairobi';
+    const todayStr = todayInTimezone(timezone);
+    const datePrefix = todayStr.replace(/-/g, '');
     const prefix = `${branch?.code || 'POS'}-${datePrefix}`;
 
     // Get count for today
     const key = `receipt:${prefix}`;
     let count = await this.redisService.get(key);
-    
+
     if (!count) {
       // Count from database
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
-      
+      const { start: startOfDay } = getDayBoundsInTimezone(todayStr, timezone);
+
       const existingCount = await this.prisma.sale.count({
         where: {
           branchId,

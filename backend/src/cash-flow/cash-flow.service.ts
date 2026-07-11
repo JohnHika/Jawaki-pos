@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { CashFlowMode, CashEntryType } from './dto/cash-flow.dto';
 import { CashLedgerQueryDto } from './dto/cash-flow.dto';
 
@@ -82,10 +83,15 @@ export class CashFlowService {
   async getAvailableCash(branchId: string) {
     const { mode } = await this.getSettings(branchId);
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(endOfDay.getDate() + 1);
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { timezone: true },
+    });
+    const timezone = branch?.timezone ?? 'Africa/Nairobi';
+    const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
+      todayInTimezone(timezone),
+      timezone,
+    );
 
     const restockOut = await this.sumToday(branchId, CashEntryType.RESTOCK_OUT, startOfDay, endOfDay);
     const expenseOut = await this.sumToday(branchId, CashEntryType.EXPENSE_OUT, startOfDay, endOfDay);

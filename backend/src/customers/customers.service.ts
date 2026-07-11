@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { SaleStatus } from '@prisma/client';
 import { ReportFilterDto, ReportPeriod } from '../reporting/dto/reporting.dto';
+import { nowInTimezone } from '../common/operating-hours';
 
 @Injectable()
 export class CustomersService {
@@ -12,7 +13,7 @@ export class CustomersService {
    * (getDateRange is private on ReportingService, so it's replicated here).
    */
   private resolveDateRange(filter: ReportFilterDto): { start: Date; end: Date } {
-    const now = new Date();
+    const now = nowInTimezone('Africa/Nairobi');
     let start: Date;
     let end: Date = new Date(now);
     end.setHours(23, 59, 59, 999);

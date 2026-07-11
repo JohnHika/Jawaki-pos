@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { getDayBoundsInTimezone } from '../common/operating-hours';
 import { CashFlowService } from './cash-flow.service';
 import { CashEntryType } from './dto/cash-flow.dto';
 import { CreateReconciliationDto, ReconciliationQueryDto } from './dto/cash-reconciliation.dto';
@@ -32,7 +33,8 @@ export class CashReconciliationService {
       where: { branchId },
       orderBy: { periodEnd: 'desc' },
     });
-    const periodStart = lastReconciliation?.periodEnd ?? this.startOfToday();
+    const periodStart =
+      lastReconciliation?.periodEnd ?? this.startOfToday(branch.timezone);
 
     const reconciliation = await this.prisma.cashReconciliation.create({
       data: {
@@ -102,10 +104,9 @@ export class CashReconciliationService {
     };
   }
 
-  private startOfToday(): Date {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return now;
+  private startOfToday(timezone?: string): Date {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return getDayBoundsInTimezone(todayStr, timezone ?? 'Africa/Nairobi').start;
   }
 
   private formatReconciliation(r: any) {

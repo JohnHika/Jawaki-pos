@@ -159,3 +159,99 @@ export function computeOpenStatus(
     on_break: onBreak,
   };
 }
+
+/**
+ * A `Date` whose UTC fields (getUTCFullYear/getUTCHours/etc.) hold the
+ * current wall-clock date+time in `timezone`, rebased so that plain local
+ * getters/setters (getDate, setHours, getDay, ...) read the same values too.
+ * That equivalence only holds because the server process itself runs in UTC
+ * (true for this app's Render deployment) — on a server in a different
+ * process timezone this would need `setUTCHours` etc. throughout instead.
+ *
+ * Use this as a drop-in for `new Date()` in date-range math that was written
+ * with local getters/setters, so "today"/"this week" etc. resolve for the
+ * branch's timezone instead of the server's.
+ */
+export function nowInTimezone(timezone: string): Date {
+  const tz = timezone || 'Africa/Nairobi';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  return new Date(
+    Date.UTC(
+      Number(get('year')),
+      Number(get('month')) - 1,
+      Number(get('day')),
+      Number(get('hour')) % 24,
+      Number(get('minute')),
+      Number(get('second')),
+    ),
+  );
+}
+
+/**
+ * "YYYY-MM-DD" for the current instant as observed in `timezone` — e.g. at
+ * 21:38 UTC, this is "tomorrow" in Africa/Nairobi (UTC+3, past local
+ * midnight). Use this instead of `new Date().toISOString().split('T')[0]`
+ * (the server's own UTC date) whenever "today" means "today for this
+ * branch", not "today on the server".
+ */
+export function todayInTimezone(timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone || 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '01';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/**
+ * UTC instants for the start/end of a "YYYY-MM-DD" calendar date as observed
+ * in `timezone` — not the server's ambient timezone. Without this, a sale at
+ * 21:03 UTC (00:03 in Africa/Nairobi, UTC+3) lands in "today" for a Nairobi
+ * branch but "yesterday" by naive `new Date(date).setHours(0,0,0,0)", which
+ * runs in the server process's local timezone (UTC on Render) — silently
+ * dropping the sale from daily summaries / end-of-day close right after
+ * midnight EAT until the server's own midnight catches up.
+ */
+export function getDayBoundsInTimezone(
+  dateStr: string,
+  timezone: string,
+): { start: Date; end: Date } {
+  const tz = timezone || 'Africa/Nairobi';
+  // Find the UTC offset (minutes) this timezone has for this calendar date by
+  // formatting a UTC-midnight guess and reading back the local wall clock.
+  const guess = new Date(`${dateStr}T00:00:00.000Z`);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(guess);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  const localAtGuess = Date.UTC(
+    Number(get('year')),
+    Number(get('month')) - 1,
+    Number(get('day')),
+    Number(get('hour')) % 24,
+    Number(get('minute')),
+  );
+  const offsetMs = localAtGuess - guess.getTime();
+
+  const start = new Date(guess.getTime() - offsetMs);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { start, end };
+}

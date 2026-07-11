@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { getDayBoundsInTimezone, nowInTimezone, todayInTimezone } from '../common/operating-hours';
 import { StockMovementType, ExpenseStatus } from '@prisma/client';
 import {
   ReportFilterDto,
@@ -32,7 +33,7 @@ export class ReportingService {
    * Get date range from period or custom dates
    */
   private getDateRange(filter: ReportFilterDto): { start: Date; end: Date } {
-    const now = new Date();
+    const now = nowInTimezone('Africa/Nairobi');
     let start: Date;
     let end: Date = new Date(now);
     end.setHours(23, 59, 59, 999);
@@ -632,20 +633,20 @@ export class ReportingService {
     date: string,
     tenantId: string,
   ): Promise<DailyProfitAndLossDto> {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
     // Get branch info
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, tenantId },
-      select: { name: true },
+      select: { name: true, timezone: true },
     });
 
     if (!branch) {
       throw new Error('Branch not found');
     }
+
+    const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
+      date,
+      branch.timezone ?? 'Africa/Nairobi',
+    );
 
     // Get all completed sales for the day
     const sales = await this.prisma.sale.findMany({

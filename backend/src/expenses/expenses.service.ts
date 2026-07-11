@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
+import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { CashFlowService } from '../cash-flow/cash-flow.service';
 import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
 import {
@@ -541,11 +542,12 @@ export class ExpensesService {
   private async generateExpenseNumber(branchId: string): Promise<string> {
     const branch = await this.prisma.branch.findUnique({
       where: { id: branchId },
-      select: { code: true },
+      select: { code: true, timezone: true },
     });
 
-    const today = new Date();
-    const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const timezone = branch?.timezone ?? 'Africa/Nairobi';
+    const todayStr = todayInTimezone(timezone);
+    const datePrefix = todayStr.replace(/-/g, '');
     const prefix = `${branch?.code || 'EXP'}-${datePrefix}`;
 
     // Get count for today
@@ -554,8 +556,7 @@ export class ExpensesService {
 
     if (!count) {
       // Count from database
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
+      const { start: startOfDay } = getDayBoundsInTimezone(todayStr, timezone);
 
       const existingCount = await this.prisma.expense.count({
         where: {
