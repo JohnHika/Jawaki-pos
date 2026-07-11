@@ -345,6 +345,12 @@ class BackgroundSyncService {
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.unknown ||
         statusCode == 429 ||
+        // 401 here means this isolate's own refresh-and-retry (see
+        // _BackgroundAuthInterceptor) already failed once for this request —
+        // could still be a transient token race, not proof the sale itself
+        // is invalid. Treat as retryable so a queued sale isn't permanently
+        // lost to an auth hiccup with no user-visible recovery.
+        statusCode == 401 ||
         (statusCode != null && statusCode >= 500);
   }
 

@@ -380,6 +380,9 @@ class SettingsScreen extends ConsumerWidget {
                     _InfoRow('Status',
                         stats?.isOnline == true ? 'Online' : 'Offline'),
                     _InfoRow('Pending Events', '${stats?.pendingEvents ?? 0}'),
+                    if ((stats?.failedEvents ?? 0) > 0)
+                      _InfoRow('Failed Events', '${stats?.failedEvents}',
+                          valueColor: DesignColors.error),
                     _InfoRow('Last Sync',
                         lastSync != null ? _formatDateTime(lastSync) : 'Never'),
                   ],
@@ -398,6 +401,30 @@ class SettingsScreen extends ConsumerWidget {
                       icon: Icons.sync_rounded, color: DesignColors.info);
                 },
               ),
+            ),
+            FutureBuilder(
+              future: syncService.getStats(),
+              builder: (context, snapshot) {
+                if ((snapshot.data?.failedEvents ?? 0) == 0) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SettingsPrimaryButton(
+                      label: 'Retry Failed Items',
+                      onPressed: () {
+                        syncService.retryFailedItems();
+                        Navigator.pop(context);
+                        showGlassSnackBar(context, 'Retrying failed items...',
+                            icon: Icons.refresh_rounded,
+                            color: DesignColors.warning);
+                      },
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -2421,7 +2448,8 @@ class _StatusBadge extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
-  const _InfoRow(this.label, this.value);
+  final Color? valueColor;
+  const _InfoRow(this.label, this.value, {this.valueColor});
 
   @override
   Widget build(BuildContext context) {
@@ -2448,7 +2476,7 @@ class _InfoRow extends StatelessWidget {
                 style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: titleColor),
+                    color: valueColor ?? titleColor),
                 textAlign: TextAlign.end,
                 overflow: TextOverflow.ellipsis),
           ),
