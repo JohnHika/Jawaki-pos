@@ -12,7 +12,12 @@ services:
     branch: main
     healthCheckPath: /health
     buildCommand: cd backend && npm ci --include=dev && npx prisma generate && npm run build
-    preDeployCommand: cd backend && npx prisma migrate deploy
+    # Migrations gate the deploy (strict &&); the permission seed runs after
+    # and is best-effort (|| echo) so a transient DB blip while seeding never
+    # blocks a deploy — the seed is idempotent (all upserts) and retries on the
+    # next deploy. This stops new permission keys from silently missing in prod
+    # (e.g. sales.close_end_of_day previously needed a manual seed run).
+    preDeployCommand: cd backend && npx prisma migrate deploy && (npx ts-node --transpile-only scripts/seed-permissions.ts || echo "seed-permissions skipped (non-fatal)")
     startCommand: cd backend && npx prisma migrate deploy && npm run start:prod
     envVars:
       - key: NODE_ENV
