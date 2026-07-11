@@ -357,15 +357,41 @@ export class AiService {
         const model = data.model || 'axon-gateway';
 
         if (data.stop_reason !== 'tool_use') {
-          const text = content
+          const rawText = content
             .filter((b): b is AnthropicTextBlock => b.type === 'text')
             .map((b) => b.text)
             .join('\n')
             .trim();
-          if (!text) {
+          if (!rawText) {
             this.logger.error('Axon Gateway /v1/messages returned no text on end_turn');
             return null;
           }
+
+          const { text, hadLeak } = this.stripLeakedToolCallSyntax(rawText);
+
+          if (!text) {
+            // The whole "reply" was leaked tool-call syntax with nothing
+            // salvageable — this happens when the model tries to call a
+            // tool as plain text instead of a real tool_use block (usually
+            // right after an earlier tool call errored). Nudge it to answer
+            // in plain language and let the loop retry rather than showing
+            // the user raw JSON/tags.
+            this.logger.warn('Axon Gateway /v1/messages end_turn text was pure leaked tool-call syntax; retrying');
+            messages.push(
+              { role: 'assistant', content: rawText },
+              {
+                role: 'user',
+                content:
+                  'That was not a valid reply — it looked like raw tool-call syntax instead of an answer. Please answer in plain language, or make a real tool call if you need one.',
+              },
+            );
+            continue;
+          }
+
+          if (hadLeak) {
+            this.logger.warn('Axon Gateway /v1/messages end_turn text contained leaked tool-call syntax; stripped before returning');
+          }
+
           return { kind: 'reply', reply: text, model, todos: latestTodos };
         }
 
@@ -376,6 +402,31 @@ export class AiService {
         }
 
         const toolDef = toolDefs.find((t) => t.name === toolUseBlock.name);
+
+        // The model occasionally hallucinates a tool name that isn't in
+        // toolDefs (e.g. a plausible-sounding name it invents, or a stale
+        // name from an earlier turn). Handle this explicitly rather than
+        // letting it silently fall through to executeReadTool's default
+        // case — same recovery shape as the malformed-input branches below:
+        // tell the model plainly, feed the real tool list back, and let it
+        // retry instead of the loop limping along on an implicit throw.
+        if (!toolDef) {
+          const validNames = toolDefs.map((t) => t.name).join(', ');
+          messages.push(
+            { role: 'assistant', content: [toolUseBlock] },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: toolUseBlock.id,
+                  content: `Error: "${toolUseBlock.name}" is not a real tool. Valid tools are: ${validNames}. Call one of these, or answer directly in text if no tool is needed.`,
+                },
+              ],
+            },
+          );
+          continue;
+        }
 
         if (toolUseBlock.name === 'ask_user_question') {
           const questions = this.sanitizeAskUserQuestions(toolUseBlock.input?.questions);
@@ -608,6 +659,80 @@ MANDATORY FOR THIS REQUEST: the user's message describes multiple distinct steps
     if (verbCount >= 3 && connectors >= 1) return true;
 
     return false;
+  }
+
+  /// Some models occasionally emit a tool call as plain TEXT instead of a
+  /// real tool_use content block — most often right after a previous tool
+  /// call errored (e.g. an unknown-tool retry nudge), where the model tries
+  /// again but writes the call out as visible JSON/tags rather than using
+  /// the actual tool-calling channel. Detects and strips the common leaked
+  /// shapes so raw tool syntax never reaches the user:
+  ///   - A fenced/bare JSON object or array that looks like a tool call:
+  ///     {"name": "...", "arguments"/"parameters"/"input": {...}}
+  ///   - Anthropic/Claude-style <function_calls>...</function_calls> or
+  ///     <tool_call>...</tool_call> blocks some providers pass through.
+  /// Returns the cleaned text (possibly empty if the whole reply was junk)
+  /// and whether anything was actually stripped, so the caller can decide
+  /// whether to retry.
+  private stripLeakedToolCallSyntax(text: string): { text: string; hadLeak: boolean } {
+    let cleaned = text;
+    let hadLeak = false;
+
+    // XML-ish tool-call tags some providers pass straight through.
+    const tagPatterns = [
+      /<function_calls>[\s\S]*?<\/function_calls>/gi,
+      /<tool_call>[\s\S]*?<\/tool_call>/gi,
+      /<\|tool_call\|>[\s\S]*?<\|\/tool_call\|>/gi,
+    ];
+    for (const pattern of tagPatterns) {
+      if (pattern.test(cleaned)) {
+        hadLeak = true;
+        cleaned = cleaned.replace(pattern, '').trim();
+      }
+    }
+
+    // A fenced ```json ... ``` block whose payload looks like a tool call.
+    cleaned = cleaned.replace(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi, (match, jsonBody) => {
+      if (this.looksLikeToolCallJson(jsonBody)) {
+        hadLeak = true;
+        return '';
+      }
+      return match;
+    });
+
+    // A bare (unfenced) JSON object/array that IS the entire remaining
+    // text and looks like a tool call — conservative: only strip when it's
+    // the whole trimmed string, not just any embedded braces, so normal
+    // prose that happens to mention JSON isn't mangled.
+    const trimmed = cleaned.trim();
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      if (this.looksLikeToolCallJson(trimmed)) {
+        hadLeak = true;
+        cleaned = '';
+      }
+    }
+
+    return { text: cleaned.trim(), hadLeak };
+  }
+
+  private looksLikeToolCallJson(candidate: string): boolean {
+    try {
+      const parsed = JSON.parse(candidate);
+      const check = (obj: any): boolean =>
+        obj &&
+        typeof obj === 'object' &&
+        typeof obj.name === 'string' &&
+        ('arguments' in obj || 'parameters' in obj || 'input' in obj);
+      if (Array.isArray(parsed)) {
+        return parsed.length > 0 && parsed.every(check);
+      }
+      return check(parsed);
+    } catch {
+      return false;
+    }
   }
 
   /// The underlying model doesn't always obey the ask_user_question nested
