@@ -253,18 +253,22 @@ export class RegisterCompanyDto {
 }
 
 export class RefreshTokenDto {
+  // Refresh tokens are generated as plain UUIDv4 (36 chars) — see
+  // AuthService.generateTokens. MinLength must stay <= 36 or every refresh
+  // ever issued fails validation here before the service even runs.
   @ApiProperty()
   @IsString()
-  @MinLength(50, { message: 'Invalid refresh token format' })
+  @MinLength(36, { message: 'Invalid refresh token format' })
   @MaxLength(256, { message: 'Refresh token is too long' })
   refreshToken: string;
 }
 
 export class LogoutDto {
+  // Same UUIDv4 format as RefreshTokenDto — see comment there.
   @ApiPropertyOptional({ description: 'Current device refresh token for session-scoped logout' })
   @IsOptional()
   @IsString()
-  @MinLength(50, { message: 'Invalid refresh token format' })
+  @MinLength(36, { message: 'Invalid refresh token format' })
   @MaxLength(256, { message: 'Refresh token is too long' })
   refreshToken?: string;
 

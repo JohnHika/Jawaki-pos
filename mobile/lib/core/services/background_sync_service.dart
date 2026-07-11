@@ -88,8 +88,13 @@ class BackgroundSyncService {
 
   /// Process the sync queue (called by workmanager callback)
   static Future<bool> processSyncQueue() async {
-    // Create isolated instances for background work (runs in isolate)
+    // Create isolated instances for background work (runs in isolate,
+    // separate from the app's main-isolate AuthService/AuthInterceptor —
+    // this must source and refresh its own access token from secure
+    // storage, or every request here 401s even with a perfectly valid
+    // session (see the auth token bootstrap below).
     final storageService = StorageService();
+    await storageService.initialize();
     final database = AppDatabase(storageService);
     final connectivityService = ConnectivityService();
 
@@ -111,6 +116,15 @@ class BackgroundSyncService {
           },
         ),
       );
+
+      final accessToken = await storageService.getAccessToken();
+      if (accessToken == null) {
+        debugPrint('[BackgroundSync] No stored session, skipping sync');
+        return false;
+      }
+      dio.options.headers['Authorization'] = 'Bearer $accessToken';
+      dio.interceptors.add(_BackgroundAuthInterceptor(storageService, dio));
+
       final apiClient = ApiClient(dio);
 
       final result = await processPendingQueue(
@@ -403,4 +417,63 @@ void callbackDispatcher() {
       return Future.value(false);
     }
   });
+}
+
+/// Standalone 401-refresh-and-retry for the background-sync isolate, which
+/// has no [AuthService]/main-isolate [AuthInterceptor] to share. Mirrors
+/// their single-flight refresh + rotate-on-use handling so a 15-minute
+/// access token expiring mid-background-sync doesn't fail every queued item.
+class _BackgroundAuthInterceptor extends Interceptor {
+  final StorageService _storage;
+  final Dio _dio;
+  Future<String?>? _refreshFuture;
+
+  _BackgroundAuthInterceptor(this._storage, this._dio);
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (err.response?.statusCode != 401) {
+      return handler.next(err);
+    }
+
+    try {
+      _refreshFuture ??= _refresh();
+      final newAccessToken = await _refreshFuture;
+      _refreshFuture = null;
+      if (newAccessToken == null) {
+        return handler.next(err);
+      }
+
+      final opts = err.requestOptions;
+      opts.headers['Authorization'] = 'Bearer $newAccessToken';
+      final response = await _dio.fetch(opts);
+      return handler.resolve(response);
+    } catch (_) {
+      _refreshFuture = null;
+      return handler.next(err);
+    }
+  }
+
+  Future<String?> _refresh() async {
+    final refreshToken = await _storage.getRefreshToken();
+    if (refreshToken == null) return null;
+
+    final refreshDio = Dio(BaseOptions(baseUrl: _dio.options.baseUrl));
+    final response = await refreshDio.post('/auth/refresh', data: {
+      'refreshToken': refreshToken,
+    });
+
+    final newAccessToken = response.data['accessToken'] as String?;
+    if (newAccessToken == null) return null;
+
+    await _storage.saveAccessToken(newAccessToken);
+    _dio.options.headers['Authorization'] = 'Bearer $newAccessToken';
+
+    final newRefreshToken = response.data['refreshToken'] as String?;
+    if (newRefreshToken != null) {
+      await _storage.saveRefreshToken(newRefreshToken);
+    }
+
+    return newAccessToken;
+  }
 }

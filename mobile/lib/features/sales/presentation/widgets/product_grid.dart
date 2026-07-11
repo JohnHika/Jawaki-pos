@@ -335,6 +335,8 @@ class _ProductCard extends ConsumerWidget {
 
     GlassBottomSheet.show(
       context,
+      scrollable: true,
+      initialSize: tiers.length > 1 ? 0.75 : 0.6,
       child: _QuantitySheet(
         productName: productName,
         basePrice: price,
