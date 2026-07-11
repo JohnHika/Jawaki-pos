@@ -106,7 +106,26 @@ class ReceiptPrinterService {
           styles: const PosStyles(align: PosAlign.center)));
     }
 
+    final branchPhone = receipt['branchPhone'] as String?;
+    if (branchPhone != null && branchPhone.isNotEmpty) {
+      bytes.addAll(generator.text('Tel: $branchPhone',
+          styles: const PosStyles(align: PosAlign.center)));
+    }
+
     bytes.addAll(generator.hr());
+
+    // VOIDED banner — prominent, bold, centered.
+    final isVoided = (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
+    if (isVoided) {
+      bytes.addAll(generator.text('*** VOIDED SALE ***',
+          styles: const PosStyles(align: PosAlign.center, bold: true)));
+      final vr = (receipt['voidReason'] ?? '').toString();
+      if (vr.isNotEmpty) {
+        bytes.addAll(generator.text('Reason: $vr',
+            styles: const PosStyles(align: PosAlign.center)));
+      }
+      bytes.addAll(generator.hr());
+    }
 
     final receiptNumber = receipt['receiptNumber'] as String? ??
         saleId.substring(0, 8).toUpperCase();
@@ -115,18 +134,39 @@ class ReceiptPrinterService {
     if (createdAt != null) {
       bytes.addAll(generator.text(_formatDateTime(createdAt)));
     }
+    if (receipt['cashierName'] != null) {
+      bytes.addAll(generator.text('Served by: ${receipt['cashierName']}'));
+    }
+    if (receipt['customerName'] != null) {
+      bytes.addAll(generator.text('Customer: ${receipt['customerName']}'));
+    }
     bytes.addAll(generator.hr());
 
     final items = (receipt['items'] as List?) ?? [];
     for (final item in items) {
       final name = (item['productName'] ?? '').toString();
-      final qty = item['quantity'];
+      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      final unit = (item['unit'] ?? '').toString().trim();
+      final unitPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0;
+      final perUnit = (item['quantityPerUnit'] as num?)?.toDouble() ?? 0;
       final total = ((item['total'] as num?) ?? 0).toStringAsFixed(2);
+
+      // Product name on its own line so long names don't crush the amount.
+      bytes.addAll(generator.text(name, styles: const PosStyles(bold: true)));
+      // "  2 box @ 1,200.00 ............ 2,400.00"
+      final qtyLabel = unit.isNotEmpty ? '$qty $unit' : '$qty';
       bytes.addAll(generator.row([
-        PosColumn(text: '$qty x $name', width: 8),
-        PosColumn(
-            text: total, width: 4, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: '  $qtyLabel @ ${unitPrice.toStringAsFixed(2)}', width: 8),
+        PosColumn(text: total, width: 4, styles: const PosStyles(align: PosAlign.right)),
       ]));
+      // Per-base-unit price when a tier bundles units.
+      if (unit.isNotEmpty && perUnit > 1) {
+        final perPiece = unitPrice / perUnit;
+        bytes.addAll(generator.text(
+          '    (${(perUnit * qty).round()} pcs @ ${perPiece.toStringAsFixed(2)} each)',
+          styles: const PosStyles(fontType: PosFontType.fontB),
+        ));
+      }
     }
 
     bytes.addAll(generator.hr());
@@ -157,11 +197,39 @@ class ReceiptPrinterService {
               align: PosAlign.right, bold: true, height: PosTextSize.size2)),
     ]));
 
-    final paymentMethod = receipt['paymentMethod'] as String? ?? 'CASH';
-    bytes.addAll(generator.text('Payment: $paymentMethod'));
+    bytes.addAll(generator.hr());
+
+    // Payment detail — split tenders line by line, else the single method.
+    final paymentMethod = (receipt['paymentMethod'] as String? ?? 'CASH').toUpperCase();
+    final tenders = receipt['paymentTenders'] as List?;
+    if (paymentMethod == 'SPLIT' && tenders != null && tenders.isNotEmpty) {
+      bytes.addAll(generator.text('Paid by (split):'));
+      for (final t in tenders) {
+        bytes.addAll(_row(generator, '  ${t['method']}',
+            ((t['amount'] as num?) ?? 0).toStringAsFixed(2)));
+      }
+    } else {
+      bytes.addAll(generator.text('Paid by: $paymentMethod'));
+    }
+
+    // Balance owed on credit.
+    final owed = (receipt['outstandingBalance'] as num?)?.toDouble() ?? 0;
+    if (owed > 0.01) {
+      bytes.addAll(generator.row([
+        PosColumn(text: 'BALANCE OWED', width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(
+            text: owed.toStringAsFixed(2),
+            width: 6,
+            styles: const PosStyles(align: PosAlign.right, bold: true)),
+      ]));
+    }
 
     bytes.addAll(generator.feed(1));
     bytes.addAll(generator.text('Thank you for your purchase!',
+        styles: const PosStyles(align: PosAlign.center, bold: true)));
+    bytes.addAll(generator.text('We look forward to serving you again.',
+        styles: const PosStyles(align: PosAlign.center)));
+    bytes.addAll(generator.text('All the best!',
         styles: const PosStyles(align: PosAlign.center)));
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());

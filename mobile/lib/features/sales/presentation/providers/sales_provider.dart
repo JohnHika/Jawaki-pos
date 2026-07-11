@@ -1,9 +1,51 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+
+/// The credit/debt portion still owed on a sale, for the receipt's
+/// "Balance owed" line. A pure CREDIT sale owes its whole total; a SPLIT
+/// sale owes the sum of its CREDIT tenders (parsed from paymentReference,
+/// where split tenders are stored as JSON). Everything else owes nothing.
+double _extractOutstanding(PendingSale sale) {
+  final method = sale.paymentMethod.toUpperCase();
+  if (method == 'CREDIT') return sale.total;
+  if (method == 'SPLIT' && (sale.paymentReference?.isNotEmpty ?? false)) {
+    try {
+      final tenders = jsonDecode(sale.paymentReference!) as List;
+      return tenders
+          .whereType<Map>()
+          .where((t) => (t['method'] ?? '').toString().toUpperCase() == 'CREDIT')
+          .fold<double>(0, (sum, t) => sum + ((t['amount'] as num?)?.toDouble() ?? 0));
+    } catch (_) {
+      return 0;
+    }
+  }
+  return 0;
+}
+
+/// Parsed split tenders for the receipt's payment breakdown, or null when
+/// the sale isn't a split.
+List<Map<String, dynamic>>? _extractTenders(PendingSale sale) {
+  if (sale.paymentMethod.toUpperCase() != 'SPLIT') return null;
+  if (!(sale.paymentReference?.isNotEmpty ?? false)) return null;
+  try {
+    final list = jsonDecode(sale.paymentReference!) as List;
+    return list
+        .whereType<Map>()
+        .map((t) => {
+              'method': (t['method'] ?? '').toString(),
+              'amount': (t['amount'] as num?)?.toDouble() ?? 0,
+            })
+        .toList();
+  } catch (_) {
+    return null;
+  }
+}
 
 // Receipt provider — reads the local sale first. The sale, its items, and
 // the customer all already exist locally the instant a sale is completed
@@ -38,6 +80,14 @@ final receiptProvider =
       'cashierName': auth.currentUser?['name'],
       'customerName': customer?['name'],
       'customerPhone': customer?['phone'],
+      'status': sale.status,
+      'voidReason': sale.voidReason,
+      'voidedAt': sale.voidedAt?.toIso8601String(),
+      // Amount still owed on a credit sale, if the payment metadata carries
+      // it (shown as "Balance owed" on the receipt).
+      'outstandingBalance': _extractOutstanding(sale),
+      // Split-payment breakdown (method + amount per tender), or null.
+      'paymentTenders': _extractTenders(sale),
       'items': items
           .map((i) => {
                 'productName': i.productName,
@@ -47,6 +97,8 @@ final receiptProvider =
                 'unitPrice': i.unitPrice,
                 'price': i.unitPrice,
                 'total': i.total,
+                'unit': i.unit,
+                'quantityPerUnit': i.quantityPerUnit,
               })
           .toList(),
     };

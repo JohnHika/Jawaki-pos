@@ -622,6 +622,11 @@ model SaleItem {
   taxRate     Decimal @db.Decimal(5, 2)
   taxAmount   Decimal @db.Decimal(10, 2)
   totalAmount Decimal @db.Decimal(10, 2)
+  // The tier/unit this line was sold at, for detailed receipts:
+  // `unit` is the sold-unit label (piece/box/pack…), `quantityPerUnit` is
+  // how many base units one sold unit contains. Nullable = base unit.
+  unit             String?
+  quantityPerUnit  Decimal? @db.Decimal(10, 3)
 
   sale    Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id])

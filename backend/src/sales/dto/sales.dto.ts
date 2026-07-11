@@ -47,6 +47,19 @@ export class CreateSaleItemDto {
   @Max(1000000, { message: 'Discount cannot exceed 1,000,000' })
   @Type(() => Number)
   discount?: number;
+
+  @ApiPropertyOptional({ description: 'Sold-unit label (piece/box/pack…) for detailed receipts' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  unit?: string;
+
+  @ApiPropertyOptional({ description: 'Base units per sold unit (e.g. 12 for a box of 12)' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Type(() => Number)
+  quantityPerUnit?: number;
 }
 
 // One payment component of a SPLIT sale — e.g. { method: CASH, amount: 500 }

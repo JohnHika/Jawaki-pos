@@ -172,6 +172,8 @@ export class SalesService {
         taxRate,
         taxAmount,
         totalAmount: lineTotal,
+        unit: item.unit ?? null,
+        quantityPerUnit: item.quantityPerUnit ?? null,
       });
 
       if (product.trackInventory) {
@@ -991,6 +993,9 @@ export class SalesService {
         taxRate: Number(item.taxRate),
         taxAmount: Number(item.taxAmount),
         totalAmount: Number(item.totalAmount),
+        unit: item.unit ?? null,
+        quantityPerUnit:
+          item.quantityPerUnit != null ? Number(item.quantityPerUnit) : null,
       }));
     }
 

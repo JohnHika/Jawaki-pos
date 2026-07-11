@@ -124,4 +124,77 @@ export class UploadsController {
       bytes: result.bytes,
     };
   }
+
+  /**
+   * Upload an image and trace it into a scalable SVG logo. Returns both the
+   * original raster URL and the vectorized SVG URL so the caller can preview
+   * and choose. Deterministic (Cloudinary vectorize), no AI/token cost.
+   */
+  @Post('logo/vectorize')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('uploads.image')
+  @ApiOperation({ summary: 'Trace an uploaded image into a scalable SVG logo' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Logo vectorized' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_FILE_SIZE },
+      fileFilter: (_req, file, cb) => {
+        if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              `Invalid file type "${file.mimetype}". Allowed: JPEG, PNG, WebP`,
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  async vectorizeLogo(
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req: any,
+    @Query('colors') colors?: string,
+    @Query('detail') detail?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    const tenantId: string = req.user.tenantId;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
+    if (!tenant) {
+      throw new BadRequestException('Tenant not found');
+    }
+
+    this.logger.log(`Vectorizing logo for tenant ${tenant.slug} (${file.size} bytes)`);
+
+    const result = await this.uploadsService.vectorizeLogo(
+      file.buffer,
+      file.mimetype,
+      tenant.slug,
+      {
+        colors: colors ? parseInt(colors, 10) : undefined,
+        detail: detail ? parseInt(detail, 10) : undefined,
+      },
+    );
+
+    return {
+      rasterUrl: result.secureUrl,
+      svgUrl: result.svgUrl,
+      publicId: result.publicId,
+    };
+  }
 }

@@ -90,6 +90,43 @@ export class UploadsService {
   }
 
   /**
+   * Turn an uploaded raster logo into a scalable SVG by tracing it with
+   * Cloudinary's vectorize transformation (deterministic — no AI, no native
+   * binary to install on the server). Returns the original raster URL plus a
+   * delivered SVG URL. `colors`/`detail` tune the trace: fewer colors + lower
+   * detail = cleaner, smaller SVG (good for simple logos); higher = closer to
+   * the source (good for detailed marks).
+   *
+   * Best on clean, high-contrast logos/line art; a busy photo will trace into
+   * a heavy SVG, so this is offered as a logo tool, not a general converter.
+   */
+  async vectorizeLogo(
+    buffer: Buffer,
+    mimeType: string,
+    tenantSlug: string,
+    opts: { colors?: number; detail?: number } = {},
+  ): Promise<UploadResult & { svgUrl: string }> {
+    // Upload the source first (reused as the raster fallback + trace source).
+    const uploaded = await this.uploadImage(buffer, mimeType, tenantSlug, 'logo');
+
+    const colors = Math.min(Math.max(opts.colors ?? 8, 2), 30);
+    const detail = Math.min(Math.max(opts.detail ?? 300, 0), 1000);
+
+    // Deliver the same asset traced to SVG. e_vectorize does the raster->
+    // vector trace; fetch_format svg returns actual SVG markup.
+    const svgUrl = cloudinary.url(uploaded.publicId, {
+      resource_type: 'image',
+      secure: true,
+      transformation: [
+        { effect: `vectorize:colors:${colors}:detail:${detail}` },
+        { fetch_format: 'svg' },
+      ],
+    });
+
+    return { ...uploaded, svgUrl };
+  }
+
+  /**
    * Delete an image from Cloudinary by public_id.
    * Failures are logged but not thrown (non-blocking).
    */

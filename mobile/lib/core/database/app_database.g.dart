@@ -3204,6 +3204,24 @@ class $PendingSalesTable extends PendingSales
   late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
       'synced_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _voidReasonMeta =
+      const VerificationMeta('voidReason');
+  @override
+  late final GeneratedColumn<String> voidReason = GeneratedColumn<String>(
+      'void_reason', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _voidedByMeta =
+      const VerificationMeta('voidedBy');
+  @override
+  late final GeneratedColumn<String> voidedBy = GeneratedColumn<String>(
+      'voided_by', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _voidedAtMeta =
+      const VerificationMeta('voidedAt');
+  @override
+  late final GeneratedColumn<DateTime> voidedAt = GeneratedColumn<DateTime>(
+      'voided_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -3221,7 +3239,10 @@ class $PendingSalesTable extends PendingSales
         status,
         createdAt,
         isSynced,
-        syncedAt
+        syncedAt,
+        voidReason,
+        voidedBy,
+        voidedAt
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3320,6 +3341,20 @@ class $PendingSalesTable extends PendingSales
       context.handle(_syncedAtMeta,
           syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
     }
+    if (data.containsKey('void_reason')) {
+      context.handle(
+          _voidReasonMeta,
+          voidReason.isAcceptableOrUnknown(
+              data['void_reason']!, _voidReasonMeta));
+    }
+    if (data.containsKey('voided_by')) {
+      context.handle(_voidedByMeta,
+          voidedBy.isAcceptableOrUnknown(data['voided_by']!, _voidedByMeta));
+    }
+    if (data.containsKey('voided_at')) {
+      context.handle(_voidedAtMeta,
+          voidedAt.isAcceptableOrUnknown(data['voided_at']!, _voidedAtMeta));
+    }
     return context;
   }
 
@@ -3361,6 +3396,12 @@ class $PendingSalesTable extends PendingSales
           .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
       syncedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at']),
+      voidReason: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}void_reason']),
+      voidedBy: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}voided_by']),
+      voidedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}voided_at']),
     );
   }
 
@@ -3387,6 +3428,9 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
   final DateTime createdAt;
   final bool isSynced;
   final DateTime? syncedAt;
+  final String? voidReason;
+  final String? voidedBy;
+  final DateTime? voidedAt;
   const PendingSale(
       {required this.id,
       required this.receiptNumber,
@@ -3403,7 +3447,10 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
       required this.status,
       required this.createdAt,
       required this.isSynced,
-      this.syncedAt});
+      this.syncedAt,
+      this.voidReason,
+      this.voidedBy,
+      this.voidedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -3430,6 +3477,15 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
     map['is_synced'] = Variable<bool>(isSynced);
     if (!nullToAbsent || syncedAt != null) {
       map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || voidReason != null) {
+      map['void_reason'] = Variable<String>(voidReason);
+    }
+    if (!nullToAbsent || voidedBy != null) {
+      map['voided_by'] = Variable<String>(voidedBy);
+    }
+    if (!nullToAbsent || voidedAt != null) {
+      map['voided_at'] = Variable<DateTime>(voidedAt);
     }
     return map;
   }
@@ -3459,6 +3515,15 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
       syncedAt: syncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(syncedAt),
+      voidReason: voidReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidReason),
+      voidedBy: voidedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedBy),
+      voidedAt: voidedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedAt),
     );
   }
 
@@ -3482,6 +3547,9 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      voidReason: serializer.fromJson<String?>(json['voidReason']),
+      voidedBy: serializer.fromJson<String?>(json['voidedBy']),
+      voidedAt: serializer.fromJson<DateTime?>(json['voidedAt']),
     );
   }
   @override
@@ -3504,6 +3572,9 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'isSynced': serializer.toJson<bool>(isSynced),
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'voidReason': serializer.toJson<String?>(voidReason),
+      'voidedBy': serializer.toJson<String?>(voidedBy),
+      'voidedAt': serializer.toJson<DateTime?>(voidedAt),
     };
   }
 
@@ -3523,7 +3594,10 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
           String? status,
           DateTime? createdAt,
           bool? isSynced,
-          Value<DateTime?> syncedAt = const Value.absent()}) =>
+          Value<DateTime?> syncedAt = const Value.absent(),
+          Value<String?> voidReason = const Value.absent(),
+          Value<String?> voidedBy = const Value.absent(),
+          Value<DateTime?> voidedAt = const Value.absent()}) =>
       PendingSale(
         id: id ?? this.id,
         receiptNumber: receiptNumber ?? this.receiptNumber,
@@ -3543,6 +3617,9 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
         createdAt: createdAt ?? this.createdAt,
         isSynced: isSynced ?? this.isSynced,
         syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+        voidReason: voidReason.present ? voidReason.value : this.voidReason,
+        voidedBy: voidedBy.present ? voidedBy.value : this.voidedBy,
+        voidedAt: voidedAt.present ? voidedAt.value : this.voidedAt,
       );
   PendingSale copyWithCompanion(PendingSalesCompanion data) {
     return PendingSale(
@@ -3569,6 +3646,10 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      voidReason:
+          data.voidReason.present ? data.voidReason.value : this.voidReason,
+      voidedBy: data.voidedBy.present ? data.voidedBy.value : this.voidedBy,
+      voidedAt: data.voidedAt.present ? data.voidedAt.value : this.voidedAt,
     );
   }
 
@@ -3590,7 +3671,10 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
           ..write('status: $status, ')
           ..write('createdAt: $createdAt, ')
           ..write('isSynced: $isSynced, ')
-          ..write('syncedAt: $syncedAt')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('voidedBy: $voidedBy, ')
+          ..write('voidedAt: $voidedAt')
           ..write(')'))
         .toString();
   }
@@ -3612,7 +3696,10 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
       status,
       createdAt,
       isSynced,
-      syncedAt);
+      syncedAt,
+      voidReason,
+      voidedBy,
+      voidedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3632,7 +3719,10 @@ class PendingSale extends DataClass implements Insertable<PendingSale> {
           other.status == this.status &&
           other.createdAt == this.createdAt &&
           other.isSynced == this.isSynced &&
-          other.syncedAt == this.syncedAt);
+          other.syncedAt == this.syncedAt &&
+          other.voidReason == this.voidReason &&
+          other.voidedBy == this.voidedBy &&
+          other.voidedAt == this.voidedAt);
 }
 
 class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
@@ -3652,6 +3742,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
   final Value<DateTime> createdAt;
   final Value<bool> isSynced;
   final Value<DateTime?> syncedAt;
+  final Value<String?> voidReason;
+  final Value<String?> voidedBy;
+  final Value<DateTime?> voidedAt;
   final Value<int> rowid;
   const PendingSalesCompanion({
     this.id = const Value.absent(),
@@ -3670,6 +3763,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
     this.createdAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.voidedBy = const Value.absent(),
+    this.voidedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PendingSalesCompanion.insert({
@@ -3689,6 +3785,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
     required DateTime createdAt,
     this.isSynced = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.voidReason = const Value.absent(),
+    this.voidedBy = const Value.absent(),
+    this.voidedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         receiptNumber = Value(receiptNumber),
@@ -3715,6 +3814,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
     Expression<DateTime>? createdAt,
     Expression<bool>? isSynced,
     Expression<DateTime>? syncedAt,
+    Expression<String>? voidReason,
+    Expression<String>? voidedBy,
+    Expression<DateTime>? voidedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3734,6 +3836,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
       if (createdAt != null) 'created_at': createdAt,
       if (isSynced != null) 'is_synced': isSynced,
       if (syncedAt != null) 'synced_at': syncedAt,
+      if (voidReason != null) 'void_reason': voidReason,
+      if (voidedBy != null) 'voided_by': voidedBy,
+      if (voidedAt != null) 'voided_at': voidedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3755,6 +3860,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
       Value<DateTime>? createdAt,
       Value<bool>? isSynced,
       Value<DateTime?>? syncedAt,
+      Value<String?>? voidReason,
+      Value<String?>? voidedBy,
+      Value<DateTime?>? voidedAt,
       Value<int>? rowid}) {
     return PendingSalesCompanion(
       id: id ?? this.id,
@@ -3773,6 +3881,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
       createdAt: createdAt ?? this.createdAt,
       isSynced: isSynced ?? this.isSynced,
       syncedAt: syncedAt ?? this.syncedAt,
+      voidReason: voidReason ?? this.voidReason,
+      voidedBy: voidedBy ?? this.voidedBy,
+      voidedAt: voidedAt ?? this.voidedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3828,6 +3939,15 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
+    if (voidReason.present) {
+      map['void_reason'] = Variable<String>(voidReason.value);
+    }
+    if (voidedBy.present) {
+      map['voided_by'] = Variable<String>(voidedBy.value);
+    }
+    if (voidedAt.present) {
+      map['voided_at'] = Variable<DateTime>(voidedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3853,6 +3973,9 @@ class PendingSalesCompanion extends UpdateCompanion<PendingSale> {
           ..write('createdAt: $createdAt, ')
           ..write('isSynced: $isSynced, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('voidReason: $voidReason, ')
+          ..write('voidedBy: $voidedBy, ')
+          ..write('voidedAt: $voidedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3921,6 +4044,17 @@ class $PendingSaleItemsTable extends PendingSaleItems
   late final GeneratedColumn<double> total = GeneratedColumn<double>(
       'total', aliasedName, false,
       type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+      'unit', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _quantityPerUnitMeta =
+      const VerificationMeta('quantityPerUnit');
+  @override
+  late final GeneratedColumn<double> quantityPerUnit = GeneratedColumn<double>(
+      'quantity_per_unit', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -3931,7 +4065,9 @@ class $PendingSaleItemsTable extends PendingSaleItems
         quantity,
         unitPrice,
         discount,
-        total
+        total,
+        unit,
+        quantityPerUnit
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3994,6 +4130,16 @@ class $PendingSaleItemsTable extends PendingSaleItems
     } else if (isInserting) {
       context.missing(_totalMeta);
     }
+    if (data.containsKey('unit')) {
+      context.handle(
+          _unitMeta, unit.isAcceptableOrUnknown(data['unit']!, _unitMeta));
+    }
+    if (data.containsKey('quantity_per_unit')) {
+      context.handle(
+          _quantityPerUnitMeta,
+          quantityPerUnit.isAcceptableOrUnknown(
+              data['quantity_per_unit']!, _quantityPerUnitMeta));
+    }
     return context;
   }
 
@@ -4021,6 +4167,10 @@ class $PendingSaleItemsTable extends PendingSaleItems
           .read(DriftSqlType.double, data['${effectivePrefix}discount'])!,
       total: attachedDatabase.typeMapping
           .read(DriftSqlType.double, data['${effectivePrefix}total'])!,
+      unit: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}unit']),
+      quantityPerUnit: attachedDatabase.typeMapping.read(
+          DriftSqlType.double, data['${effectivePrefix}quantity_per_unit']),
     );
   }
 
@@ -4040,6 +4190,8 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
   final double unitPrice;
   final double discount;
   final double total;
+  final String? unit;
+  final double? quantityPerUnit;
   const PendingSaleItem(
       {required this.id,
       required this.saleId,
@@ -4049,7 +4201,9 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       required this.quantity,
       required this.unitPrice,
       required this.discount,
-      required this.total});
+      required this.total,
+      this.unit,
+      this.quantityPerUnit});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -4062,6 +4216,12 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
     map['unit_price'] = Variable<double>(unitPrice);
     map['discount'] = Variable<double>(discount);
     map['total'] = Variable<double>(total);
+    if (!nullToAbsent || unit != null) {
+      map['unit'] = Variable<String>(unit);
+    }
+    if (!nullToAbsent || quantityPerUnit != null) {
+      map['quantity_per_unit'] = Variable<double>(quantityPerUnit);
+    }
     return map;
   }
 
@@ -4076,6 +4236,10 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       unitPrice: Value(unitPrice),
       discount: Value(discount),
       total: Value(total),
+      unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+      quantityPerUnit: quantityPerUnit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(quantityPerUnit),
     );
   }
 
@@ -4092,6 +4256,8 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       unitPrice: serializer.fromJson<double>(json['unitPrice']),
       discount: serializer.fromJson<double>(json['discount']),
       total: serializer.fromJson<double>(json['total']),
+      unit: serializer.fromJson<String?>(json['unit']),
+      quantityPerUnit: serializer.fromJson<double?>(json['quantityPerUnit']),
     );
   }
   @override
@@ -4107,6 +4273,8 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       'unitPrice': serializer.toJson<double>(unitPrice),
       'discount': serializer.toJson<double>(discount),
       'total': serializer.toJson<double>(total),
+      'unit': serializer.toJson<String?>(unit),
+      'quantityPerUnit': serializer.toJson<double?>(quantityPerUnit),
     };
   }
 
@@ -4119,7 +4287,9 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
           int? quantity,
           double? unitPrice,
           double? discount,
-          double? total}) =>
+          double? total,
+          Value<String?> unit = const Value.absent(),
+          Value<double?> quantityPerUnit = const Value.absent()}) =>
       PendingSaleItem(
         id: id ?? this.id,
         saleId: saleId ?? this.saleId,
@@ -4130,6 +4300,10 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
         unitPrice: unitPrice ?? this.unitPrice,
         discount: discount ?? this.discount,
         total: total ?? this.total,
+        unit: unit.present ? unit.value : this.unit,
+        quantityPerUnit: quantityPerUnit.present
+            ? quantityPerUnit.value
+            : this.quantityPerUnit,
       );
   PendingSaleItem copyWithCompanion(PendingSaleItemsCompanion data) {
     return PendingSaleItem(
@@ -4143,6 +4317,10 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       unitPrice: data.unitPrice.present ? data.unitPrice.value : this.unitPrice,
       discount: data.discount.present ? data.discount.value : this.discount,
       total: data.total.present ? data.total.value : this.total,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      quantityPerUnit: data.quantityPerUnit.present
+          ? data.quantityPerUnit.value
+          : this.quantityPerUnit,
     );
   }
 
@@ -4157,14 +4335,16 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
           ..write('quantity: $quantity, ')
           ..write('unitPrice: $unitPrice, ')
           ..write('discount: $discount, ')
-          ..write('total: $total')
+          ..write('total: $total, ')
+          ..write('unit: $unit, ')
+          ..write('quantityPerUnit: $quantityPerUnit')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, saleId, productId, productName, sku,
-      quantity, unitPrice, discount, total);
+      quantity, unitPrice, discount, total, unit, quantityPerUnit);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4177,7 +4357,9 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
           other.quantity == this.quantity &&
           other.unitPrice == this.unitPrice &&
           other.discount == this.discount &&
-          other.total == this.total);
+          other.total == this.total &&
+          other.unit == this.unit &&
+          other.quantityPerUnit == this.quantityPerUnit);
 }
 
 class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
@@ -4190,6 +4372,8 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
   final Value<double> unitPrice;
   final Value<double> discount;
   final Value<double> total;
+  final Value<String?> unit;
+  final Value<double?> quantityPerUnit;
   const PendingSaleItemsCompanion({
     this.id = const Value.absent(),
     this.saleId = const Value.absent(),
@@ -4200,6 +4384,8 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
     this.unitPrice = const Value.absent(),
     this.discount = const Value.absent(),
     this.total = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.quantityPerUnit = const Value.absent(),
   });
   PendingSaleItemsCompanion.insert({
     this.id = const Value.absent(),
@@ -4211,6 +4397,8 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
     required double unitPrice,
     this.discount = const Value.absent(),
     required double total,
+    this.unit = const Value.absent(),
+    this.quantityPerUnit = const Value.absent(),
   })  : saleId = Value(saleId),
         productId = Value(productId),
         productName = Value(productName),
@@ -4228,6 +4416,8 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
     Expression<double>? unitPrice,
     Expression<double>? discount,
     Expression<double>? total,
+    Expression<String>? unit,
+    Expression<double>? quantityPerUnit,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4239,6 +4429,8 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
       if (unitPrice != null) 'unit_price': unitPrice,
       if (discount != null) 'discount': discount,
       if (total != null) 'total': total,
+      if (unit != null) 'unit': unit,
+      if (quantityPerUnit != null) 'quantity_per_unit': quantityPerUnit,
     });
   }
 
@@ -4251,7 +4443,9 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
       Value<int>? quantity,
       Value<double>? unitPrice,
       Value<double>? discount,
-      Value<double>? total}) {
+      Value<double>? total,
+      Value<String?>? unit,
+      Value<double?>? quantityPerUnit}) {
     return PendingSaleItemsCompanion(
       id: id ?? this.id,
       saleId: saleId ?? this.saleId,
@@ -4262,6 +4456,8 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
       unitPrice: unitPrice ?? this.unitPrice,
       discount: discount ?? this.discount,
       total: total ?? this.total,
+      unit: unit ?? this.unit,
+      quantityPerUnit: quantityPerUnit ?? this.quantityPerUnit,
     );
   }
 
@@ -4295,6 +4491,12 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
     if (total.present) {
       map['total'] = Variable<double>(total.value);
     }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (quantityPerUnit.present) {
+      map['quantity_per_unit'] = Variable<double>(quantityPerUnit.value);
+    }
     return map;
   }
 
@@ -4309,7 +4511,9 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
           ..write('quantity: $quantity, ')
           ..write('unitPrice: $unitPrice, ')
           ..write('discount: $discount, ')
-          ..write('total: $total')
+          ..write('total: $total, ')
+          ..write('unit: $unit, ')
+          ..write('quantityPerUnit: $quantityPerUnit')
           ..write(')'))
         .toString();
   }
@@ -7215,6 +7419,9 @@ typedef $$PendingSalesTableCreateCompanionBuilder = PendingSalesCompanion
   required DateTime createdAt,
   Value<bool> isSynced,
   Value<DateTime?> syncedAt,
+  Value<String?> voidReason,
+  Value<String?> voidedBy,
+  Value<DateTime?> voidedAt,
   Value<int> rowid,
 });
 typedef $$PendingSalesTableUpdateCompanionBuilder = PendingSalesCompanion
@@ -7235,6 +7442,9 @@ typedef $$PendingSalesTableUpdateCompanionBuilder = PendingSalesCompanion
   Value<DateTime> createdAt,
   Value<bool> isSynced,
   Value<DateTime?> syncedAt,
+  Value<String?> voidReason,
+  Value<String?> voidedBy,
+  Value<DateTime?> voidedAt,
   Value<int> rowid,
 });
 
@@ -7295,6 +7505,15 @@ class $$PendingSalesTableFilterComposer
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get voidReason => $composableBuilder(
+      column: $table.voidReason, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get voidedBy => $composableBuilder(
+      column: $table.voidedBy, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get voidedAt => $composableBuilder(
+      column: $table.voidedAt, builder: (column) => ColumnFilters(column));
 }
 
 class $$PendingSalesTableOrderingComposer
@@ -7356,6 +7575,15 @@ class $$PendingSalesTableOrderingComposer
 
   ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get voidReason => $composableBuilder(
+      column: $table.voidReason, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get voidedBy => $composableBuilder(
+      column: $table.voidedBy, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get voidedAt => $composableBuilder(
+      column: $table.voidedAt, builder: (column) => ColumnOrderings(column));
 }
 
 class $$PendingSalesTableAnnotationComposer
@@ -7414,6 +7642,15 @@ class $$PendingSalesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get voidReason => $composableBuilder(
+      column: $table.voidReason, builder: (column) => column);
+
+  GeneratedColumn<String> get voidedBy =>
+      $composableBuilder(column: $table.voidedBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get voidedAt =>
+      $composableBuilder(column: $table.voidedAt, builder: (column) => column);
 }
 
 class $$PendingSalesTableTableManager extends RootTableManager<
@@ -7458,6 +7695,9 @@ class $$PendingSalesTableTableManager extends RootTableManager<
             Value<DateTime> createdAt = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
             Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> voidReason = const Value.absent(),
+            Value<String?> voidedBy = const Value.absent(),
+            Value<DateTime?> voidedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PendingSalesCompanion(
@@ -7477,6 +7717,9 @@ class $$PendingSalesTableTableManager extends RootTableManager<
             createdAt: createdAt,
             isSynced: isSynced,
             syncedAt: syncedAt,
+            voidReason: voidReason,
+            voidedBy: voidedBy,
+            voidedAt: voidedAt,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -7496,6 +7739,9 @@ class $$PendingSalesTableTableManager extends RootTableManager<
             required DateTime createdAt,
             Value<bool> isSynced = const Value.absent(),
             Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> voidReason = const Value.absent(),
+            Value<String?> voidedBy = const Value.absent(),
+            Value<DateTime?> voidedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PendingSalesCompanion.insert(
@@ -7515,6 +7761,9 @@ class $$PendingSalesTableTableManager extends RootTableManager<
             createdAt: createdAt,
             isSynced: isSynced,
             syncedAt: syncedAt,
+            voidReason: voidReason,
+            voidedBy: voidedBy,
+            voidedAt: voidedAt,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -7550,6 +7799,8 @@ typedef $$PendingSaleItemsTableCreateCompanionBuilder
   required double unitPrice,
   Value<double> discount,
   required double total,
+  Value<String?> unit,
+  Value<double?> quantityPerUnit,
 });
 typedef $$PendingSaleItemsTableUpdateCompanionBuilder
     = PendingSaleItemsCompanion Function({
@@ -7562,6 +7813,8 @@ typedef $$PendingSaleItemsTableUpdateCompanionBuilder
   Value<double> unitPrice,
   Value<double> discount,
   Value<double> total,
+  Value<String?> unit,
+  Value<double?> quantityPerUnit,
 });
 
 class $$PendingSaleItemsTableFilterComposer
@@ -7599,6 +7852,13 @@ class $$PendingSaleItemsTableFilterComposer
 
   ColumnFilters<double> get total => $composableBuilder(
       column: $table.total, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get unit => $composableBuilder(
+      column: $table.unit, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get quantityPerUnit => $composableBuilder(
+      column: $table.quantityPerUnit,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$PendingSaleItemsTableOrderingComposer
@@ -7636,6 +7896,13 @@ class $$PendingSaleItemsTableOrderingComposer
 
   ColumnOrderings<double> get total => $composableBuilder(
       column: $table.total, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+      column: $table.unit, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get quantityPerUnit => $composableBuilder(
+      column: $table.quantityPerUnit,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$PendingSaleItemsTableAnnotationComposer
@@ -7673,6 +7940,12 @@ class $$PendingSaleItemsTableAnnotationComposer
 
   GeneratedColumn<double> get total =>
       $composableBuilder(column: $table.total, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<double> get quantityPerUnit => $composableBuilder(
+      column: $table.quantityPerUnit, builder: (column) => column);
 }
 
 class $$PendingSaleItemsTableTableManager extends RootTableManager<
@@ -7711,6 +7984,8 @@ class $$PendingSaleItemsTableTableManager extends RootTableManager<
             Value<double> unitPrice = const Value.absent(),
             Value<double> discount = const Value.absent(),
             Value<double> total = const Value.absent(),
+            Value<String?> unit = const Value.absent(),
+            Value<double?> quantityPerUnit = const Value.absent(),
           }) =>
               PendingSaleItemsCompanion(
             id: id,
@@ -7722,6 +7997,8 @@ class $$PendingSaleItemsTableTableManager extends RootTableManager<
             unitPrice: unitPrice,
             discount: discount,
             total: total,
+            unit: unit,
+            quantityPerUnit: quantityPerUnit,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -7733,6 +8010,8 @@ class $$PendingSaleItemsTableTableManager extends RootTableManager<
             required double unitPrice,
             Value<double> discount = const Value.absent(),
             required double total,
+            Value<String?> unit = const Value.absent(),
+            Value<double?> quantityPerUnit = const Value.absent(),
           }) =>
               PendingSaleItemsCompanion.insert(
             id: id,
@@ -7744,6 +8023,8 @@ class $$PendingSaleItemsTableTableManager extends RootTableManager<
             unitPrice: unitPrice,
             discount: discount,
             total: total,
+            unit: unit,
+            quantityPerUnit: quantityPerUnit,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

@@ -131,6 +131,11 @@ class PendingSales extends Table {
   DateTimeColumn get createdAt => dateTime()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
   DateTimeColumn get syncedAt => dateTime().nullable()();
+  // Soft-void tracking (v10): a voided sale is kept, not deleted, so the
+  // receipt can show a VOIDED banner + reason and the void is auditable.
+  TextColumn get voidReason => text().nullable()();
+  TextColumn get voidedBy => text().nullable()();
+  DateTimeColumn get voidedAt => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -147,6 +152,12 @@ class PendingSaleItems extends Table {
   RealColumn get unitPrice => real()();
   RealColumn get discount => real().withDefault(const Constant(0))();
   RealColumn get total => real()();
+  // The tier/unit this line was actually sold at (v10), so the receipt can
+  // show "1 box @ 1,200 (12 pcs @ 100/pc)". `unit` is the sold unit label
+  // (piece/box/pack/…); `quantityPerUnit` is how many base units one sold
+  // unit contains (1 for the base unit). Nullable for pre-v10 rows.
+  TextColumn get unit => text().nullable()();
+  RealColumn get quantityPerUnit => real().nullable()();
 }
 
 // Sync Queue (enhanced for offline->online sync with robust retry)
@@ -248,7 +259,7 @@ class AppDatabase extends _$AppDatabase {
     : super(SecureDatabaseConnection.openSecureConnection());
 
   @override
-  int get schemaVersion => 9; // v9: unlimited pricing tiers table, replaces fixed secondary/tertiary columns
+  int get schemaVersion => 10; // v10: soft-void fields on sales + sold-tier fields on sale items
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -296,6 +307,16 @@ class AppDatabase extends _$AppDatabase {
         await m.drop(products);
         await m.createTable(products);
         await m.createTable(productPricingTiers);
+      }
+      if (from < 10) {
+        // Soft-void tracking + the tier a line was sold at. Additive
+        // nullable columns — pending sales are real local data, so add
+        // columns rather than dropping the tables.
+        await m.addColumn(pendingSales, pendingSales.voidReason);
+        await m.addColumn(pendingSales, pendingSales.voidedBy);
+        await m.addColumn(pendingSales, pendingSales.voidedAt);
+        await m.addColumn(pendingSaleItems, pendingSaleItems.unit);
+        await m.addColumn(pendingSaleItems, pendingSaleItems.quantityPerUnit);
       }
     },
   );
@@ -1090,6 +1111,44 @@ class AppDatabase extends _$AppDatabase {
   Future<PendingSale?> getPendingSaleById(String saleId) {
     return (select(pendingSales)..where((s) => s.id.equals(saleId)))
         .getSingleOrNull();
+  }
+
+  /// Soft-voids a local sale: marks it VOIDED with a reason/who/when and
+  /// returns its stock to the local cache — instead of the old hard DELETE,
+  /// which left no trace. The backend performs the authoritative void +
+  /// stock restore; this keeps the offline/local view consistent.
+  Future<void> voidPendingSale(
+    String saleId, {
+    required String reason,
+    String? voidedBy,
+  }) async {
+    await transaction(() async {
+      final sale = await getPendingSaleById(saleId);
+      if (sale == null || sale.status == 'VOIDED') return;
+
+      await (update(pendingSales)..where((s) => s.id.equals(saleId))).write(
+        PendingSalesCompanion(
+          status: const Value('VOIDED'),
+          voidReason: Value(reason),
+          voidedBy: Value(voidedBy),
+          voidedAt: Value(DateTime.now()),
+        ),
+      );
+
+      // Return each line's quantity to the local stock cache.
+      final items = await getSaleItems(saleId);
+      for (final item in items) {
+        final stock = await getStockForProduct(item.productId);
+        if (stock != null) {
+          await (update(localStock)..where((s) => s.id.equals(stock.id))).write(
+            LocalStockCompanion(
+              quantity: Value(stock.quantity + item.quantity),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
+        }
+      }
+    });
   }
 
   /// Stream all sale items (for category / product reports).

@@ -30,6 +30,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
   // Company fields
   final _companyNameController = TextEditingController();
   File? _logoFile; // local preview
+  // When set, the picked logo is traced into a crisp scalable SVG on upload
+  // (deterministic vectorization) instead of stored as a raster image.
+  bool _vectorizeLogo = false;
 
   // Admin fields
   final _emailController = TextEditingController();
@@ -133,17 +136,34 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
 
       if (_logoFile != null) {
         try {
-          final uploadResult = await apiClient.uploadImage(
-            filePath: _logoFile!.path,
-            fileName: _logoFile!.uri.pathSegments.isNotEmpty
-                ? _logoFile!.uri.pathSegments.last
-                : 'company-logo.jpg',
-            type: 'logo',
-          );
+          final fileName = _logoFile!.uri.pathSegments.isNotEmpty
+              ? _logoFile!.uri.pathSegments.last
+              : 'company-logo.jpg';
+
+          // Vectorize into an SVG when requested (crisp at any receipt/print
+          // size); otherwise store the raster image as before.
+          String? logoUrl;
+          String? logoPublicId;
+          if (_vectorizeLogo) {
+            final v = await apiClient.vectorizeLogo(
+              filePath: _logoFile!.path,
+              fileName: fileName,
+            );
+            logoUrl = (v['svgUrl'] ?? v['rasterUrl']) as String?;
+            logoPublicId = v['publicId'] as String?;
+          } else {
+            final uploadResult = await apiClient.uploadImage(
+              filePath: _logoFile!.path,
+              fileName: fileName,
+              type: 'logo',
+            );
+            logoUrl = uploadResult['url'] as String?;
+            logoPublicId = uploadResult['publicId'] as String?;
+          }
 
           final updatedTenant = await apiClient.updateCurrentTenant(
-            logo: uploadResult['url'] as String?,
-            logoPublicId: uploadResult['publicId'] as String?,
+            logo: logoUrl,
+            logoPublicId: logoPublicId,
           );
 
           await authService.updateTenantSession({
@@ -748,6 +768,38 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
   }
 
   Widget _buildLogoField(bool isDark) {
+    return Column(
+      children: [
+        _buildLogoPicker(isDark),
+        if (_logoFile != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: CheckboxListTile(
+              value: _vectorizeLogo,
+              onChanged: (v) => setState(() => _vectorizeLogo = v ?? false),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+              activeColor: DesignColors.accent,
+              title: const Text(
+                'Make it a crisp SVG logo',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: DesignColors.darkTextPrimary,
+                ),
+              ),
+              subtitle: const Text(
+                'Traces your image into a scalable vector — stays sharp on receipts at any size. Best for clean, simple logos.',
+                style: TextStyle(fontSize: 12, color: DesignColors.darkTextSecondary),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLogoPicker(bool isDark) {
     return InkWell(
       onTap: _pickLogo,
       borderRadius: BorderRadius.circular(16),

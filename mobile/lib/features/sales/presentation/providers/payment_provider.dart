@@ -509,6 +509,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
                 total: item.total,
+                // Capture the tier this line was sold at so the receipt can
+                // show "1 box @ 1,200 (12 pcs @ 100/pc)". saleUnit is the sold
+                // unit label; unitConversionFactor is base units per sold unit.
+                unit: Value(item.saleUnit),
+                quantityPerUnit: Value(item.unitConversionFactor),
               ))
           .toList(),
     );
@@ -604,6 +609,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
                 'quantity': i.quantity,
                 'unitPrice': i.unitPrice,
                 'discount': i.discount,
+                if (i.saleUnit != null) 'unit': i.saleUnit,
+                if (i.unitConversionFactor != null)
+                  'quantityPerUnit': i.unitConversionFactor,
               })
           .toList(),
       'paymentMethod': paymentMethod,

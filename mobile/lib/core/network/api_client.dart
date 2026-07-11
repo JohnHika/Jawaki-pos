@@ -518,6 +518,13 @@ class ApiClient {
     final response = await _dio.get('/sales/$saleId/receipt');
     return response.data;
   }
+
+  /// Soft-voids a sale on the backend (status=VOIDED, records the reason +
+  /// who/when, restores stock). Requires the sales.void permission.
+  Future<Map<String, dynamic>> voidSale(String saleId, {required String reason}) async {
+    final response = await _dio.post('/sales/$saleId/void', data: {'reason': reason});
+    return response.data as Map<String, dynamic>;
+  }
   
   Future<Map<String, dynamic>> getDailySummary() async {
     final response = await _dio.get('/sales/daily-summary');
@@ -806,6 +813,32 @@ class ApiClient {
     final response = await _dio.post(
       '/uploads/image',
       queryParameters: {'type': type},
+      data: formData,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Upload an image and trace it into a scalable SVG logo (deterministic
+  /// vectorization on the backend). Returns { rasterUrl, svgUrl, publicId }.
+  Future<Map<String, dynamic>> vectorizeLogo({
+    required String filePath,
+    required String fileName,
+    int? colors,
+    int? detail,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: _imageContentType(fileName),
+      ),
+    });
+    final response = await _dio.post(
+      '/uploads/logo/vectorize',
+      queryParameters: {
+        if (colors != null) 'colors': colors,
+        if (detail != null) 'detail': detail,
+      },
       data: formData,
     );
     return response.data as Map<String, dynamic>;
