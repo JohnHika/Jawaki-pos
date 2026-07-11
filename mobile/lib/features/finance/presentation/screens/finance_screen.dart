@@ -332,7 +332,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             invoiceNumber: ocrScan.invoiceNumber,
             totalAmount: ocrScan.totalAmount,
             items: ocrScan.items,
-            summary: 'AI scan unavailable — used basic text recognition instead. ${ocrScan.summary}',
+            summary:
+                'AI scan unavailable — used basic text recognition instead. ${ocrScan.summary}',
           ),
         );
       }
@@ -360,11 +361,13 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.image_not_supported_rounded, color: DesignColors.warning),
+                  const Icon(Icons.image_not_supported_rounded,
+                      color: DesignColors.warning),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text('This doesn\'t look like a receipt',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
                 ],
               ),
@@ -424,58 +427,58 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             ? DesignColors.darkTextSecondary
             : DesignColors.textSecondary;
         return Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-                'Current balance: ${FinanceScreen.currencyFmt.format(currentDebt)}',
-                style: TextStyle(color: sheetSecondary, fontSize: 13)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                  labelText: 'Payment Amount (KES)',
-                  prefixIcon: const Icon(Icons.payments_outlined),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12))),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+          padding: EdgeInsets.fromLTRB(
+              20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  'Current balance: ${FinanceScreen.currencyFmt.format(currentDebt)}',
+                  style: TextStyle(color: sheetSecondary, fontSize: 13)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                    labelText: 'Payment Amount (KES)',
+                    prefixIcon: const Icon(Icons.payments_outlined),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12))),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Cancel'),
                     ),
-                    child: const Text('Cancel'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: DesignColors.success,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: DesignColors.success,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Record Payment'),
                     ),
-                    child: const Text('Record Payment'),
                   ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                ],
+              ),
+            ],
+          ),
         );
       }),
     );
@@ -566,11 +569,10 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                       child: const Icon(Icons.receipt_long_rounded,
                           color: DesignColors.brand, size: 20),
                     ),
-                    title:
-                        (invoice['invoiceNumber'] as String?)?.isNotEmpty ==
-                                true
-                            ? invoice['invoiceNumber'] as String
-                            : 'Supplier invoice',
+                    title: (invoice['invoiceNumber'] as String?)?.isNotEmpty ==
+                            true
+                        ? invoice['invoiceNumber'] as String
+                        : 'Supplier invoice',
                     subtitle:
                         '${(invoice['items'] as List?)?.length ?? 0} item(s)',
                     trailing: Column(
@@ -578,8 +580,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                            FinanceScreen.currencyFmt
-                                .format((invoice['totalAmount'] as num).toDouble()),
+                            FinanceScreen.currencyFmt.format(
+                                (invoice['totalAmount'] as num).toDouble()),
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
                         Text(invoice['status'] as String,
@@ -618,12 +620,14 @@ class _ReceiptCapturePanel extends StatelessWidget {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration:
+          BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -706,14 +710,16 @@ class _SupplierBalanceCard extends StatelessWidget {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+        decoration:
+            BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           children: [
             Row(
@@ -804,8 +810,15 @@ class _SupplierBalanceCard extends StatelessWidget {
                   ],
                   const Spacer(),
                   if (lastPayment != null)
-                    Text('Last: $lastPayment',
-                        style: TextStyle(fontSize: 10, color: tertiaryColor)),
+                    Flexible(
+                      child: Text(
+                        'Last: $lastPayment',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: TextStyle(fontSize: 10, color: tertiaryColor),
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -815,4 +828,3 @@ class _SupplierBalanceCard extends StatelessWidget {
     );
   }
 }
-

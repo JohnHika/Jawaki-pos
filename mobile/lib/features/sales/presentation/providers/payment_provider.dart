@@ -22,7 +22,8 @@ class PaymentTender {
   final double amount;
   final String? reference;
 
-  const PaymentTender({required this.method, required this.amount, this.reference});
+  const PaymentTender(
+      {required this.method, required this.amount, this.reference});
 
   Map<String, dynamic> toJson() => {
         'method': method,
@@ -68,6 +69,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   final SyncService _syncService;
   final AuthService _authService;
   final ConnectivityService _connectivity;
+  final bool _verifiedDigitalPaymentsEnabled;
 
   PaymentNotifier({
     required ApiClient apiClient,
@@ -75,11 +77,13 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required SyncService syncService,
     required AuthService authService,
     required ConnectivityService connectivity,
+    bool verifiedDigitalPaymentsEnabled = false,
   })  : _apiClient = apiClient,
         _database = database,
         _syncService = syncService,
         _authService = authService,
         _connectivity = connectivity,
+        _verifiedDigitalPaymentsEnabled = verifiedDigitalPaymentsEnabled,
         super(const PaymentState());
 
   Future<String?> processCashPayment({
@@ -103,7 +107,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'CASH', amount, null, null, customerId);
+      await _syncOrQueueSale(
+          saleId, items, 'CASH', amount, null, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -133,7 +138,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'MANUAL', amount, null, null, customerId);
+      await _syncOrQueueSale(
+          saleId, items, 'MANUAL', amount, null, null, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -150,6 +156,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
+
+    if (!_verifiedDigitalPaymentsEnabled) {
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'M-Pesa is temporarily unavailable while secure payment verification is being enabled. Use cash, manual, or debt payment.',
+      );
+      return null;
+    }
 
     if (!_connectivity.isOnline) {
       state = state.copyWith(
@@ -220,6 +235,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
+    if (!_verifiedDigitalPaymentsEnabled) {
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'PesaPal is temporarily unavailable while secure payment verification is being enabled.',
+      );
+      return null;
+    }
+
     if (!_connectivity.isOnline) {
       state = state.copyWith(
         isProcessing: false,
@@ -268,6 +292,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
+
+    if (!_verifiedDigitalPaymentsEnabled) {
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'TouristTap is temporarily unavailable while secure payment verification is being enabled.',
+      );
+      return null;
+    }
 
     if (!_connectivity.isOnline) {
       state = state.copyWith(
@@ -371,6 +404,17 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
+    const supportedTenders = {'CASH', 'CREDIT'};
+    if (!_verifiedDigitalPaymentsEnabled &&
+        tenders.any((tender) => !supportedTenders.contains(tender.method))) {
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'Split payments can only use cash and debt until digital payment verification is enabled.',
+      );
+      return null;
+    }
+
     final tenderTotal = tenders.fold<double>(0, (sum, t) => sum + t.amount);
     if (tenderTotal < amount) {
       state = state.copyWith(
@@ -418,8 +462,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         await _database.updateCustomerBalance(customerId, debtPortion);
       }
 
-      await _syncOrQueueSale(
-          saleId, items, 'SPLIT', tenderTotal, tendersJson, tenders, customerId);
+      await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
+          tenders, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -512,6 +556,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId,
       );
       await _database.markSaleAsSynced(saleId);
+      // Refresh canonical stock after a successful online sale. A failed pull
+      // is non-fatal: the queued/periodic sync will retry it later.
+      try {
+        await _syncService.pullChanges();
+      } catch (_) {}
     } catch (_) {
       await _queueSaleForSync(
         saleId,

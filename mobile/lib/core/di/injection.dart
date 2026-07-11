@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
 import '../network/auth_interceptor.dart';
+import '../network/network_retry_interceptor.dart';
 import '../services/connectivity_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
@@ -103,6 +104,7 @@ Future<void> configureDependencies() async {
     // ============================================
     debugPrint('[DI] Adding AuthInterceptor to Dio...');
     dio.interceptors.add(AuthInterceptor(getIt<AuthService>()));
+    dio.interceptors.add(NetworkRetryInterceptor(dio));
     debugPrint('[DI] AuthInterceptor added');
 
     // ============================================
@@ -199,11 +201,17 @@ Dio _createDio() {
     ),
   );
 
-  dio.interceptors.add(LogInterceptor(
-    requestBody: true,
-    responseBody: true,
-    logPrint: (obj) => debugPrint('[Dio] $obj'),
-  ));
+  // Never log request or response bodies in a release build. They can contain
+  // credentials, bearer tokens, customer details, and transaction data.
+  if (kDebugMode) {
+    dio.interceptors.add(LogInterceptor(
+      requestBody: false,
+      responseBody: false,
+      requestHeader: false,
+      responseHeader: false,
+      logPrint: (obj) => debugPrint('[Dio] $obj'),
+    ));
+  }
 
   return dio;
 }

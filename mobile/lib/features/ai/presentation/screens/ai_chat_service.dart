@@ -7,6 +7,7 @@ import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/connectivity_service.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/di/injection.dart';
+import 'package:axon_pos/core/network/api_client.dart';
 import 'ai_chat_prefs.dart';
 
 /// Thrown when the backend rejects an AI request with 402 Payment
@@ -35,7 +36,8 @@ class AiPendingQuestion {
       question: (json['question'] ?? '').toString(),
       header: (json['header'] ?? '').toString(),
       options: ((json['options'] as List?) ?? const [])
-          .map((o) => AiPendingQuestionOption.fromJson(o as Map<String, dynamic>))
+          .map((o) =>
+              AiPendingQuestionOption.fromJson(o as Map<String, dynamic>))
           .toList(),
       multiSelect: json['multiSelect'] == true,
     );
@@ -81,7 +83,8 @@ class AiPendingTurn {
     final type = (json['type'] ?? '').toString();
     return AiPendingTurn(
       type: type,
-      toolCall: (json['tool_call'] as Map?)?.cast<String, dynamic>() ?? const {},
+      toolCall:
+          (json['tool_call'] as Map?)?.cast<String, dynamic>() ?? const {},
       questions: type == 'question'
           ? ((json['questions'] as List?) ?? const [])
               .map((q) => AiPendingQuestion.fromJson(q as Map<String, dynamic>))
@@ -100,7 +103,8 @@ class AiTodoItem {
   final String status; // 'pending' | 'in_progress' | 'completed'
   final String activeForm;
 
-  AiTodoItem({required this.content, required this.status, required this.activeForm});
+  AiTodoItem(
+      {required this.content, required this.status, required this.activeForm});
 
   factory AiTodoItem.fromJson(Map<String, dynamic> json) {
     return AiTodoItem(
@@ -128,6 +132,8 @@ class AiSendResult {
 }
 
 class AiChatService {
+  static const _maxMessagesSent = 24;
+  static const _maxMessageChars = 4000;
   AiChatService._internal();
   static final AiChatService _instance = AiChatService._internal();
   factory AiChatService() => _instance;
@@ -145,19 +151,10 @@ class AiChatService {
   /// state. Cleared on a new conversation.
   List<AiTodoItem> todos = [];
 
-  String get _baseUrl {
-    final storage = getIt<StorageService>();
-    final savedUrl = storage.getServerBaseUrl();
-    if (savedUrl != null && savedUrl.isNotEmpty) {
-      return savedUrl;
-    }
-    final ip = storage.getBackendServerIp();
-    final port = storage.getBackendServerPort();
-    if (ip != null && ip.isNotEmpty) {
-      return 'http://$ip:$port/api/v1';
-    }
-    return 'https://arche-axon-pos-api.onrender.com/api/v1';
-  }
+  /// Use the same canonical server address as login, sync, and updates.
+  /// Previously AI could silently target a different server after Settings
+  /// changed the endpoint, causing confusing authenticated-chat failures.
+  String get _baseUrl => getIt<ApiClient>().baseUrl;
 
   String get branchId {
     final explicitBranchId = _storeInfo['branchId'] as String?;
@@ -199,10 +196,12 @@ class AiChatService {
   /// remains whatever it was.
   Future<void> loadSharedHistory() async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/ai/conversation?branchId=$branchId'),
-        headers: _headers(json: false),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/ai/conversation?branchId=$branchId'),
+            headers: _headers(json: false),
+          )
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return;
       final data = jsonDecode(response.body);
       final msgs = data['data']?['messages'] as List?;
@@ -265,14 +264,34 @@ class AiChatService {
   }
 
   void addUserMessage(String content) {
-    _messages.add({'id': '', 'role': 'user', 'content': content});
+    final normalized = content.trim();
+    _messages.add({
+      'id': '',
+      'role': 'user',
+      'content': normalized.substring(
+        0,
+        normalized.length.clamp(0, _maxMessageChars).toInt(),
+      ),
+    });
   }
 
   /// The backend's ChatMessageDto only knows `role`/`content` — sending the
   /// local-only `id` field would trip the global ValidationPipe's
   /// `forbidNonWhitelisted` and 400 the request.
-  List<Map<String, String>> get _wireMessages =>
-      _messages.map((m) => {'role': m['role']!, 'content': m['content']!}).toList();
+  List<Map<String, String>> get _wireMessages => _messages
+      .skip(
+        (_messages.length - _maxMessagesSent)
+            .clamp(0, _messages.length)
+            .toInt(),
+      )
+      .map((m) => {
+            'role': m['role']!,
+            'content': (m['content'] ?? '').substring(
+              0,
+              (m['content'] ?? '').length.clamp(0, _maxMessageChars).toInt(),
+            ),
+          })
+      .toList();
 
   /// Re-runs the last AI response: drops it (and, if the very last message,
   /// nothing else) from the shared thread, then resends the preceding user
@@ -305,7 +324,9 @@ class AiChatService {
     required String content,
     String context = 'general',
   }) async {
-    addUserMessage(content);
+    final normalizedContent = content.trim();
+    if (normalizedContent.isEmpty) return AiSendResult(reply: null);
+    addUserMessage(normalizedContent);
     pendingTurn = null;
 
     try {
@@ -318,7 +339,10 @@ class AiChatService {
             headers: _headers(),
             body: jsonEncode({
               'messages': _wireMessages,
-              'user_question': content,
+              'user_question': normalizedContent.substring(
+                0,
+                normalizedContent.length.clamp(0, _maxMessageChars).toInt(),
+              ),
               'context': context,
               'includeData': dataContext['data_read_failed'] != true,
               'business_context': businessContext,
@@ -328,7 +352,8 @@ class AiChatService {
               'branchId': branchId,
               'web_search': AiChatPrefs.instance.webSearch,
               'tool_access': AiChatPrefs.instance.toolAccess,
-              if (todos.isNotEmpty) 'todos': todos.map((t) => t.toJson()).toList(),
+              if (todos.isNotEmpty)
+                'todos': todos.map((t) => t.toJson()).toList(),
             }),
           )
           .timeout(const Duration(seconds: 30));
@@ -380,7 +405,8 @@ class AiChatService {
               'branchId': branchId,
               'web_search': AiChatPrefs.instance.webSearch,
               'tool_access': AiChatPrefs.instance.toolAccess,
-              if (todos.isNotEmpty) 'todos': todos.map((t) => t.toJson()).toList(),
+              if (todos.isNotEmpty)
+                'todos': todos.map((t) => t.toJson()).toList(),
               'pending_tool_call': pending.toolCall,
               if (questionAnswers != null) 'question_answers': questionAnswers,
               if (toolConfirmed != null) 'tool_confirmed': toolConfirmed,
@@ -429,8 +455,10 @@ class AiChatService {
       }
 
       final reply = payload['reply'] as String;
-      final assistantMessageId = (payload['assistantMessageId'] as String?) ?? '';
-      _messages.add({'id': assistantMessageId, 'role': 'assistant', 'content': reply});
+      final assistantMessageId =
+          (payload['assistantMessageId'] as String?) ?? '';
+      _messages.add(
+          {'id': assistantMessageId, 'role': 'assistant', 'content': reply});
       return AiSendResult(reply: reply);
     } else if (response.statusCode == 402) {
       // Remove the pending user message — this turn never produced a
@@ -465,10 +493,12 @@ class AiChatService {
 
   Future<String?> _fetchPregeneratedBrief() async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/ai/daily-brief?branchId=$branchId'),
-        headers: _headers(json: false),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/ai/daily-brief?branchId=$branchId'),
+            headers: _headers(json: false),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -495,8 +525,8 @@ class AiChatService {
               'messages': const [],
               'user_question':
                   "Give me a short 2-3 sentence brief on today's business performance and one concrete suggestion. "
-                  "This will be shown in a narrow mobile card, so if you need to list specific items, use a short "
-                  "bullet list (max 3 items, one line each) instead of a markdown table.",
+                      "This will be shown in a narrow mobile card, so if you need to list specific items, use a short "
+                      "bullet list (max 3 items, one line each) instead of a markdown table.",
               'context': 'daily_brief',
               'includeData': dataContext['data_read_failed'] != true,
               'business_context': businessContext,

@@ -125,6 +125,7 @@ const PERMISSIONS: PermissionDef[] = [
   { key: 'sales.discount', feature: 'sales', action: 'discount', label: 'Apply a manual discount' },
   { key: 'sales.bulk_create', feature: 'sales', action: 'bulk_create', label: 'Bulk create sales (offline sync)' },
   { key: 'sales.bulk_void', feature: 'sales', action: 'bulk_void', label: 'Bulk void sales' },
+  { key: 'sales.close_end_of_day', feature: 'sales', action: 'close_end_of_day', label: 'Close the end of day (Z-report + cash count)' },
 
   // ---- customers ----
   { key: 'customers.view', feature: 'customers', action: 'view', label: 'View customers' },
@@ -274,6 +275,9 @@ const MANAGER_EXTRA_KEYS = [
   'users.create', 'users.view', 'users.update',
   'expenses.update', 'expenses.approve', 'expenses.reject', 'expenses.mark_paid',
   'suppliers.create',
+  // Admin/manager close the day by default; admins can grant this to
+  // specific supervisors/cashiers via per-user permission override.
+  'sales.close_end_of_day',
 ];
 
 const ADMIN_EXTRA_KEYS = [

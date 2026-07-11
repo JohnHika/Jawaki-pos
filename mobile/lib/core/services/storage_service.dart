@@ -381,7 +381,19 @@ class StorageService {
 
   Future<void> setServerBaseUrl(String url) async {
     _checkInitialized();
-    await _prefs!.setString(keyServerBaseUrl, url);
+    final normalized = url.trim().replaceFirst(RegExp(r'/+$'), '');
+    final uri = Uri.tryParse(normalized);
+    if (uri == null ||
+        (uri.scheme != 'https' && uri.scheme != 'http') ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      throw ArgumentError.value(
+        url,
+        'url',
+        'Server address must be a valid http(s) URL without credentials.',
+      );
+    }
+    await _prefs!.setString(keyServerBaseUrl, normalized);
   }
 
   // Clear all data

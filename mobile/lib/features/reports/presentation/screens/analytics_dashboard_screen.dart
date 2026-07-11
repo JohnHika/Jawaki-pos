@@ -110,7 +110,8 @@ class _AnalyticsDashboardScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
+          ? const Center(
+              child: CircularProgressIndicator(color: DesignColors.brand))
           : RefreshIndicator(
               onRefresh: _loadAnalyticsData,
               child: PageContainer(
@@ -158,14 +159,19 @@ class _AnalyticsDashboardScreenState
   Widget _buildPeriodSelector(bool isDark) {
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           children: _periods.asMap().entries.map((entry) {
@@ -195,9 +201,7 @@ class _AnalyticsDashboardScreenState
                       fontSize: 13,
                       fontWeight:
                           isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected
-                          ? DesignColors.accent
-                          : secondaryColor,
+                      color: isSelected ? DesignColors.accent : secondaryColor,
                     ),
                   ),
                 ),
@@ -272,18 +276,24 @@ class _AnalyticsDashboardScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.bar_chart_rounded, color: DesignColors.brand, size: 20),
+              const Icon(Icons.bar_chart_rounded,
+                  color: DesignColors.brand, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Sales Trend',
@@ -353,7 +363,8 @@ class _AnalyticsDashboardScreenState
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               time,
-                              style: TextStyle(color: tertiaryColor, fontSize: 11),
+                              style:
+                                  TextStyle(color: tertiaryColor, fontSize: 11),
                             ),
                           );
                         }
@@ -401,18 +412,24 @@ class _AnalyticsDashboardScreenState
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.star_rounded, color: DesignColors.info, size: 20),
+              const Icon(Icons.star_rounded,
+                  color: DesignColors.info, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Top Products',
@@ -501,7 +518,8 @@ class _AnalyticsDashboardScreenState
                           const SizedBox(height: 4),
                           Text(
                             '${product['totalQty']} units sold',
-                            style: TextStyle(fontSize: 12, color: secondaryColor),
+                            style:
+                                TextStyle(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -538,18 +556,24 @@ class _AnalyticsDashboardScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.payment_rounded, color: DesignColors.info, size: 20),
+              const Icon(Icons.payment_rounded,
+                  color: DesignColors.info, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Payments',
@@ -619,7 +643,8 @@ class _AnalyticsDashboardScreenState
                           const SizedBox(height: 4),
                           Text(
                             '$count transactions',
-                            style: TextStyle(fontSize: 12, color: secondaryColor),
+                            style:
+                                TextStyle(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -654,18 +679,24 @@ class _AnalyticsDashboardScreenState
   Widget _buildCategoryBreakdown(bool isDark) {
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.category_rounded, color: DesignColors.info, size: 20),
+              const Icon(Icons.category_rounded,
+                  color: DesignColors.info, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Sales by Category',
@@ -710,17 +741,27 @@ class _AnalyticsDashboardScreenState
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          catName,
-                          style: TextStyle(fontSize: 13, color: titleColor),
+                        Expanded(
+                          child: Text(
+                            catName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 13, color: titleColor),
+                          ),
                         ),
-                        const Spacer(),
-                        Text(
-                          'KSh ${total.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: titleColor,
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'KSh ${total.toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -749,18 +790,24 @@ class _AnalyticsDashboardScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.access_time_rounded, color: DesignColors.accent, size: 20),
+              const Icon(Icons.access_time_rounded,
+                  color: DesignColors.accent, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Hourly Sales Distribution',
@@ -828,7 +875,8 @@ class _AnalyticsDashboardScreenState
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 time,
-                                style: TextStyle(color: tertiaryColor, fontSize: 11),
+                                style: TextStyle(
+                                    color: tertiaryColor, fontSize: 11),
                               ),
                             );
                           }

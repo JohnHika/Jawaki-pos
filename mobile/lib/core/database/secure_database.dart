@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
@@ -20,6 +21,7 @@ class SecureDatabaseConnection {
 
   static const _dbKeyName = 'pos_database_key';
   static const _dbKeyBackupName = 'pos_database_key_backup';
+  static const _dbKeyPendingName = 'pos_database_key_pending';
 
   /// Generate a cryptographically secure 256-bit key (64 hex chars)
   static String _generateKey() {
@@ -49,6 +51,11 @@ class SecureDatabaseConnection {
       }
     }
 
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(key)) {
+      throw StateError(
+          'The encrypted database key is invalid. Restore the device backup or reset local data.');
+    }
+
     return key;
   }
 
@@ -74,45 +81,50 @@ class SecureDatabaseConnection {
               if (result.isEmpty) {
                 // Encryption verification failed - this could be a key mismatch
                 // Don't throw, let the app continue (database will be empty but usable)
-                print('[SecureDatabase] Warning: Encryption verification returned empty result');
+                debugPrint(
+                    '[SecureDatabase] Database verification returned no schema rows');
               }
             } catch (e) {
               // Verification query failed, but database might still work
-              print('[SecureDatabase] Warning: Could not verify encryption: $e');
+              debugPrint('[SecureDatabase] Database verification failed: $e');
             }
           } catch (e) {
-            // If key setup fails, try without encryption as fallback
-            print('[SecureDatabase] Warning: Key setup failed: $e');
-            // Note: We don't re-throw here to avoid crashing the app
-            // The database will still function, just without encryption
+            // Never silently swap to a different key. Continuing would make
+            // an encrypted database look empty and risks overwriting data.
+            throw StateError('Unable to open encrypted local database: $e');
           }
         },
       );
     });
   }
 
-  /// Change database encryption key (for rotation)
-  static Future<void> rotateEncryptionKey() async {
+  /// Change the database encryption key atomically.
+  ///
+  /// The caller owns the open SQLCipher connection and must rekey it first.
+  /// Persisting a replacement key before `PRAGMA rekey` succeeds would lock a
+  /// user out of their existing offline sales, so this method intentionally
+  /// cannot perform a partial rotation.
+  static Future<void> rotateEncryptionKey({
+    required Future<void> Function(String oldKey, String newKey) rekey,
+  }) async {
+    final oldKey = await _getOrCreateKey();
     final newKey = _generateKey();
 
-    // Store new key
-    await _secureStorage.write(key: '${_dbKeyName}_new', value: newKey);
+    // Preserve a recoverable pending value while the database is rekeyed.
+    await _secureStorage.write(key: _dbKeyPendingName, value: newKey);
+    await rekey(oldKey, newKey);
 
-    // TODO: Implement key rotation on open database
-    // This requires opening the DB with old key, then running:
-    // PRAGMA rekey = 'new_key';
-
-    // After successful rotation, update primary and backup
+    // Only commit key material after the database has confirmed the rekey.
     await _secureStorage.write(key: _dbKeyBackupName, value: newKey);
     await _secureStorage.write(key: _dbKeyName, value: newKey);
-    await _secureStorage.delete(key: '${_dbKeyName}_new');
+    await _secureStorage.delete(key: _dbKeyPendingName);
   }
 
   /// Clear all database keys (for logout/reset)
   static Future<void> clearKeys() async {
     await _secureStorage.delete(key: _dbKeyName);
     await _secureStorage.delete(key: _dbKeyBackupName);
-    await _secureStorage.delete(key: '${_dbKeyName}_new');
+    await _secureStorage.delete(key: _dbKeyPendingName);
   }
 
   /// Check if database key exists

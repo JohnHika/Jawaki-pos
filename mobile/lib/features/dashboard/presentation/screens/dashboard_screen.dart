@@ -15,6 +15,8 @@ import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../finance/presentation/end_of_day_prompt.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -73,6 +75,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     _shownDay = _todayDate();
     WidgetsBinding.instance.addObserver(this);
     _scheduleMidnightRollover();
+    // After first frame, offer to close the day if it's past the branch's
+    // configured closing time and today isn't closed yet (self-gates on
+    // permission + hours + close status).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePromptEndOfDay());
+  }
+
+  void _maybePromptEndOfDay() {
+    if (!mounted) return;
+    EndOfDayPrompt.maybePrompt(context, ref.read(permissionsProvider));
   }
 
   @override
@@ -86,6 +97,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _refreshIfDayChanged();
+      _maybePromptEndOfDay();
     }
   }
 
@@ -140,8 +152,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         showBackButton: false,
         showLogo: false,
         leading: Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: TenantBrandMark(logoUrl: identity.logoUrl, size: 28),
+          padding: const EdgeInsets.only(left: 16, top: 10, bottom: 10),
+          child: TenantBrandMark(logoUrl: identity.logoUrl, size: 34),
         ),
         actions: [
           IconButton(
@@ -260,70 +272,96 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       subtitle: 'Start selling to see transactions here',
                     );
                   }
-                  final isDark = Theme.of(context).brightness == Brightness.dark;
-                  final divider =
-                      isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
+                  final divider = isDark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder;
                   return Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: divider),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Column(
-                      children: sales.take(10).toList().asMap().entries.map((entry) {
+                      children:
+                          sales.take(10).toList().asMap().entries.map((entry) {
                         final isLast = entry.key == sales.take(10).length - 1;
                         final sale = entry.value;
                         return InkWell(
                           onTap: () => context.push('/receipt/${sale.id}'),
                           child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 13,
-                          ),
-                          decoration: BoxDecoration(
-                            border: isLast
-                                ? null
-                                : Border(bottom: BorderSide(color: divider)),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      sale.receiptNumber,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 13,
+                            ),
+                            decoration: BoxDecoration(
+                              border: isLast
+                                  ? null
+                                  : Border(bottom: BorderSide(color: divider)),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: DesignColors.accent
+                                        .withValues(alpha: 0.10),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.receipt_long_rounded,
+                                    size: 18,
+                                    color: DesignColors.accent,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        sale.receiptNumber,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5,
+                                          color: isDark
+                                              ? DesignColors.darkTextPrimary
+                                              : DesignColors.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: isDark
+                                              ? DesignColors.darkTextTertiary
+                                              : DesignColors.textTertiary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Flexible(
+                                  child: FittedBox(
+                                    alignment: Alignment.centerRight,
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      _currencyFmt.format(sale.total),
+                                      style: DesignType.numeric(
+                                        fontSize: 15,
                                         color: isDark
                                             ? DesignColors.darkTextPrimary
                                             : DesignColors.textPrimary,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        color: isDark
-                                            ? DesignColors.darkTextTertiary
-                                            : DesignColors.textTertiary,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                _currencyFmt.format(sale.total),
-                                style: DesignType.numeric(
-                                  fontSize: 15,
-                                  color: isDark
-                                      ? DesignColors.darkTextPrimary
-                                      : DesignColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
                           ),
                         );
                       }).toList(),
@@ -445,18 +483,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(18),
         border: Border(
           left: const BorderSide(color: DesignColors.accent, width: 3),
           top: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+              color: isDark
+                  ? DesignColors.darkBorder
+                  : DesignColors.surfaceBorder),
           right: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+              color: isDark
+                  ? DesignColors.darkBorder
+                  : DesignColors.surfaceBorder),
           bottom: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+              color: isDark
+                  ? DesignColors.darkBorder
+                  : DesignColors.surfaceBorder),
         ),
       ),
       child: Column(
@@ -593,18 +634,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(18),
         border: Border(
           left: const BorderSide(color: DesignColors.success, width: 3),
           top: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+              color: isDark
+                  ? DesignColors.darkBorder
+                  : DesignColors.surfaceBorder),
           right: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+              color: isDark
+                  ? DesignColors.darkBorder
+                  : DesignColors.surfaceBorder),
           bottom: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+              color: isDark
+                  ? DesignColors.darkBorder
+                  : DesignColors.surfaceBorder),
         ),
       ),
       child: Column(
@@ -729,8 +773,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final identity = ref.read(tenantIdentityProvider);
 
     if (format == ShareFormat.plainText) {
-      final report =
-          '''
+      final report = '''
   Daily Summary
   ═════════════
 ${_dateFmt.format(DateTime.now())}
@@ -747,7 +790,8 @@ Sent from your POS workspace
       return;
     }
 
-    final logoBytes = await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+    final logoBytes =
+        await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
     final bytes = await ExportDocumentService.buildPdfReport(
       title: 'Daily Sales Report',
       companyName: identity.companyName,

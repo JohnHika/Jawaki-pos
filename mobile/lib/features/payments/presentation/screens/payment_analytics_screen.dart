@@ -107,7 +107,8 @@ class _PaymentAnalyticsScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
+          ? const Center(
+              child: CircularProgressIndicator(color: DesignColors.brand))
           : RefreshIndicator(
               onRefresh: _loadPaymentData,
               child: PageContainer(
@@ -164,14 +165,19 @@ class _PaymentAnalyticsScreenState
   Widget _buildPeriodSelector(bool isDark) {
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.max,
           children: _periods.asMap().entries.map((entry) {
@@ -201,9 +207,7 @@ class _PaymentAnalyticsScreenState
                       fontSize: 13,
                       fontWeight:
                           isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected
-                          ? DesignColors.accent
-                          : secondaryColor,
+                      color: isSelected ? DesignColors.accent : secondaryColor,
                     ),
                   ),
                 ),
@@ -275,18 +279,24 @@ class _PaymentAnalyticsScreenState
   Widget _buildPaymentMethodBreakdown(bool isDark) {
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.payment_rounded, color: DesignColors.info, size: 20),
+              const Icon(Icons.payment_rounded,
+                  color: DesignColors.info, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Payment Method Breakdown',
@@ -314,9 +324,8 @@ class _PaymentAnalyticsScreenState
                 0,
                 (sum, p) => sum + ((p['totalAmount'] ?? 0) as double),
               );
-              final share = grandTotal > 0
-                  ? (total as double) / grandTotal
-                  : 0.0;
+              final share =
+                  grandTotal > 0 ? (total as double) / grandTotal : 0.0;
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 20),
@@ -334,17 +343,26 @@ class _PaymentAnalyticsScreenState
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Text(
-                          _formatPaymentMethod(method),
-                          style: TextStyle(fontSize: 14, color: titleColor),
+                        Expanded(
+                          child: Text(
+                            _formatPaymentMethod(method),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 14, color: titleColor),
+                          ),
                         ),
-                        const Spacer(),
-                        Text(
-                          '$count transactions',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: titleColor,
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            '$count transactions',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: titleColor,
+                            ),
                           ),
                         ),
                       ],
@@ -388,18 +406,24 @@ class _PaymentAnalyticsScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.trending_up_rounded, color: DesignColors.brand, size: 20),
+              const Icon(Icons.trending_up_rounded,
+                  color: DesignColors.brand, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Transaction Trends',
@@ -534,18 +558,24 @@ class _PaymentAnalyticsScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.access_time_rounded, color: DesignColors.accent, size: 20),
+              const Icon(Icons.access_time_rounded,
+                  color: DesignColors.accent, size: 20),
               const SizedBox(width: 10),
               Text(
                 'Peak Hours Analysis',
@@ -617,14 +647,16 @@ class _PaymentAnalyticsScreenState
                               const SizedBox(width: 4),
                               Text(
                                 _formatHourLabel(hourNum),
-                                style: TextStyle(fontSize: 13, color: titleColor),
+                                style:
+                                    TextStyle(fontSize: 13, color: titleColor),
                               ),
                             ],
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '$count transactions',
-                            style: TextStyle(fontSize: 12, color: secondaryColor),
+                            style:
+                                TextStyle(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -648,7 +680,8 @@ class _PaymentAnalyticsScreenState
                           const SizedBox(height: 4),
                           Text(
                             '${trafficShare.toStringAsFixed(1)}% of traffic',
-                            style: TextStyle(fontSize: 11, color: secondaryColor),
+                            style:
+                                TextStyle(fontSize: 11, color: secondaryColor),
                           ),
                         ],
                       ),

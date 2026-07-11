@@ -53,13 +53,21 @@ jobs:
       - name: Setup Flutter
         shell: bash
         run: |
-          git clone https://github.com/flutter/flutter.git --depth 1 --branch 3.44.1 "$RUNNER_TEMP/flutter"
+          flutter_version="$(jq -r '.flutter' .fvmrc)"
+          test -n "$flutter_version" && test "$flutter_version" != "null"
+          git clone https://github.com/flutter/flutter.git --depth 1 --branch "$flutter_version" "$RUNNER_TEMP/flutter"
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/flutter/bin/flutter" --version
 
       - name: Get Dependencies
         working-directory: ./mobile
         run: flutter pub get
+
+      - name: Static analysis and tests
+        working-directory: ./mobile
+        run: |
+          flutter analyze
+          flutter test
 
       - name: Read app version
         id: version

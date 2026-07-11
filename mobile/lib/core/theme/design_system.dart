@@ -617,16 +617,15 @@ class MetricCard extends StatelessWidget {
     final trendColor = trendValue != null
         ? (trendValue! >= 0 ? DesignColors.success : DesignColors.error)
         : DesignColors.textTertiary;
-    final surface = isDark
-        ? DesignColors.darkSurfaceElevated
-        : Colors.white;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 16, 16, 16),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(18),
         border: Border(
           left: BorderSide(color: color, width: 3),
           top: BorderSide(color: border, width: 1),
@@ -824,13 +823,18 @@ class SectionHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (trailing != null) trailing!,
+          if (trailing != null)
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: trailing!,
+              ),
+            ),
         ],
       ),
     );
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════
 //  EMPTY STATE
@@ -979,22 +983,40 @@ class PageContainer extends StatelessWidget {
         (isDark ? DesignColors.darkBg : DesignColors.surfaceMuted);
 
     if (withScroll) {
-      return Container(
-        color: bg,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
+      return SafeArea(
+        top: false,
+        child: Container(
+          color: bg,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: padding ?? DesignSpacing.paddingScreen,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 960),
+                child: child,
+              ),
+            ),
           ),
-          padding: padding ?? DesignSpacing.paddingScreen,
-          child: child,
         ),
       );
     }
 
-    return Container(
-      color: bg,
-      padding: padding,
-      child: child,
+    return SafeArea(
+      top: false,
+      child: Container(
+        color: bg,
+        padding: padding,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 960),
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1131,7 +1153,8 @@ class QuickActionTile extends StatelessWidget {
     final subtitleColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Material(
       color: Colors.transparent,
@@ -1297,7 +1320,8 @@ class ListCard extends StatelessWidget {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final chevronColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Material(
@@ -1376,7 +1400,8 @@ class GroupedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
@@ -1482,7 +1507,8 @@ class SettingsRow extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           subtitle!,
-                          style: TextStyle(fontSize: 12.5, color: subtitleColor),
+                          style:
+                              TextStyle(fontSize: 12.5, color: subtitleColor),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1492,7 +1518,13 @@ class SettingsRow extends StatelessWidget {
                 ),
                 if (trailing != null) ...[
                   const SizedBox(width: 8),
-                  trailing!,
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: trailing!,
+                    ),
+                  ),
                 ] else if (onTap != null)
                   Icon(Icons.chevron_right_rounded,
                       color: chevronColor, size: 20),
@@ -1560,7 +1592,8 @@ class SettingsSheetScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final subtitleColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
@@ -1631,7 +1664,8 @@ class SettingsDialog extends StatelessWidget {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w800,
-          color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+          color:
+              isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
         ),
       ),
       content: content,
@@ -1675,9 +1709,8 @@ class SettingsPrimaryButton extends StatelessWidget {
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: fill.computeLuminance() > 0.5
-                    ? Colors.black
-                    : Colors.white,
+                color:
+                    fill.computeLuminance() > 0.5 ? Colors.black : Colors.white,
               ),
             )
           : Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -1749,70 +1782,71 @@ Future<bool> showConfirmDialog(
       final messageColor =
           isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
       return AlertDialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
-      ),
-      backgroundColor: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.warning_amber_rounded,
-            color: confirmColor ?? DesignColors.error,
-            size: 36,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: titleColor,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: TextStyle(fontSize: 14, color: messageColor, height: 1.4),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-      actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      actions: [
-        Row(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+        ),
+        backgroundColor:
+            isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(cancelLabel),
-              ),
+            Icon(
+              Icons.warning_amber_rounded,
+              color: confirmColor ?? DesignColors.error,
+              size: 36,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: confirmColor ?? DesignColors.error,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(confirmLabel),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: titleColor,
               ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: TextStyle(fontSize: 14, color: messageColor, height: 1.4),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
-      ],
+        actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(cancelLabel),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: confirmColor ?? DesignColors.error,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(confirmLabel),
+                ),
+              ),
+            ],
+          ),
+        ],
       );
     },
   );
@@ -2066,26 +2100,35 @@ class TenantBrandMark extends StatelessWidget {
     // especially against a bright logo background on a dark app bar — use
     // a proportionally larger radius so it's unmistakably a rounded badge,
     // not a square swatch. Clamped so it never exceeds a perfect circle.
-    final radius = (size * 0.36).clamp(0.0, size / 2);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: SizedBox(
-        width: size,
-        height: size,
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(1.5),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? DesignColors.darkSurfaceElevated
+            : Colors.white,
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? DesignColors.darkBorder
+              : DesignColors.surfaceBorder,
+        ),
+      ),
+      child: ClipOval(
         child: Image.network(
           url,
           width: size,
           height: size,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) =>
-              AxonLogoTitle(logoSize: size),
+              AxonLogoTitle(logoSize: size * 0.8),
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
             return Center(
               child: SizedBox(
-                width: size * 0.5,
-                height: size * 0.5,
+                width: size * 0.42,
+                height: size * 0.42,
                 child: const CircularProgressIndicator(strokeWidth: 1.6),
               ),
             );
@@ -2133,9 +2176,7 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       automaticallyImplyLeading: false,
       leading: leading ??
-          (showBackButton
-              ? _BackButton(color: fg, isDark: isDark)
-              : null),
+          (showBackButton ? _BackButton(color: fg, isDark: isDark) : null),
       centerTitle: false,
       titleSpacing: hasLeading ? 4 : 20,
       toolbarHeight: preferredSize.height,
@@ -2190,7 +2231,8 @@ class _BackButton extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
           side: BorderSide(
-            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+            color:
+                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
           ),
         ),
         child: InkWell(

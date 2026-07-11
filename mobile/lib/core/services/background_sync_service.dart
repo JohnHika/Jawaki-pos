@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:dio/dio.dart';
 
@@ -95,7 +96,7 @@ class BackgroundSyncService {
     try {
       final connectionStatus = await connectivityService.checkCurrentStatus();
       if (connectionStatus != ConnectionStatus.online) {
-        print('[BackgroundSync] Device is offline, skipping sync');
+        debugPrint('[BackgroundSync] Device is offline, skipping sync');
         return false;
       }
 
@@ -117,19 +118,19 @@ class BackgroundSyncService {
         apiClient: apiClient,
       );
 
-      print(
+      debugPrint(
         '[BackgroundSync] Completed: ${result.successCount} synced, '
         '${result.failureCount} failed, ${result.conflictCount} conflicts',
       );
 
       final cleaned = await database.cleanupSyncQueue(olderThanDays: 30);
       if (cleaned > 0) {
-        print('[BackgroundSync] Cleaned up $cleaned old sync items');
+        debugPrint('[BackgroundSync] Cleaned up $cleaned old sync items');
       }
 
       return !result.hasErrors;
     } catch (e) {
-      print('[BackgroundSync] Fatal error: $e');
+      debugPrint('[BackgroundSync] Fatal error: $e');
       return false;
     } finally {
       try {
@@ -156,7 +157,8 @@ class BackgroundSyncService {
       );
     }
 
-    print('[BackgroundSync] Processing ${pendingItems.length} pending items');
+    debugPrint(
+        '[BackgroundSync] Processing ${pendingItems.length} pending items');
 
     var successCount = 0;
     var failureCount = 0;
@@ -196,7 +198,7 @@ class BackgroundSyncService {
           );
           await _markRelatedLocalDataAsSynced(database, item);
           successCount++;
-          print(
+          debugPrint(
               '[BackgroundSync] ✓ Synced: ${item.entityTable}/${item.action}');
         } else {
           final errorMessage =
@@ -217,7 +219,7 @@ class BackgroundSyncService {
             failureCount++;
           }
 
-          print(
+          debugPrint(
             '[BackgroundSync] ✗ Failed: ${item.entityTable}/${item.action} - $errorMessage',
           );
         }
@@ -239,7 +241,7 @@ class BackgroundSyncService {
           failureCount++;
         }
 
-        print(
+        debugPrint(
           '[BackgroundSync] ✗ Failed: ${item.entityTable}/${item.action} - $errorMessage',
         );
       } catch (e) {
@@ -247,7 +249,7 @@ class BackgroundSyncService {
         await database.markSyncQueueFailed(item.id, errorMessage);
         failureCount++;
 
-        print(
+        debugPrint(
           '[BackgroundSync] ✗ Exception: ${item.entityTable}/${item.action} - $errorMessage',
         );
       }
@@ -382,22 +384,22 @@ class BackgroundSyncService {
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
-      print('[BackgroundSync] Task started: $task');
+      debugPrint('[BackgroundSync] Task started: $task');
 
       switch (task) {
         case BackgroundSyncService.syncTaskName:
         case 'sync-immediate':
           final success = await BackgroundSyncService.processSyncQueue();
-          print(
+          debugPrint(
               '[BackgroundSync] Task completed: ${success ? 'SUCCESS' : 'PARTIAL'}');
           return success;
 
         default:
-          print('[BackgroundSync] Unknown task: $task');
+          debugPrint('[BackgroundSync] Unknown task: $task');
           return false;
       }
     } catch (e) {
-      print('[BackgroundSync] Task failed: $e');
+      debugPrint('[BackgroundSync] Task failed: $e');
       return Future.value(false);
     }
   });

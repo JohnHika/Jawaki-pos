@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'auth_token.dart';
 
@@ -126,8 +127,8 @@ shelf.Middleware errorHandler() {
         final response = await innerHandler(request);
         return response;
       } catch (e, stack) {
-        print('[Server Error] $e');
-        print(stack);
+        debugPrint('[Server Error] $e');
+        debugPrint(stack.toString());
         return shelf.Response.internalServerError(
           body: jsonEncode(
               {'error': 'Internal server error', 'message': e.toString()}),

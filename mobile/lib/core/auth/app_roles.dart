@@ -113,6 +113,7 @@ class RolePermissions {
   bool get canViewCashFlow   => has('cash_flow.settings_view');
   bool get canRecordRestock  => has('suppliers.invoices_create');
   bool get canReconcileCash  => has('cash_reconciliation.create');
+  bool get canCloseEndOfDay  => has('sales.close_end_of_day');
 
   // ── Roles & permissions admin (new) ──────────
   bool get canManageRoles            => has('roles.view');

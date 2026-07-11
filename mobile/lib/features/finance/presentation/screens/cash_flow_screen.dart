@@ -212,6 +212,12 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                     subtitle: 'Count the till and compare against this figure',
                     onTap: () => context.push('/cash-flow/reconciliation'),
                   ),
+                  SettingsRow(
+                    icon: Icons.event_available_rounded,
+                    title: 'End of Day',
+                    subtitle: "Close the day's sales & count the till",
+                    onTap: () => context.push('/cash-flow/end-of-day'),
+                  ),
                 ],
               ),
             ],

@@ -766,11 +766,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
               height: 64,
               decoration: BoxDecoration(
                 color: DesignColors.darkBorder,
-                borderRadius: BorderRadius.circular(12),
+                shape: BoxShape.circle,
               ),
               child: _logoFile != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                  ? ClipOval(
                       child: Image.file(
                         _logoFile!,
                         fit: BoxFit.cover,

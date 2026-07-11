@@ -35,6 +35,7 @@ import '../../features/customers/presentation/screens/customer_profile_screen.da
 import '../../features/finance/presentation/screens/finance_screen.dart';
 import '../../features/finance/presentation/screens/cash_flow_screen.dart';
 import '../../features/finance/presentation/screens/cash_reconciliation_screen.dart';
+import '../../features/finance/presentation/screens/end_of_day_screen.dart';
 import '../../features/inventory/presentation/screens/restock_suggestions_screen.dart';
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
@@ -423,6 +424,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'reconciliation',
                 name: 'cash-reconciliation',
                 builder: (context, state) => const CashReconciliationScreen(),
+              ),
+              GoRoute(
+                path: 'end-of-day',
+                name: 'end-of-day',
+                builder: (context, state) => const EndOfDayScreen(),
               ),
             ],
           ),

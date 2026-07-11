@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
+import '../providers/catalog_provider.dart';
 import '../providers/payment_provider.dart';
 
 enum PaymentMethod {
@@ -202,8 +203,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               subtitle: 'Customer pays later — requires a customer',
               color: DesignColors.error,
               isSelected: _selectedMethod == PaymentMethod.debt,
-              onTap: () =>
-                  setState(() => _selectedMethod = PaymentMethod.debt),
+              onTap: () => setState(() => _selectedMethod = PaymentMethod.debt),
             ),
             const SizedBox(height: 10),
 
@@ -419,6 +419,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
       if (!mounted) return;
       ref.read(cartProvider.notifier).clear();
+      // These FutureProviders retain their last result. Invalidate them so
+      // the POS grid reflects the local stock decrement immediately.
+      ref.invalidate(productsProvider);
+      ref.invalidate(filteredProductsProvider);
+      ref.invalidate(favoriteProductsProvider);
       context.go('/receipt/$result');
     }
   }
@@ -428,7 +433,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Future<List<PaymentTender>?> _showSplitPaymentSheet(double total) async {
     final rows = <_TenderRow>[
       _TenderRow(method: 'CASH', amountController: TextEditingController()),
-      _TenderRow(method: 'MPESA', amountController: TextEditingController()),
+      _TenderRow(method: 'CASH', amountController: TextEditingController()),
     ];
 
     final confirmed = await showModalBottomSheet<bool>(
@@ -439,7 +444,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         builder: (ctx, setSheetState) {
           final isDark = Theme.of(ctx).brightness == Brightness.dark;
           final entered = rows.fold<double>(
-            0, (sum, r) => sum + (double.tryParse(r.amountController.text) ?? 0));
+              0,
+              (sum, r) =>
+                  sum + (double.tryParse(r.amountController.text) ?? 0));
           final remaining = total - entered;
 
           return Padding(
@@ -478,14 +485,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                               DropdownMenuItem(
                                   value: 'CASH', child: Text('Cash')),
                               DropdownMenuItem(
-                                  value: 'MPESA', child: Text('M-Pesa')),
-                              DropdownMenuItem(
-                                  value: 'PESAPAL', child: Text('PesaPal')),
-                              DropdownMenuItem(
                                   value: 'CREDIT', child: Text('Debt (owed)')),
                             ],
-                            onChanged: (v) =>
-                                setSheetState(() => row.method = v ?? row.method),
+                            onChanged: (v) => setSheetState(
+                                () => row.method = v ?? row.method),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -493,8 +496,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           flex: 3,
                           child: TextField(
                             controller: row.amountController,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
                             decoration: const InputDecoration(
                                 labelText: 'Amount (KES)'),
                             onChanged: (_) => setSheetState(() {}),
@@ -505,7 +508,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             tooltip: 'Remove',
                             onPressed: () =>
                                 setSheetState(() => rows.removeAt(index)),
-                            icon: const Icon(Icons.remove_circle_outline_rounded,
+                            icon: const Icon(
+                                Icons.remove_circle_outline_rounded,
                                 color: DesignColors.error),
                           ),
                       ],
@@ -514,7 +518,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 }),
                 TextButton.icon(
                   onPressed: () => setSheetState(() => rows.add(_TenderRow(
-                      method: 'CASH', amountController: TextEditingController()))),
+                      method: 'CASH',
+                      amountController: TextEditingController()))),
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add another tender'),
                 ),

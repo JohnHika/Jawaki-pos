@@ -748,6 +748,39 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  // ── End-of-day close (Z-report + cash count) ──
+
+  /// The day's sales summary for a branch (total, transactions, payment
+  /// split) — shown before closing so the user reviews the figures.
+  Future<Map<String, dynamic>> getSalesDailySummary(String branchId, String date) async {
+    final response = await _dio.get('/sales/summary/$branchId/$date');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// The close for a day (or today if [date] omitted); null if not yet closed.
+  Future<Map<String, dynamic>?> getDailyClose(String branchId, {String? date}) async {
+    final response = await _dio.get('/sales/daily-close/$branchId', queryParameters: {
+      if (date != null) 'date': date,
+    });
+    return response.data == null ? null : (response.data as Map<String, dynamic>);
+  }
+
+  /// Closes the end of day: finalizes the Z-report and books the cash count.
+  /// Requires the sales.close_end_of_day permission on the backend.
+  Future<Map<String, dynamic>> closeEndOfDay(
+    String branchId, {
+    required double countedCash,
+    String? date,
+    String? notes,
+  }) async {
+    final response = await _dio.post('/sales/daily-close/$branchId', data: {
+      'countedCash': countedCash,
+      if (date != null) 'date': date,
+      if (notes != null) 'notes': notes,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   // Restock suggestions
   Future<Map<String, dynamic>> getRestockSuggestions(String branchId) async {
     final response = await _dio.get('/inventory/restock-suggestions/$branchId');

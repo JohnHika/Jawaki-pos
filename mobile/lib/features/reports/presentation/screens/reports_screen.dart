@@ -380,8 +380,7 @@ class ReportsScreen extends ConsumerWidget {
                     }
                     final total = data.fold<double>(
                         0, (a, d) => a + (d['totalAmount'] as double));
-                    final isDark =
-                        Theme.of(ctx).brightness == Brightness.dark;
+                    final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
                         : DesignColors.textPrimary;
@@ -427,7 +426,7 @@ class ReportsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 8),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(18),
                                 child: LinearProgressIndicator(
                                   value: pct / 100,
                                   backgroundColor: color.withValues(alpha: 0.1),
@@ -576,8 +575,7 @@ class ReportsScreen extends ConsumerWidget {
                     }
                     final total = data.fold<double>(
                         0, (a, d) => a + (d['totalRevenue'] as double));
-                    final isDark =
-                        Theme.of(ctx).brightness == Brightness.dark;
+                    final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
                         : DesignColors.textPrimary;
@@ -623,7 +621,7 @@ class ReportsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 8),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(18),
                                 child: LinearProgressIndicator(
                                   value: total > 0 ? revenue / total : 0,
                                   backgroundColor: color.withValues(alpha: 0.1),
@@ -1078,9 +1076,8 @@ class _GlassCardTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondaryColor = isDark
-        ? DesignColors.darkTextSecondary
-        : DesignColors.textSecondary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GlassCard(
@@ -1217,8 +1214,7 @@ class _DateRangeSelector extends ConsumerWidget {
             range.label.contains('–') ? range.label : 'Custom',
             range.label.contains('–'),
             () async {
-              final isDark =
-                  Theme.of(context).brightness == Brightness.dark;
+              final isDark = Theme.of(context).brightness == Brightness.dark;
               final picked = await showDateRangePicker(
                 context: context,
                 firstDate: DateTime(2024),
@@ -1253,10 +1249,10 @@ class _DateRangeSelector extends ConsumerWidget {
   Widget _buildPeriodChip(BuildContext context, WidgetRef ref, String label,
       bool selected, VoidCallback onTap) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final secondaryColor = isDark
-        ? DesignColors.darkTextSecondary
-        : DesignColors.textSecondary;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -1268,9 +1264,8 @@ class _DateRangeSelector extends ConsumerWidget {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected
-                ? DesignColors.accent.withValues(alpha: 0.3)
-                : border,
+            color:
+                selected ? DesignColors.accent.withValues(alpha: 0.3) : border,
             width: selected ? 1.5 : 1,
           ),
         ),
