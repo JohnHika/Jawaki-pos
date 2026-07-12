@@ -121,14 +121,38 @@ class AiTodoItem {
       };
 }
 
+/// A downloadable file the AI generated (e.g. a PDF/DOCX/CSV report) —
+/// carried inline as base64 rather than a URL, since the backend never
+/// persists these to storage.
+class AiFileAttachment {
+  final String base64;
+  final String filename;
+  final String contentType;
+
+  AiFileAttachment({
+    required this.base64,
+    required this.filename,
+    required this.contentType,
+  });
+
+  factory AiFileAttachment.fromJson(Map<String, dynamic> json) {
+    return AiFileAttachment(
+      base64: (json['base64'] ?? '').toString(),
+      filename: (json['filename'] ?? 'report').toString(),
+      contentType: (json['contentType'] ?? 'application/octet-stream').toString(),
+    );
+  }
+}
+
 /// Result of a send/resume call: either a final text reply, or a paused
 /// turn the UI must render interactively before the conversation can
 /// continue.
 class AiSendResult {
   final String? reply;
   final AiPendingTurn? pending;
+  final AiFileAttachment? file;
 
-  AiSendResult({this.reply, this.pending});
+  AiSendResult({this.reply, this.pending, this.file});
 }
 
 class AiChatService {
@@ -457,9 +481,11 @@ class AiChatService {
       final reply = payload['reply'] as String;
       final assistantMessageId =
           (payload['assistantMessageId'] as String?) ?? '';
+      final fileJson = payload['file'] as Map<String, dynamic>?;
+      final file = fileJson != null ? AiFileAttachment.fromJson(fileJson) : null;
       _messages.add(
           {'id': assistantMessageId, 'role': 'assistant', 'content': reply});
-      return AiSendResult(reply: reply);
+      return AiSendResult(reply: reply, file: file);
     } else if (response.statusCode == 402) {
       // Remove the pending user message — this turn never produced a
       // reply, and re-sending after subscribing shouldn't leave a

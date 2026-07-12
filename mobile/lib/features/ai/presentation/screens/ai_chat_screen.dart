@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
+import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
@@ -64,7 +67,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     _scrollToBottom();
 
     try {
-      await _aiService.sendMessage(content: message);
+      final result = await _aiService.sendMessage(content: message);
+      await _maybeShareGeneratedFile(result);
     } on AiSubscriptionRequiredException {
       if (mounted) {
         context.push('/ai/trial', extra: _aiService.branchId);
@@ -73,6 +77,29 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     if (mounted) setState(() => _isLoading = false);
     _scrollToBottom();
+  }
+
+  /// The AI can generate a downloadable report (PDF/DOCX/CSV) — it's carried
+  /// inline as base64 on the response rather than persisted anywhere server-
+  /// side, so this is the one chance to hand it to the user: save it to disk
+  /// and open the OS share sheet immediately, mirroring how every other
+  /// export in the app (dashboard reports, receipts) already works.
+  Future<void> _maybeShareGeneratedFile(AiSendResult result) async {
+    final file = result.file;
+    if (file == null) return;
+    try {
+      final bytes = base64Decode(file.base64);
+      await ExportDocumentService.shareGeneratedFile(bytes, file.filename);
+    } catch (_) {
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not open the generated report.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+    }
   }
 
   /// Resumes a paused agent turn (AskUserQuestion answered, or a mutating
@@ -87,10 +114,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     _scrollToBottom();
 
     try {
-      await _aiService.resumePendingTurn(
+      final result = await _aiService.resumePendingTurn(
         questionAnswers: questionAnswers,
         toolConfirmed: toolConfirmed,
       );
+      await _maybeShareGeneratedFile(result);
     } on AiSubscriptionRequiredException {
       if (mounted) {
         context.push('/ai/trial', extra: _aiService.branchId);

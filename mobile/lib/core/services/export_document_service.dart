@@ -170,6 +170,17 @@ class ExportDocumentService {
     await Printing.sharePdf(bytes: bytes, filename: file.path.split(Platform.pathSeparator).last);
   }
 
+  /// Saves any already-named file (PDF/DOCX/CSV/etc.) to a shareable location
+  /// and opens the OS share sheet — for content whose exact filename and
+  /// extension come from the server (e.g. an AI-generated report) rather
+  /// than being decided on-device like [sharePdf]/[shareCsv].
+  static Future<void> shareGeneratedFile(Uint8List bytes, String filename) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes);
+    await Share.shareXFiles([XFile(file.path)], subject: 'Axon POS report');
+  }
+
   /// Fetches a network logo image as bytes for embedding in a PDF header;
   /// returns null on any failure so callers can render without a logo
   /// instead of failing the whole export.
