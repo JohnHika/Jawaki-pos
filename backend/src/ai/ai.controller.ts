@@ -6,6 +6,7 @@ import { AiConversationService } from './ai-conversation.service';
 import { AiMemoryService } from './ai-memory.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ScanReceiptDto } from './dto/receipt-scan.dto';
+import { VisionChatRequestDto } from './dto/vision-chat.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { AiAccessGuard } from '../ai-billing/ai-billing.guard';
@@ -414,6 +415,14 @@ export class AiController {
   @HttpCode(HttpStatus.OK)
   async scanReceipt(@Body() dto: ScanReceiptDto) {
     const data = await this.aiService.parseReceiptImage(dto.imageUrl);
+    return { success: true, data };
+  }
+
+  @Post('vision')
+  @UseGuards(OptionalJwtAuthGuard, AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async analyzeImage(@Body() dto: VisionChatRequestDto) {
+    const data = await this.aiService.analyzeImage(dto.imageBase64, dto.prompt);
     return { success: true, data };
   }
 }

@@ -881,4 +881,22 @@ class ApiClient {
     });
     return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
   }
+
+  /// General-purpose "what's in this photo" analysis — used when the AI
+  /// chat's Camera/Photos attach finds no on-device OCR text (a product
+  /// photo, damaged item, scene, etc. rather than a document). Sends the
+  /// image inline as base64 (no upload/storage step) to the POS's own
+  /// isolated vision model. Returns {reply, model}.
+  Future<Map<String, dynamic>> analyzeImage({
+    required String imageBase64,
+    required String prompt,
+    String? branchId,
+  }) async {
+    final response = await _dio.post('/ai/vision', data: {
+      'imageBase64': imageBase64,
+      'prompt': prompt,
+      if (branchId != null) 'branchId': branchId,
+    });
+    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+  }
 }

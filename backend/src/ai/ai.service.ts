@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatMessageDto, ChatRequestDto } from './dto/chat.dto';
 import { ParsedReceiptResult } from './dto/receipt-scan.dto';
+import { VisionChatResult } from './dto/vision-chat.dto';
 import { AiToolsService, AiToolCallContext, SanitizedTodoItem } from './ai-tools.service';
 
 type AnthropicRole = 'user' | 'assistant';
@@ -964,6 +965,59 @@ MANDATORY FOR THIS REQUEST: the user's message describes multiple distinct steps
       return this.parseReceiptModelOutput(rawText, data.model || 'axon-vision');
     } catch (error) {
       this.logger.error(`Axon Gateway vision request failed: ${error instanceof Error ? error.message : String(error)}`);
+      return unavailable;
+    }
+  }
+
+  /**
+   * General-purpose "what's in this photo" analysis for the AI chat's image
+   * attachment — distinct from parseReceiptImage (which targets the shared
+   * gateway's structured-JSON receipt extraction). This calls the POS's own
+   * isolated /pos/vision endpoint so the model, billing, and quota stay
+   * entirely inside the POS gateway module, matching how /pos/chat already
+   * never touches the shared tier-routed endpoints.
+   */
+  async analyzeImage(imageBase64: string, prompt: string): Promise<VisionChatResult> {
+    const unavailable: VisionChatResult = {
+      reply: "I couldn't look at that photo just now — please try again in a moment.",
+      model: 'unavailable',
+    };
+
+    if (!this.gatewayApiKey) {
+      return unavailable;
+    }
+
+    try {
+      const response = await fetch(`${this.gatewayBaseUrl}/pos/vision`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.gatewayApiKey}`,
+        },
+        body: JSON.stringify({
+          image_base64: imageBase64,
+          prompt,
+          max_tokens: 1200,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        this.logger.error(`Axon Gateway /pos/vision error: ${response.status} - ${errorBody}`);
+        return unavailable;
+      }
+
+      const data = (await response.json()) as { response?: string; model?: string };
+      const rawText = data.response?.trim();
+      if (!rawText) {
+        this.logger.error('Axon Gateway /pos/vision returned an empty response');
+        return unavailable;
+      }
+
+      const { text } = this.stripLeakedToolCallSyntax(rawText);
+      return { reply: text || rawText, model: data.model || 'axon-spark-pos' };
+    } catch (error) {
+      this.logger.error(`Axon Gateway /pos/vision request failed: ${error instanceof Error ? error.message : String(error)}`);
       return unavailable;
     }
   }

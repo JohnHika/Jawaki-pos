@@ -1,16 +1,25 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import 'ai_chat_prefs.dart';
 
 /// The "Add to chat" sheet (Camera / Photos / Files, Web search, Tool
 /// access) shown when the user taps the "+" in the AI chat input, mirroring
 /// the reference design. Camera/Photos capture an image and extract its
-/// text on-device (OCR), handing that text back to the chat so it becomes
-/// part of the next question — a real, offline-capable win even before
-/// full gateway vision lands. [onAttachmentText] receives (label, text).
+/// text on-device (OCR) first — fast, offline, ideal for receipts/labels/
+/// documents. When OCR finds nothing (a product photo, damaged item, a
+/// scene — not a document), it falls back to sending the photo itself to
+/// the AI's vision endpoint so the chat still understands what's in the
+/// picture instead of just reporting "no text found". [onAttachmentText]
+/// receives (label, text) for either path.
 Future<void> showAddToChatSheet(
   BuildContext context, {
   required void Function(String label, String extractedText) onAttachmentText,
@@ -63,18 +72,39 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
         await recognizer.close();
       }
 
+      if (extracted.isNotEmpty) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        widget.onAttachmentText('$label attachment', extracted);
+        return;
+      }
+
+      // No text found — this is likely a photo of a thing, not a document.
+      // Fall back to sending it to the AI's vision model so the chat still
+      // understands the picture instead of just reporting "no text found".
+      final bytes = await File(picked.path).readAsBytes();
+      final branchId = getIt<AuthService>().branchId;
+      final vision = await getIt<ApiClient>().analyzeImage(
+        imageBase64: base64Encode(bytes),
+        prompt: 'Describe what is in this photo in a few sentences, in enough '
+            'detail that a shop assistant could act on it (e.g. note any '
+            'visible damage, labels, brand, condition, or anything unusual).',
+        branchId: branchId,
+      );
+      final description = (vision['reply'] as String?)?.trim() ?? '';
+
       if (!mounted) return;
       Navigator.of(context).pop();
-      if (extracted.isEmpty) {
+      if (description.isEmpty) {
         showGlassSnackBar(
           context,
-          'No readable text found in that image.',
+          "Couldn't read that image — no text or recognizable content found.",
           icon: Icons.image_not_supported_outlined,
           color: DesignColors.warning,
         );
         return;
       }
-      widget.onAttachmentText('$label attachment', extracted);
+      widget.onAttachmentText('$label (photo)', description);
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
@@ -154,8 +184,9 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Camera, Photos and Files read text from an image on your device '
-            'and add it to your next message.',
+            'Camera, Photos and Files read text from an image on your device. '
+            'If there\'s no text (a product photo, damage, etc.), the AI '
+            'looks at the picture instead.',
             style: TextStyle(
               fontSize: 12,
               color: isDark
