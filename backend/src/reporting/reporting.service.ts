@@ -30,67 +30,90 @@ export class ReportingService {
   ) {}
 
   /**
-   * Get date range from period or custom dates
+   * Get date range from period or custom dates — every boundary resolves to
+   * a real UTC instant via getDayBoundsInTimezone(dateStr, tz), not by
+   * mutating a "fictional" Date whose UTC fields stand in for Nairobi's wall
+   * clock (nowInTimezone's convention). That fiction composes safely for
+   * further calendar arithmetic (adding/subtracting days, reading
+   * year/month/day) but must never be handed directly to a real UTC
+   * comparison (a DB query's createdAt filter) without converting back
+   * first — doing so was a real bug: THIS_WEEK's `end` silently landed 3
+   * hours into the *next* Nairobi day, and Prisma queries came back empty
+   * for data that was genuinely in range.
    */
   private getDateRange(filter: ReportFilterDto): { start: Date; end: Date } {
-    const now = nowInTimezone('Africa/Nairobi');
-    let start: Date;
-    let end: Date = new Date(now);
-    end.setHours(23, 59, 59, 999);
+    const tz = 'Africa/Nairobi';
+    const now = nowInTimezone(tz); // fictional Date — calendar math only, never passed to Prisma directly.
+    const dayStr = (d: Date) => d.toISOString().split('T')[0];
+    const boundsFor = (dateStr: string) => getDayBoundsInTimezone(dateStr, tz);
 
     if (filter.startDate && filter.endDate) {
       return {
-        start: new Date(filter.startDate),
-        end: new Date(filter.endDate),
+        start: boundsFor(filter.startDate).start,
+        end: boundsFor(filter.endDate).end,
       };
     }
 
+    let startDateStr: string;
+    let endDateStr: string = dayStr(now);
+
     switch (filter.period || ReportPeriod.TODAY) {
       case ReportPeriod.TODAY:
-        start = new Date(now);
-        start.setHours(0, 0, 0, 0);
+        startDateStr = dayStr(now);
         break;
-      case ReportPeriod.YESTERDAY:
-        start = new Date(now);
-        start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
-        end = new Date(start);
-        end.setHours(23, 59, 59, 999);
+      case ReportPeriod.YESTERDAY: {
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        startDateStr = dayStr(yesterday);
+        endDateStr = startDateStr;
         break;
-      case ReportPeriod.THIS_WEEK:
-        start = new Date(now);
-        start.setDate(start.getDate() - start.getDay());
-        start.setHours(0, 0, 0, 0);
+      }
+      case ReportPeriod.THIS_WEEK: {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        startDateStr = dayStr(weekStart);
         break;
-      case ReportPeriod.LAST_WEEK:
-        start = new Date(now);
-        start.setDate(start.getDate() - start.getDay() - 7);
-        start.setHours(0, 0, 0, 0);
-        end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
+      }
+      case ReportPeriod.LAST_WEEK: {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay() - 7);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        startDateStr = dayStr(weekStart);
+        endDateStr = dayStr(weekEnd);
         break;
-      case ReportPeriod.THIS_MONTH:
-        start = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
+      case ReportPeriod.THIS_MONTH: {
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        startDateStr = dayStr(monthStart);
         break;
-      case ReportPeriod.LAST_MONTH:
-        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        end = new Date(now.getFullYear(), now.getMonth(), 0);
-        end.setHours(23, 59, 59, 999);
+      }
+      case ReportPeriod.LAST_MONTH: {
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+        startDateStr = dayStr(monthStart);
+        endDateStr = dayStr(monthEnd);
         break;
-      case ReportPeriod.THIS_QUARTER:
-        const quarter = Math.floor(now.getMonth() / 3);
-        start = new Date(now.getFullYear(), quarter * 3, 1);
+      }
+      case ReportPeriod.THIS_QUARTER: {
+        const quarter = Math.floor(now.getUTCMonth() / 3);
+        const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), quarter * 3, 1));
+        startDateStr = dayStr(quarterStart);
         break;
-      case ReportPeriod.THIS_YEAR:
-        start = new Date(now.getFullYear(), 0, 1);
+      }
+      case ReportPeriod.THIS_YEAR: {
+        const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+        startDateStr = dayStr(yearStart);
         break;
+      }
       default:
-        start = new Date(now);
-        start.setHours(0, 0, 0, 0);
+        startDateStr = dayStr(now);
     }
 
-    return { start, end };
+    return {
+      start: boundsFor(startDateStr).start,
+      end: boundsFor(endDateStr).end,
+    };
   }
 
   /**
