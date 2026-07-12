@@ -4,6 +4,8 @@ import { ChatMessageDto, ChatRequestDto } from './dto/chat.dto';
 import { ParsedReceiptResult } from './dto/receipt-scan.dto';
 import { VisionChatResult } from './dto/vision-chat.dto';
 import { AiToolsService, AiToolCallContext, SanitizedTodoItem } from './ai-tools.service';
+import { ReportExportService } from '../reporting/report-export.service';
+import { GenerateReportDto, ReportExportFormat, ReportExportType } from '../reporting/dto/report-export.dto';
 
 type AnthropicRole = 'user' | 'assistant';
 
@@ -52,6 +54,12 @@ export interface SanitizedAskUserQuestion {
  * continue. */
 export type GatewayMessagesResult =
   | { kind: 'reply'; reply: string; model: string; todos?: SanitizedTodoItem[] }
+  | {
+      kind: 'reply_with_file';
+      reply: string;
+      model: string;
+      file: { base64: string; filename: string; contentType: string };
+    }
   | {
       kind: 'pending_question';
       model: string;
@@ -124,6 +132,7 @@ export class AiService {
   constructor(
     private readonly configService: ConfigService,
     private readonly tools: AiToolsService,
+    private readonly reportExport: ReportExportService,
   ) {
     this.gatewayApiKey = this.configService.get<string>('AXON_GATEWAY_API_KEY') || '';
     this.gatewayBaseUrl =
@@ -482,6 +491,60 @@ export class AiService {
             pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input },
             plan,
           };
+        }
+
+        if (toolUseBlock.name === 'generate_report') {
+          const reportType = toolUseBlock.input?.reportType as ReportExportType | undefined;
+          const format = toolUseBlock.input?.format as ReportExportFormat | undefined;
+          if (!reportType || !format) {
+            messages.push(
+              { role: 'assistant', content: [toolUseBlock] },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: toolUseBlock.id,
+                    content: 'Error: reportType and format are both required. Ask the user which report and which file format if unclear.',
+                  },
+                ],
+              },
+            );
+            continue;
+          }
+          try {
+            const genDto: GenerateReportDto = {
+              reportType,
+              format,
+              period: toolUseBlock.input?.period,
+              branchId: toolCtx.branchId,
+            };
+            const { buffer, filename, contentType } = await this.reportExport.generate(
+              toolCtx.tenantId,
+              genDto,
+            );
+            return {
+              kind: 'reply_with_file',
+              reply: `Here's your ${format} report: ${filename}`,
+              model,
+              file: { base64: buffer.toString('base64'), filename, contentType },
+            };
+          } catch (error) {
+            messages.push(
+              { role: 'assistant', content: [toolUseBlock] },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: toolUseBlock.id,
+                    content: `Error generating report: ${error instanceof Error ? error.message : String(error)}. Tell the user the report could not be generated.`,
+                  },
+                ],
+              },
+            );
+            continue;
+          }
         }
 
         if (toolDef?.mutating) {

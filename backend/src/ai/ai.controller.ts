@@ -128,7 +128,7 @@ export class AiController {
           });
           userMessageId = saved.id;
         }
-        if (result.kind === 'reply') {
+        if (result.kind === 'reply' || result.kind === 'reply_with_file') {
           const saved = await this.conversations.appendMessage({
             tenantId,
             branchId,
@@ -186,6 +186,19 @@ export class AiController {
             tool_call: result.pendingToolCall,
             plan: result.plan,
           },
+        },
+      };
+    }
+
+    if (result.kind === 'reply_with_file') {
+      return {
+        success: true,
+        data: {
+          reply: result.reply,
+          model: result.model,
+          userMessageId,
+          assistantMessageId,
+          file: result.file,
         },
       };
     }

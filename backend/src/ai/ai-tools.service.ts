@@ -308,6 +308,42 @@ export class AiToolsService {
         },
       },
       {
+        name: 'generate_report',
+        description:
+          'Generate a downloadable report file (PDF, Word/DOCX, or CSV) built from real shop data. Use this when the user explicitly asks for a document/file/report they can download or share — not for a question that can just be answered in chat. Always ask which format they want if they haven\'t said, unless they already specified it.',
+        mutating: false,
+        input_schema: {
+          type: 'object',
+          properties: {
+            reportType: {
+              type: 'string',
+              enum: ['SALES_SUMMARY', 'TOP_PRODUCTS', 'PROFIT_LOSS', 'INVENTORY', 'PAYMENT_BREAKDOWN'],
+              description: 'Which report to generate.',
+            },
+            format: {
+              type: 'string',
+              enum: ['PDF', 'DOCX', 'CSV'],
+              description: 'File format the user wants.',
+            },
+            period: {
+              type: 'string',
+              enum: [
+                'TODAY',
+                'YESTERDAY',
+                'THIS_WEEK',
+                'LAST_WEEK',
+                'THIS_MONTH',
+                'LAST_MONTH',
+                'THIS_QUARTER',
+                'THIS_YEAR',
+              ],
+              description: 'Date range for the report. Not used for INVENTORY (always current). Defaults to THIS_WEEK.',
+            },
+          },
+          required: ['reportType', 'format'],
+        },
+      },
+      {
         name: 'todo_write',
         description:
           'Update the visible task checklist for the current multi-step request. Use proactively for any request with 3+ distinct steps, or when the user explicitly asks for a checklist — not for a single trivial question. Always include every task (not just changed ones): exactly one must be in_progress at a time, mark a task completed immediately when done (never batch), and never mark one completed if it failed or is only partially done.',

@@ -1,16 +1,22 @@
 import {
   Controller,
   Get,
+  Post,
+  Body,
   Query,
+  Res,
   UseGuards,
   Param,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ReportingService } from './reporting.service';
+import { ReportExportService } from './report-export.service';
+import { GenerateReportDto, ReportExportFormat } from './dto/report-export.dto';
 import {
   ReportFilterDto,
   SalesSummaryDto,
@@ -31,7 +37,10 @@ import {
 @Controller('reports')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ReportingController {
-  constructor(private reportingService: ReportingService) {}
+  constructor(
+    private reportingService: ReportingService,
+    private reportExportService: ReportExportService,
+  ) {}
 
   @Get('dashboard')
   @RequirePermissions('reporting.dashboard')
@@ -166,5 +175,23 @@ export class ReportingController {
     @Query() filter: ReportFilterDto,
   ): Promise<DailyProfitAndLossDto[]> {
     return this.reportingService.getProfitAndLossRange(user.tenantId, filter);
+  }
+
+  @Post('export')
+  @RequirePermissions('reporting.export')
+  @ApiOperation({ summary: 'Generate a downloadable PDF/DOCX/CSV report from real sales data' })
+  @ApiResponse({ status: 200, description: 'The generated report file' })
+  async exportReport(
+    @CurrentUser() user: any,
+    @Body() dto: GenerateReportDto,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename, contentType } = await this.reportExportService.generate(
+      user.tenantId,
+      dto,
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 }
