@@ -1004,21 +1004,24 @@ MANDATORY FOR THIS REQUEST: the user's message describes multiple distinct steps
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
         this.logger.error(`Axon Gateway /pos/vision error: ${response.status} - ${errorBody}`);
-        return unavailable;
+        // TEMP DEBUG — remove once vision failure is diagnosed.
+        return { ...unavailable, model: `DEBUG:${response.status}:${errorBody}`.slice(0, 500) };
       }
 
       const data = (await response.json()) as { response?: string; model?: string };
       const rawText = data.response?.trim();
       if (!rawText) {
         this.logger.error('Axon Gateway /pos/vision returned an empty response');
-        return unavailable;
+        return { ...unavailable, model: 'DEBUG:empty-response' };
       }
 
       const { text } = this.stripLeakedToolCallSyntax(rawText);
       return { reply: text || rawText, model: data.model || 'axon-spark-pos' };
     } catch (error) {
-      this.logger.error(`Axon Gateway /pos/vision request failed: ${error instanceof Error ? error.message : String(error)}`);
-      return unavailable;
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Axon Gateway /pos/vision request failed: ${msg}`);
+      // TEMP DEBUG — remove once vision failure is diagnosed.
+      return { ...unavailable, model: `DEBUG:exception:${msg}`.slice(0, 500) };
     }
   }
 
