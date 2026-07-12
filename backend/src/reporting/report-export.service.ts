@@ -179,7 +179,7 @@ export class ReportExportService {
                 p.sku,
                 p.categoryName,
                 String(p.quantitySold),
-                money((p as any).revenue),
+                money(p.revenue),
               ]),
             },
           ],
@@ -200,7 +200,7 @@ export class ReportExportService {
                 r.branchName,
                 money(r.grossSales),
                 money(r.totalDiscounts),
-                money((r as any).netProfit),
+                money(r.netProfit),
               ]),
             },
           ],
@@ -237,10 +237,10 @@ export class ReportExportService {
             {
               heading: 'By Method',
               headers: ['Method', 'Transactions', 'Amount'],
-              rows: breakdown.map((b: any) => [
+              rows: breakdown.map((b) => [
                 b.method,
-                String(b.transactionCount ?? b.count ?? 0),
-                money(b.totalAmount ?? b.amount),
+                String(b.transactionsCount),
+                money(b.amount),
               ]),
             },
           ],

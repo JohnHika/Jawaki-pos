@@ -151,8 +151,9 @@ class AiSendResult {
   final String? reply;
   final AiPendingTurn? pending;
   final AiFileAttachment? file;
+  final Map<String, dynamic>? chart;
 
-  AiSendResult({this.reply, this.pending, this.file});
+  AiSendResult({this.reply, this.pending, this.file, this.chart});
 }
 
 class AiChatService {
@@ -483,9 +484,10 @@ class AiChatService {
           (payload['assistantMessageId'] as String?) ?? '';
       final fileJson = payload['file'] as Map<String, dynamic>?;
       final file = fileJson != null ? AiFileAttachment.fromJson(fileJson) : null;
+      final chart = payload['chart'] as Map<String, dynamic>?;
       _messages.add(
           {'id': assistantMessageId, 'role': 'assistant', 'content': reply});
-      return AiSendResult(reply: reply, file: file);
+      return AiSendResult(reply: reply, file: file, chart: chart);
     } else if (response.statusCode == 402) {
       // Remove the pending user message — this turn never produced a
       // reply, and re-sending after subscribing shouldn't leave a

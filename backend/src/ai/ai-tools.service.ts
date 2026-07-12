@@ -308,6 +308,37 @@ export class AiToolsService {
         },
       },
       {
+        name: 'generate_chart',
+        description:
+          "Show the user an actual chart (not a text table) built from real shop data — a sales trend line, a top-products/payment-method bar chart, or a busiest-times heatmap. Use this whenever visualizing the data would be clearer than describing numbers in prose, especially for trend/comparison/busiest-time questions.",
+        mutating: false,
+        input_schema: {
+          type: 'object',
+          properties: {
+            chartType: {
+              type: 'string',
+              enum: ['SALES_TREND', 'TOP_PRODUCTS', 'SALES_HEATMAP', 'PAYMENT_BREAKDOWN'],
+              description: 'SALES_TREND: revenue over time (line). TOP_PRODUCTS/PAYMENT_BREAKDOWN: comparison (bar). SALES_HEATMAP: busiest day/hour grid.',
+            },
+            period: {
+              type: 'string',
+              enum: [
+                'TODAY',
+                'YESTERDAY',
+                'THIS_WEEK',
+                'LAST_WEEK',
+                'THIS_MONTH',
+                'LAST_MONTH',
+                'THIS_QUARTER',
+                'THIS_YEAR',
+              ],
+              description: 'Date range for the chart. Defaults to THIS_WEEK.',
+            },
+          },
+          required: ['chartType'],
+        },
+      },
+      {
         name: 'generate_report',
         description:
           'Generate a downloadable report file (PDF, Word/DOCX, or CSV) built from real shop data. Use this when the user explicitly asks for a document/file/report they can download or share — not for a question that can just be answered in chat. Always ask which format they want if they haven\'t said, unless they already specified it.',

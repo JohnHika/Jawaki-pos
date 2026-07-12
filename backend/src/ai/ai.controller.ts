@@ -128,7 +128,11 @@ export class AiController {
           });
           userMessageId = saved.id;
         }
-        if (result.kind === 'reply' || result.kind === 'reply_with_file') {
+        if (
+          result.kind === 'reply' ||
+          result.kind === 'reply_with_file' ||
+          result.kind === 'reply_with_chart'
+        ) {
           const saved = await this.conversations.appendMessage({
             tenantId,
             branchId,
@@ -199,6 +203,19 @@ export class AiController {
           userMessageId,
           assistantMessageId,
           file: result.file,
+        },
+      };
+    }
+
+    if (result.kind === 'reply_with_chart') {
+      return {
+        success: true,
+        data: {
+          reply: result.reply,
+          model: result.model,
+          userMessageId,
+          assistantMessageId,
+          chart: result.chart,
         },
       };
     }

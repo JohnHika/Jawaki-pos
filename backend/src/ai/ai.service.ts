@@ -6,6 +6,8 @@ import { VisionChatResult } from './dto/vision-chat.dto';
 import { AiToolsService, AiToolCallContext, SanitizedTodoItem } from './ai-tools.service';
 import { ReportExportService } from '../reporting/report-export.service';
 import { GenerateReportDto, ReportExportFormat, ReportExportType } from '../reporting/dto/report-export.dto';
+import { ChartDataService } from '../reporting/chart-data.service';
+import { ChartDataType, GenerateChartDto, GeneratedChart } from '../reporting/dto/chart-data.dto';
 
 type AnthropicRole = 'user' | 'assistant';
 
@@ -60,6 +62,7 @@ export type GatewayMessagesResult =
       model: string;
       file: { base64: string; filename: string; contentType: string };
     }
+  | { kind: 'reply_with_chart'; reply: string; model: string; chart: GeneratedChart }
   | {
       kind: 'pending_question';
       model: string;
@@ -133,6 +136,7 @@ export class AiService {
     private readonly configService: ConfigService,
     private readonly tools: AiToolsService,
     private readonly reportExport: ReportExportService,
+    private readonly chartData: ChartDataService,
   ) {
     this.gatewayApiKey = this.configService.get<string>('AXON_GATEWAY_API_KEY') || '';
     this.gatewayBaseUrl =
@@ -491,6 +495,55 @@ export class AiService {
             pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input },
             plan,
           };
+        }
+
+        if (toolUseBlock.name === 'generate_chart') {
+          const chartType = toolUseBlock.input?.chartType as ChartDataType | undefined;
+          if (!chartType) {
+            messages.push(
+              { role: 'assistant', content: [toolUseBlock] },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: toolUseBlock.id,
+                    content: 'Error: chartType is required. Ask the user what they want charted if unclear.',
+                  },
+                ],
+              },
+            );
+            continue;
+          }
+          try {
+            const chartDto: GenerateChartDto = {
+              chartType,
+              period: toolUseBlock.input?.period,
+              branchId: toolCtx.branchId,
+            };
+            const chart = await this.chartData.buildChart(toolCtx.tenantId, chartDto);
+            return {
+              kind: 'reply_with_chart',
+              reply: `Here's the ${chart.title.toLowerCase()} for ${chart.subtitle.toLowerCase()}.`,
+              model,
+              chart,
+            };
+          } catch (error) {
+            messages.push(
+              { role: 'assistant', content: [toolUseBlock] },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'tool_result',
+                    tool_use_id: toolUseBlock.id,
+                    content: `Error generating chart: ${error instanceof Error ? error.message : String(error)}. Tell the user the chart could not be generated.`,
+                  },
+                ],
+              },
+            );
+            continue;
+          }
         }
 
         if (toolUseBlock.name === 'generate_report') {

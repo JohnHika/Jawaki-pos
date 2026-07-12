@@ -10,6 +10,7 @@ import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import 'ai_chart_widget.dart';
 import 'ai_chat_service.dart';
 import 'ai_add_to_chat_sheet.dart';
 
@@ -25,6 +26,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final AiChatService _aiService = AiChatService();
   bool _isLoading = false;
+
+  // Charts aren't persisted into AiChatService.messages (they'd bloat every
+  // future turn's request payload the same way file attachments would) —
+  // kept here instead, keyed by the assistant message id the chart belongs
+  // to, so it renders inline right below that reply for this session only.
+  final Map<String, AiChartData> _charts = {};
 
   @override
   void initState() {
@@ -69,6 +76,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     try {
       final result = await _aiService.sendMessage(content: message);
       await _maybeShareGeneratedFile(result);
+      _maybeStoreChart(result);
     } on AiSubscriptionRequiredException {
       if (mounted) {
         context.push('/ai/trial', extra: _aiService.branchId);
@@ -102,6 +110,21 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     }
   }
 
+  /// The AI can return chart data alongside its reply — stash it against the
+  /// assistant message that was just appended so the bubble list can render
+  /// it inline (see [_charts]).
+  void _maybeStoreChart(AiSendResult result) {
+    final chartJson = result.chart;
+    if (chartJson == null) return;
+    final messages = _aiService.messages;
+    if (messages.isEmpty) return;
+    final lastId = messages.last['id'];
+    if (lastId == null || lastId.isEmpty) return;
+    setState(() {
+      _charts[lastId] = AiChartData.fromJson(chartJson);
+    });
+  }
+
   /// Resumes a paused agent turn (AskUserQuestion answered, or a mutating
   /// tool call approved/declined) — mirrors [_sendMessage] but doesn't
   /// touch the text input, since the pending-turn UI itself is the input.
@@ -119,6 +142,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         toolConfirmed: toolConfirmed,
       );
       await _maybeShareGeneratedFile(result);
+      _maybeStoreChart(result);
     } on AiSubscriptionRequiredException {
       if (mounted) {
         context.push('/ai/trial', extra: _aiService.branchId);
@@ -273,13 +297,20 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                       final content = msg['content']!;
                       final isLastAssistant =
                           !isUser && index == messages.length - 1 && pending == null;
-                      return _ChatBubble(
-                        message: content,
-                        isUser: isUser,
-                        onCopy: isUser ? null : () => _copyMessage(content),
-                        onEdit: isUser ? () => _editMessage(index, content) : null,
-                        onRegenerate: isLastAssistant ? _regenerate : null,
-                        onRewind: () => _rewindTo(index, msg['role']!, content),
+                      final chart = _charts[msg['id']];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _ChatBubble(
+                            message: content,
+                            isUser: isUser,
+                            onCopy: isUser ? null : () => _copyMessage(content),
+                            onEdit: isUser ? () => _editMessage(index, content) : null,
+                            onRegenerate: isLastAssistant ? _regenerate : null,
+                            onRewind: () => _rewindTo(index, msg['role']!, content),
+                          ),
+                          if (chart != null) AiChartCard(chart: chart),
+                        ],
                       ).animate().fadeIn(duration: 300.ms).slideX(
                             begin: isUser ? 20 : -20,
                             end: 0,

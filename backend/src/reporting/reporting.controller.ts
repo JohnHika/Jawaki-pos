@@ -17,6 +17,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ReportingService } from './reporting.service';
 import { ReportExportService } from './report-export.service';
 import { GenerateReportDto, ReportExportFormat } from './dto/report-export.dto';
+import { ChartDataService } from './chart-data.service';
+import { GenerateChartDto } from './dto/chart-data.dto';
 import {
   ReportFilterDto,
   SalesSummaryDto,
@@ -40,6 +42,7 @@ export class ReportingController {
   constructor(
     private reportingService: ReportingService,
     private reportExportService: ReportExportService,
+    private chartDataService: ChartDataService,
   ) {}
 
   @Get('dashboard')
@@ -193,5 +196,12 @@ export class ReportingController {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+  }
+
+  @Post('chart')
+  @RequirePermissions('reporting.sales_trend')
+  @ApiOperation({ summary: 'Get chart-ready data (trend/bar/heatmap) from real sales data' })
+  async generateChart(@CurrentUser() user: any, @Body() dto: GenerateChartDto) {
+    return this.chartDataService.buildChart(user.tenantId, dto);
   }
 }
