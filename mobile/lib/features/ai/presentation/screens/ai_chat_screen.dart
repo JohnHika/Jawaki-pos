@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
 import '../../../../core/services/export_document_service.dart';
+import '../../../../core/services/voice_input_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
@@ -25,7 +26,13 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final AiChatService _aiService = AiChatService();
+  final VoiceInputService _voiceService = VoiceInputService();
   bool _isLoading = false;
+  bool _isListening = false;
+  // Text already in the field before this listen session started — partial
+  // results replace only what was dictated, so voice input can be appended
+  // to (or mixed with) whatever the user already typed instead of clobbering it.
+  String _preVoiceText = '';
 
   // Charts aren't persisted into AiChatService.messages (they'd bloat every
   // future turn's request payload the same way file attachments would) —
@@ -49,7 +56,50 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    if (_isListening) _voiceService.cancel();
     super.dispose();
+  }
+
+  /// Push-to-talk voice input — tap to start listening, tap again (or pause
+  /// speaking) to stop. Dictated text lands in the same field as typed text,
+  /// appended after whatever was there when listening started.
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _voiceService.stop();
+      setState(() => _isListening = false);
+      return;
+    }
+
+    _preVoiceText = _controller.text;
+    final started = await _voiceService.startListening(
+      onResult: (text, isFinal) {
+        if (!mounted) return;
+        final separator = _preVoiceText.isEmpty || _preVoiceText.endsWith(' ')
+            ? ''
+            : ' ';
+        setState(() {
+          _controller.text = '$_preVoiceText$separator$text';
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+        });
+        if (isFinal) {
+          setState(() => _isListening = false);
+        }
+      },
+    );
+
+    if (!mounted) return;
+    if (!started) {
+      showGlassSnackBar(
+        context,
+        'Microphone permission is needed for voice input.',
+        icon: Icons.mic_off_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+    setState(() => _isListening = true);
   }
 
   void _scrollToBottom() {
@@ -514,6 +564,19 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 onSubmitted: _sendMessage,
               ),
             ),
+            if (!hasText && !_isLoading)
+              IconButton(
+                icon: Icon(
+                  _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                  color: _isListening ? DesignColors.accent : iconColor,
+                ),
+                onPressed: _toggleListening,
+                tooltip: _isListening ? 'Stop listening' : 'Voice input',
+              ).animate(target: _isListening ? 1 : 0).scale(
+                    begin: const Offset(1, 1),
+                    end: const Offset(1.15, 1.15),
+                    duration: 400.ms,
+                  ),
             const SizedBox(width: 4),
             Padding(
               padding: const EdgeInsets.all(4),
