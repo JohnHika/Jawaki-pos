@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -39,6 +40,12 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   // kept here instead, keyed by the assistant message id the chart belongs
   // to, so it renders inline right below that reply for this session only.
   final Map<String, AiChartData> _charts = {};
+
+  // The assistant message id that should play its typewriter reveal — only
+  // the reply that JUST arrived this session, never history loaded on open
+  // or scrolled back to. Cleared once shown so it never replays (e.g. on a
+  // rebuild triggered by something unrelated).
+  String? _justArrivedMessageId;
 
   @override
   void initState() {
@@ -125,6 +132,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     try {
       final result = await _aiService.sendMessage(content: message);
+      _markJustArrived();
       await _maybeShareGeneratedFile(result);
       _maybeStoreChart(result);
     } on AiSubscriptionRequiredException {
@@ -135,6 +143,18 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     if (mounted) setState(() => _isLoading = false);
     _scrollToBottom();
+  }
+
+  /// Marks the assistant message that was just appended as the one that
+  /// should play its typewriter reveal (see [_justArrivedMessageId]).
+  void _markJustArrived() {
+    final messages = _aiService.messages;
+    if (messages.isEmpty) return;
+    final last = messages.last;
+    if (last['role'] != 'assistant') return;
+    final id = last['id'];
+    if (id == null || id.isEmpty) return;
+    setState(() => _justArrivedMessageId = id);
   }
 
   /// The AI can generate a downloadable report (PDF/DOCX/CSV) — it's carried
@@ -191,6 +211,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         questionAnswers: questionAnswers,
         toolConfirmed: toolConfirmed,
       );
+      _markJustArrived();
       await _maybeShareGeneratedFile(result);
       _maybeStoreChart(result);
     } on AiSubscriptionRequiredException {
@@ -348,6 +369,19 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                       final isLastAssistant =
                           !isUser && index == messages.length - 1 && pending == null;
                       final chart = _charts[msg['id']];
+                      final shouldAnimateIn = !isUser &&
+                          msg['id'] != null &&
+                          msg['id'] == _justArrivedMessageId;
+                      if (shouldAnimateIn) {
+                        // One-shot: clear right after reading so a later
+                        // rebuild (e.g. a chart arriving, a scroll) never
+                        // replays the reveal for the same message.
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted && _justArrivedMessageId == msg['id']) {
+                            setState(() => _justArrivedMessageId = null);
+                          }
+                        });
+                      }
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -358,6 +392,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                             onEdit: isUser ? () => _editMessage(index, content) : null,
                             onRegenerate: isLastAssistant ? _regenerate : null,
                             onRewind: () => _rewindTo(index, msg['role']!, content),
+                            animateIn: shouldAnimateIn,
                           ),
                           if (chart != null) AiChartCard(chart: chart),
                         ],
@@ -1081,6 +1116,15 @@ class _ChatBubble extends ConsumerWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onRegenerate;
   final VoidCallback? onRewind;
+  /// True only for an assistant reply that just arrived this session (not
+  /// history loaded/scrolled back to) — the backend answers in one shot
+  /// (see the "client-side typewriter, not real token streaming" decision:
+  /// real streaming would mean re-asking the model a second time for every
+  /// reply, doubling token cost, since the tool-calling loop can't know a
+  /// turn is "final" until it already has the full text). This just reveals
+  /// the already-fetched text progressively so it reads like it's arriving
+  /// live, without any extra cost or latency.
+  final bool animateIn;
 
   const _ChatBubble({
     required this.message,
@@ -1089,6 +1133,7 @@ class _ChatBubble extends ConsumerWidget {
     this.onEdit,
     this.onRegenerate,
     this.onRewind,
+    this.animateIn = false,
   });
 
   @override
@@ -1204,6 +1249,12 @@ class _ChatBubble extends ConsumerWidget {
     // dashes — a markdown table from the AI came through as literal
     // "| Col | Col |" pipe text instead of an actual table.
     if (!isUser) {
+      if (animateIn) {
+        return _TypewriterMarkdown(
+          text: message,
+          style: TextStyle(color: textColor, fontSize: 14, height: 1.5),
+        );
+      }
       return GptMarkdown(
         message,
         style: TextStyle(
@@ -1224,6 +1275,65 @@ class _ChatBubble extends ConsumerWidget {
         height: 1.5,
       ),
     );
+  }
+}
+
+/// Reveals an already-fetched reply word-by-word so it reads like it's
+/// arriving live, without any real streaming round-trip. Reveals whole
+/// words (not characters) so markdown syntax (bold/tables/links) is never
+/// caught mid-token — a construct only ever appears once it's complete.
+class _TypewriterMarkdown extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  const _TypewriterMarkdown({required this.text, required this.style});
+
+  @override
+  State<_TypewriterMarkdown> createState() => _TypewriterMarkdownState();
+}
+
+class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
+  late final List<String> _words;
+  int _visibleWords = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Split keeping the trailing whitespace attached to each word so
+    // re-joining a prefix doesn't collapse spacing/newlines.
+    _words = widget.text.split(RegExp(r'(?<=\s)'));
+    if (_words.isEmpty) {
+      _visibleWords = 0;
+    } else {
+      _startRevealing();
+    }
+  }
+
+  void _startRevealing() {
+    // A steady, brisk cadence rather than trying to match any real token
+    // rate — this is a UI affordance, not a simulation of the model.
+    _timer = Timer.periodic(const Duration(milliseconds: 18), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _visibleWords++);
+      if (_visibleWords >= _words.length) {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleText = _words.take(_visibleWords).join();
+    return GptMarkdown(visibleText, style: widget.style);
   }
 }
 
