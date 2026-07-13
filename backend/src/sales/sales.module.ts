@@ -10,6 +10,6 @@ import { AuditModule } from '../audit/audit.module';
   imports: [CashFlowModule, AuditModule],
   controllers: [SalesController, DailyCloseController],
   providers: [SalesService, DailyCloseService],
-  exports: [SalesService],
+  exports: [SalesService, DailyCloseService],
 })
 export class SalesModule {}

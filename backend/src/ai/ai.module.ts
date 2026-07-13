@@ -7,12 +7,14 @@ import { AiConversationService } from './ai-conversation.service';
 import { AiMemoryService } from './ai-memory.service';
 import { AiToolsService } from './ai-tools.service';
 import { AiDailyBriefTask } from './ai-daily-brief.task';
+import { AiProactiveNotificationsTask } from './ai-proactive-notifications.task';
 import { AiBillingModule } from '../ai-billing/ai-billing.module';
 import { ReportingModule } from '../reporting/reporting.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ExpensesModule } from '../expenses/expenses.module';
 import { CustomersModule } from '../customers/customers.module';
 import { SalesModule } from '../sales/sales.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../common/prisma/prisma.module';
 
 @Module({
@@ -29,6 +31,7 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     ExpensesModule,
     CustomersModule,
     SalesModule,
+    NotificationsModule,
   ],
   controllers: [AiController],
   providers: [
@@ -39,6 +42,7 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     AiMemoryService,
     AiToolsService,
     AiDailyBriefTask,
+    AiProactiveNotificationsTask,
   ],
   exports: [AiService, AiWebService, AiCognitiveService],
 })
