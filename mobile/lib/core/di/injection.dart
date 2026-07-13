@@ -14,6 +14,7 @@ import '../services/haptic_service.dart';
 import '../services/local_server_service.dart';
 import '../services/update_check_service.dart';
 import '../services/receipt_printer_service.dart';
+import '../services/print_queue_service.dart';
 import '../services/notification_service.dart';
 import '../services/receipt_vision_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
@@ -171,6 +172,18 @@ Future<void> configureDependencies() async {
       ReceiptVisionService(apiClient: getIt<ApiClient>()),
     );
     debugPrint('[DI] ReceiptVisionService registered');
+
+    // ============================================
+    // STEP 13: Print Queue Service (shared Bluetooth printer coordination)
+    // ============================================
+    debugPrint('[DI] Registering PrintQueueService...');
+    getIt.registerSingleton<PrintQueueService>(
+      PrintQueueService(
+        apiClient: getIt<ApiClient>(),
+        printerService: getIt<ReceiptPrinterService>(),
+      ),
+    );
+    debugPrint('[DI] PrintQueueService registered');
 
     debugPrint('[DI] Dependency injection configuration complete!');
   } catch (e, stackTrace) {

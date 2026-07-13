@@ -928,4 +928,61 @@ class ApiClient {
   Future<void> deleteAiMemory({required String id, required String branchId}) async {
     await _dio.post('/ai/memory/delete', data: {'id': id, 'branchId': branchId});
   }
+
+  // ─── Shared-printer print queue ───────────────────────────────────────
+  // Bluetooth Classic only allows one active connection, so when several
+  // devices share one thermal printer, only the device designated as the
+  // printer's holder actually connects/prints — every other device just
+  // enqueues a job here and polls its own status. See PrintQueueService.
+
+  Future<Map<String, dynamic>> enqueuePrintJob({
+    required String deviceId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final response = await _dio.post('/printing/jobs', data: {
+      'deviceId': deviceId,
+      'payload': payload,
+    });
+    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+  }
+
+  /// Called only by the device designated as the printer holder — claims
+  /// and returns any pending jobs (oldest first) for this branch so it can
+  /// print them one at a time.
+  Future<List<Map<String, dynamic>>> claimPrintJobs({required String deviceId}) async {
+    final response = await _dio.post('/printing/jobs/claim', data: {'deviceId': deviceId});
+    final data = (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> completePrintJob({
+    required String jobId,
+    required String deviceId,
+    required String status,
+    String? errorMessage,
+  }) async {
+    await _dio.put('/printing/jobs/$jobId/complete', data: {
+      'deviceId': deviceId,
+      'status': status,
+      if (errorMessage != null) 'errorMessage': errorMessage,
+    });
+  }
+
+  /// Lets the requesting device show "queued" -> "printed"/"failed" for
+  /// jobs it raised itself, without needing to be the printer holder.
+  Future<List<Map<String, dynamic>>> getMyPrintJobs({required String deviceId}) async {
+    final response = await _dio.get('/printing/jobs/mine', queryParameters: {'deviceId': deviceId});
+    final data = (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<String?> getPrinterDevice() async {
+    final response = await _dio.get('/printing/printer-device');
+    final data = (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return data['printerDeviceId'] as String?;
+  }
+
+  Future<void> setPrinterDevice(String? deviceId) async {
+    await _dio.put('/printing/printer-device', data: {'deviceId': deviceId});
+  }
 }

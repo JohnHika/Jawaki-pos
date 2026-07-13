@@ -15,6 +15,7 @@ import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/print_queue_service.dart';
 import 'core/widgets/forced_update_gate.dart';
 import 'core/widgets/optional_update_prompt_host.dart';
 
@@ -93,6 +94,20 @@ void main() async {
       debugPrint('[main] Notification init failed (non-critical): $e');
       debugPrint('[main] Stack trace: $stackTrace');
     }
+
+    // Non-blocking and best-effort: if this device isn't logged in yet, or
+    // the check fails offline, printing simply stays local-only until the
+    // user opens the app and it's confirmed — never worth delaying launch.
+    unawaited(() async {
+      try {
+        if (await getIt<PrintQueueService>().isDesignatedPrinter()) {
+          getIt<PrintQueueService>().startDraining();
+          debugPrint('[main] This device is the designated printer — draining queue');
+        }
+      } catch (e) {
+        debugPrint('[main] Print queue check failed (non-critical): $e');
+      }
+    }());
 
     debugPrint('[main] All initializations complete, launching app...');
 

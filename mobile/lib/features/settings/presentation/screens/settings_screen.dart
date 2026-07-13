@@ -19,6 +19,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/update_check_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
+import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/database/app_database.dart';
@@ -1877,6 +1878,12 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
   bool _isConnecting = false;
   List<PairedPrinter> _pairedPrinters = [];
 
+  // Whether THIS device is the one designated to hold the Bluetooth
+  // connection when several devices share one printer — null while still
+  // loading from the backend.
+  bool? _isDesignatedPrinter;
+  bool _isSavingDesignation = false;
+
   @override
   void initState() {
     super.initState();
@@ -1884,6 +1891,27 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
     _paperWidth = widget.paperWidth;
     _printerName = widget.printerName;
     _printerMacAddress = widget.printerMacAddress;
+    _loadDesignation();
+  }
+
+  Future<void> _loadDesignation() async {
+    final designated = await getIt<PrintQueueService>().isDesignatedPrinter();
+    if (mounted) setState(() => _isDesignatedPrinter = designated);
+  }
+
+  Future<void> _setDesignation(bool value) async {
+    setState(() => _isSavingDesignation = true);
+    try {
+      await getIt<PrintQueueService>().setThisDeviceAsPrinter(value);
+      if (mounted) setState(() => _isDesignatedPrinter = value);
+    } catch (e) {
+      if (mounted) {
+        showGlassSnackBar(context, 'Could not update printer device: $e',
+            icon: Icons.error_outline_rounded, color: DesignColors.error);
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingDesignation = false);
+    }
   }
 
   Future<void> _scanForPrinters() async {
@@ -2017,6 +2045,34 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                     activeThumbColor: DesignColors.accent,
                     onChanged: (v) => setState(() => _autoPrint = v),
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const SettingsGroupLabel('SHARED PRINTER'),
+            GroupedCard(
+              margin: EdgeInsets.zero,
+              children: [
+                SettingsRow(
+                  icon: Icons.smartphone_rounded,
+                  title: 'This device is the printer',
+                  subtitle: _printerMacAddress.isEmpty
+                      ? 'Connect a printer above first'
+                      : 'Other staff devices will queue receipts here to print — '
+                          'turn this on only on the phone physically connected '
+                          'to the till printer.',
+                  trailing: _isDesignatedPrinter == null || _isSavingDesignation
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Switch(
+                          value: _isDesignatedPrinter!,
+                          activeThumbColor: DesignColors.accent,
+                          onChanged: _printerMacAddress.isEmpty
+                              ? null
+                              : (v) => _setDesignation(v),
+                        ),
                 ),
               ],
             ),

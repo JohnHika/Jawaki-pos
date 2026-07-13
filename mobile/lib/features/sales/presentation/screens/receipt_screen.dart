@@ -8,6 +8,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
+import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/share_format_sheet.dart';
@@ -606,18 +607,20 @@ class ReceiptScreen extends ConsumerWidget {
     final autoPrint = prefs.getBool(PrinterSettingsKeys.autoPrint) ?? false;
     if (!autoPrint) return;
 
+    final queue = getIt<PrintQueueService>();
+    final isDesignated = await queue.isDesignatedPrinter();
+
+    // A non-designated device has no Bluetooth connection of its own to
+    // fall back on — if the printer isn't configured here at all, silently
+    // do nothing (matches the old silent-failure behavior for auto-print).
     final printerMac =
         prefs.getString(PrinterSettingsKeys.printerMacAddress) ?? '';
-    if (printerMac.isEmpty) return;
+    if (!isDesignated && printerMac.isEmpty) return;
 
-    final printer = getIt<ReceiptPrinterService>();
+    final paperWidth =
+        prefs.getString(PrinterSettingsKeys.paperWidth) ?? '58mm';
     try {
-      final connected = await printer.isConnected;
-      if (!connected && !(await printer.connect(printerMac))) return;
-
-      final paperWidth =
-          prefs.getString(PrinterSettingsKeys.paperWidth) ?? '58mm';
-      await printer.printReceipt(
+      await queue.requestPrint(
         receipt: receipt,
         saleId: saleId,
         paperWidth: paperWidth,
@@ -640,10 +643,17 @@ class ReceiptScreen extends ConsumerWidget {
       return;
     }
 
+    final queue = getIt<PrintQueueService>();
+    final isDesignated = await queue.isDesignatedPrinter();
+
     final prefs = await SharedPreferences.getInstance();
     final printerMac =
         prefs.getString(PrinterSettingsKeys.printerMacAddress) ?? '';
-    if (printerMac.isEmpty) {
+
+    // A device that neither holds the shared printer connection nor has a
+    // printer of its own configured has nothing to queue toward — send it
+    // to Settings rather than silently queuing a job nobody will ever drain.
+    if (!isDesignated && printerMac.isEmpty) {
       if (!context.mounted) return;
       showGlassSnackBar(
         context,
@@ -656,35 +666,23 @@ class ReceiptScreen extends ConsumerWidget {
       return;
     }
 
-    final printer = getIt<ReceiptPrinterService>();
-    final connected = await printer.isConnected;
-    if (!connected) {
-      final reconnected = await printer.connect(printerMac);
-      if (!reconnected) {
-        if (!context.mounted) return;
-        showGlassSnackBar(
-          context,
-          'Could not reach the printer — check it\'s on and in range.',
-          icon: Icons.print_disabled_rounded,
-          color: DesignColors.error,
-        );
-        return;
-      }
-    }
-
     final paperWidth =
         prefs.getString(PrinterSettingsKeys.paperWidth) ?? '58mm';
 
     try {
-      await printer.printReceipt(
+      final printedHere = await queue.requestPrint(
         receipt: receipt,
         saleId: saleId,
         paperWidth: paperWidth,
         showTax: getIt<AuthService>().showTaxOnReceipt,
       );
-      if (context.mounted) {
+      if (!context.mounted) return;
+      if (printedHere) {
         showGlassSnackBar(context, 'Receipt sent to printer',
             icon: Icons.check_circle_rounded, color: DesignColors.success);
+      } else {
+        showGlassSnackBar(context, 'Queued for printing',
+            icon: Icons.schedule_send_rounded, color: DesignColors.info);
       }
     } on PrinterUnavailableException catch (e) {
       if (context.mounted) {

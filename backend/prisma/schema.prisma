@@ -65,6 +65,7 @@ model Branch {
   cashReconciliations   CashReconciliation[]
   dailyBriefs           DailyBrief[]
   dailyCloses           DailyClose[]
+  printJobs             PrintJob[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -89,6 +90,33 @@ model Device {
   sales      Sale[]
 
   @@map("devices")
+}
+
+// A receipt-print request raised by any device on a branch, drained by
+// whichever single device is holding the Bluetooth connection to that
+// branch's shared thermal printer. Bluetooth Classic only supports one
+// active connection at a time, so two phones printing straight to the same
+// printer garbles or drops output — this table is the hand-off point that
+// lets every device request a print without needing the physical connection
+// itself, while the one device that HAS the connection claims and drains
+// jobs one at a time (see `printing` module for the claim/complete contract).
+model PrintJob {
+  id                String    @id @default(uuid())
+  branchId          String
+  requestedById     String // Device.deviceUuid of the device that requested the print
+  requestedByUserId String?
+  claimedById       String? // Device.deviceUuid of the printer-holder device once claimed
+  status            String    @default("pending") // pending, claimed, printed, failed
+  payload           Json // the receipt data ReceiptPrinterService.printReceipt() already consumes
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+  claimedAt         DateTime?
+  completedAt       DateTime?
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, status, createdAt])
+  @@map("print_jobs")
 }
 
 // One row per (user, physical device) that has granted notification
@@ -320,26 +348,26 @@ model Category {
 }
 
 model Product {
-  id               String   @id @default(uuid())
-  tenantId         String
-  sku              String
-  name             String
-  description      String?
-  image            String?
-  imagePublicId    String?
-  basePrice        Decimal  @db.Decimal(10, 2)
-  costPrice        Decimal? @db.Decimal(10, 2)
-  taxRate          Decimal  @default(0) @db.Decimal(5, 2)
-  unit             String   @default("piece")
-  minStock         Int      @default(0)
-  trackInventory   Boolean  @default(true)
-  allowFractions   Boolean  @default(false)
-  isActive         Boolean  @default(true)
-  isFavorite       Boolean  @default(false)
-  sortOrder        Int      @default(0)
-  metadata         Json     @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id             String   @id @default(uuid())
+  tenantId       String
+  sku            String
+  name           String
+  description    String?
+  image          String?
+  imagePublicId  String?
+  basePrice      Decimal  @db.Decimal(10, 2)
+  costPrice      Decimal? @db.Decimal(10, 2)
+  taxRate        Decimal  @default(0) @db.Decimal(5, 2)
+  unit           String   @default("piece")
+  minStock       Int      @default(0)
+  trackInventory Boolean  @default(true)
+  allowFractions Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  isFavorite     Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   categories           ProductCategory[]
@@ -612,21 +640,21 @@ model Sale {
 }
 
 model SaleItem {
-  id          String  @id @default(uuid())
-  saleId      String
-  productId   String
-  productName String // Denormalized for receipt
-  quantity    Decimal @db.Decimal(10, 3)
-  unitPrice   Decimal @db.Decimal(10, 2)
-  discount    Decimal @default(0) @db.Decimal(10, 2)
-  taxRate     Decimal @db.Decimal(5, 2)
-  taxAmount   Decimal @db.Decimal(10, 2)
-  totalAmount Decimal @db.Decimal(10, 2)
+  id              String   @id @default(uuid())
+  saleId          String
+  productId       String
+  productName     String // Denormalized for receipt
+  quantity        Decimal  @db.Decimal(10, 3)
+  unitPrice       Decimal  @db.Decimal(10, 2)
+  discount        Decimal  @default(0) @db.Decimal(10, 2)
+  taxRate         Decimal  @db.Decimal(5, 2)
+  taxAmount       Decimal  @db.Decimal(10, 2)
+  totalAmount     Decimal  @db.Decimal(10, 2)
   // The tier/unit this line was sold at, for detailed receipts:
   // `unit` is the sold-unit label (piece/box/pack…), `quantityPerUnit` is
   // how many base units one sold unit contains. Nullable = base unit.
-  unit             String?
-  quantityPerUnit  Decimal? @db.Decimal(10, 3)
+  unit            String?
+  quantityPerUnit Decimal? @db.Decimal(10, 3)
 
   sale    Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id])
