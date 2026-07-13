@@ -464,7 +464,15 @@ class _BackgroundAuthInterceptor extends Interceptor {
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken == null) return null;
 
-    final refreshDio = Dio(BaseOptions(baseUrl: _dio.options.baseUrl));
+    // A fresh Dio() (unlike _dio) inherits no timeouts at all — without
+    // setting them explicitly here, a stalled connection would leave this
+    // await (and every queued request behind the shared _refreshFuture)
+    // hanging forever instead of failing after 30s.
+    final refreshDio = Dio(BaseOptions(
+      baseUrl: _dio.options.baseUrl,
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 30),
+    ));
     final response = await refreshDio.post('/auth/refresh', data: {
       'refreshToken': refreshToken,
     });

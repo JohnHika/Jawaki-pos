@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 
 class AuthInterceptor extends Interceptor {
   final AuthService _authService;
+  final Dio _dio;
 
   // Single in-flight refresh shared by every request that hits a 401 while
   // it's running. The backend rotates refresh tokens (each one is deleted
@@ -14,7 +15,7 @@ class AuthInterceptor extends Interceptor {
   // retries with the fresh token afterwards.
   Future<void>? _refreshFuture;
 
-  AuthInterceptor(this._authService);
+  AuthInterceptor(this._authService, this._dio);
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
@@ -76,7 +77,12 @@ class AuthInterceptor extends Interceptor {
     try {
       final opts = err.requestOptions;
       opts.headers['Authorization'] = 'Bearer ${_authService.accessToken}';
-      final response = await Dio().fetch(opts);
+      // Reuse the shared, timeout-configured Dio instance to retry — a bare
+      // `Dio()` here has no connect/receive timeout at all, so a stalled
+      // connection on the retry would hang this request (and every request
+      // queued behind the same _refreshFuture) forever instead of failing
+      // after 30s like every other request in the app.
+      final response = await _dio.fetch(opts);
       return handler.resolve(response);
     } on DioException catch (retryErr) {
       return handler.next(retryErr);

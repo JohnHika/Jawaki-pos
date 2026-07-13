@@ -103,7 +103,7 @@ Future<void> configureDependencies() async {
     // STEP 5: Add Auth Interceptor (after AuthService)
     // ============================================
     debugPrint('[DI] Adding AuthInterceptor to Dio...');
-    dio.interceptors.add(AuthInterceptor(getIt<AuthService>()));
+    dio.interceptors.add(AuthInterceptor(getIt<AuthService>(), dio));
     dio.interceptors.add(NetworkRetryInterceptor(dio));
     debugPrint('[DI] AuthInterceptor added');
 

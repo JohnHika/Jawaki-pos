@@ -24,6 +24,13 @@ class ConnectivityService {
   bool get isWifi => _currentConnectivity == ConnectivityResult.wifi;
 
   Future<void> initialize() async {
+    // This runs in main() before runApp() — if the platform channel call
+    // inside checkCurrentStatus ever stalled (seen on some devices/OEMs,
+    // e.g. right after boot or under battery-optimization restrictions),
+    // an unbounded await here would freeze the entire app before a single
+    // frame renders, not just one screen. checkCurrentStatus now times out
+    // and degrades to offline internally, so this always proceeds; the
+    // real status still arrives moments later via onConnectivityChanged.
     await _checkConnectivity();
     _subscription =
         _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
@@ -33,11 +40,23 @@ class ConnectivityService {
     await checkCurrentStatus();
   }
 
+  /// Never hangs and never throws: every existing caller (app startup,
+  /// background sync, foreground sync retries) already treats a plain
+  /// [ConnectionStatus.offline] as "skip for now," so a stalled platform
+  /// channel call safely degrades to that same outcome instead of needing
+  /// every call site updated to handle a new exception.
   Future<ConnectionStatus> checkCurrentStatus() async {
-    final result = await _connectivity.checkConnectivity();
-    final connectivityResult = _normalizeConnectivityResult(result);
-    _currentConnectivity = connectivityResult;
-    _setStatus(_mapStatus(connectivityResult));
+    try {
+      final result = await _connectivity
+          .checkConnectivity()
+          .timeout(const Duration(seconds: 5));
+      final connectivityResult = _normalizeConnectivityResult(result);
+      _currentConnectivity = connectivityResult;
+      _setStatus(_mapStatus(connectivityResult));
+    } on TimeoutException {
+      _currentConnectivity = ConnectivityResult.none;
+      _setStatus(ConnectionStatus.offline);
+    }
     return _currentStatus;
   }
 
