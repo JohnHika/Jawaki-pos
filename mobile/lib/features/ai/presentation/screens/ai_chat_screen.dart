@@ -327,6 +327,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         title: 'Axon AI',
         showBackButton: false,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.psychology_alt_outlined, size: 20),
+            tooltip: 'AI Memory',
+            onPressed: () => context.push('/ai/memory'),
+          ),
           if (messages.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.refresh_rounded, size: 20),

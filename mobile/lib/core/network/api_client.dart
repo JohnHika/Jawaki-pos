@@ -899,4 +899,33 @@ class ApiClient {
     });
     return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
   }
+
+  /// Durable shop memories the AI recalls across sessions (owner
+  /// preferences, policies, customer notes) — tenant-wide, shared by every
+  /// staff member the same way the chat thread itself is shared. Backend
+  /// only supports create/list/delete (no edit-in-place).
+  Future<List<Map<String, dynamic>>> getAiMemories({required String branchId}) async {
+    final response = await _dio.get('/ai/memory', queryParameters: {'branchId': branchId});
+    final data = (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> saveAiMemory({
+    required String content,
+    required String branchId,
+    String? type,
+    String? title,
+  }) async {
+    final response = await _dio.post('/ai/memory', data: {
+      'content': content,
+      'branchId': branchId,
+      if (type != null) 'type': type,
+      if (title != null) 'title': title,
+    });
+    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+  }
+
+  Future<void> deleteAiMemory({required String id, required String branchId}) async {
+    await _dio.post('/ai/memory/delete', data: {'id': id, 'branchId': branchId});
+  }
 }
