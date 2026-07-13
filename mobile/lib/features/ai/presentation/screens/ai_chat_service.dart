@@ -204,6 +204,19 @@ class AiChatService {
 
   List<Map<String, String>> get messages => List.unmodifiable(_messages);
 
+  /// The tenant's display name, for use in exports (PDF transcript header)
+  /// outside this service — mirrors the same lookup [_buildBusinessContext]
+  /// sends to the AI, so the exported document and the AI's own view of the
+  /// business agree.
+  String get companyName {
+    final user = getIt<StorageService>().getUser() ?? {};
+    final tenant = user['tenant'] is Map<String, dynamic>
+        ? user['tenant'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    return (tenant['name'] ?? user['companyName'] ?? 'Axon POS business')
+        .toString();
+  }
+
   void setStoreInfo(Map<String, dynamic> info) {
     _storeInfo.clear();
     _storeInfo.addAll(info);

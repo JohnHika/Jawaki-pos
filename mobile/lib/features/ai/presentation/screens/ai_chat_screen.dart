@@ -15,6 +15,7 @@ import '../../../../core/providers/tenant_provider.dart';
 import 'ai_chart_widget.dart';
 import 'ai_chat_service.dart';
 import 'ai_add_to_chat_sheet.dart';
+import 'ai_skill_picker.dart';
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -46,6 +47,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   // or scrolled back to. Cleared once shown so it never replays (e.g. on a
   // rebuild triggered by something unrelated).
   String? _justArrivedMessageId;
+
+  // Non-null while the input starts with "/" and hasn't been submitted yet —
+  // drives the inline skill-suggestion list shown above the input bar.
+  List<AiSkillCommand>? _skillSuggestions;
 
   @override
   void initState() {
@@ -121,11 +126,45 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     });
   }
 
-  Future<void> _sendMessage(String text) async {
-    if (text.trim().isEmpty || _isLoading) return;
+  /// Parses a leading "/command" (optionally followed by more text) out of
+  /// [text] into a matching [AiSkillCommand]'s natural-language prompt, so
+  /// submitting "/cashup" behaves exactly like typing the full trigger
+  /// phrase by hand. Falls through to plain text unchanged if there's no
+  /// exact command match (e.g. it's still mid-suggestion or just a message
+  /// that happens to start with "/").
+  String _resolveSlashCommand(String text) {
+    final trimmed = text.trim();
+    if (!trimmed.startsWith('/')) return text;
+    final firstSpace = trimmed.indexOf(' ');
+    final commandWord =
+        (firstSpace == -1 ? trimmed.substring(1) : trimmed.substring(1, firstSpace))
+            .toLowerCase();
+    final match = aiSkillCommands.where((c) => c.command == commandWord);
+    if (match.isEmpty) return text;
+    final extra = firstSpace == -1 ? '' : trimmed.substring(firstSpace).trim();
+    final prompt = match.first.prompt;
+    return extra.isEmpty ? prompt : '$prompt $extra';
+  }
 
-    final message = text.trim();
+  void _onInputChanged(String text) {
+    setState(() {
+      _skillSuggestions = text.startsWith('/') && !text.contains(' ')
+          ? filterAiSkillCommands(text.substring(1))
+          : null;
+    });
+  }
+
+  void _selectSkill(AiSkillCommand cmd) {
+    setState(() => _skillSuggestions = null);
+    _sendMessage(cmd.prompt);
+  }
+
+  Future<void> _sendMessage(String rawText) async {
+    if (rawText.trim().isEmpty || _isLoading) return;
+
+    final message = _resolveSlashCommand(rawText).trim();
     _controller.clear();
+    setState(() => _skillSuggestions = null);
 
     setState(() => _isLoading = true);
     _scrollToBottom();
@@ -222,6 +261,43 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
     if (mounted) setState(() => _isLoading = false);
     _scrollToBottom();
+  }
+
+  /// Exports the visible conversation as a branded PDF transcript (same
+  /// header/footer style as dashboard reports and receipts) and opens the
+  /// OS share sheet. Tool-call/tool-result turns never reach [_aiService
+  /// .messages] as separate entries (only the user/assistant text turns
+  /// do — see AiChatService), so no filtering is needed here beyond that.
+  Future<void> _exportConversation() async {
+    final messages = _aiService.messages;
+    if (messages.isEmpty) return;
+
+    final buffer = StringBuffer();
+    for (final msg in messages) {
+      final speaker = msg['role'] == 'user' ? 'You' : 'Axon AI';
+      buffer.writeln('$speaker:');
+      buffer.writeln(msg['content'] ?? '');
+      buffer.writeln();
+    }
+
+    try {
+      final bytes = await ExportDocumentService.buildPdfReport(
+        title: 'AI Conversation',
+        companyName: _aiService.companyName,
+        subtitle: 'Exported ${DateTime.now().toString().split('.').first}',
+        bodyText: buffer.toString().trim(),
+      );
+      await ExportDocumentService.sharePdf(bytes, 'ai_conversation');
+    } catch (_) {
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not export the conversation.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
+    }
   }
 
   Future<void> _newConversation() async {
@@ -333,10 +409,34 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
             onPressed: () => context.push('/ai/memory'),
           ),
           if (messages.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: 'New conversation',
-              onPressed: _newConversation,
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, size: 20),
+              onSelected: (value) {
+                if (value == 'new') _newConversation();
+                if (value == 'export') _exportConversation();
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'export',
+                  child: Row(
+                    children: [
+                      Icon(Icons.ios_share_rounded, size: 18),
+                      SizedBox(width: 10),
+                      Text('Export conversation'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'new',
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh_rounded, size: 18),
+                      SizedBox(width: 10),
+                      Text('New conversation'),
+                    ],
+                  ),
+                ),
+              ],
             ),
           const SizedBox(width: 4),
         ],
@@ -410,6 +510,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   ),
           ),
           // Input bar
+          if (_skillSuggestions != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: AiSkillSuggestionList(
+                commands: _skillSuggestions!,
+                onSelect: _selectSkill,
+              ),
+            ),
           _buildInputBar(),
         ],
       ),
@@ -583,7 +691,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 enabled: !_isLoading,
                 minLines: 1,
                 maxLines: 6,
-                onChanged: (_) => setState(() {}),
+                onChanged: (text) {
+                  setState(() {});
+                  _onInputChanged(text);
+                },
                 style: TextStyle(
                   color: isDark
                       ? DesignColors.darkTextPrimary
