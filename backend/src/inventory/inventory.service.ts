@@ -839,18 +839,23 @@ export class InventoryService {
       // Start from the highest existing sequence for this prefix instead of a
       // simple count — count can be lower than the max sequence if batches were
       // deleted or created out of order, which causes repeated P2002 conflicts.
-      const lastBatch = await tx.stockBatch.findFirst({
+      const existingBatches = await tx.stockBatch.findMany({
         where: { stockId: stock.id, batchNumber: { startsWith: batchPrefix } },
-        orderBy: { batchNumber: 'desc' },
         select: { batchNumber: true },
       });
 
+      const existingBatchNumbers =
+          new Set(existingBatches.map((b) => b.batchNumber));
+      const batchNumberRegex = new RegExp(
+        `${batchPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d{3})$`,
+      );
+
       let seq = 0;
-      if (lastBatch) {
-        const match = lastBatch.batchNumber.match(
-          new RegExp(`${batchPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d{3})$`),
-        );
-        seq = match ? parseInt(match[1], 10) : 0;
+      for (const { batchNumber } of existingBatches) {
+        const match = batchNumber.match(batchNumberRegex);
+        if (match) {
+          seq = Math.max(seq, parseInt(match[1], 10));
+        }
       }
 
       // Create batch records
@@ -909,10 +914,16 @@ export class InventoryService {
             },
           });
         } else {
-          const maxAttempts = 5;
+          const maxAttempts = 50;
           for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
             seq += 1;
-            const candidateBatchNumber = `${batchPrefix}${String(seq).padStart(3, '0')}`;
+            let candidateBatchNumber = `${batchPrefix}${String(seq).padStart(3, '0')}`;
+
+            // If this exact number is already known, don't waste a DB round-trip.
+            if (existingBatchNumbers.has(candidateBatchNumber)) {
+              continue;
+            }
+
             try {
               createdBatch = await tx.stockBatch.create({
                 data: {
@@ -929,12 +940,35 @@ export class InventoryService {
               });
               break;
             } catch (error) {
+              // P2002 = unique constraint violation. Another request likely
+              // grabbed the same candidate. Retry with the next number.
               if (error.code === 'P2002' && attempt < maxAttempts - 1) {
                 continue;
               }
-              throw new ConflictException(
-                'Could not generate a unique batch number, please retry',
-              );
+
+              // Last-resort fallback: append a random 4-char suffix so the
+              // user can still receive stock even if the sequence is exhausted.
+              const fallback = `${candidateBatchNumber}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+              try {
+                createdBatch = await tx.stockBatch.create({
+                  data: {
+                    stockId: stock.id,
+                    batchNumber: fallback,
+                    quantity: baseQuantity,
+                    expiryDate,
+                    manufactureDate: batch.manufactureDate ? new Date(batch.manufactureDate) : null,
+                    costPrice: batch.costPrice,
+                    supplierRef: batch.supplierRef,
+                    notes: finalNotes,
+                    isBlocked: isExpired,
+                  },
+                });
+                break;
+              } catch (fallbackError) {
+                throw new ConflictException(
+                  'Could not generate a unique batch number, please retry',
+                );
+              }
             }
           }
         }
