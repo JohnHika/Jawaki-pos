@@ -835,9 +835,23 @@ export class InventoryService {
       const skuPrefix = this.getBatchSkuPrefix(product.sku);
       const datePart = this.getBatchDatePart();
       const batchPrefix = `${skuPrefix}-${datePart}-`;
-      let seq = await tx.stockBatch.count({
+
+      // Start from the highest existing sequence for this prefix instead of a
+      // simple count — count can be lower than the max sequence if batches were
+      // deleted or created out of order, which causes repeated P2002 conflicts.
+      const lastBatch = await tx.stockBatch.findFirst({
         where: { stockId: stock.id, batchNumber: { startsWith: batchPrefix } },
+        orderBy: { batchNumber: 'desc' },
+        select: { batchNumber: true },
       });
+
+      let seq = 0;
+      if (lastBatch) {
+        const match = lastBatch.batchNumber.match(
+          new RegExp(`${batchPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d{3})$`),
+        );
+        seq = match ? parseInt(match[1], 10) : 0;
+      }
 
       // Create batch records
       for (const batch of dto.batches) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:dio/dio.dart';
 import '../widgets/unit_selector_widget.dart';
 import '../../../../core/providers/api_provider.dart';
 import '../../../../core/services/auth_service.dart';
@@ -177,11 +178,12 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
           orElse: () =>
               UnitOption(name: batch.selectedUnit, conversionFactor: 1.0),
         );
+        final isBaseUnit = batch.selectedUnit == _unitConfig!.baseUnit;
 
         return {
           'quantity': quantity,
           'unit': batch.selectedUnit,
-          'unitsPerQuantity': unitOption.conversionFactor,
+          if (!isBaseUnit) 'unitsPerQuantity': unitOption.conversionFactor,
           'expiryDate': batch.expiryDate?.toIso8601String(),
           'manufactureDate': batch.manufactureDate?.toIso8601String(),
           'costPrice': batch.costPriceController.text.isEmpty
@@ -245,7 +247,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
       showGlassSnackBar(
         context,
-        'Error receiving batches: $e',
+        _userFacingError(e),
         icon: Icons.error_outline_rounded,
         color: DesignColors.error,
       );
@@ -264,6 +266,55 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     super.dispose();
   }
 
+  /// Short, user-readable error message. Never dumps the raw DioException
+  /// text into the snackbar.
+  String _userFacingError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      final data = error.response?.data;
+      final serverMessage = data is Map && data['message'] != null
+          ? data['message'].toString()
+          : null;
+
+      switch (status) {
+        case 400:
+          return serverMessage ?? 'Check the entered details and try again.';
+        case 401:
+          return 'Session expired. Please log in again.';
+        case 403:
+          return 'You do not have permission to receive stock.';
+        case 404:
+          return serverMessage ?? 'Product or branch not found.';
+        case 409:
+          return 'Batch number conflict. Please try again.';
+        case 422:
+          return serverMessage ?? 'Some values are invalid. Please review.';
+      }
+
+      if (status != null && status >= 500) {
+        return 'Server error. Please try again in a moment.';
+      }
+
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return 'Connection timed out. Check your network.';
+        case DioExceptionType.connectionError:
+          return 'No internet connection.';
+        default:
+          break;
+      }
+    }
+
+    final message = error.toString();
+    if (message.contains('Missing branch ID') ||
+        message.contains('product ID')) {
+      return 'Missing product or branch information.';
+    }
+    return 'Could not receive stock. Please try again.';
+  }
+
   /// Shared field decoration so every TextFormField in this form picks up
   /// the same theme-aware fill/label/hint colors instead of each one
   /// hardcoding a light-only palette.
@@ -273,12 +324,14 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     String? hintText,
     String? prefixText,
     IconData? prefixIcon,
+    String? helperText,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final borderColor = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final fill = isDark
         ? DesignColors.darkSurfaceElevated
         : DesignColors.surfaceBorder.withValues(alpha: 0.15);
@@ -286,6 +339,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
+      helperText: helperText,
+      helperStyle: TextStyle(color: tertiaryColor, fontSize: 12),
       hintStyle: TextStyle(color: tertiaryColor),
       labelStyle: TextStyle(color: secondaryColor, fontWeight: FontWeight.w500),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
@@ -299,17 +354,25 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       fillColor: fill,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: borderColor, width: 1),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: borderColor, width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: DesignColors.brand, width: 1.5),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: DesignColors.error, width: 1),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: DesignColors.error, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
   }
 
@@ -606,9 +669,18 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: batch.quantityController,
-                    style: TextStyle(color: titleColor),
-                    decoration:
-                        _fieldDecoration(context, labelText: 'Quantity *'),
+                    style: DesignType.numeric(
+                      fontSize: 18,
+                      color: titleColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: _fieldDecoration(
+                      context,
+                      labelText: 'Quantity *',
+                      hintText: 'Enter quantity',
+                      helperText: 'How many units are you receiving?',
+                      prefixIcon: Icons.numbers_rounded,
+                    ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -636,12 +708,14 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                           ? DesignColors.darkSurfaceElevated
                           : DesignColors.surfaceBorder.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: border, width: 1),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: batch.selectedUnit,
                         isExpanded: true,
                         dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
+                        icon: Icon(Icons.expand_more_rounded, color: tertiaryColor),
                         style: TextStyle(
                           color: titleColor,
                           fontWeight: FontWeight.w600,

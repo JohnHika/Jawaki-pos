@@ -498,7 +498,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Widget _buildLoginCard(bool isSmallScreen, AuthState authState, bool isDark) {
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(maxWidth: 400),
+      constraints: const BoxConstraints(maxWidth: 400),
       decoration: BoxDecoration(
         color: isDark ? DesignColors.darkSurface : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -557,6 +557,81 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ),
               const SizedBox(height: 16),
+
+              // Quick sign-in options — placed at the top of the card so users
+              // can see PIN / biometric without scrolling past the email form.
+              Text(
+                'Quick sign in',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildAltLoginButton(
+                      icon: Icons.pin_outlined,
+                      label: 'PIN',
+                      onTap: () => context.push('/pin-login'),
+                      isDark: isDark,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (_deviceAuthenticationAvailable)
+                    Expanded(
+                      child: _buildAltLoginButton(
+                        icon: Icons.fingerprint_rounded,
+                        label: _biometricAvailable
+                            ? 'Biometric'
+                            : 'Set up biometric',
+                        onTap: authState.isLoading
+                            ? () {}
+                            : () => _handleBiometricLogin(),
+                        isDark: isDark,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Divider
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 1,
+                      color: isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder,
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'or sign in with email',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: DesignColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      height: 1,
+                      color: isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
 
               // Company identifier field
               _buildPremiumTextField(
@@ -709,11 +784,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         color: DesignColors.info,
                       );
                     },
-                    child: Column(
+                    child: const Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 2), // Adjust vertical alignment
+                        SizedBox(height: 2), // Adjust vertical alignment
                         Text(
                           'Forgot Password?',
                           style: TextStyle(
@@ -766,7 +841,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       Expanded(
                         child: Text(
                           authState.error!,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: DesignColors.error,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -777,72 +852,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
 
-              const SizedBox(height: 16),
-
-              // Divider
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: isDark
-                          ? DesignColors.darkBorder
-                          : DesignColors.surfaceBorder,
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'or',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: DesignColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: isDark
-                          ? DesignColors.darkBorder
-                          : DesignColors.surfaceBorder,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Alternative login options
-              Row(
-                children: [
-                  // PIN login button
-                  Expanded(
-                    child: _buildAltLoginButton(
-                      icon: Icons.pin_outlined,
-                      label: 'Login with PIN',
-                      onTap: () => context.push('/pin-login'),
-                      isDark: isDark,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Device biometric / face unlock button
-                  if (_deviceAuthenticationAvailable)
-                    Expanded(
-                      child: _buildAltLoginButton(
-                        icon: Icons.fingerprint_rounded,
-                        label: _biometricAvailable
-                            ? 'Biometric / Face'
-                            : 'Set up biometric',
-                        onTap: authState.isLoading
-                            ? () {}
-                            : () => _handleBiometricLogin(),
-                        isDark: isDark,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 24), // Added bottom padding for balance
+              const SizedBox(height: 8), // Reduced bottom padding for balance
             ],
           ),
         ),
@@ -1032,14 +1042,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Widget _buildBottomLinks() {
-    return Column(
+    return const Column(
       children: [
-        const Icon(
+        Icon(
           Icons.cloud_done_rounded,
           size: 20,
           color: DesignColors.success,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         Text(
           'Connected to cloud POS',
           style: TextStyle(
@@ -1048,7 +1058,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             color: DesignColors.darkTextSecondary,
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         Text(
           'Point of Sale System',
           style: TextStyle(
