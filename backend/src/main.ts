@@ -80,7 +80,7 @@ async function bootstrap() {
     .addTag('catalog', 'Products and categories')
     .addTag('sales', 'Sales and receipts')
     .addTag('inventory', 'Stock management')
-    .addTag('payments', 'Payment processing (M-Pesa, PesaPal, TouristTap)')
+    .addTag('payments', 'Verified Equity/Jenga M-Pesa payment processing')
     .addTag('sync', 'Device synchronization')
     .addTag('Reporting', 'Analytics and reporting')
     .build();

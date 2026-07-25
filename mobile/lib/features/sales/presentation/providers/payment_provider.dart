@@ -157,15 +157,6 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
-    if (!_verifiedDigitalPaymentsEnabled) {
-      state = state.copyWith(
-        isProcessing: false,
-        error:
-            'M-Pesa is temporarily unavailable while secure payment verification is being enabled. Use cash, manual, or debt payment.',
-      );
-      return null;
-    }
-
     if (!_connectivity.isOnline) {
       state = state.copyWith(
         isProcessing: false,

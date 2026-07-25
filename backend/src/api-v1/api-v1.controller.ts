@@ -73,11 +73,7 @@ export class ApiV1Controller {
           'POST   /api/v1/payments/mpesa/initiate',
           'GET    /api/v1/payments/mpesa/status/:transactionId',
           'POST   /api/v1/payments/mpesa/callback',
-          'POST   /api/v1/payments/pesapal/initiate',
-          'GET    /api/v1/payments/pesapal/status/:reference',
-          'POST   /api/v1/payments/pesapal/ipn',
-          'POST   /api/v1/payments/touristtap/initiate',
-          'POST   /api/v1/payments/touristtap/status',
+          'GET    /api/v1/payments/methods',
         ],
         reporting: [
           'GET    /api/v1/reports/dashboard',
