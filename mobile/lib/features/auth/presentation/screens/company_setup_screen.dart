@@ -467,6 +467,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                                     if (value == null || value.trim().isEmpty) {
                                       return 'Required';
                                     }
+                                    if (value.trim().length < 2) {
+                                      return 'Too short';
+                                    }
                                     return null;
                                   },
                                 ),
@@ -488,6 +491,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
                                   validator: (value) {
                                     if (value == null || value.trim().isEmpty) {
                                       return 'Required';
+                                    }
+                                    if (value.trim().length < 2) {
+                                      return 'Too short';
                                     }
                                     return null;
                                   },

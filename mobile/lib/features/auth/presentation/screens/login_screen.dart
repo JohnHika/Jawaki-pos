@@ -346,19 +346,63 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         height: double.infinity,
         color: isDark ? DesignColors.darkBg : const Color(0xFF1A1A2E),
         child: SafeArea(
-          minimum: EdgeInsets.only(top: 8, bottom: 16),
+          minimum: const EdgeInsets.only(top: 8, bottom: 16),
           child: Stack(
             children: [
+              // Decorative 3D-ish brand image in the upper-right background.
               Positioned(
-                top: 4,
-                left: 4,
-                child: IconButton(
-                  icon:
-                      const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                  tooltip: 'Back',
-                  onPressed: () => context.canPop()
-                      ? context.pop()
-                      : context.go('/company-choice'),
+                top: size.height * 0.04,
+                right: -size.width * 0.08,
+                width: size.width * 0.55,
+                height: size.width * 0.55,
+                child: AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    return Transform.rotate(
+                      angle: _pulseController.value * 0.06 - 0.03,
+                      child: Transform.scale(
+                        scale: 1.0 + (_pulseController.value * 0.03),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Opacity(
+                    opacity: 0.35,
+                    child: Image.asset(
+                      'assets/images/axon_app_icon_512.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+              // Top-left back button with visible container.
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => context.canPop()
+                        ? context.pop()
+                        : context.go('/company-choice'),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               Center(
@@ -407,7 +451,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                       // Title — dynamic based on fetched company
                       Text(
-                        _companyName ?? 'POS System',
+                        _companyName ?? 'Axon POS',
                         style: TextStyle(
                           fontSize: isSmallScreen ? 26 : 32,
                           fontWeight: FontWeight.w700,
