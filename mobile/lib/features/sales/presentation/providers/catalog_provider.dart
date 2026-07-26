@@ -234,7 +234,11 @@ Future<void> syncCatalogCacheFromApi() async {
       .toList();
   await database.replaceCategories(categoryItems);
 
-  final productsResponse = await apiClient.getProducts(limit: 500);
+  final branchId = storageService.getBranchId();
+  final productsResponse = await apiClient.getProducts(
+    limit: 500,
+    branchId: branchId,
+  );
   final productMaps = productsResponse
       .whereType<Map>()
       .map((item) => Map<String, dynamic>.from(item))
@@ -249,7 +253,6 @@ Future<void> syncCatalogCacheFromApi() async {
   final tierItems = productMaps.expand(_pricingTiersToCompanions).toList();
   await database.replaceAllPricingTiers(tierItems);
 
-  final branchId = storageService.getBranchId();
   if (branchId != null) {
     final stockItems = productMaps
         .map((p) => _stockToCompanion(p, branchId))
@@ -333,7 +336,12 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
   final connectivity = getIt<ConnectivityService>();
   if (connectivity.isOnline) {
     try {
-      final products = await apiClient.getProducts(limit: 500);
+      final storageService = getIt<StorageService>();
+      final branchId = storageService.getBranchId();
+      final products = await apiClient.getProducts(
+        limit: 500,
+        branchId: branchId,
+      );
       final productMaps = products
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
@@ -344,6 +352,15 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
       await database.replaceAllPricingTiers(
         productMaps.expand(_pricingTiersToCompanions).toList(),
       );
+      if (branchId != null) {
+        final stockItems = productMaps
+            .map((p) => _stockToCompanion(p, branchId))
+            .whereType<LocalStockCompanion>()
+            .toList();
+        if (stockItems.isNotEmpty) {
+          await database.updateLocalStock(stockItems);
+        }
+      }
       final localProducts = await database.getAllProducts();
       final mapped = <Map<String, dynamic>>[];
       for (final product in localProducts.where((p) => p.isActive)) {

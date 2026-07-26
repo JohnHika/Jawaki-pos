@@ -410,12 +410,14 @@ class ApiClient {
     String? search,
     int? page,
     int? limit,
+    String? branchId,
   }) async {
     final response = await _dio.get('/catalog/products', queryParameters: {
       if (categoryId != null) 'categoryId': categoryId,
       if (search != null) 'search': search,
       if (page != null) 'page': page,
       if (limit != null) 'limit': limit,
+      if (branchId != null) 'branchId': branchId,
     });
     return response.data['items'];
   }

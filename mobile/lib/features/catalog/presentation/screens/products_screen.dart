@@ -30,6 +30,13 @@ final _catalogSyncProvider =
   await catalog_cache.syncCatalogCacheFromApi();
 });
 
+final _productStockProvider = FutureProvider.family<int?, String>(
+  (ref, productId) async {
+    final stock = await getIt<AppDatabase>().getStockForProduct(productId);
+    return stock?.quantity;
+  },
+);
+
 class ProductsScreen extends ConsumerWidget {
   const ProductsScreen({super.key});
 
@@ -130,7 +137,7 @@ class ProductsScreen extends ConsumerWidget {
                               ? DesignColors.success
                               : DesignColors.info,
                         ),
-                        SizedBox(width: 6),
+                        const SizedBox(width: 6),
                         Text(
                           perms.canEditProducts ? 'Editor' : 'Viewer',
                           style: TextStyle(
@@ -331,25 +338,35 @@ class ProductsScreen extends ConsumerWidget {
                       final categoryMap = {
                         for (var c in categories) c.id: c.name
                       };
-                      return ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final product = filtered[index];
-                          return _ProductListTile(
-                            product: product,
-                            categoryName:
-                                categoryMap[product.categoryId] ?? 'Unknown',
-                            onEdit: perms.canEditProducts
-                                ? () => _showAddEditProduct(context, ref,
-                                    product: product)
-                                : null,
-                            onDelete: perms.canEditProducts
-                                ? () => _confirmDelete(context, ref, product)
-                                : null,
-                            isDark: isDark,
-                          );
+                      return RefreshIndicator(
+                        onRefresh: () async {
+                          ref.invalidate(_catalogSyncProvider(currentUserId));
+                          ref.invalidate(_productsProvider);
                         },
+                        color: DesignColors.brand,
+                        backgroundColor: isDark
+                            ? DesignColors.darkSurfaceElevated
+                            : Colors.white,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final product = filtered[index];
+                            return _ProductListTile(
+                              product: product,
+                              categoryName:
+                                  categoryMap[product.categoryId] ?? 'Unknown',
+                              onEdit: perms.canEditProducts
+                                  ? () => _showAddEditProduct(context, ref,
+                                      product: product)
+                                  : null,
+                              onDelete: perms.canEditProducts
+                                  ? () => _confirmDelete(context, ref, product)
+                                  : null,
+                              isDark: isDark,
+                            );
+                          },
+                        ),
                       );
                     },
                     loading: () => const Center(
@@ -507,7 +524,7 @@ class ProductsScreen extends ConsumerWidget {
 }
 
 // Product list tile widget - Premium GlassCard design with consistent styling
-class _ProductListTile extends StatelessWidget {
+class _ProductListTile extends ConsumerWidget {
   final Product product;
   final String categoryName;
   final VoidCallback? onEdit;
@@ -523,13 +540,18 @@ class _ProductListTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
+    final stockAsync = ref.watch(_productStockProvider(product.id));
+    final stock = stockAsync.valueOrNull;
+    final hasStock = stock != null && stock > 0;
+    final stockColor = hasStock ? DesignColors.success : DesignColors.error;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -542,7 +564,7 @@ class _ProductListTile extends StatelessWidget {
             decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
             child: Row(
               children: [
-                Icon(Icons.inventory_2_rounded, color: DesignColors.brand, size: 22),
+                const Icon(Icons.inventory_2_rounded, color: DesignColors.brand, size: 22),
                 const SizedBox(width: 14),
 
                 // Product info
@@ -586,6 +608,21 @@ class _ProductListTile extends StatelessWidget {
                       Text(
                         'Unit: ${product.unit}',
                         style: TextStyle(fontSize: 11, color: tertiaryColor),
+                      ),
+                      const SizedBox(height: 2),
+                      stockAsync.when(
+                        data: (qty) => Text(
+                          hasStock
+                              ? '$stock ${product.unit} in stock'
+                              : 'Out of stock',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: stockColor,
+                          ),
+                        ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
                       ),
                     ],
                   ),
