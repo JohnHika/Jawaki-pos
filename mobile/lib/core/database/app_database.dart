@@ -902,6 +902,21 @@ class AppDatabase extends _$AppDatabase {
     return getProductStock(productId, branchId);
   }
 
+  /// Live stream counterpart to [getStockForProduct] — emits again whenever
+  /// this product's local stock row changes (e.g. after a catalog sync
+  /// writes a fresh quantity following a stock receive), instead of a
+  /// one-shot read that a UI provider could otherwise cache forever.
+  Stream<LocalStockData?> watchStockForProduct(String productId) {
+    final branchId = _storage.getBranchId();
+    if (branchId == null) {
+      return Stream.value(null);
+    }
+    return (select(localStock)..where(
+          (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
+        ))
+        .watchSingleOrNull();
+  }
+
   Future<void> decrementStock(
     String productId,
     String branchId,

@@ -30,10 +30,16 @@ final _catalogSyncProvider =
   await catalog_cache.syncCatalogCacheFromApi();
 });
 
-final _productStockProvider = FutureProvider.family<int?, String>(
-  (ref, productId) async {
-    final stock = await getIt<AppDatabase>().getStockForProduct(productId);
-    return stock?.quantity;
+// A StreamProvider (not a one-shot FutureProvider) so the displayed
+// quantity updates live once a catalog sync writes a fresh stock row —
+// e.g. right after receiving stock — instead of staying stuck at whatever
+// value was cached the first time this provider resolved, which pull-to-
+// refresh alone never invalidated.
+final _productStockProvider = StreamProvider.family<int?, String>(
+  (ref, productId) {
+    return getIt<AppDatabase>()
+        .watchStockForProduct(productId)
+        .map((stock) => stock?.quantity);
   },
 );
 
