@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
 
@@ -220,47 +221,68 @@ LocalStockCompanion? _stockToCompanion(
 
 Future<void> syncCatalogCacheFromApi() async {
   final connectivity = getIt<ConnectivityService>();
-  if (!connectivity.isOnline) return;
+  // `isOnline` reflects whatever the last completed check found, but right
+  // after a cold start (e.g. fresh install/login) that check may still be
+  // in flight — the cached value defaults to offline until it resolves, so
+  // trusting it here would silently skip the very first sync a new device
+  // needs. Re-checking directly awaits the real platform-channel result
+  // (or its 5s timeout) instead of racing it.
+  final status = await connectivity.checkCurrentStatus();
+  if (status != ConnectionStatus.online) {
+    debugPrint('[CatalogSync] Skipped: connectivity check reported offline');
+    return;
+  }
 
-  final apiClient = getIt<ApiClient>();
-  final database = getIt<AppDatabase>();
-  final storageService = getIt<StorageService>();
+  try {
+    final apiClient = getIt<ApiClient>();
+    final database = getIt<AppDatabase>();
+    final storageService = getIt<StorageService>();
 
-  final categoriesResponse = await apiClient.getCategories();
-  final flatCategories = _flattenCategories(categoriesResponse);
-  final categoryItems = flatCategories
-      .map(_categoryToCompanion)
-      .whereType<CategoriesCompanion>()
-      .toList();
-  await database.replaceCategories(categoryItems);
-
-  final branchId = storageService.getBranchId();
-  final productsResponse = await apiClient.getProducts(
-    limit: 500,
-    branchId: branchId,
-  );
-  final productMaps = productsResponse
-      .whereType<Map>()
-      .map((item) => Map<String, dynamic>.from(item))
-      .toList();
-
-  final productItems = productMaps
-      .map(_productToCompanion)
-      .whereType<ProductsCompanion>()
-      .toList();
-  await database.replaceProducts(productItems);
-
-  final tierItems = productMaps.expand(_pricingTiersToCompanions).toList();
-  await database.replaceAllPricingTiers(tierItems);
-
-  if (branchId != null) {
-    final stockItems = productMaps
-        .map((p) => _stockToCompanion(p, branchId))
-        .whereType<LocalStockCompanion>()
+    debugPrint('[CatalogSync] Fetching categories...');
+    final categoriesResponse = await apiClient.getCategories();
+    final flatCategories = _flattenCategories(categoriesResponse);
+    final categoryItems = flatCategories
+        .map(_categoryToCompanion)
+        .whereType<CategoriesCompanion>()
         .toList();
-    if (stockItems.isNotEmpty) {
-      await database.updateLocalStock(stockItems);
+    await database.replaceCategories(categoryItems);
+    debugPrint('[CatalogSync] Stored ${categoryItems.length} categories');
+
+    final branchId = storageService.getBranchId();
+    debugPrint('[CatalogSync] Fetching products for branchId=$branchId...');
+    final productsResponse = await apiClient.getProducts(
+      limit: 500,
+      branchId: branchId,
+    );
+    final productMaps = productsResponse
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+
+    final productItems = productMaps
+        .map(_productToCompanion)
+        .whereType<ProductsCompanion>()
+        .toList();
+    await database.replaceProducts(productItems);
+    debugPrint('[CatalogSync] Stored ${productItems.length} products');
+
+    final tierItems = productMaps.expand(_pricingTiersToCompanions).toList();
+    await database.replaceAllPricingTiers(tierItems);
+
+    if (branchId != null) {
+      final stockItems = productMaps
+          .map((p) => _stockToCompanion(p, branchId))
+          .whereType<LocalStockCompanion>()
+          .toList();
+      if (stockItems.isNotEmpty) {
+        await database.updateLocalStock(stockItems);
+      }
     }
+    debugPrint('[CatalogSync] Sync complete');
+  } catch (e, st) {
+    debugPrint('[CatalogSync] FAILED: $e');
+    debugPrint('[CatalogSync] Stack: $st');
+    rethrow;
   }
 }
 

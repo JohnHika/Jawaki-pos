@@ -285,6 +285,15 @@ export class ProductQueryDto {
   @Max(500, { message: 'Limit cannot exceed 500' })
   @Type(() => Number)
   limit?: number;
+
+  // Also bound separately via @Query('branchId') in the controller (used to
+  // resolve prices/stock for that branch), but the global ValidationPipe's
+  // forbidNonWhitelisted rejects any query param not declared on this DTO
+  // before the controller method even runs — so it must be listed here too.
+  @ApiPropertyOptional({ description: 'Get prices and stock for branch' })
+  @IsOptional()
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
+  branchId?: string;
 }
 
 // Response DTOs (no validation needed)

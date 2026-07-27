@@ -53,6 +53,31 @@ android {
         versionName = flutter.versionName
     }
 
+    // We distribute a single universal APK directly (no Play Store, no
+    // per-ABI updater logic) and build with `flutter build apk --release
+    // --target-platform android-arm64` (see the CI workflow) — that flag
+    // restricts FLUTTER'S OWN engine/AOT binaries to arm64-v8a, but several
+    // plugin AARs (ML Kit barcode/OCR, sqlite3) ship their own multi-arch
+    // native libraries that still get packaged regardless of that flag.
+    // Excluding the other architectures' .so files here at packaging time
+    // (rather than via `splits.abi`, which Gradle rejects as conflicting
+    // with the abiFilters Flutter's own flag already injects) is what
+    // actually drops them. Virtually every Android phone in the field
+    // (2019+) is arm64-v8a, so this has no real compatibility cost.
+    // Scoped to release builds only: debug builds (flutter run) still need
+    // x86_64 libs to run on the x86_64 emulators most dev machines use.
+    if (isReleaseTask) {
+        packaging {
+            jniLibs {
+                excludes += setOf(
+                    "lib/armeabi-v7a/**",
+                    "lib/x86/**",
+                    "lib/x86_64/**",
+                )
+            }
+        }
+    }
+
     signingConfigs {
         if (hasReleaseSigningConfig) {
             create("release") {
