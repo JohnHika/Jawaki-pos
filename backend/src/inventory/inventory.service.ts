@@ -218,6 +218,11 @@ export class InventoryService {
       }
 
       return { success: true, movementCount: movements.length };
+    }).then(async (result) => {
+      // See receiveBatch for why this is needed: CatalogService caches
+      // GET /products (with embedded stock) for 20s per tenant+branch.
+      await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      return result;
     });
   }
 
@@ -408,6 +413,11 @@ export class InventoryService {
         where: { id: transferId },
         data: { status: 'in_transit' },
       });
+    }).then(async (result) => {
+      // See receiveBatch for why this is needed: CatalogService caches
+      // GET /products (with embedded stock) for 20s per tenant+branch.
+      await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      return result;
     });
   }
 
@@ -488,6 +498,11 @@ export class InventoryService {
           notes: dto.notes ? `${transfer.notes || ''}\nReceived: ${dto.notes}` : transfer.notes,
         },
       });
+    }).then(async (result) => {
+      // See receiveBatch for why this is needed: CatalogService caches
+      // GET /products (with embedded stock) for 20s per tenant+branch.
+      await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      return result;
     });
   }
 
@@ -755,6 +770,11 @@ export class InventoryService {
       }
 
       return results;
+    }).then(async (result) => {
+      // See receiveBatch for why this is needed: CatalogService caches
+      // GET /products (with embedded stock) for 20s per tenant+branch.
+      await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      return result;
     });
   }
 
@@ -1018,6 +1038,16 @@ export class InventoryService {
         totalQuantity: totalReceived,
         batches: createdBatches,
       };
+    }).then(async (result) => {
+      // CatalogService caches GET /products responses (with embedded stock
+      // quantities) for 20s per tenant+branch. Without invalidating here,
+      // a receive-stock immediately followed by reopening the Products
+      // screen could show the pre-receipt quantity for up to 20s — looking
+      // exactly like the stock update silently failed even though it
+      // committed. Mirrors the same invalidatePattern CatalogService calls
+      // on every write of its own.
+      await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      return result;
     });
   }
 
@@ -1267,6 +1297,13 @@ export class InventoryService {
         where: { id: batchId },
         data: updateData,
       });
+    }).then(async (result) => {
+      // See receiveBatch for why this is needed: CatalogService caches
+      // GET /products (with embedded stock) for 20s per tenant+branch.
+      // Only the quantity edit path actually changes total stock, but the
+      // batch's own product could be shown elsewhere too — cheap either way.
+      await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      return result;
     });
   }
 
