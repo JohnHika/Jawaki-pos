@@ -887,7 +887,15 @@ export class InventoryService {
         }
 
         const expiryDate = batch.expiryDate ? new Date(batch.expiryDate) : null;
-        const isExpired = expiryDate && expiryDate < new Date();
+        // `expiryDate && ...` evaluates to `null` (not `false`) when there's
+        // no expiry date — isBlocked is a non-nullable Boolean column, and
+        // passing it `null` makes Prisma reject the ENTIRE create() as
+        // invalid (misleadingly reported as "Argument `stock` is missing",
+        // since it falls back to describing the relation-based input shape
+        // instead of naming the real offending field). This surfaced to
+        // users as an unconditional "Batch number conflict" on every batch
+        // received without an expiry date, regardless of batch numbers.
+        const isExpired = Boolean(expiryDate && expiryDate < new Date());
 
         // Combine notes with conversion info
         const finalNotes = conversionNote
