@@ -6,6 +6,7 @@ import { RedisModule } from '../common/redis/redis.module';
 import { SalesModule } from '../sales/sales.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SuppliersModule } from '../suppliers/suppliers.module';
+import { CustomersModule } from '../customers/customers.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SuppliersModule } from '../suppliers/suppliers.module';
     SalesModule,
     InventoryModule,
     SuppliersModule,
+    CustomersModule,
   ],
   controllers: [SyncController],
   providers: [SyncService],

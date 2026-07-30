@@ -1,7 +1,7 @@
 name: axon_pos
 description: Axon POS - Professional Point of Sale Platform by Arche Axon Intelligence
 publish_to: 'none'
-version: 1.0.49+2058
+version: 1.0.49+2059
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

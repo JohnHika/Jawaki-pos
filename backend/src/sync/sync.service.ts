@@ -280,6 +280,52 @@ export class SyncService {
       })),
     );
 
+    // Pull sales (push-only gap fix: Device B never saw sales made on Device A)
+    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.SALE_CREATED)) {
+      const sales = await this.prisma.sale.findMany({
+        where: {
+          branchId,
+          createdAt: { gt: since },
+        },
+        include: {
+          items: true,
+        },
+        take: limit,
+        orderBy: { createdAt: 'asc' },
+      });
+
+      events.push(
+        ...sales.map((s) => ({
+          eventType: SyncEventType.SALE_CREATED,
+          entityId: s.id,
+          payload: s,
+          timestamp: s.createdAt,
+        })),
+      );
+    }
+
+    // Pull customer updates
+    if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.CUSTOMER_UPDATED)) {
+      const customerTenantId = await this.getTenantIdForBranch(branchId);
+      const customers = await this.prisma.customer.findMany({
+        where: {
+          tenantId: customerTenantId,
+          updatedAt: { gt: since },
+        },
+        take: limit,
+        orderBy: { updatedAt: 'asc' },
+      });
+
+      events.push(
+        ...customers.map((c) => ({
+          eventType: SyncEventType.CUSTOMER_UPDATED,
+          entityId: c.id,
+          payload: c,
+          timestamp: c.updatedAt,
+        })),
+      );
+    }
+
     // Sort all events by timestamp
     events.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
@@ -588,6 +634,30 @@ export class SyncService {
         );
         return { serverId: payment.id };
 
+      case SyncEventType.CUSTOMER_CREATED:
+        const newCustomer = await this.prisma.customer.create({
+          data: {
+            tenantId,
+            name: payload.name,
+            phone: payload.phone || null,
+            email: payload.email || null,
+            address: payload.address || null,
+          },
+        });
+        return { serverId: newCustomer.id };
+
+      case SyncEventType.CUSTOMER_UPDATED:
+        await this.prisma.customer.update({
+          where: { id: payload.id },
+          data: {
+            name: payload.name,
+            phone: payload.phone ?? undefined,
+            email: payload.email ?? undefined,
+            address: payload.address ?? undefined,
+          },
+        });
+        return { serverId: payload.id };
+
       default:
         throw new BadRequestException(`Unknown event type: ${event.eventType}`);
     }
@@ -606,6 +676,8 @@ export class SyncService {
       [SyncEventType.USER_UPDATED]: 'User',
       [SyncEventType.SUPPLIER_INVOICE_CREATED]: 'SupplierInvoice',
       [SyncEventType.SUPPLIER_PAYMENT_RECORDED]: 'SupplierPayment',
+      [SyncEventType.CUSTOMER_CREATED]: 'Customer',
+      [SyncEventType.CUSTOMER_UPDATED]: 'Customer',
     };
     return mapping[eventType] || 'Unknown';
   }

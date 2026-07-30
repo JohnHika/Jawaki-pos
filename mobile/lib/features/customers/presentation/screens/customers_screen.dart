@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/sync_service.dart';
+import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/auth_service.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -234,6 +237,32 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               notes: notesCtrl.text.trim(),
                               initialBalance: creditAmount,
                             );
+                            // Queue customer for cross-device sync so
+                            // other devices in the same branch see this
+                            // customer too.
+                            try {
+                              final syncService = getIt<SyncService>();
+                              final storage = getIt<StorageService>();
+                              final auth = getIt<AuthService>();
+                              await syncService.queueSyncItem(
+                                tableName: 'customers',
+                                recordId: customerId,
+                                action: SyncAction.create,
+                                eventType: SyncEventType.customerCreated,
+                                data: {
+                                  'id': customerId,
+                                  'name': nameCtrl.text.trim(),
+                                  'phone': phoneCtrl.text.trim(),
+                                  'address': locationCtrl.text.trim(),
+                                  'notes': notesCtrl.text.trim(),
+                                },
+                                deviceId: storage.getDeviceId() ?? '',
+                                userId: auth.userId ?? '',
+                              );
+                            } catch (_) {
+                              // Non-fatal: local customer is still saved;
+                              // the periodic sync will retry.
+                            }
                             if (creditAmount > 0 && firstDueDate != null) {
                               await db.addCustomerInstallment(
                                 customerId,

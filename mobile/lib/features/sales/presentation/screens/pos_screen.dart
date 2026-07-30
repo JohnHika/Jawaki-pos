@@ -6,6 +6,9 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/services/sync_service.dart';
+import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
@@ -441,6 +444,25 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                     final id = await db.insertOrGetCustomer(
                                         const Uuid().v4(), nameCtrl.text.trim(),
                                         phone: phoneCtrl.text.trim());
+                                    // Queue for cross-device sync
+                                    try {
+                                      final syncService = getIt<SyncService>();
+                                      final storage = getIt<StorageService>();
+                                      final auth = getIt<AuthService>();
+                                      await syncService.queueSyncItem(
+                                        tableName: 'customers',
+                                        recordId: id,
+                                        action: SyncAction.create,
+                                        eventType: SyncEventType.customerCreated,
+                                        data: {
+                                          'id': id,
+                                          'name': nameCtrl.text.trim(),
+                                          'phone': phoneCtrl.text.trim(),
+                                        },
+                                        deviceId: storage.getDeviceId() ?? '',
+                                        userId: auth.userId ?? '',
+                                      );
+                                    } catch (_) {}
                                     ref.read(cartProvider.notifier).setCustomer(
                                         id,
                                         customerName: nameCtrl.text.trim());

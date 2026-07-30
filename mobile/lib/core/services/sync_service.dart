@@ -16,6 +16,8 @@ enum SyncEventType {
   stockAdjusted,
   supplierInvoiceCreated,
   supplierPaymentRecorded,
+  customerCreated,
+  customerUpdated,
 }
 
 /// Sync action types for SyncQueue
@@ -46,6 +48,10 @@ extension SyncEventTypeWireFormat on SyncEventType {
         return 'SUPPLIER_INVOICE_CREATED';
       case SyncEventType.supplierPaymentRecorded:
         return 'SUPPLIER_PAYMENT_RECORDED';
+      case SyncEventType.customerCreated:
+        return 'CUSTOMER_CREATED';
+      case SyncEventType.customerUpdated:
+        return 'CUSTOMER_UPDATED';
     }
   }
 }
@@ -74,6 +80,9 @@ String _tableNameForEventType(SyncEventType eventType) {
     case SyncEventType.supplierInvoiceCreated:
     case SyncEventType.supplierPaymentRecorded:
       return 'suppliers';
+    case SyncEventType.customerCreated:
+    case SyncEventType.customerUpdated:
+      return 'customers';
   }
 }
 
@@ -84,8 +93,11 @@ SyncAction _actionForEventType(SyncEventType eventType) {
     case SyncEventType.supplierInvoiceCreated:
     case SyncEventType.supplierPaymentRecorded:
       return SyncAction.create;
+    case SyncEventType.customerCreated:
+      return SyncAction.create;
     case SyncEventType.saleVoided:
     case SyncEventType.stockAdjusted:
+    case SyncEventType.customerUpdated:
       return SyncAction.update;
   }
 }
@@ -107,6 +119,9 @@ String _recordIdForEvent(
       return payload['offlineId']?.toString() ?? fallbackRecordId;
     case SyncEventType.supplierPaymentRecorded:
       return payload['invoiceId']?.toString() ?? fallbackRecordId;
+    case SyncEventType.customerCreated:
+    case SyncEventType.customerUpdated:
+      return payload['id']?.toString() ?? fallbackRecordId;
   }
 }
 
@@ -144,21 +159,34 @@ class SyncService {
       if (status == ConnectionStatus.online) {
         // Trigger sync when coming online
         syncPendingEvents();
+        pullChanges();
         migrateLocalSupplierDataIfNeeded();
       }
     });
-    
+
     // Start periodic sync (every 30 seconds when online)
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (_connectivity.isOnline) {
         syncPendingEvents();
       }
     });
-    
+
     // Start heartbeat (every 2 minutes when online)
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 2), (_) {
       if (_connectivity.isOnline) {
         _sendHeartbeat();
+      }
+    });
+
+    // Pull server changes every 2 minutes so this device sees sales,
+    // customers, and stock changes made on other devices in the same
+    // branch. The push timer above only sends THIS device's pending
+    // queue — without a pull timer, sales made on Device A never appear
+    // on Device B until Device B happens to make its own sale (which
+    // triggers a one-shot pullChanges in payment_provider).
+    Timer.periodic(const Duration(minutes: 2), (_) {
+      if (_connectivity.isOnline) {
+        pullChanges();
       }
     });
   }
@@ -472,7 +500,7 @@ class SyncService {
   Future<void> _processServerEvent(Map<String, dynamic> event) async {
     final eventType = event['eventType'] as String;
     final payload = event['payload'] as Map<String, dynamic>;
-    
+
     switch (eventType) {
       case 'PRODUCT_UPDATED':
         await _updateLocalProduct(payload);
@@ -485,6 +513,13 @@ class SyncService {
         break;
       case 'STOCK_ADJUSTED':
         await _updateLocalStock(payload);
+        break;
+      case 'SALE_CREATED':
+        await _updateLocalSale(payload);
+        break;
+      case 'CUSTOMER_CREATED':
+      case 'CUSTOMER_UPDATED':
+        await _updateLocalCustomer(payload);
         break;
     }
   }
@@ -612,6 +647,78 @@ class SyncService {
     }
   }
   
+  /// Applies a SALE_CREATED pull event to the local pending-sales cache.
+  /// When Device A makes a sale, it pushes to the server. Device B's
+  /// periodic pull now receives that sale and stores it locally so it
+  /// appears in reports, receipts, and sales history on Device B too.
+  /// The sale is marked as synced on insert so the local sync queue
+  /// doesn't try to re-push it.
+  Future<void> _updateLocalSale(Map<String, dynamic> data) async {
+    final saleId = data['id']?.toString();
+    if (saleId == null) return;
+
+    // Don't duplicate a sale that originated from this device.
+    final existing = await _database.getPendingSaleById(saleId);
+    if (existing != null) return;
+
+    final createdAt = _parseTimestamp(data['createdAt']);
+    final items = data['items'] as List<dynamic>? ?? [];
+
+    await _database.createPendingSale(
+      PendingSalesCompanion(
+        id: Value(saleId),
+        receiptNumber: Value(data['receiptNumber']?.toString() ?? ''),
+        subtotal: Value((data['subtotal'] as num?)?.toDouble() ?? 0),
+        discount: Value((data['discountAmount'] as num?)?.toDouble() ?? 0),
+        tax: Value((data['taxAmount'] as num?)?.toDouble() ?? 0),
+        total: Value((data['totalAmount'] as num?)?.toDouble() ?? 0),
+        paymentMethod: Value(data['paymentMethod']?.toString() ?? 'CASH'),
+        paymentReference: Value(data['paymentReference']?.toString()),
+        customerId: Value(data['customerId']?.toString()),
+        cashierId: Value(data['userId']?.toString() ?? ''),
+        branchId: Value(data['branchId']?.toString() ?? ''),
+        notes: Value(data['notes']?.toString()),
+        status: Value(data['status']?.toString() ?? 'COMPLETED'),
+        createdAt: Value(createdAt),
+        isSynced: const Value(true),
+        syncedAt: Value(createdAt),
+      ),
+      items
+          .whereType<Map>()
+          .map((item) => PendingSaleItemsCompanion.insert(
+                saleId: saleId,
+                productId: item['productId']?.toString() ?? '',
+                productName: item['productName']?.toString() ?? '',
+                sku: item['sku']?.toString() ?? '',
+                quantity: (item['quantity'] as num?)?.toInt() ?? 0,
+                unitPrice: (item['unitPrice'] as num?)?.toDouble() ?? 0,
+                discount: Value((item['discount'] as num?)?.toDouble() ?? 0),
+                total: (item['totalAmount'] as num?)?.toDouble() ?? 0,
+                unit: Value(item['unit']?.toString()),
+                quantityPerUnit: Value(
+                    (item['quantityPerUnit'] as num?)?.toDouble()),
+              ))
+          .toList(),
+    );
+  }
+
+  /// Applies a CUSTOMER_CREATED/UPDATED pull event to the local customers
+  /// table. Customers created on Device A are now visible on Device B.
+  Future<void> _updateLocalCustomer(Map<String, dynamic> data) async {
+    final customerId = data['id']?.toString();
+    if (customerId == null) return;
+
+    await _database.createCustomersTable();
+    // Use insertOrGetCustomer with the server's id so it upserts.
+    await _database.insertOrGetCustomer(
+      customerId,
+      data['name']?.toString() ?? '',
+      phone: data['phone']?.toString(),
+      location: data['address']?.toString(),
+      email: data['email']?.toString(),
+    );
+  }
+
   Future<void> _sendHeartbeat() async {
     try {
       await _apiClient.sendHeartbeat();

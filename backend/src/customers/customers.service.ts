@@ -4,9 +4,79 @@ import { SaleStatus } from '@prisma/client';
 import { ReportFilterDto, ReportPeriod } from '../reporting/dto/reporting.dto';
 import { getDayBoundsInTimezone, nowInTimezone } from '../common/operating-hours';
 
+export interface CustomerCreateInput {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+}
+
+export interface CustomerUpdateInput {
+  name?: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+}
+
 @Injectable()
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
+
+  // ==================== CRUD METHODS ====================
+
+  async createCustomer(tenantId: string, data: CustomerCreateInput) {
+    return this.prisma.customer.create({
+      data: {
+        tenantId,
+        name: data.name,
+        phone: data.phone || null,
+        email: data.email || null,
+        address: data.address || null,
+      },
+    });
+  }
+
+  async getCustomers(tenantId: string) {
+    return this.prisma.customer.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async getCustomer(tenantId: string, id: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id, tenantId },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+    return customer;
+  }
+
+  async updateCustomer(tenantId: string, id: string, data: CustomerUpdateInput) {
+    // Verify ownership within tenant before update
+    await this.getCustomer(tenantId, id);
+    return this.prisma.customer.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.phone !== undefined && { phone: data.phone }),
+        ...(data.email !== undefined && { email: data.email }),
+        ...(data.address !== undefined && { address: data.address }),
+      },
+    });
+  }
+
+  async deleteCustomer(tenantId: string, id: string) {
+    // Verify ownership within tenant before soft-delete
+    await this.getCustomer(tenantId, id);
+    return this.prisma.customer.update({
+      where: { id },
+      data: { isActive: false },
+    });
+  }
+
+  // ==================== REPORTING METHODS ====================
 
   /**
    * Minimal start/end computation mirroring ReportingService.getDateRange

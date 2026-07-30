@@ -627,12 +627,32 @@ class ApiClient {
     final response = await _dio.post('/sync/push', data: data);
     return response.data;
   }
-  
+
   Future<Map<String, dynamic>> pullSyncEvents({String? since}) async {
     final response = await _dio.post('/sync/pull', data: {
       if (since != null) 'since': since,
     });
     return response.data;
+  }
+
+  // Customer endpoints (cross-device sync)
+  Future<Map<String, dynamic>> createCustomer(Map<String, dynamic> data) async {
+    final response = await _dio.post('/customers', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> getCustomers() async {
+    final response = await _dio.get('/customers');
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateCustomer(String id, Map<String, dynamic> data) async {
+    final response = await _dio.patch('/customers/$id', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteCustomer(String id) async {
+    await _dio.delete('/customers/$id');
   }
 
   Future<List<dynamic>> resolveSyncConflicts(
