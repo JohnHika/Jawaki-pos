@@ -4,16 +4,19 @@ This contract protects installed customer devices from APKs that cannot update i
 
 ## Canonical Customer Line
 
-- Package id: `com.levisaadventures.pos`
+- Package id: `com.archeaxon.axonpos`
 - Production signing certificate SHA-256: `0289d757a110883956bc03faeedc3c281d1eb685b98d9bfbad533a9b0d340393`
 - Certificate owner: `CN=Axon POS, OU=Mobile, O=Arche Axon Intelligence, L=Nairobi, ST=Nairobi, C=KE`
-- Customer baseline: `versionName=1.0.0`, `versionCode=2015`
-- Current safe successor: `versionName=1.0.1`, `versionCode=2018`
+- Legacy package line: `com.levisaadventures.pos` through the pre-2021 builds;
+  those installations cannot update in place to the Axon package.
+- Axon package migration boundary: `versionName=1.0.16`, `versionCode=2021`.
+- Axon customer baseline: package `com.archeaxon.axonpos`, build `2021` or newer.
+- Current safe successor: `versionName=1.0.49`, `versionCode=2059`
 - Unsafe quarantined release: `v1.0.14-2017` was debug-signed and must stay prerelease/not-latest.
 
 ## Required Successor Rules
 
-1. Every production APK must keep package id `com.levisaadventures.pos`.
+1. Every production APK must keep package id `com.archeaxon.axonpos`.
 2. Every production APK must be signed by the production certificate above.
 3. Never publish an APK signed by the Android Debug certificate.
 4. Every successor must use a `versionCode` greater than the currently published build number.

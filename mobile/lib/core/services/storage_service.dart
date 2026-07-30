@@ -21,6 +21,7 @@ class StorageService {
   static const String keyTenantId = 'tenant_id';
   static const String keyTenantSlug = 'tenant_slug';
   static const String keyLastSyncAt = 'last_sync_at';
+  static const String keySyncCursor = 'sync_cursor';
   static const String keyPinHash = 'pin_hash';
   static const String keyPinSalt = 'pin_salt';
   static const String keyFavoriteProducts = 'favorite_products';
@@ -202,16 +203,39 @@ class StorageService {
     return _prefs!.getString(keyTenantSlug);
   }
 
-  Future<void> saveLastSyncAt(DateTime dateTime) async {
+  String _lastSyncKey(String? branchId) => branchId == null || branchId.isEmpty
+      ? keyLastSyncAt
+      : '${keyLastSyncAt}_$branchId';
+
+  Future<void> saveLastSyncAt(DateTime dateTime, {String? branchId}) async {
     _checkInitialized();
-    await _prefs!.setString(keyLastSyncAt, dateTime.toIso8601String());
+    final value = dateTime.toIso8601String();
+    await _prefs!.setString(keyLastSyncAt, value);
+    if (branchId != null && branchId.isNotEmpty) {
+      await _prefs!.setString(_lastSyncKey(branchId), value);
+    }
   }
 
-  DateTime? getLastSyncAt() {
+  DateTime? getLastSyncAt({String? branchId}) {
     if (!_initialized || _prefs == null) return null;
-    final dateStr = _prefs!.getString(keyLastSyncAt);
+    final dateStr = _prefs!.getString(_lastSyncKey(branchId));
     if (dateStr == null) return null;
     return DateTime.parse(dateStr);
+  }
+
+  String _syncCursorKey(String? branchId) =>
+      branchId == null || branchId.isEmpty
+          ? keySyncCursor
+          : '${keySyncCursor}_$branchId';
+
+  Future<void> saveSyncCursor(String cursor, {String? branchId}) async {
+    _checkInitialized();
+    await _prefs!.setString(_syncCursorKey(branchId), cursor);
+  }
+
+  String? getSyncCursor({String? branchId}) {
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(_syncCursorKey(branchId));
   }
 
   Future<void> saveFavoriteProducts(List<String> productIds) async {

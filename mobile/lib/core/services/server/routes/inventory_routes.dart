@@ -70,47 +70,26 @@ class InventoryRoutes {
     final branchId = body['branchId'] as String?;
     final batches = body['batches'];
     final quantity = batches is List
-        ? batches.fold<int>(0, (sum, item) {
+        ? batches.fold<double>(0, (sum, item) {
             if (item is! Map) return sum;
             final batchQty = (item['quantity'] as num?)?.toDouble() ?? 0;
             final unitsPerQuantity =
                 (item['unitsPerQuantity'] as num?)?.toDouble() ?? 1;
-            return sum + (batchQty * unitsPerQuantity).round();
+            return sum + (batchQty * unitsPerQuantity);
           })
-        : ((body['quantity'] as num?)?.toInt() ?? 0);
-    final batchNumber =
-        body['batchNumber'] as String? ??
+        : ((body['quantity'] as num?)?.toDouble() ?? 0);
+    final batchNumber = body['batchNumber'] as String? ??
         'BATCH-${DateTime.now().millisecondsSinceEpoch}';
 
     if (productId == null || branchId == null || quantity <= 0) {
       return _error(400, 'productId, branchId, and quantity > 0 are required');
     }
 
-    // Upsert local stock
-    final existing = await _db.getProductStock(productId, branchId);
-    if (existing != null) {
-      await (_db.update(_db.localStock)..where(
-            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
-          ))
-          .write(
-            LocalStockCompanion(
-              quantity: Value(existing.quantity + quantity),
-              updatedAt: Value(DateTime.now()),
-            ),
-          );
-    } else {
-      await _db
-          .into(_db.localStock)
-          .insert(
-            LocalStockCompanion(
-              id: Value('stock-$branchId-$productId'),
-              productId: Value(productId),
-              branchId: Value(branchId),
-              quantity: Value(quantity),
-              updatedAt: Value(DateTime.now()),
-            ),
-          );
-    }
+    final currentQuantity = await _db.incrementLocalStock(
+      productId: productId,
+      branchId: branchId,
+      quantity: quantity,
+    );
 
     return shelf.Response(
       201,
@@ -118,6 +97,7 @@ class InventoryRoutes {
         'message': 'Stock received',
         'productId': productId,
         'quantity': quantity,
+        'currentQuantity': currentQuantity,
         'batchNumber': batchNumber,
       }),
       headers: {'content-type': 'application/json'},
@@ -137,9 +117,8 @@ class InventoryRoutes {
     if (status != null && status.isNotEmpty) {
       conditions.add('status = ${Sql.str(status)}');
     }
-    final where = conditions.isNotEmpty
-        ? ' WHERE ${conditions.join(' AND ')}'
-        : '';
+    final where =
+        conditions.isNotEmpty ? ' WHERE ${conditions.join(' AND ')}' : '';
     final sql = 'SELECT * FROM stock_requests$where ORDER BY created_at DESC';
 
     try {

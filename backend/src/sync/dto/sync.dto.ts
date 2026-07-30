@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsEnum, IsObject, IsArray, ValidateNested, IsDateString, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsUUID, IsEnum, IsObject, IsArray, ValidateNested, IsDateString, IsOptional, IsNumber, IsInt, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -59,9 +59,10 @@ export class PushSyncEventsDto {
 }
 
 export class PullSyncRequestDto {
-  @ApiProperty({ description: 'Last sync timestamp' })
+  @ApiProperty({ description: 'Last sync timestamp or opaque pagination cursor' })
   @IsOptional()
-  @IsDateString()
+  @IsString()
+  @MaxLength(1000)
   since?: string;
 
   @ApiPropertyOptional({ description: 'Event types to pull' })
@@ -72,7 +73,9 @@ export class PullSyncRequestDto {
 
   @ApiPropertyOptional({ description: 'Maximum number of events to return' })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(500)
   limit?: number;
 }
 

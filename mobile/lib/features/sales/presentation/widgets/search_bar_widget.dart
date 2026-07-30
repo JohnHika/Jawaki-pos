@@ -53,6 +53,16 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final providerQuery = ref.watch(searchQueryProvider);
+    if (_controller.text != providerQuery) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _controller.text == providerQuery) return;
+        _controller.value = TextEditingValue(
+          text: providerQuery,
+          selection: TextSelection.collapsed(offset: providerQuery.length),
+        );
+      });
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -63,14 +73,16 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
         tint: isDark ? DesignColors.glassDark : DesignColors.glassWhite,
         borderColor: isDark
             ? DesignColors.glassDarkBorder
-            : DesignColors.surfaceBorder.withValues(alpha:0.6),
+            : DesignColors.surfaceBorder.withValues(alpha: 0.6),
         child: TextField(
           controller: _controller,
           focusNode: _focusNode,
           decoration: InputDecoration(
             hintText: 'Search products...',
             hintStyle: TextStyle(
-              color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+              color: isDark
+                  ? DesignColors.darkTextTertiary
+                  : DesignColors.textTertiary,
               fontWeight: FontWeight.w400,
             ),
             prefixIcon: AnimatedBuilder(
@@ -79,7 +91,9 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
                 _showClear ? Icons.search_rounded : Icons.search_rounded,
                 color: _showClear
                     ? DesignColors.accent
-                    : (isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
+                    : (isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary),
                 size: 20,
               ),
             ),
@@ -87,7 +101,8 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
                 ? IconButton(
                     icon: const Icon(Icons.close_rounded, size: 20),
                     style: IconButton.styleFrom(
-                      backgroundColor: DesignColors.error.withValues(alpha:0.1),
+                      backgroundColor:
+                          DesignColors.error.withValues(alpha: 0.1),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -103,7 +118,8 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
           onChanged: (value) {
             ref.read(searchQueryProvider.notifier).state = value;
@@ -131,8 +147,9 @@ class SearchSuggestions extends ConsumerWidget {
     return productsAsync.when(
       data: (products) {
         final suggestions = products
-            .where(
-                (p) => (p['name'] as String).toLowerCase().contains(query.toLowerCase()))
+            .where((p) => (p['name'] as String)
+                .toLowerCase()
+                .contains(query.toLowerCase()))
             .take(5)
             .toList();
 
@@ -149,7 +166,7 @@ class SearchSuggestions extends ConsumerWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha:isDark ? 0.3 : 0.08),
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
                 blurRadius: 16,
                 offset: const Offset(0, 8),
               ),
@@ -157,24 +174,28 @@ class SearchSuggestions extends ConsumerWidget {
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: suggestions.map((product) => ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.search_rounded, size: 18, color: DesignColors.accent),
-              ),
-              title: Text(
-                product['name'] as String,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              dense: true,
-              onTap: () {
-                ref.read(searchQueryProvider.notifier).state = product['name'] as String;
-              },
-            )).toList(),
+            children: suggestions
+                .map((product) => ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: DesignColors.accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.search_rounded,
+                            size: 18, color: DesignColors.accent),
+                      ),
+                      title: Text(
+                        product['name'] as String,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      dense: true,
+                      onTap: () {
+                        ref.read(searchQueryProvider.notifier).state =
+                            product['name'] as String;
+                      },
+                    ))
+                .toList(),
           ),
         );
       },

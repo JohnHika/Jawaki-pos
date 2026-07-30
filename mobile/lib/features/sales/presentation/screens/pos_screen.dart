@@ -28,13 +28,18 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   static String _getUserFriendlyErrorMessage(dynamic error) {
     final errorString = error.toString().toLowerCase();
 
-    if (errorString.contains('network') || errorString.contains('socket') || errorString.contains('connection')) {
+    if (errorString.contains('network') ||
+        errorString.contains('socket') ||
+        errorString.contains('connection')) {
       return 'Please check your internet connection and try again';
     } else if (errorString.contains('timeout')) {
       return 'Request timed out. Please try again.';
-    } else if (errorString.contains('format') || errorString.contains('parse')) {
+    } else if (errorString.contains('format') ||
+        errorString.contains('parse')) {
       return 'Data format error. We\'re working to fix this.';
-    } else if (errorString.contains('auth') || errorString.contains('permission') || errorString.contains('unauthorized')) {
+    } else if (errorString.contains('auth') ||
+        errorString.contains('permission') ||
+        errorString.contains('unauthorized')) {
       return 'Authentication required. Please log in again.';
     } else if (error is Exception) {
       return 'An unexpected error occurred. Please try again.';
@@ -42,11 +47,16 @@ class _POSScreenState extends ConsumerState<POSScreen> {
 
     return 'Unable to complete request. Please try again.';
   }
+
   bool _showFavorites = false;
 
   @override
   void initState() {
     super.initState();
+    // Filters belong to one POS visit. A previous query (for example
+    // "tessi") must not silently filter a newly mounted product grid.
+    ref.read(searchQueryProvider.notifier).state = '';
+    ref.read(selectedCategoryProvider.notifier).state = null;
     // The grid renders instantly from the local cache via
     // filteredProductsProvider, which never talks to the API on its own —
     // nothing else refreshes stock/prices for a cashier who lands here
@@ -93,9 +103,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
             });
           }, isDark, active: _showFavorites),
           if (parkedSales.isNotEmpty)
-            _topAction(Icons.inventory_2_outlined,
+            _topAction(
+                Icons.inventory_2_outlined,
                 'Parked (${parkedSales.length})',
-                () => _showParkedSalesSheet(context), isDark),
+                () => _showParkedSalesSheet(context),
+                isDark),
           if (cart.items.isNotEmpty)
             _topAction(Icons.pause_rounded, 'Park Sale',
                 () => _parkCurrentSale(context), isDark),
@@ -233,16 +245,19 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 ),
                 if (cart.itemCount > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: DesignColors.success.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: DesignColors.success.withValues(alpha: 0.24)),
+                      border: Border.all(
+                          color: DesignColors.success.withValues(alpha: 0.24)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.shopping_bag_rounded, size: 14, color: DesignColors.success),
+                        Icon(Icons.shopping_bag_rounded,
+                            size: 14, color: DesignColors.success),
                         SizedBox(width: 6),
                         Text(
                           '${cart.itemCount} Cart',
@@ -277,12 +292,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             child: CircularProgressIndicator(
                                 color: DesignColors.accent)),
                         error: (e, _) => EmptyState(
-                            icon: Icons.error_outline_rounded,
-                            title: 'Error loading favorites',
-                            subtitle: _getUserFriendlyErrorMessage(e),
-                            iconColor: DesignColors.error,
-                            actionLabel: 'Retry',
-                            onAction: () => ref.refresh(favoriteProductsProvider),
+                          icon: Icons.error_outline_rounded,
+                          title: 'Error loading favorites',
+                          subtitle: _getUserFriendlyErrorMessage(e),
+                          iconColor: DesignColors.error,
+                          actionLabel: 'Retry',
+                          onAction: () => ref.refresh(favoriteProductsProvider),
                         ),
                       );
                     },
@@ -298,9 +313,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   Widget _topAction(
       IconData icon, String tooltip, VoidCallback onTap, bool isDark,
       {bool active = false}) {
-    final secondaryColor = isDark
-        ? DesignColors.darkTextSecondary
-        : DesignColors.textSecondary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: InkWell(
@@ -315,8 +329,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon,
-              color: active ? DesignColors.error : secondaryColor,
-              size: 20),
+              color: active ? DesignColors.error : secondaryColor, size: 20),
         ),
       ),
     );
@@ -333,148 +346,143 @@ class _POSScreenState extends ConsumerState<POSScreen> {
       });
     }
 
-    GlassBottomSheet.show(context,
-        scrollable: true,
-        child: StatefulBuilder(
-          builder: (ctx, setSheet) {
-            final isDark = Theme.of(ctx).brightness == Brightness.dark;
-            final secondaryColor = isDark
-                ? DesignColors.darkTextSecondary
-                : DesignColors.textSecondary;
-            return Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              0,
-              20,
-              20 + MediaQuery.of(ctx).padding.bottom,
-            ),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 8),
-                  const Text('Customer',
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text('Set or search for a customer',
-                      style: TextStyle(
-                          fontSize: 13, color: secondaryColor)),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: InputDecoration(
-                        labelText: 'Name',
-                        prefixIcon:
-                            const Icon(Icons.person_outline_rounded, size: 20),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none),
-                        filled: true),
-                    onChanged: (_) => setSheet(() {}),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                        labelText: 'Phone',
-                        prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none),
-                        filled: true),
-                    onChanged: (_) => setSheet(() {}),
-                  ),
-                  if (nameCtrl.text.trim().length >= 2)
-                    FutureBuilder<List<Map<String, dynamic>>>(
-                      future: db.searchCustomers(nameCtrl.text.trim()),
-                      builder: (_, snap) {
-                        final customers = snap.data ?? [];
-                        if (customers.isEmpty) return const SizedBox.shrink();
-                        return ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 224),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            physics: const ClampingScrollPhysics(),
-                            primary: false,
-                            itemCount: customers.length,
-                            itemBuilder: (_, i) => ListTile(
-                              dense: true,
-                              leading: CircleAvatar(
-                                  child: Text(
-                                      (customers[i]['name'] as String)[0]
-                                          .toUpperCase())),
-                              title: Text(customers[i]['name'] as String),
-                              subtitle: Text(
-                                  '${customers[i]['totalPurchases']} purchases'),
-                              onTap: () {
-                                ref.read(cartProvider.notifier).setCustomer(
-                                    customers[i]['id'] as String,
-                                    customerName:
-                                        customers[i]['name'] as String);
-                                Navigator.pop(ctx);
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  const SizedBox(height: 14),
-                  Row(children: [
-                    Expanded(
-                        child: OutlinedButton(
-                            onPressed: () {
-                              ref
-                                  .read(cartProvider.notifier)
-                                  .setCustomer(null, customerName: null);
-                              Navigator.pop(context);
+    GlassBottomSheet.show(context, scrollable: true, child: StatefulBuilder(
+      builder: (ctx, setSheet) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final secondaryColor = isDark
+            ? DesignColors.darkTextSecondary
+            : DesignColors.textSecondary;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            20 + MediaQuery.of(ctx).padding.bottom,
+          ),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 8),
+                const Text('Customer',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text('Set or search for a customer',
+                    style: TextStyle(fontSize: 13, color: secondaryColor)),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                      labelText: 'Name',
+                      prefixIcon:
+                          const Icon(Icons.person_outline_rounded, size: 20),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none),
+                      filled: true),
+                  onChanged: (_) => setSheet(() {}),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                      labelText: 'Phone',
+                      prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none),
+                      filled: true),
+                  onChanged: (_) => setSheet(() {}),
+                ),
+                if (nameCtrl.text.trim().length >= 2)
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: db.searchCustomers(nameCtrl.text.trim()),
+                    builder: (_, snap) {
+                      final customers = snap.data ?? [];
+                      if (customers.isEmpty) return const SizedBox.shrink();
+                      return ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 224),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          physics: const ClampingScrollPhysics(),
+                          primary: false,
+                          itemCount: customers.length,
+                          itemBuilder: (_, i) => ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                                child: Text((customers[i]['name'] as String)[0]
+                                    .toUpperCase())),
+                            title: Text(customers[i]['name'] as String),
+                            subtitle: Text(
+                                '${customers[i]['totalPurchases']} purchases'),
+                            onTap: () {
+                              ref.read(cartProvider.notifier).setCustomer(
+                                  customers[i]['id'] as String,
+                                  customerName: customers[i]['name'] as String);
+                              Navigator.pop(ctx);
                             },
-                            child: const Text('Remove'))),
-                    const SizedBox(width: 10),
-                    Expanded(
-                        flex: 2,
-                        child: GradientButton(
-                            label: 'Set',
-                            onPressed: nameCtrl.text.isEmpty
-                                ? null
-                                : () async {
-                                    final id = await db.insertOrGetCustomer(
-                                        const Uuid().v4(), nameCtrl.text.trim(),
-                                        phone: phoneCtrl.text.trim());
-                                    // Queue for cross-device sync
-                                    try {
-                                      final syncService = getIt<SyncService>();
-                                      final storage = getIt<StorageService>();
-                                      final auth = getIt<AuthService>();
-                                      await syncService.queueSyncItem(
-                                        tableName: 'customers',
-                                        recordId: id,
-                                        action: SyncAction.create,
-                                        eventType: SyncEventType.customerCreated,
-                                        data: {
-                                          'id': id,
-                                          'name': nameCtrl.text.trim(),
-                                          'phone': phoneCtrl.text.trim(),
-                                        },
-                                        deviceId: storage.getDeviceId() ?? '',
-                                        userId: auth.userId ?? '',
-                                      );
-                                    } catch (_) {}
-                                    ref.read(cartProvider.notifier).setCustomer(
-                                        id,
-                                        customerName: nameCtrl.text.trim());
-                                    if (context.mounted) Navigator.pop(context);
-                                  },
-                            height: 44,
-                            borderRadius: 12)),
-                  ]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(
+                      child: OutlinedButton(
+                          onPressed: () {
+                            ref
+                                .read(cartProvider.notifier)
+                                .setCustomer(null, customerName: null);
+                            Navigator.pop(context);
+                          },
+                          child: const Text('Remove'))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      flex: 2,
+                      child: GradientButton(
+                          label: 'Set',
+                          onPressed: nameCtrl.text.isEmpty
+                              ? null
+                              : () async {
+                                  final id = await db.insertOrGetCustomer(
+                                      const Uuid().v4(), nameCtrl.text.trim(),
+                                      phone: phoneCtrl.text.trim());
+                                  // Queue for cross-device sync
+                                  try {
+                                    final syncService = getIt<SyncService>();
+                                    final storage = getIt<StorageService>();
+                                    final auth = getIt<AuthService>();
+                                    await syncService.queueSyncItem(
+                                      tableName: 'customers',
+                                      recordId: id,
+                                      action: SyncAction.create,
+                                      eventType: SyncEventType.customerCreated,
+                                      data: {
+                                        'id': id,
+                                        'name': nameCtrl.text.trim(),
+                                        'phone': phoneCtrl.text.trim(),
+                                      },
+                                      deviceId: storage.getDeviceId() ?? '',
+                                      userId: auth.userId ?? '',
+                                    );
+                                  } catch (_) {}
+                                  ref.read(cartProvider.notifier).setCustomer(
+                                      id,
+                                      customerName: nameCtrl.text.trim());
+                                  if (context.mounted) Navigator.pop(context);
+                                },
+                          height: 44,
+                          borderRadius: 12)),
                 ]),
-            );
-          },
-        ));
+              ]),
+        );
+      },
+    ));
   }
 
   void _parkCurrentSale(BuildContext context) {

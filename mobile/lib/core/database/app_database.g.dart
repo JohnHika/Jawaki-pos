@@ -1884,9 +1884,9 @@ class $LocalStockTable extends LocalStock
   static const VerificationMeta _quantityMeta =
       const VerificationMeta('quantity');
   @override
-  late final GeneratedColumn<int> quantity = GeneratedColumn<int>(
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
       'quantity', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+      type: DriftSqlType.double, requiredDuringInsert: true);
   static const VerificationMeta _minQuantityMeta =
       const VerificationMeta('minQuantity');
   @override
@@ -1901,6 +1901,30 @@ class $LocalStockTable extends LocalStock
   late final GeneratedColumn<int> maxQuantity = GeneratedColumn<int>(
       'max_quantity', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _displayUnitMeta =
+      const VerificationMeta('displayUnit');
+  @override
+  late final GeneratedColumn<String> displayUnit = GeneratedColumn<String>(
+      'display_unit', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _displayQuantityPerUnitMeta =
+      const VerificationMeta('displayQuantityPerUnit');
+  @override
+  late final GeneratedColumn<double> displayQuantityPerUnit =
+      GeneratedColumn<double>('display_quantity_per_unit', aliasedName, true,
+          type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _lastReceivedQuantityMeta =
+      const VerificationMeta('lastReceivedQuantity');
+  @override
+  late final GeneratedColumn<double> lastReceivedQuantity =
+      GeneratedColumn<double>('last_received_quantity', aliasedName, true,
+          type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _lastReceivedAtMeta =
+      const VerificationMeta('lastReceivedAt');
+  @override
+  late final GeneratedColumn<DateTime> lastReceivedAt =
+      GeneratedColumn<DateTime>('last_received_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -1908,8 +1932,19 @@ class $LocalStockTable extends LocalStock
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, productId, branchId, quantity, minQuantity, maxQuantity, updatedAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        productId,
+        branchId,
+        quantity,
+        minQuantity,
+        maxQuantity,
+        displayUnit,
+        displayQuantityPerUnit,
+        lastReceivedQuantity,
+        lastReceivedAt,
+        updatedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1955,6 +1990,30 @@ class $LocalStockTable extends LocalStock
           maxQuantity.isAcceptableOrUnknown(
               data['max_quantity']!, _maxQuantityMeta));
     }
+    if (data.containsKey('display_unit')) {
+      context.handle(
+          _displayUnitMeta,
+          displayUnit.isAcceptableOrUnknown(
+              data['display_unit']!, _displayUnitMeta));
+    }
+    if (data.containsKey('display_quantity_per_unit')) {
+      context.handle(
+          _displayQuantityPerUnitMeta,
+          displayQuantityPerUnit.isAcceptableOrUnknown(
+              data['display_quantity_per_unit']!, _displayQuantityPerUnitMeta));
+    }
+    if (data.containsKey('last_received_quantity')) {
+      context.handle(
+          _lastReceivedQuantityMeta,
+          lastReceivedQuantity.isAcceptableOrUnknown(
+              data['last_received_quantity']!, _lastReceivedQuantityMeta));
+    }
+    if (data.containsKey('last_received_at')) {
+      context.handle(
+          _lastReceivedAtMeta,
+          lastReceivedAt.isAcceptableOrUnknown(
+              data['last_received_at']!, _lastReceivedAtMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -1977,11 +2036,21 @@ class $LocalStockTable extends LocalStock
       branchId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}branch_id'])!,
       quantity: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}quantity'])!,
+          .read(DriftSqlType.double, data['${effectivePrefix}quantity'])!,
       minQuantity: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}min_quantity'])!,
       maxQuantity: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}max_quantity']),
+      displayUnit: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}display_unit']),
+      displayQuantityPerUnit: attachedDatabase.typeMapping.read(
+          DriftSqlType.double,
+          data['${effectivePrefix}display_quantity_per_unit']),
+      lastReceivedQuantity: attachedDatabase.typeMapping.read(
+          DriftSqlType.double,
+          data['${effectivePrefix}last_received_quantity']),
+      lastReceivedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_received_at']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -1997,9 +2066,13 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
   final String id;
   final String productId;
   final String branchId;
-  final int quantity;
+  final double quantity;
   final int minQuantity;
   final int? maxQuantity;
+  final String? displayUnit;
+  final double? displayQuantityPerUnit;
+  final double? lastReceivedQuantity;
+  final DateTime? lastReceivedAt;
   final DateTime updatedAt;
   const LocalStockData(
       {required this.id,
@@ -2008,6 +2081,10 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
       required this.quantity,
       required this.minQuantity,
       this.maxQuantity,
+      this.displayUnit,
+      this.displayQuantityPerUnit,
+      this.lastReceivedQuantity,
+      this.lastReceivedAt,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2015,10 +2092,23 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
     map['id'] = Variable<String>(id);
     map['product_id'] = Variable<String>(productId);
     map['branch_id'] = Variable<String>(branchId);
-    map['quantity'] = Variable<int>(quantity);
+    map['quantity'] = Variable<double>(quantity);
     map['min_quantity'] = Variable<int>(minQuantity);
     if (!nullToAbsent || maxQuantity != null) {
       map['max_quantity'] = Variable<int>(maxQuantity);
+    }
+    if (!nullToAbsent || displayUnit != null) {
+      map['display_unit'] = Variable<String>(displayUnit);
+    }
+    if (!nullToAbsent || displayQuantityPerUnit != null) {
+      map['display_quantity_per_unit'] =
+          Variable<double>(displayQuantityPerUnit);
+    }
+    if (!nullToAbsent || lastReceivedQuantity != null) {
+      map['last_received_quantity'] = Variable<double>(lastReceivedQuantity);
+    }
+    if (!nullToAbsent || lastReceivedAt != null) {
+      map['last_received_at'] = Variable<DateTime>(lastReceivedAt);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -2034,6 +2124,18 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
       maxQuantity: maxQuantity == null && nullToAbsent
           ? const Value.absent()
           : Value(maxQuantity),
+      displayUnit: displayUnit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayUnit),
+      displayQuantityPerUnit: displayQuantityPerUnit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayQuantityPerUnit),
+      lastReceivedQuantity: lastReceivedQuantity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastReceivedQuantity),
+      lastReceivedAt: lastReceivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastReceivedAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -2045,9 +2147,15 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
       id: serializer.fromJson<String>(json['id']),
       productId: serializer.fromJson<String>(json['productId']),
       branchId: serializer.fromJson<String>(json['branchId']),
-      quantity: serializer.fromJson<int>(json['quantity']),
+      quantity: serializer.fromJson<double>(json['quantity']),
       minQuantity: serializer.fromJson<int>(json['minQuantity']),
       maxQuantity: serializer.fromJson<int?>(json['maxQuantity']),
+      displayUnit: serializer.fromJson<String?>(json['displayUnit']),
+      displayQuantityPerUnit:
+          serializer.fromJson<double?>(json['displayQuantityPerUnit']),
+      lastReceivedQuantity:
+          serializer.fromJson<double?>(json['lastReceivedQuantity']),
+      lastReceivedAt: serializer.fromJson<DateTime?>(json['lastReceivedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -2058,9 +2166,14 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
       'id': serializer.toJson<String>(id),
       'productId': serializer.toJson<String>(productId),
       'branchId': serializer.toJson<String>(branchId),
-      'quantity': serializer.toJson<int>(quantity),
+      'quantity': serializer.toJson<double>(quantity),
       'minQuantity': serializer.toJson<int>(minQuantity),
       'maxQuantity': serializer.toJson<int?>(maxQuantity),
+      'displayUnit': serializer.toJson<String?>(displayUnit),
+      'displayQuantityPerUnit':
+          serializer.toJson<double?>(displayQuantityPerUnit),
+      'lastReceivedQuantity': serializer.toJson<double?>(lastReceivedQuantity),
+      'lastReceivedAt': serializer.toJson<DateTime?>(lastReceivedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -2069,9 +2182,13 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
           {String? id,
           String? productId,
           String? branchId,
-          int? quantity,
+          double? quantity,
           int? minQuantity,
           Value<int?> maxQuantity = const Value.absent(),
+          Value<String?> displayUnit = const Value.absent(),
+          Value<double?> displayQuantityPerUnit = const Value.absent(),
+          Value<double?> lastReceivedQuantity = const Value.absent(),
+          Value<DateTime?> lastReceivedAt = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalStockData(
         id: id ?? this.id,
@@ -2080,6 +2197,15 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
         quantity: quantity ?? this.quantity,
         minQuantity: minQuantity ?? this.minQuantity,
         maxQuantity: maxQuantity.present ? maxQuantity.value : this.maxQuantity,
+        displayUnit: displayUnit.present ? displayUnit.value : this.displayUnit,
+        displayQuantityPerUnit: displayQuantityPerUnit.present
+            ? displayQuantityPerUnit.value
+            : this.displayQuantityPerUnit,
+        lastReceivedQuantity: lastReceivedQuantity.present
+            ? lastReceivedQuantity.value
+            : this.lastReceivedQuantity,
+        lastReceivedAt:
+            lastReceivedAt.present ? lastReceivedAt.value : this.lastReceivedAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   LocalStockData copyWithCompanion(LocalStockCompanion data) {
@@ -2092,6 +2218,17 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
           data.minQuantity.present ? data.minQuantity.value : this.minQuantity,
       maxQuantity:
           data.maxQuantity.present ? data.maxQuantity.value : this.maxQuantity,
+      displayUnit:
+          data.displayUnit.present ? data.displayUnit.value : this.displayUnit,
+      displayQuantityPerUnit: data.displayQuantityPerUnit.present
+          ? data.displayQuantityPerUnit.value
+          : this.displayQuantityPerUnit,
+      lastReceivedQuantity: data.lastReceivedQuantity.present
+          ? data.lastReceivedQuantity.value
+          : this.lastReceivedQuantity,
+      lastReceivedAt: data.lastReceivedAt.present
+          ? data.lastReceivedAt.value
+          : this.lastReceivedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -2105,6 +2242,10 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
           ..write('quantity: $quantity, ')
           ..write('minQuantity: $minQuantity, ')
           ..write('maxQuantity: $maxQuantity, ')
+          ..write('displayUnit: $displayUnit, ')
+          ..write('displayQuantityPerUnit: $displayQuantityPerUnit, ')
+          ..write('lastReceivedQuantity: $lastReceivedQuantity, ')
+          ..write('lastReceivedAt: $lastReceivedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -2112,7 +2253,17 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
 
   @override
   int get hashCode => Object.hash(
-      id, productId, branchId, quantity, minQuantity, maxQuantity, updatedAt);
+      id,
+      productId,
+      branchId,
+      quantity,
+      minQuantity,
+      maxQuantity,
+      displayUnit,
+      displayQuantityPerUnit,
+      lastReceivedQuantity,
+      lastReceivedAt,
+      updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2123,6 +2274,10 @@ class LocalStockData extends DataClass implements Insertable<LocalStockData> {
           other.quantity == this.quantity &&
           other.minQuantity == this.minQuantity &&
           other.maxQuantity == this.maxQuantity &&
+          other.displayUnit == this.displayUnit &&
+          other.displayQuantityPerUnit == this.displayQuantityPerUnit &&
+          other.lastReceivedQuantity == this.lastReceivedQuantity &&
+          other.lastReceivedAt == this.lastReceivedAt &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -2130,9 +2285,13 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
   final Value<String> id;
   final Value<String> productId;
   final Value<String> branchId;
-  final Value<int> quantity;
+  final Value<double> quantity;
   final Value<int> minQuantity;
   final Value<int?> maxQuantity;
+  final Value<String?> displayUnit;
+  final Value<double?> displayQuantityPerUnit;
+  final Value<double?> lastReceivedQuantity;
+  final Value<DateTime?> lastReceivedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const LocalStockCompanion({
@@ -2142,6 +2301,10 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
     this.quantity = const Value.absent(),
     this.minQuantity = const Value.absent(),
     this.maxQuantity = const Value.absent(),
+    this.displayUnit = const Value.absent(),
+    this.displayQuantityPerUnit = const Value.absent(),
+    this.lastReceivedQuantity = const Value.absent(),
+    this.lastReceivedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -2149,9 +2312,13 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
     required String id,
     required String productId,
     required String branchId,
-    required int quantity,
+    required double quantity,
     this.minQuantity = const Value.absent(),
     this.maxQuantity = const Value.absent(),
+    this.displayUnit = const Value.absent(),
+    this.displayQuantityPerUnit = const Value.absent(),
+    this.lastReceivedQuantity = const Value.absent(),
+    this.lastReceivedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -2163,9 +2330,13 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
     Expression<String>? id,
     Expression<String>? productId,
     Expression<String>? branchId,
-    Expression<int>? quantity,
+    Expression<double>? quantity,
     Expression<int>? minQuantity,
     Expression<int>? maxQuantity,
+    Expression<String>? displayUnit,
+    Expression<double>? displayQuantityPerUnit,
+    Expression<double>? lastReceivedQuantity,
+    Expression<DateTime>? lastReceivedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -2176,6 +2347,12 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
       if (quantity != null) 'quantity': quantity,
       if (minQuantity != null) 'min_quantity': minQuantity,
       if (maxQuantity != null) 'max_quantity': maxQuantity,
+      if (displayUnit != null) 'display_unit': displayUnit,
+      if (displayQuantityPerUnit != null)
+        'display_quantity_per_unit': displayQuantityPerUnit,
+      if (lastReceivedQuantity != null)
+        'last_received_quantity': lastReceivedQuantity,
+      if (lastReceivedAt != null) 'last_received_at': lastReceivedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -2185,9 +2362,13 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
       {Value<String>? id,
       Value<String>? productId,
       Value<String>? branchId,
-      Value<int>? quantity,
+      Value<double>? quantity,
       Value<int>? minQuantity,
       Value<int?>? maxQuantity,
+      Value<String?>? displayUnit,
+      Value<double?>? displayQuantityPerUnit,
+      Value<double?>? lastReceivedQuantity,
+      Value<DateTime?>? lastReceivedAt,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
     return LocalStockCompanion(
@@ -2197,6 +2378,11 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
       quantity: quantity ?? this.quantity,
       minQuantity: minQuantity ?? this.minQuantity,
       maxQuantity: maxQuantity ?? this.maxQuantity,
+      displayUnit: displayUnit ?? this.displayUnit,
+      displayQuantityPerUnit:
+          displayQuantityPerUnit ?? this.displayQuantityPerUnit,
+      lastReceivedQuantity: lastReceivedQuantity ?? this.lastReceivedQuantity,
+      lastReceivedAt: lastReceivedAt ?? this.lastReceivedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -2215,13 +2401,27 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
       map['branch_id'] = Variable<String>(branchId.value);
     }
     if (quantity.present) {
-      map['quantity'] = Variable<int>(quantity.value);
+      map['quantity'] = Variable<double>(quantity.value);
     }
     if (minQuantity.present) {
       map['min_quantity'] = Variable<int>(minQuantity.value);
     }
     if (maxQuantity.present) {
       map['max_quantity'] = Variable<int>(maxQuantity.value);
+    }
+    if (displayUnit.present) {
+      map['display_unit'] = Variable<String>(displayUnit.value);
+    }
+    if (displayQuantityPerUnit.present) {
+      map['display_quantity_per_unit'] =
+          Variable<double>(displayQuantityPerUnit.value);
+    }
+    if (lastReceivedQuantity.present) {
+      map['last_received_quantity'] =
+          Variable<double>(lastReceivedQuantity.value);
+    }
+    if (lastReceivedAt.present) {
+      map['last_received_at'] = Variable<DateTime>(lastReceivedAt.value);
     }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
@@ -2241,6 +2441,10 @@ class LocalStockCompanion extends UpdateCompanion<LocalStockData> {
           ..write('quantity: $quantity, ')
           ..write('minQuantity: $minQuantity, ')
           ..write('maxQuantity: $maxQuantity, ')
+          ..write('displayUnit: $displayUnit, ')
+          ..write('displayQuantityPerUnit: $displayQuantityPerUnit, ')
+          ..write('lastReceivedQuantity: $lastReceivedQuantity, ')
+          ..write('lastReceivedAt: $lastReceivedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -6780,9 +6984,13 @@ typedef $$LocalStockTableCreateCompanionBuilder = LocalStockCompanion Function({
   required String id,
   required String productId,
   required String branchId,
-  required int quantity,
+  required double quantity,
   Value<int> minQuantity,
   Value<int?> maxQuantity,
+  Value<String?> displayUnit,
+  Value<double?> displayQuantityPerUnit,
+  Value<double?> lastReceivedQuantity,
+  Value<DateTime?> lastReceivedAt,
   required DateTime updatedAt,
   Value<int> rowid,
 });
@@ -6790,9 +6998,13 @@ typedef $$LocalStockTableUpdateCompanionBuilder = LocalStockCompanion Function({
   Value<String> id,
   Value<String> productId,
   Value<String> branchId,
-  Value<int> quantity,
+  Value<double> quantity,
   Value<int> minQuantity,
   Value<int?> maxQuantity,
+  Value<String?> displayUnit,
+  Value<double?> displayQuantityPerUnit,
+  Value<double?> lastReceivedQuantity,
+  Value<DateTime?> lastReceivedAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
 });
@@ -6815,7 +7027,7 @@ class $$LocalStockTableFilterComposer
   ColumnFilters<String> get branchId => $composableBuilder(
       column: $table.branchId, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<int> get quantity => $composableBuilder(
+  ColumnFilters<double> get quantity => $composableBuilder(
       column: $table.quantity, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get minQuantity => $composableBuilder(
@@ -6823,6 +7035,21 @@ class $$LocalStockTableFilterComposer
 
   ColumnFilters<int> get maxQuantity => $composableBuilder(
       column: $table.maxQuantity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get displayUnit => $composableBuilder(
+      column: $table.displayUnit, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get displayQuantityPerUnit => $composableBuilder(
+      column: $table.displayQuantityPerUnit,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get lastReceivedQuantity => $composableBuilder(
+      column: $table.lastReceivedQuantity,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastReceivedAt => $composableBuilder(
+      column: $table.lastReceivedAt,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -6846,7 +7073,7 @@ class $$LocalStockTableOrderingComposer
   ColumnOrderings<String> get branchId => $composableBuilder(
       column: $table.branchId, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<int> get quantity => $composableBuilder(
+  ColumnOrderings<double> get quantity => $composableBuilder(
       column: $table.quantity, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<int> get minQuantity => $composableBuilder(
@@ -6854,6 +7081,21 @@ class $$LocalStockTableOrderingComposer
 
   ColumnOrderings<int> get maxQuantity => $composableBuilder(
       column: $table.maxQuantity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get displayUnit => $composableBuilder(
+      column: $table.displayUnit, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get displayQuantityPerUnit => $composableBuilder(
+      column: $table.displayQuantityPerUnit,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get lastReceivedQuantity => $composableBuilder(
+      column: $table.lastReceivedQuantity,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastReceivedAt => $composableBuilder(
+      column: $table.lastReceivedAt,
+      builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
@@ -6877,7 +7119,7 @@ class $$LocalStockTableAnnotationComposer
   GeneratedColumn<String> get branchId =>
       $composableBuilder(column: $table.branchId, builder: (column) => column);
 
-  GeneratedColumn<int> get quantity =>
+  GeneratedColumn<double> get quantity =>
       $composableBuilder(column: $table.quantity, builder: (column) => column);
 
   GeneratedColumn<int> get minQuantity => $composableBuilder(
@@ -6885,6 +7127,18 @@ class $$LocalStockTableAnnotationComposer
 
   GeneratedColumn<int> get maxQuantity => $composableBuilder(
       column: $table.maxQuantity, builder: (column) => column);
+
+  GeneratedColumn<String> get displayUnit => $composableBuilder(
+      column: $table.displayUnit, builder: (column) => column);
+
+  GeneratedColumn<double> get displayQuantityPerUnit => $composableBuilder(
+      column: $table.displayQuantityPerUnit, builder: (column) => column);
+
+  GeneratedColumn<double> get lastReceivedQuantity => $composableBuilder(
+      column: $table.lastReceivedQuantity, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastReceivedAt => $composableBuilder(
+      column: $table.lastReceivedAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -6919,9 +7173,13 @@ class $$LocalStockTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> productId = const Value.absent(),
             Value<String> branchId = const Value.absent(),
-            Value<int> quantity = const Value.absent(),
+            Value<double> quantity = const Value.absent(),
             Value<int> minQuantity = const Value.absent(),
             Value<int?> maxQuantity = const Value.absent(),
+            Value<String?> displayUnit = const Value.absent(),
+            Value<double?> displayQuantityPerUnit = const Value.absent(),
+            Value<double?> lastReceivedQuantity = const Value.absent(),
+            Value<DateTime?> lastReceivedAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -6932,6 +7190,10 @@ class $$LocalStockTableTableManager extends RootTableManager<
             quantity: quantity,
             minQuantity: minQuantity,
             maxQuantity: maxQuantity,
+            displayUnit: displayUnit,
+            displayQuantityPerUnit: displayQuantityPerUnit,
+            lastReceivedQuantity: lastReceivedQuantity,
+            lastReceivedAt: lastReceivedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -6939,9 +7201,13 @@ class $$LocalStockTableTableManager extends RootTableManager<
             required String id,
             required String productId,
             required String branchId,
-            required int quantity,
+            required double quantity,
             Value<int> minQuantity = const Value.absent(),
             Value<int?> maxQuantity = const Value.absent(),
+            Value<String?> displayUnit = const Value.absent(),
+            Value<double?> displayQuantityPerUnit = const Value.absent(),
+            Value<double?> lastReceivedQuantity = const Value.absent(),
+            Value<DateTime?> lastReceivedAt = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -6952,6 +7218,10 @@ class $$LocalStockTableTableManager extends RootTableManager<
             quantity: quantity,
             minQuantity: minQuantity,
             maxQuantity: maxQuantity,
+            displayUnit: displayUnit,
+            displayQuantityPerUnit: displayQuantityPerUnit,
+            lastReceivedQuantity: lastReceivedQuantity,
+            lastReceivedAt: lastReceivedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),

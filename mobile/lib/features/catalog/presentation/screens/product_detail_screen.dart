@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/utils/stock_quantity_display.dart';
 import '../widgets/add_edit_product_sheet.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
@@ -18,13 +21,26 @@ class ProductDetailScreen extends ConsumerStatefulWidget {
 class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Product? _product;
   List<ProductPricingTier> _pricingTiers = [];
+  LocalStockData? _stock;
+  StreamSubscription<LocalStockData?>? _stockSubscription;
   String _categoryName = '';
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _stockSubscription = getIt<AppDatabase>()
+        .watchStockForProduct(widget.productId)
+        .listen((stock) {
+      if (mounted) setState(() => _stock = stock);
+    });
     _loadProduct();
+  }
+
+  @override
+  void dispose() {
+    _stockSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadProduct() async {
@@ -33,16 +49,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       final product = await db.getProduct(widget.productId);
       if (product != null) {
         final categories = await db.getAllCategories();
-        final categoryMap = {
-          for (var c in categories) c.id: c.name
-        };
+        final categoryMap = {for (var c in categories) c.id: c.name};
         final tiers = await db.getPricingTiersForProduct(widget.productId);
         if (mounted) {
           setState(() {
             _product = product;
             _pricingTiers = tiers;
-            _categoryName =
-                categoryMap[product.categoryId] ?? 'Unknown';
+            _categoryName = categoryMap[product.categoryId] ?? 'Unknown';
             _isLoading = false;
           });
         }
@@ -69,7 +82,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       maxSize: 0.95,
       scrollable: true,
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: AddEditProductSheet(product: product),
       ),
     );
@@ -101,8 +115,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 ? const EmptyState(
                     icon: Icons.inventory_2_outlined,
                     title: 'Product not found',
-                    subtitle:
-                        'The product you are looking for does not exist.',
+                    subtitle: 'The product you are looking for does not exist.',
                   )
                 : _buildContent(context),
       ),
@@ -122,6 +135,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   Widget _buildContent(BuildContext context) {
     final product = _product!;
+    final stockPresentation = buildStockQuantityPresentation(
+      baseQuantity: _stock?.quantity ?? 0,
+      baseUnit: product.unit,
+      preferredUnit: _stock?.displayUnit,
+      unitsPerPreferredUnit: _stock?.displayQuantityPerUnit,
+      lastReceivedQuantity: _stock?.lastReceivedQuantity,
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -129,7 +149,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Column(
@@ -157,17 +178,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   border: Border(bottom: BorderSide(color: border)),
                 ),
                 child: Center(
-                  child: product.imageUrl != null &&
-                          product.imageUrl!.isNotEmpty
-                      ? Image.network(
-                          product.imageUrl!,
-                          fit: BoxFit.contain,
-                          width: double.infinity,
-                          height: 200,
-                          errorBuilder: (_, __, ___) =>
-                              _buildProductPlaceholder(tertiaryColor),
-                        )
-                      : _buildProductPlaceholder(tertiaryColor),
+                  child:
+                      product.imageUrl != null && product.imageUrl!.isNotEmpty
+                          ? Image.network(
+                              product.imageUrl!,
+                              fit: BoxFit.contain,
+                              width: double.infinity,
+                              height: 200,
+                              errorBuilder: (_, __, ___) =>
+                                  _buildProductPlaceholder(tertiaryColor),
+                            )
+                          : _buildProductPlaceholder(tertiaryColor),
                 ),
               ),
 
@@ -179,8 +200,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   children: [
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             product.name,
@@ -195,15 +215,12 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           Row(
                             children: [
                               Container(
-                                padding:
-                                    const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: DesignColors.accent
-                                      .withValues(alpha:0.12),
-                                  borderRadius:
-                                      BorderRadius.circular(6),
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
                                   _categoryName,
@@ -267,7 +284,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               Expanded(
                 child: MetricCard(
                   title: 'Current Stock',
-                  value: '0',
+                  value: stockPresentation.primary,
                   icon: Icons.inventory_2_rounded,
                   color: DesignColors.brand,
                 ),
@@ -308,7 +325,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 16),
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+          decoration:
+              BoxDecoration(color: surface, border: Border.all(color: border)),
           child: Text(
             product.description?.isNotEmpty == true
                 ? product.description!
@@ -333,7 +351,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 16),
           padding: const EdgeInsets.symmetric(vertical: 4),
-          decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+          decoration:
+              BoxDecoration(color: surface, border: Border.all(color: border)),
           child: Column(
             children: [
               _detailRow(Icons.qr_code_rounded, 'SKU', product.sku,
@@ -344,6 +363,28 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               _divider(border),
               _detailRow(Icons.straighten_rounded, 'Unit', product.unit,
                   secondaryColor, titleColor),
+              _divider(border),
+              _detailRow(
+                Icons.inventory_2_rounded,
+                'Current Stock',
+                stockPresentation.secondary == null
+                    ? stockPresentation.primary
+                    : '${stockPresentation.primary} (${stockPresentation.secondary})',
+                secondaryColor,
+                titleColor,
+              ),
+              if (stockPresentation.lastReceived != null) ...[
+                _divider(border),
+                _detailRow(
+                  Icons.move_to_inbox_rounded,
+                  'Last Received',
+                  stockPresentation.lastReceived!
+                      .replaceFirst('Last received: ', ''),
+                  secondaryColor,
+                  titleColor,
+                  valueColor: DesignColors.success,
+                ),
+              ],
               for (final tier in _pricingTiers) ...[
                 _divider(border),
                 _detailRow(
@@ -390,8 +431,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 product.isActive ? 'Active' : 'Inactive',
                 secondaryColor,
                 titleColor,
-                valueColor:
-                    product.isActive ? DesignColors.success : DesignColors.error,
+                valueColor: product.isActive
+                    ? DesignColors.success
+                    : DesignColors.error,
               ),
             ],
           ),
@@ -409,7 +451,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: DesignColors.brand.withValues(alpha:0.08),
+            color: DesignColors.brand.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Icon(

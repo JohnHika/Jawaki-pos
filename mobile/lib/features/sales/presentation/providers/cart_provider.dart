@@ -93,7 +93,7 @@ class CartMutationResult {
   });
 
   const CartMutationResult.success([String message = 'Updated cart'])
-    : this(success: true, message: message);
+      : this(success: true, message: message);
 }
 
 class CartState {
@@ -195,8 +195,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
 
 final parkedSalesProvider =
     StateNotifierProvider<ParkedSalesNotifier, List<ParkedSale>>((ref) {
-      return ParkedSalesNotifier();
-    });
+  return ParkedSalesNotifier();
+});
 
 // ════════ CART NOTIFIER ════════
 
@@ -294,7 +294,7 @@ class CartNotifier extends StateNotifier<CartState> {
       return CartMutationResult(
         success: false,
         message: stockCheck['message'] as String? ?? 'Insufficient stock',
-        currentStock: stockCheck['currentStock'] as int? ?? 0,
+        currentStock: (stockCheck['currentStock'] as num?)?.floor() ?? 0,
       );
     }
 
@@ -306,8 +306,7 @@ class CartNotifier extends StateNotifier<CartState> {
         unitPrice: unitPrice,
         notes: notes,
         saleUnit: saleUnit,
-        saleQuantity:
-            (existing.saleQuantity ?? existing.quantity.toDouble()) +
+        saleQuantity: (existing.saleQuantity ?? existing.quantity.toDouble()) +
             (saleQuantity ?? quantity.toDouble()),
         unitConversionFactor: unitConversionFactor,
       );
@@ -346,7 +345,7 @@ class CartNotifier extends StateNotifier<CartState> {
       return CartMutationResult(
         success: false,
         message: stockCheck['message'] as String? ?? 'Insufficient stock',
-        currentStock: stockCheck['currentStock'] as int? ?? 0,
+        currentStock: (stockCheck['currentStock'] as num?)?.floor() ?? 0,
       );
     }
 
@@ -382,9 +381,8 @@ class CartNotifier extends StateNotifier<CartState> {
   }
 
   void removeItem(String productId) {
-    final updatedItems = state.items
-        .where((i) => i.productId != productId)
-        .toList();
+    final updatedItems =
+        state.items.where((i) => i.productId != productId).toList();
     state = state.copyWith(items: updatedItems);
   }
 

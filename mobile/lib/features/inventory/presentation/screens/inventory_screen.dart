@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/utils/stock_quantity_display.dart';
 import '../widgets/product_picker_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -32,21 +35,32 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   final TextEditingController _transferQtyController = TextEditingController(
     text: '1',
   );
+  StreamSubscription<List<LocalStockData>>? _stockSubscription;
+  Timer? _stockRefreshDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _stockSubscription = getIt<AppDatabase>().watchAllStock().listen((_) {
+      _stockRefreshDebounce?.cancel();
+      _stockRefreshDebounce = Timer(const Duration(milliseconds: 100), () {
+        if (mounted) _loadData(showLoading: false);
+      });
+    });
   }
 
   @override
   void dispose() {
+    _stockSubscription?.cancel();
+    _stockRefreshDebounce?.cancel();
     _transferQtyController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool showLoading = true}) async {
+    if (!mounted) return;
+    if (showLoading) setState(() => _isLoading = true);
     try {
       final db = getIt<AppDatabase>();
       final results = await Future.wait([
@@ -63,9 +77,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         0,
         (sum, item) =>
             sum +
-            ((item['price'] as double?) ?? 0) * ((item['stock'] as int?) ?? 0),
+            ((item['price'] as num?)?.toDouble() ?? 0) *
+                ((item['stock'] as num?)?.toDouble() ?? 0),
       );
 
+      if (!mounted) return;
       setState(() {
         _totalItems = totalItems;
         _lowStockCount = lowStockList.length;
@@ -92,14 +108,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return formatMoney(amount, decimals: amount % 1 != 0);
   }
 
-  Color _stockColor(int stock, int minStock) {
+  Color _stockColor(num stock, int minStock) {
     if (stock == 0) return DesignColors.error;
     if (stock <= minStock && minStock > 0) return DesignColors.warning;
     if (stock < 5) return DesignColors.warning;
     return DesignColors.success;
   }
 
-  IconData _stockIcon(int stock, int minStock) {
+  IconData _stockIcon(num stock, int minStock) {
     if (stock == 0) return Icons.cancel_rounded;
     if (stock <= minStock && minStock > 0) return Icons.warning_amber_rounded;
     if (stock < 5) return Icons.warning_amber_rounded;
@@ -115,21 +131,39 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   /// plain base-unit message when the product has no bulk pricing tier.
   String? _packagingSummary(
     Map<String, dynamic> item,
-    int quantity,
+    num quantity,
     int minStock,
   ) {
     final unit = item['unit'] as String? ?? 'piece';
+    final rememberedUnit = item['displayUnit'] as String?;
+    final rememberedFactor =
+        (item['displayQuantityPerUnit'] as num?)?.toDouble();
+    if (rememberedUnit != null &&
+        rememberedFactor != null &&
+        rememberedFactor > 0) {
+      final presentation = buildStockQuantityPresentation(
+        baseQuantity: quantity,
+        baseUnit: unit,
+        preferredUnit: rememberedUnit,
+        unitsPerPreferredUnit: rememberedFactor,
+      );
+      final reorderQuantity = _formatUnitQty(minStock / rememberedFactor);
+      return '${presentation.primary}'
+          '${presentation.secondary == null ? '' : ' (${presentation.secondary})'}'
+          ' — reorder below $reorderQuantity $rememberedUnit';
+    }
+
     final rawTiers = item['pricingTiers'];
-    final firstTier = rawTiers is List && rawTiers.isNotEmpty
-        ? rawTiers.first as Map
-        : null;
+    final firstTier =
+        rawTiers is List && rawTiers.isNotEmpty ? rawTiers.first as Map : null;
     final tierUnit = firstTier?['unit'] as String?;
     final tierQty = (firstTier?['quantityPerUnit'] as num?)?.toDouble();
 
     if (tierUnit != null && tierQty != null && tierQty > 0) {
       final packagingQty = quantity / tierQty;
       final reorderPackagingQty = minStock / tierQty;
-      return '$quantity $unit (${_formatUnitQty(packagingQty)} $tierUnit)'
+      return '${_formatUnitQty(quantity.toDouble())} $unit '
+          '(${_formatUnitQty(packagingQty)} $tierUnit)'
           ' — reorder below ${_formatUnitQty(reorderPackagingQty)} $tierUnit';
     }
 
@@ -156,7 +190,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -218,9 +253,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     Expanded(
                       child: MetricCard(
                         title: 'Total Value',
-                        value: _isLoading
-                            ? '...'
-                            : _formatCurrency(_totalValue),
+                        value:
+                            _isLoading ? '...' : _formatCurrency(_totalValue),
                         icon: Icons.account_balance_wallet_rounded,
                         color: DesignColors.info,
                       ),
@@ -279,9 +313,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Future<void> _startReceiveStock(BuildContext context) async {
     final selected = await showProductPicker(context);
     if (selected == null || !context.mounted) return;
-    context.push(
+    final updated = await context.push<bool>(
       '/inventory/batch-receive?productId=${Uri.encodeComponent(selected['id'] as String)}&productName=${Uri.encodeComponent(selected['name'] as String)}',
     );
+    if (updated == true && mounted) await _loadData(showLoading: false);
   }
 
   Widget _buildStockTab(
@@ -316,7 +351,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               decoration: InputDecoration(
                 hintText: 'Search products, SKU, category...',
                 hintStyle: TextStyle(color: tertiaryColor, fontSize: 14),
-                prefixIcon: Icon(Icons.search_rounded, color: tertiaryColor, size: 20),
+                prefixIcon:
+                    Icon(Icons.search_rounded, color: tertiaryColor, size: 20),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -372,25 +408,34 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final name = item['name'] as String? ?? 'Unknown';
     final sku = item['sku'] as String? ?? '';
     final price = (item['price'] as double?) ?? 0.0;
-    final stock = (item['stock'] as int?) ?? 0;
+    final stock = (item['stock'] as num?)?.toDouble() ?? 0;
     final minStock = (item['minStock'] as int?) ?? 0;
     final category = item['categoryName'] as String? ?? 'Uncategorised';
     final productId = item['id'] as String? ?? '';
     final stockColor = _stockColor(stock, minStock);
     final stockIcon = _stockIcon(stock, minStock);
+    final stockPresentation = buildStockQuantityPresentation(
+      baseQuantity: stock,
+      baseUnit: item['unit'] as String? ?? 'piece',
+      preferredUnit: item['displayUnit'] as String?,
+      unitsPerPreferredUnit: item['displayQuantityPerUnit'] as num?,
+      lastReceivedQuantity: item['lastReceivedQuantity'] as num?,
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+        decoration:
+            BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -442,9 +487,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                           ),
                           if (sku.isNotEmpty) ...[
-                            Text(' · ', style: TextStyle(color: tertiaryColor, fontSize: 11)),
+                            Text(' · ',
+                                style: TextStyle(
+                                    color: tertiaryColor, fontSize: 11)),
                           ],
-                          Text(category, style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                          Text(category,
+                              style: TextStyle(
+                                  fontSize: 11, color: tertiaryColor)),
                         ],
                       ),
                     ],
@@ -466,37 +515,60 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             Row(
               children: [
                 // Stock count badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: stockColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: stockColor.withValues(alpha: 0.25),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(stockIcon, color: stockColor, size: 14),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$stock units',
-                        style: TextStyle(
-                          color: stockColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    decoration: BoxDecoration(
+                      color: stockColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: stockColor.withValues(alpha: 0.25),
                       ),
-                    ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(stockIcon, color: stockColor, size: 14),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                stockPresentation.primary,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: stockColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (stockPresentation.secondary != null)
+                                Text(
+                                  stockPresentation.secondary!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: stockColor.withValues(alpha: 0.8),
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 if (minStock > 0) ...[
                   const SizedBox(width: 8),
-                  Text('Min: $minStock', style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                  Text('Min: $minStock',
+                      style: TextStyle(fontSize: 11, color: tertiaryColor)),
                 ],
                 const Spacer(),
                 // Receive button
@@ -506,9 +578,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     child: GradientButton(
                       label: 'Receive',
                       icon: Icons.add_box_outlined,
-                      onPressed: () => context.push(
-                        '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(name)}',
-                      ),
+                      onPressed: () async {
+                        final updated = await context.push<bool>(
+                          '/inventory/batch-receive?productId=${Uri.encodeComponent(productId)}&productName=${Uri.encodeComponent(name)}',
+                        );
+                        if (updated == true && mounted) {
+                          await _loadData(showLoading: false);
+                        }
+                      },
                       height: 34,
                       expanded: false,
                       borderRadius: 8,
@@ -516,6 +593,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ),
               ],
             ),
+            if (stockPresentation.lastReceived != null) ...[
+              const SizedBox(height: 7),
+              Text(
+                stockPresentation.lastReceived!,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: tertiaryColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -530,15 +618,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     // Severity is relative to each product's own reorder point (minStock),
     // not a hardcoded quantity cutoff — matches backend's shortfall logic.
     final critical = _lowStockItems
-        .where((i) => ((i['quantity'] as int?) ?? 0) == 0)
+        .where((i) => ((i['quantity'] as num?)?.toDouble() ?? 0) == 0)
         .toList();
     final warning = _lowStockItems.where((i) {
-      final qty = (i['quantity'] as int?) ?? 0;
+      final qty = (i['quantity'] as num?)?.toDouble() ?? 0;
       final minStock = (i['minStock'] as int?) ?? 0;
       return qty > 0 && minStock > 0 && qty <= minStock * 0.5;
     }).toList();
     final low = _lowStockItems.where((i) {
-      final qty = (i['quantity'] as int?) ?? 0;
+      final qty = (i['quantity'] as num?)?.toDouble() ?? 0;
       final minStock = (i['minStock'] as int?) ?? 0;
       final isWarning = minStock > 0 && qty <= minStock * 0.5;
       return qty > 0 && !isWarning;
@@ -563,18 +651,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         if (_lowStockItems.isEmpty)
           Builder(builder: (context) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
-            final titleColor =
-                isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+            final titleColor = isDark
+                ? DesignColors.darkTextPrimary
+                : DesignColors.textPrimary;
             final secondaryColor = isDark
                 ? DesignColors.darkTextSecondary
                 : DesignColors.textSecondary;
             final border =
                 isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-            final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+            final surface =
+                isDark ? DesignColors.darkSurfaceElevated : Colors.white;
             return Container(
               padding: const EdgeInsets.all(24),
-              decoration:
-                  BoxDecoration(color: surface, border: Border.all(color: border)),
+              decoration: BoxDecoration(
+                  color: surface, border: Border.all(color: border)),
               child: Column(
                 children: [
                   Container(
@@ -602,7 +692,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   Text(
                     'No items are currently low in stock. Everything looks good!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
+                    style: TextStyle(
+                        fontSize: 14, color: secondaryColor, height: 1.4),
                   ),
                 ],
               ),
@@ -698,7 +789,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   ) {
     final name = item['name'] as String? ?? 'Unknown';
     final sku = item['sku'] as String? ?? '';
-    final quantity = (item['quantity'] as int?) ?? 0;
+    final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
     final minStock = (item['minStock'] as int?) ?? 0;
     final category = item['categoryName'] as String? ?? 'Uncategorised';
     final productId = item['id'] as String? ?? '';
@@ -756,11 +847,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(sku, style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                      Text(sku,
+                          style: TextStyle(fontSize: 11, color: tertiaryColor)),
                       if (sku.isNotEmpty) ...[
-                        Text(' · ', style: TextStyle(color: tertiaryColor, fontSize: 11)),
+                        Text(' · ',
+                            style:
+                                TextStyle(color: tertiaryColor, fontSize: 11)),
                       ],
-                      Text(category, style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                      Text(category,
+                          style: TextStyle(fontSize: 11, color: tertiaryColor)),
                     ],
                   ),
                   if (packagingSummary != null) ...[
@@ -823,13 +918,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return FutureBuilder<List<dynamic>>(
       future: getIt<ApiClient>().getBranches(),
       builder: (context, snapshot) {
-        final branches = (snapshot.data ?? const [])
-            .cast<Map<String, dynamic>>();
-        final destinationBranches = branches
-            .where((b) => b['id'] != fromBranchId)
-            .toList();
+        final branches =
+            (snapshot.data ?? const []).cast<Map<String, dynamic>>();
+        final destinationBranches =
+            branches.where((b) => b['id'] != fromBranchId).toList();
         final products = _inventoryItems
-            .where((item) => (item['stock'] as int? ?? 0) > 0)
+            .where((item) => ((item['stock'] as num?)?.toDouble() ?? 0) > 0)
             .toList();
 
         return ListView(
@@ -846,89 +940,91 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               final secondaryColor = isDark
                   ? DesignColors.darkTextSecondary
                   : DesignColors.textSecondary;
-              final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+              final surface =
+                  isDark ? DesignColors.darkSurfaceElevated : Colors.white;
               return Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: surface,
-                border: Border.all(color: DesignColors.info.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: _transferProductId,
-                    isExpanded: true,
-                    decoration: _transferInputDecoration(
-                      context,
-                      label: 'Product',
-                      icon: Icons.inventory_2_rounded,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: surface,
+                  border: Border.all(
+                      color: DesignColors.info.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: _transferProductId,
+                      isExpanded: true,
+                      decoration: _transferInputDecoration(
+                        context,
+                        label: 'Product',
+                        icon: Icons.inventory_2_rounded,
+                      ),
+                      items: products.map((item) {
+                        final id = item['id'] as String;
+                        final name = item['name'] as String? ?? 'Product';
+                        final stock = (item['stock'] as num?)?.toDouble() ?? 0;
+                        return DropdownMenuItem(
+                          value: id,
+                          child: Text(
+                            '$name  (${_formatUnitQty(stock)} available)',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) =>
+                          setState(() => _transferProductId = value),
                     ),
-                    items: products.map((item) {
-                      final id = item['id'] as String;
-                      final name = item['name'] as String? ?? 'Product';
-                      final stock = item['stock'] as int? ?? 0;
-                      return DropdownMenuItem(
-                        value: id,
-                        child: Text(
-                          '$name  ($stock available)',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) =>
-                        setState(() => _transferProductId = value),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _transferToBranchId,
-                    isExpanded: true,
-                    decoration: _transferInputDecoration(
-                      context,
-                      label: 'Destination branch',
-                      icon: Icons.store_mall_directory_rounded,
-                    ),
-                    items: destinationBranches.map((branch) {
-                      return DropdownMenuItem(
-                        value: branch['id'] as String,
-                        child: Text(
-                          branch['name'] as String? ?? 'Branch',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) =>
-                        setState(() => _transferToBranchId = value),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _transferQtyController,
-                    keyboardType: TextInputType.number,
-                    decoration: _transferInputDecoration(
-                      context,
-                      label: 'Quantity',
-                      icon: Icons.numbers_rounded,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  GradientButton(
-                    label: 'Transfer Stock',
-                    icon: Icons.swap_horiz_rounded,
-                    height: 50,
-                    borderRadius: 14,
-                    onPressed: destinationBranches.isEmpty || products.isEmpty
-                        ? null
-                        : () => _submitStockTransfer(fromBranchId),
-                  ),
-                  if (destinationBranches.isEmpty) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      'Add another branch in Settings before making a transfer.',
-                      style: TextStyle(color: secondaryColor, fontSize: 13),
+                    DropdownButtonFormField<String>(
+                      initialValue: _transferToBranchId,
+                      isExpanded: true,
+                      decoration: _transferInputDecoration(
+                        context,
+                        label: 'Destination branch',
+                        icon: Icons.store_mall_directory_rounded,
+                      ),
+                      items: destinationBranches.map((branch) {
+                        return DropdownMenuItem(
+                          value: branch['id'] as String,
+                          child: Text(
+                            branch['name'] as String? ?? 'Branch',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) =>
+                          setState(() => _transferToBranchId = value),
                     ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _transferQtyController,
+                      keyboardType: TextInputType.number,
+                      decoration: _transferInputDecoration(
+                        context,
+                        label: 'Quantity',
+                        icon: Icons.numbers_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GradientButton(
+                      label: 'Transfer Stock',
+                      icon: Icons.swap_horiz_rounded,
+                      height: 50,
+                      borderRadius: 14,
+                      onPressed: destinationBranches.isEmpty || products.isEmpty
+                          ? null
+                          : () => _submitStockTransfer(fromBranchId),
+                    ),
+                    if (destinationBranches.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Add another branch in Settings before making a transfer.',
+                        style: TextStyle(color: secondaryColor, fontSize: 13),
+                      ),
+                    ],
                   ],
-                ],
-              ),
+                ),
               );
             }),
           ],
@@ -1012,44 +1108,46 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Widget _buildLoadingList() {
     return Builder(builder: (context) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
-      final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+      final border =
+          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
       final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
       return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      children: List.generate(5, (index) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
-            child: Row(
-              children: [
-                const ShimmerWidget(width: 42, height: 42, borderRadius: 12),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const ShimmerWidget(
-                        width: 160,
-                        height: 14,
-                        borderRadius: 4,
-                      ),
-                      const SizedBox(height: 6),
-                      const ShimmerWidget(
-                        width: 100,
-                        height: 10,
-                        borderRadius: 4,
-                      ),
-                    ],
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        children: List.generate(5, (index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                  color: surface, border: Border.all(color: border)),
+              child: Row(
+                children: [
+                  const ShimmerWidget(width: 42, height: 42, borderRadius: 12),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const ShimmerWidget(
+                          width: 160,
+                          height: 14,
+                          borderRadius: 4,
+                        ),
+                        const SizedBox(height: 6),
+                        const ShimmerWidget(
+                          width: 100,
+                          height: 10,
+                          borderRadius: 4,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const ShimmerWidget(width: 60, height: 14, borderRadius: 4),
-              ],
+                  const ShimmerWidget(width: 60, height: 14, borderRadius: 4),
+                ],
+              ),
             ),
-          ),
-        );
-      }),
+          );
+        }),
       );
     });
   }

@@ -23,6 +23,7 @@ import {
   ExpiryDashboardResponseDto,
 } from './dto/inventory.dto';
 import { StockMovementType } from '@prisma/client';
+import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
 export class InventoryService {
@@ -167,36 +168,26 @@ export class InventoryService {
     return this.prisma.$transaction(async (tx) => {
       const movements: any[] = [];
 
-      for (const item of dto.items) {
-        const stock = await tx.stock.findUnique({
-          where: {
-            branchId_productId: {
-              branchId: dto.branchId,
-              productId: item.productId,
-            },
-          },
-        });
+      for (const item of [...dto.items].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const stock = await lockStockForUpdate(
+          tx,
+          dto.branchId,
+          item.productId,
+          true,
+        );
+        if (!stock) {
+          throw new ConflictException('Could not lock stock for adjustment');
+        }
 
-        const previousQty = stock ? Number(stock.quantity) : 0;
+        const previousQty = Number(stock.quantity);
         const newQty = item.quantity;
         const quantityChange = newQty - previousQty;
 
-        // Update or create stock
-        await tx.stock.upsert({
-          where: {
-            branchId_productId: {
-              branchId: dto.branchId,
-              productId: item.productId,
-            },
-          },
-          create: {
-            branchId: dto.branchId,
-            productId: item.productId,
-            quantity: newQty,
-          },
-          update: {
-            quantity: newQty,
-          },
+        await tx.stock.update({
+          where: { id: stock.id },
+          data: { quantity: newQty },
         });
 
         // Record movement
@@ -364,16 +355,26 @@ export class InventoryService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM stock_transfers WHERE id = ${transferId} FOR UPDATE
+      `;
+      const lockedTransfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+        include: { items: true },
+      });
+      if (!lockedTransfer || lockedTransfer.status !== 'pending') {
+        throw new BadRequestException('Transfer is not in pending status');
+      }
+
       // Deduct stock from source branch
-      for (const item of transfer.items) {
-        const stock = await tx.stock.findUnique({
-          where: {
-            branchId_productId: {
-              branchId: transfer.fromBranchId,
-              productId: item.productId,
-            },
-          },
-        });
+      for (const item of [...lockedTransfer.items].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const stock = await lockStockForUpdate(
+          tx,
+          lockedTransfer.fromBranchId,
+          item.productId,
+        );
 
         if (!stock || Number(stock.quantity) < Number(item.requestedQty)) {
           throw new BadRequestException('Insufficient stock');
@@ -389,7 +390,7 @@ export class InventoryService {
 
         await tx.stockMovement.create({
           data: {
-            branchId: transfer.fromBranchId,
+            branchId: lockedTransfer.fromBranchId,
             productId: item.productId,
             type: StockMovementType.TRANSFER_OUT,
             quantity: -Number(item.requestedQty),
@@ -434,43 +435,46 @@ export class InventoryService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      for (const receivedItem of dto.receivedItems) {
-        const item = transfer.items.find((i) => i.productId === receivedItem.productId);
+      await tx.$queryRaw`
+        SELECT id FROM stock_transfers WHERE id = ${transferId} FOR UPDATE
+      `;
+      const lockedTransfer = await tx.stockTransfer.findUnique({
+        where: { id: transferId },
+        include: { items: true },
+      });
+      if (!lockedTransfer || lockedTransfer.status !== 'in_transit') {
+        throw new BadRequestException('Transfer is not in transit');
+      }
+
+      for (const receivedItem of [...dto.receivedItems].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const item = lockedTransfer.items.find(
+          (candidate) => candidate.productId === receivedItem.productId,
+        );
         if (!item) continue;
 
-        // Add stock to destination branch
-        const stock = await tx.stock.findUnique({
-          where: {
-            branchId_productId: {
-              branchId: transfer.toBranchId,
-              productId: receivedItem.productId,
-            },
-          },
-        });
+        const stock = await lockStockForUpdate(
+          tx,
+          lockedTransfer.toBranchId,
+          receivedItem.productId,
+          true,
+        );
+        if (!stock) {
+          throw new ConflictException('Could not lock destination stock');
+        }
 
-        const previousQty = stock ? Number(stock.quantity) : 0;
+        const previousQty = Number(stock.quantity);
         const newQty = previousQty + receivedItem.quantity;
 
-        await tx.stock.upsert({
-          where: {
-            branchId_productId: {
-              branchId: transfer.toBranchId,
-              productId: receivedItem.productId,
-            },
-          },
-          create: {
-            branchId: transfer.toBranchId,
-            productId: receivedItem.productId,
-            quantity: receivedItem.quantity,
-          },
-          update: {
-            quantity: { increment: receivedItem.quantity },
-          },
+        await tx.stock.update({
+          where: { id: stock.id },
+          data: { quantity: newQty },
         });
 
         await tx.stockMovement.create({
           data: {
-            branchId: transfer.toBranchId,
+            branchId: lockedTransfer.toBranchId,
             productId: receivedItem.productId,
             type: StockMovementType.TRANSFER_IN,
             quantity: receivedItem.quantity,
@@ -495,7 +499,9 @@ export class InventoryService {
         data: {
           status: 'completed',
           approvedById: userId,
-          notes: dto.notes ? `${transfer.notes || ''}\nReceived: ${dto.notes}` : transfer.notes,
+          notes: dto.notes
+            ? `${lockedTransfer.notes || ''}\nReceived: ${dto.notes}`
+            : lockedTransfer.notes,
         },
       });
     }).then(async (result) => {
@@ -732,27 +738,26 @@ export class InventoryService {
     return this.prisma.$transaction(async (tx) => {
       const results: any[] = [];
 
-      for (const adjustment of adjustments) {
-        // Upsert the stock record (increment quantity)
-        const stock = await tx.stock.upsert({
-          where: {
-            branchId_productId: {
-              branchId,
-              productId: adjustment.productId,
-            },
-          },
-          create: {
-            branchId,
-            productId: adjustment.productId,
-            quantity: adjustment.quantity,
-          },
-          update: {
-            quantity: { increment: adjustment.quantity },
-          },
+      for (const adjustment of [...adjustments].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const stock = await lockStockForUpdate(
+          tx,
+          branchId,
+          adjustment.productId,
+          true,
+        );
+        if (!stock) {
+          throw new ConflictException('Could not lock stock for adjustment');
+        }
+        const previousQty = Number(stock.quantity);
+        const newQty = previousQty + adjustment.quantity;
+        const updatedStock = await tx.stock.update({
+          where: { id: stock.id },
+          data: { quantity: newQty },
         });
 
         // Create a stockMovement record with type ADJUSTMENT
-        const previousQty = Number(stock.quantity) - adjustment.quantity;
         const movement = await tx.stockMovement.create({
           data: {
             branchId,
@@ -760,13 +765,13 @@ export class InventoryService {
             type: StockMovementType.ADJUSTMENT,
             quantity: adjustment.quantity,
             previousQty,
-            newQty: Number(stock.quantity),
+            newQty,
             notes: adjustment.notes,
             createdById: userId,
           },
         });
 
-        results.push({ stock, movement });
+        results.push({ stock: updatedStock, movement });
       }
 
       return results;
@@ -828,28 +833,33 @@ export class InventoryService {
     if (!product) throw new NotFoundException('Product not found');
 
     return this.prisma.$transaction(async (tx) => {
-      // Get or create stock record
-      let stock = await tx.stock.findUnique({
-        where: {
-          branchId_productId: {
-            branchId: dto.branchId,
-            productId: dto.productId,
-          },
-        },
-      });
-
-      if (!stock) {
-        stock = await tx.stock.create({
-          data: {
-            branchId: dto.branchId,
-            productId: dto.productId,
-            quantity: 0,
-          },
-        });
+      const lockedStock = await lockStockForUpdate(
+        tx,
+        dto.branchId,
+        dto.productId,
+        true,
+      );
+      if (!lockedStock) {
+        throw new ConflictException('Could not lock stock for receiving');
       }
+      const stock = lockedStock;
 
       const createdBatches = [];
+      const receivedUnits: Array<{
+        quantity: number;
+        unit: string;
+        unitsPerQuantity: number;
+        baseQuantity: number;
+      }> = [];
+      const batchReceipts: Array<{
+        batchId: string;
+        batchNumber: string;
+        baseQuantity: number;
+        expiryDate: Date | null;
+        notes: string;
+      }> = [];
       let totalReceived = 0;
+      let runningQuantity = Number(lockedStock.quantity);
 
       // Auto-generate batch numbers when not supplied: <SKU>-<YYMMDD>-<seq>
       const skuPrefix = this.getBatchSkuPrefix(product.sku);
@@ -904,6 +914,12 @@ export class InventoryService {
           // Manual conversion factor provided
           baseQuantity = batch.quantity * batch.unitsPerQuantity;
           conversionNote = `Received ${batch.quantity} ${batch.unit || 'units'} = ${baseQuantity} ${product.unit}`;
+        }
+
+        // Record the entered unit even when it is already the base unit.
+        // Other devices rebuild the preferred stock display from this note.
+        if (!conversionNote) {
+          conversionNote = `Received ${batch.quantity} ${batch.unit || product.unit} = ${baseQuantity} ${product.unit}`;
         }
 
         const expiryDate = batch.expiryDate ? new Date(batch.expiryDate) : null;
@@ -1003,28 +1019,80 @@ export class InventoryService {
 
         createdBatches.push(createdBatch);
         totalReceived += baseQuantity;
+        receivedUnits.push({
+          quantity: batch.quantity,
+          unit: batch.unit || product.unit,
+          unitsPerQuantity: baseQuantity / batch.quantity,
+          baseQuantity,
+        });
 
-        // Record stock movement for each batch
+        batchReceipts.push({
+          batchId: createdBatch.id,
+          batchNumber: createdBatch.batchNumber,
+          baseQuantity,
+          expiryDate,
+          notes: finalNotes,
+        });
+      }
+
+      const lastReceivedUnit = receivedUnits[receivedUnits.length - 1];
+      const samePackaging = receivedUnits.every(
+        (entry) =>
+          entry.unit === lastReceivedUnit.unit &&
+          entry.unitsPerQuantity === lastReceivedUnit.unitsPerQuantity,
+      );
+      const receiptMetadata = {
+        quantity: samePackaging
+          ? receivedUnits.reduce((sum, entry) => sum + entry.quantity, 0)
+          : lastReceivedUnit.quantity,
+        unit: lastReceivedUnit.unit,
+        unitsPerQuantity: lastReceivedUnit.unitsPerQuantity,
+        baseQuantity: samePackaging
+          ? receivedUnits.reduce((sum, entry) => sum + entry.baseQuantity, 0)
+          : lastReceivedUnit.baseQuantity,
+      };
+      const receiptMarker =
+        `[Receipt metadata: quantity=${receiptMetadata.quantity}; ` +
+        `unit=${encodeURIComponent(receiptMetadata.unit)}; ` +
+        `unitsPerQuantity=${receiptMetadata.unitsPerQuantity}]`;
+
+      const latestMovement = await tx.stockMovement.findFirst({
+        where: { branchId: dto.branchId, productId: dto.productId },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      let nextMovementTimestamp = Math.max(
+        Date.now(),
+        (latestMovement?.createdAt.getTime() ?? 0) + 1,
+      );
+
+      // Every movement in this receive carries the same aggregate marker.
+      // A remote phone therefore reconstructs the same display metadata no
+      // matter which tied movement is applied last.
+      for (const receipt of batchReceipts) {
+        const previousQuantity = runningQuantity;
+        runningQuantity += receipt.baseQuantity;
         await tx.stockMovement.create({
           data: {
             branchId: dto.branchId,
             productId: dto.productId,
-            batchId: createdBatch.id,
+            batchId: receipt.batchId,
             type: StockMovementType.BATCH_RECEIVE,
-            quantity: baseQuantity,
-            previousQty: Number(stock.quantity),
-            newQty: Number(stock.quantity) + baseQuantity,
-            batchNumber: createdBatch.batchNumber,
-            expiryDate,
+            quantity: receipt.baseQuantity,
+            previousQty: previousQuantity,
+            newQty: runningQuantity,
+            batchNumber: receipt.batchNumber,
+            expiryDate: receipt.expiryDate,
             reference: dto.reference,
-            notes: finalNotes,
+            notes: `${receiptMarker} ${receipt.notes}`,
             createdById: userId,
+            createdAt: new Date(nextMovementTimestamp++),
           },
         });
       }
 
       // Update total stock quantity
-      await tx.stock.update({
+      const updatedStock = await tx.stock.update({
         where: { id: stock.id },
         data: {
           quantity: { increment: totalReceived },
@@ -1036,6 +1104,9 @@ export class InventoryService {
         stockId: stock.id,
         batchesReceived: createdBatches.length,
         totalQuantity: totalReceived,
+        currentQuantity: Number(updatedStock.quantity),
+        receiptMetadata,
+        receivedUnits,
         batches: createdBatches,
       };
     }).then(async (result) => {
@@ -1250,17 +1321,37 @@ export class InventoryService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const previousQty = Number(batch.quantity);
+      const lockedStock = await lockStockForUpdate(
+        tx,
+        batch.stock.branchId,
+        batch.stock.productId,
+      );
+      if (!lockedStock) {
+        throw new ConflictException('Could not lock stock for batch update');
+      }
+      const [lockedBatch] = await tx.$queryRaw<Array<{ quantity: unknown }>>`
+        SELECT quantity
+        FROM stock_batches
+        WHERE id = ${batchId}
+        FOR UPDATE
+      `;
+      if (!lockedBatch) {
+        throw new ConflictException('Could not lock batch for update');
+      }
+
+      const previousBatchQty = Number(lockedBatch.quantity);
       const updateData: any = {};
 
       if (dto.quantity !== undefined) {
         updateData.quantity = dto.quantity;
-        const qtyChange = dto.quantity - previousQty;
+        const qtyChange = dto.quantity - previousBatchQty;
+        const previousQty = Number(lockedStock.quantity);
+        const newQty = previousQty + qtyChange;
 
         // Update total stock
         await tx.stock.update({
-          where: { id: batch.stockId },
-          data: { quantity: { increment: qtyChange } },
+          where: { id: lockedStock.id },
+          data: { quantity: newQty },
         });
 
         // Record movement
@@ -1272,7 +1363,7 @@ export class InventoryService {
             type: StockMovementType.ADJUSTMENT,
             quantity: qtyChange,
             previousQty,
-            newQty: dto.quantity,
+            newQty,
             batchNumber: batch.batchNumber,
             expiryDate: batch.expiryDate,
             notes: dto.notes || 'Batch quantity adjustment',

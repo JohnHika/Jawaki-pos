@@ -35,7 +35,7 @@ final _catalogSyncProvider =
 // e.g. right after receiving stock — instead of staying stuck at whatever
 // value was cached the first time this provider resolved, which pull-to-
 // refresh alone never invalidated.
-final _productStockProvider = StreamProvider.family<int?, String>(
+final _productStockProvider = StreamProvider.family<double?, String>(
   (ref, productId) {
     return getIt<AppDatabase>()
         .watchStockForProduct(productId)
@@ -557,6 +557,9 @@ class _ProductListTile extends ConsumerWidget {
     final stockAsync = ref.watch(_productStockProvider(product.id));
     final stock = stockAsync.valueOrNull;
     final hasStock = stock != null && stock > 0;
+    final stockLabel = stock == null || stock % 1 == 0
+        ? stock?.toStringAsFixed(0) ?? ''
+        : stock.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '');
     final stockColor = hasStock ? DesignColors.success : DesignColors.error;
 
     return Padding(
@@ -619,7 +622,7 @@ class _ProductListTile extends ConsumerWidget {
                       stockAsync.when(
                         data: (qty) => Text(
                           hasStock
-                              ? '$stock ${product.unit} in stock'
+                              ? '$stockLabel ${product.unit} in stock'
                               : 'Out of stock',
                           style: TextStyle(
                             fontSize: 11,

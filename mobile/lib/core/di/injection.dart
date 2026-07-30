@@ -118,7 +118,10 @@ Future<void> configureDependencies() async {
       connectivity: getIt<ConnectivityService>(),
       storage: getIt<StorageService>(),
     );
-    getIt.registerSingleton<SyncService>(syncService);
+    getIt.registerSingleton<SyncService>(
+      syncService,
+      dispose: (service) => service.dispose(),
+    );
     debugPrint('[DI] SyncService registered');
 
     // ============================================

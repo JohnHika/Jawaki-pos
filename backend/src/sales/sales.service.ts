@@ -15,6 +15,7 @@ import {
   SalesQueryDto,
 } from './dto/sales.dto';
 import { SaleStatus, PaymentMethod, PaymentStatus, StockMovementType } from '@prisma/client';
+import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
 export class SalesService {
@@ -74,77 +75,6 @@ export class SalesService {
       const product = products.find((p) => p.id === item.productId);
       if (!product) continue;
 
-      // Check stock if tracking inventory
-      if (product.trackInventory) {
-        const currentStock = product.stock[0]?.quantity || 0;
-        if (Number(currentStock) < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient stock for ${product.name}. Available: ${currentStock}`,
-          );
-        }
-
-        // Get batch allocations using FEFO logic
-        const stockWithBatches = await this.prisma.stock.findUnique({
-          where: {
-            branchId_productId: {
-              branchId: dto.branchId,
-              productId: product.id,
-            },
-          },
-          include: {
-            batches: {
-              where: {
-                isBlocked: false,
-              },
-              orderBy: { expiryDate: 'asc' }, // FEFO: First expiry first
-            },
-          },
-        });
-
-        if (stockWithBatches && stockWithBatches.batches.length > 0) {
-          // Check for expired batches
-          const now = new Date();
-          const hasExpiredBatches = stockWithBatches.batches.some(
-            (b) => b.expiryDate && b.expiryDate < now && Number(b.quantity) > 0,
-          );
-
-          if (hasExpiredBatches) {
-            throw new BadRequestException(
-              `Cannot sell ${product.name}: Product has expired batches. Please check inventory.`,
-            );
-          }
-
-          // Allocate batches using FEFO
-          const allocations = [];
-          let remainingQty = item.quantity;
-
-          for (const batch of stockWithBatches.batches) {
-            if (remainingQty <= 0) break;
-
-            const availableQty = Number(batch.quantity) - Number(batch.reservedQty);
-            if (availableQty <= 0) continue;
-
-            const allocateQty = Math.min(availableQty, remainingQty);
-            allocations.push({
-              batchId: batch.id,
-              batchNumber: batch.batchNumber,
-              quantity: allocateQty,
-              expiryDate: batch.expiryDate,
-            });
-
-            remainingQty -= allocateQty;
-          }
-
-          if (remainingQty > 0) {
-            throw new BadRequestException(
-              `Insufficient non-expired stock for ${product.name}. Requested: ${item.quantity}, Available: ${item.quantity - remainingQty}`,
-            );
-          }
-
-          batchAllocations.set(product.id, allocations);
-        }
-      }
-
       // Determine price
       let unitPrice = item.unitPrice;
       if (unitPrice === undefined) {
@@ -177,17 +107,6 @@ export class SalesService {
         quantityPerUnit: item.quantityPerUnit ?? null,
       });
 
-      if (product.trackInventory) {
-        const currentStock = Number(product.stock[0]?.quantity || 0);
-        stockUpdates.push({
-          branchId: dto.branchId,
-          productId: product.id,
-          type: StockMovementType.SALE,
-          quantity: -item.quantity,
-          previousQty: currentStock,
-          newQty: currentStock - item.quantity,
-        });
-      }
     }
 
     const discountAmount = dto.discountAmount || 0;
@@ -233,6 +152,93 @@ export class SalesService {
 
     // Create sale with transaction
     const sale = await this.prisma.$transaction(async (tx) => {
+      // Stock validation and movement arithmetic must happen after the same
+      // row locks used by receiving. Pre-transaction reads can become stale
+      // while waiting behind another sale or receipt and can drive stock
+      // negative or record incorrect previous/new balances.
+      for (const item of [...dto.items].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const product = products.find((candidate) => candidate.id === item.productId);
+        if (!product?.trackInventory) continue;
+
+        const stock = await lockStockForUpdate(
+          tx,
+          dto.branchId,
+          product.id,
+        );
+        if (!stock) {
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name}. Available: 0`,
+          );
+        }
+
+        const currentStock = Number(stock.quantity);
+        if (currentStock < item.quantity) {
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name}. Available: ${currentStock}`,
+          );
+        }
+
+        stockUpdates.push({
+          branchId: dto.branchId,
+          productId: product.id,
+          type: StockMovementType.SALE,
+          quantity: -item.quantity,
+          previousQty: currentStock,
+          newQty: currentStock - item.quantity,
+        });
+
+        await tx.$queryRaw`
+          SELECT id
+          FROM stock_batches
+          WHERE stock_id = ${stock.id}
+          FOR UPDATE
+        `;
+        const batches = await tx.stockBatch.findMany({
+          where: { stockId: stock.id, isBlocked: false },
+          orderBy: [{ expiryDate: 'asc' }, { id: 'asc' }],
+        });
+        if (batches.length === 0) continue;
+
+        const now = new Date();
+        if (
+          batches.some(
+            (batch) =>
+              batch.expiryDate &&
+              batch.expiryDate < now &&
+              Number(batch.quantity) > 0,
+          )
+        ) {
+          throw new BadRequestException(
+            `Cannot sell ${product.name}: Product has expired batches. Please check inventory.`,
+          );
+        }
+
+        const allocations = [];
+        let remainingQty = item.quantity;
+        for (const batch of batches) {
+          if (remainingQty <= 0) break;
+          const availableQty =
+            Number(batch.quantity) - Number(batch.reservedQty);
+          if (availableQty <= 0) continue;
+          const allocateQty = Math.min(availableQty, remainingQty);
+          allocations.push({
+            batchId: batch.id,
+            batchNumber: batch.batchNumber,
+            quantity: allocateQty,
+            expiryDate: batch.expiryDate,
+          });
+          remainingQty -= allocateQty;
+        }
+        if (remainingQty > 0) {
+          throw new BadRequestException(
+            `Insufficient non-expired stock for ${product.name}. Requested: ${item.quantity}, Available: ${item.quantity - remainingQty}`,
+          );
+        }
+        batchAllocations.set(product.id, allocations);
+      }
+
       // Create sale
       const newSale = await tx.sale.create({
         data: {
@@ -520,13 +526,24 @@ export class SalesService {
 
     // Void sale and restore stock
     const voided = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM sales WHERE id = ${saleId} FOR UPDATE
+      `;
+      const lockedSale = await tx.sale.findUnique({
+        where: { id: saleId },
+        include: { items: true },
+      });
+      if (!lockedSale || lockedSale.status !== SaleStatus.COMPLETED) {
+        throw new BadRequestException('Only completed sales can be voided');
+      }
+
       const voidedSale = await tx.sale.update({
         where: { id: saleId },
         data: {
           status: SaleStatus.VOIDED,
-          notes: `${sale.notes || ''}\nVOIDED: ${reason}`,
+          notes: `${lockedSale.notes || ''}\nVOIDED: ${reason}`,
           metadata: {
-            ...((sale.metadata as object) || {}),
+            ...((lockedSale.metadata as object) || {}),
             voidedBy: userId,
             voidedAt: new Date().toISOString(),
             voidReason: reason,
@@ -535,15 +552,14 @@ export class SalesService {
       });
 
       // Restore stock
-      for (const item of sale.items) {
-        const stock = await tx.stock.findUnique({
-          where: {
-            branchId_productId: {
-              branchId: sale.branchId,
-              productId: item.productId,
-            },
-          },
-        });
+      for (const item of [...lockedSale.items].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const stock = await lockStockForUpdate(
+          tx,
+          lockedSale.branchId,
+          item.productId,
+        );
 
         if (stock) {
           const previousQty = Number(stock.quantity);
@@ -607,53 +623,63 @@ export class SalesService {
       throw new BadRequestException('Cannot refund a voided sale');
     }
 
-    // Validate refund quantities
-    let refundAmount = 0;
-    const refundItems: any[] = [];
-
-    for (const refundItem of dto.items) {
-      const saleItem = sale.items.find((i) => i.id === refundItem.saleItemId);
-      if (!saleItem) {
-        throw new NotFoundException(`Sale item ${refundItem.saleItemId} not found`);
-      }
-
-      // Check already refunded quantity
-      const alreadyRefunded = sale.refunds
-        .flatMap((r) => r.items)
-        .filter((ri) => ri.saleItemId === refundItem.saleItemId)
-        .reduce((sum, ri) => sum + Number(ri.quantity), 0);
-
-      const availableQty = Number(saleItem.quantity) - alreadyRefunded;
-      if (refundItem.quantity > availableQty) {
-        throw new BadRequestException(
-          `Cannot refund ${refundItem.quantity} of ${saleItem.productName}. Available: ${availableQty}`,
-        );
-      }
-
-      const itemRefundAmount = (Number(saleItem.totalAmount) / Number(saleItem.quantity)) * refundItem.quantity;
-      refundAmount += itemRefundAmount;
-
-      refundItems.push({
-        saleItemId: refundItem.saleItemId,
-        quantity: refundItem.quantity,
-        amount: itemRefundAmount,
-        restockItem: refundItem.restockItem ?? true,
-        productId: saleItem.productId,
-      });
-    }
-
     // Create refund
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM sales WHERE id = ${dto.saleId} FOR UPDATE
+      `;
+      const lockedSale = await tx.sale.findUnique({
+        where: { id: dto.saleId },
+        include: { items: true, refunds: { include: { items: true } } },
+      });
+      if (!lockedSale || lockedSale.status === SaleStatus.VOIDED) {
+        throw new BadRequestException('Cannot refund a voided sale');
+      }
+
+      let lockedRefundAmount = 0;
+      const lockedRefundItems: any[] = [];
+      for (const refundItem of dto.items) {
+        const saleItem = lockedSale.items.find(
+          (item) => item.id === refundItem.saleItemId,
+        );
+        if (!saleItem) {
+          throw new NotFoundException(
+            `Sale item ${refundItem.saleItemId} not found`,
+          );
+        }
+        const alreadyRefunded = lockedSale.refunds
+          .flatMap((existingRefund) => existingRefund.items)
+          .filter((item) => item.saleItemId === refundItem.saleItemId)
+          .reduce((sum, item) => sum + Number(item.quantity), 0);
+        const availableQty = Number(saleItem.quantity) - alreadyRefunded;
+        if (refundItem.quantity > availableQty) {
+          throw new BadRequestException(
+            `Cannot refund ${refundItem.quantity} of ${saleItem.productName}. Available: ${availableQty}`,
+          );
+        }
+        const amount =
+          (Number(saleItem.totalAmount) / Number(saleItem.quantity)) *
+          refundItem.quantity;
+        lockedRefundAmount += amount;
+        lockedRefundItems.push({
+          saleItemId: refundItem.saleItemId,
+          quantity: refundItem.quantity,
+          amount,
+          restockItem: refundItem.restockItem ?? true,
+          productId: saleItem.productId,
+        });
+      }
+
       const refund = await tx.refund.create({
         data: {
           saleId: dto.saleId,
-          amount: refundAmount,
+          amount: lockedRefundAmount,
           reason: dto.reason,
           status: 'completed',
           processedById: userId,
           processedAt: new Date(),
           items: {
-            create: refundItems.map((i) => ({
+            create: lockedRefundItems.map((i) => ({
               saleItemId: i.saleItemId,
               quantity: i.quantity,
               amount: i.amount,
@@ -665,16 +691,15 @@ export class SalesService {
       });
 
       // Restore stock for restocked items
-      for (const item of refundItems) {
+      for (const item of [...lockedRefundItems].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
         if (item.restockItem) {
-          const stock = await tx.stock.findUnique({
-            where: {
-              branchId_productId: {
-                branchId: sale.branchId,
-                productId: item.productId,
-              },
-            },
-          });
+          const stock = await lockStockForUpdate(
+            tx,
+            lockedSale.branchId,
+            item.productId,
+          );
 
           if (stock) {
             const previousQty = Number(stock.quantity);
@@ -687,7 +712,7 @@ export class SalesService {
 
             await tx.stockMovement.create({
               data: {
-                branchId: sale.branchId,
+                branchId: lockedSale.branchId,
                 productId: item.productId,
                 type: StockMovementType.RETURN,
                 quantity: item.quantity,
@@ -703,8 +728,10 @@ export class SalesService {
       }
 
       // Update sale status
-      const totalRefunded = sale.refunds.reduce((sum, r) => sum + Number(r.amount), 0) + refundAmount;
-      const newStatus = totalRefunded >= Number(sale.totalAmount)
+      const totalRefunded =
+        lockedSale.refunds.reduce((sum, r) => sum + Number(r.amount), 0) +
+        lockedRefundAmount;
+      const newStatus = totalRefunded >= Number(lockedSale.totalAmount)
         ? SaleStatus.REFUNDED
         : SaleStatus.PARTIAL_REFUND;
 

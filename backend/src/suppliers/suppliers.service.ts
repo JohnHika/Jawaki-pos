@@ -11,6 +11,7 @@ import {
   CashFundingSource,
 } from './dto/suppliers.dto';
 import { StockMovementType } from '@prisma/client';
+import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
 export class SuppliersService {
@@ -228,15 +229,26 @@ export class SuppliersService {
       // catalog product. Unmatched lines (e.g. brand-new items from OCR) are
       // still recorded on the invoice but don't move inventory until the
       // product is created and reconciled separately.
-      for (const item of dto.items) {
+      for (const item of [...dto.items].sort((a, b) =>
+        (a.productId ?? '').localeCompare(b.productId ?? ''),
+      )) {
         if (!item.productId) continue;
 
-        const stock = await tx.stock.upsert({
-          where: { branchId_productId: { branchId: dto.branchId, productId: item.productId } },
-          create: { branchId: dto.branchId, productId: item.productId, quantity: item.quantity },
-          update: { quantity: { increment: item.quantity } },
+        const stock = await lockStockForUpdate(
+          tx,
+          dto.branchId,
+          item.productId,
+          true,
+        );
+        if (!stock) {
+          throw new BadRequestException('Could not lock stock for supplier receipt');
+        }
+        const previousQty = Number(stock.quantity);
+        const newQty = previousQty + item.quantity;
+        await tx.stock.update({
+          where: { id: stock.id },
+          data: { quantity: newQty },
         });
-        const previousQty = Number(stock.quantity) - item.quantity;
 
         await tx.stockMovement.create({
           data: {
@@ -245,7 +257,7 @@ export class SuppliersService {
             type: StockMovementType.PURCHASE,
             quantity: item.quantity,
             previousQty,
-            newQty: Number(stock.quantity),
+            newQty,
             reference: newInvoice.id,
             notes: `Supplier invoice from ${dto.supplierName}`,
             createdById: userId,

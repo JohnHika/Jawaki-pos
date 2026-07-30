@@ -8,6 +8,7 @@ import '../network/api_client.dart';
 import 'connectivity_service.dart';
 import 'background_sync_service.dart';
 import 'storage_service.dart';
+import '../utils/stock_quantity_display.dart';
 
 enum SyncEventType {
   saleCreated,
@@ -112,9 +113,13 @@ String _recordIdForEvent(
       return payload['offlineId']?.toString() ?? fallbackRecordId;
     case SyncEventType.saleVoided:
     case SyncEventType.refundCreated:
-      return payload['saleId']?.toString() ?? payload['id']?.toString() ?? fallbackRecordId;
+      return payload['saleId']?.toString() ??
+          payload['id']?.toString() ??
+          fallbackRecordId;
     case SyncEventType.stockAdjusted:
-      return payload['productId']?.toString() ?? payload['id']?.toString() ?? fallbackRecordId;
+      return payload['productId']?.toString() ??
+          payload['id']?.toString() ??
+          fallbackRecordId;
     case SyncEventType.supplierInvoiceCreated:
       return payload['offlineId']?.toString() ?? fallbackRecordId;
     case SyncEventType.supplierPaymentRecorded:
@@ -126,6 +131,7 @@ String _recordIdForEvent(
 }
 
 class SyncService {
+  static const _pullOverlap = Duration(minutes: 10);
   final AppDatabase _database;
   final ApiClient _apiClient;
   final ConnectivityService _connectivity;
@@ -134,7 +140,10 @@ class SyncService {
   final _uuid = const Uuid();
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
+  Timer? _pullTimer;
+  StreamSubscription<ConnectionStatus>? _connectivitySubscription;
   bool _isSyncing = false;
+  bool _isPulling = false;
 
   final StreamController<SyncStatus> _statusController =
       StreamController<SyncStatus>.broadcast();
@@ -146,16 +155,16 @@ class SyncService {
     required ApiClient apiClient,
     required ConnectivityService connectivity,
     required StorageService storage,
-  }) : _database = database,
-       _apiClient = apiClient,
-       _connectivity = connectivity,
-       _storage = storage {
+  })  : _database = database,
+        _apiClient = apiClient,
+        _connectivity = connectivity,
+        _storage = storage {
     _initializeSync();
   }
 
   void _initializeSync() {
     // Listen for connectivity changes
-    _connectivity.statusStream.listen((status) {
+    _connectivitySubscription = _connectivity.statusStream.listen((status) {
       if (status == ConnectionStatus.online) {
         // Trigger sync when coming online
         syncPendingEvents();
@@ -184,13 +193,13 @@ class SyncService {
     // queue — without a pull timer, sales made on Device A never appear
     // on Device B until Device B happens to make its own sale (which
     // triggers a one-shot pullChanges in payment_provider).
-    Timer.periodic(const Duration(minutes: 2), (_) {
+    _pullTimer = Timer.periodic(const Duration(minutes: 2), (_) {
       if (_connectivity.isOnline) {
         pullChanges();
       }
     });
   }
-  
+
   /// Queue an event for sync (Legacy - backwards compatibility)
   @Deprecated('Use queueSyncItem instead')
   Future<void> queueEvent({
@@ -198,8 +207,7 @@ class SyncService {
     required Map<String, dynamic> payload,
     required String deviceId,
   }) async {
-    final fallbackRecordId =
-        payload['offlineId']?.toString() ??
+    final fallbackRecordId = payload['offlineId']?.toString() ??
         payload['saleId']?.toString() ??
         payload['id']?.toString() ??
         _uuid.v4();
@@ -211,7 +219,9 @@ class SyncService {
       eventType: eventType,
       data: payload,
       deviceId: deviceId,
-      userId: payload['cashierId']?.toString() ?? payload['userId']?.toString() ?? '',
+      userId: payload['cashierId']?.toString() ??
+          payload['userId']?.toString() ??
+          '',
     );
   }
 
@@ -228,7 +238,7 @@ class SyncService {
   }) async {
     final itemId = _uuid.v4();
     final sequenceNumber = await _database.getNextSyncSequenceNumber();
-    
+
     await _database.addToSyncQueue(SyncQueueCompanion(
       id: Value(itemId),
       entityTable: Value(tableName),
@@ -243,7 +253,7 @@ class SyncService {
       retryCount: const Value(0),
       maxRetries: Value(maxRetries),
     ));
-    
+
     // Try to sync immediately if online
     if (_connectivity.isOnline) {
       await syncPendingEvents();
@@ -311,7 +321,7 @@ class SyncService {
       await syncPendingEvents();
     }
   }
-  
+
   /// Sync pending events to server
   Future<void> syncPendingEvents() async {
     if (_isSyncing) return;
@@ -323,10 +333,10 @@ class SyncService {
     if (connectionStatus != ConnectionStatus.online) {
       return;
     }
-    
+
     _isSyncing = true;
     _statusController.add(SyncStatus.syncing);
-    
+
     try {
       final result = await BackgroundSyncService.processPendingQueue(
         database: _database,
@@ -436,7 +446,8 @@ class SyncService {
     );
     final excessPayment = totalPaid - paidAmountAlreadyCounted;
     if (excessPayment > 0 && firstMigratedInvoiceId != null) {
-      final amountToApply = excessPayment > firstInvoiceDue ? firstInvoiceDue : excessPayment;
+      final amountToApply =
+          excessPayment > firstInvoiceDue ? firstInvoiceDue : excessPayment;
       if (amountToApply > 0) {
         await _apiClient.recordSupplierPayment(firstMigratedInvoiceId, {
           'amount': amountToApply,
@@ -446,35 +457,75 @@ class SyncService {
     }
   }
 
-
   /// Pull changes from server
   Future<void> pullChanges({String? since}) async {
-    if (!_connectivity.isOnline) return;
-    
+    if (!_connectivity.isOnline || _isPulling) return;
+    _isPulling = true;
+
     try {
-      final response = await _apiClient.pullSyncEvents(since: since);
-      final events = response['events'] as List;
-      
-      for (final event in events) {
-        await _processServerEvent(event);
+      final branchId = _storage.getBranchId();
+      var cursor = since ??
+          _storage.getSyncCursor(branchId: branchId) ??
+          _storage.getLastSyncAt(branchId: branchId)?.toUtc().toIso8601String();
+      // Consume bounded pages and persist the server cursor. Previously each
+      // two-minute tick downloaded the same first page from epoch forever.
+      for (var page = 0; page < 20; page++) {
+        final response = await _apiClient.pullSyncEvents(since: cursor);
+        final events = response['events'] as List? ?? const [];
+
+        for (final event in events) {
+          await _processServerEvent(Map<String, dynamic>.from(event as Map));
+        }
+
+        final hasMore = response['hasMore'] == true;
+        final nextCursor = response['nextCursor']?.toString();
+        final serverTimestamp = response['serverTimestamp']?.toString();
+        final parsedServerTime =
+            serverTimestamp == null ? null : DateTime.tryParse(serverTimestamp);
+        // Re-read a short completed window on the next pull. A database
+        // transaction may receive an updatedAt before it becomes visible to
+        // one of this pull's independent source queries. ID-based local
+        // upserts make replay safe while the overlap prevents that commit
+        // visibility race from permanently skipping the entity.
+        final checkpoint = hasMore && nextCursor != null
+            ? nextCursor
+            : parsedServerTime
+                ?.toUtc()
+                .subtract(_pullOverlap)
+                .toIso8601String();
+        if (checkpoint != null) {
+          await _storage.saveSyncCursor(checkpoint, branchId: branchId);
+        }
+
+        if (parsedServerTime != null) {
+          await _storage.saveLastSyncAt(
+            parsedServerTime.toUtc(),
+            branchId: branchId,
+          );
+        }
+
+        if (!hasMore || nextCursor == null || nextCursor == cursor) break;
+        cursor = nextCursor;
       }
     } catch (e) {
       // Log error but don't throw
+    } finally {
+      _isPulling = false;
     }
   }
-  
+
   /// Parse timestamp from various formats (ISO string or milliseconds since epoch)
   DateTime _parseTimestamp(dynamic value) {
     if (value == null) return DateTime.now();
-    
+
     // If it's already a DateTime, return it
     if (value is DateTime) return value;
-    
+
     // If it's a number (Unix timestamp in milliseconds)
     if (value is int || value is double) {
       return DateTime.fromMillisecondsSinceEpoch(value.toInt());
     }
-    
+
     // If it's a string
     if (value is String) {
       // Try to parse as ISO string first
@@ -493,10 +544,15 @@ class SyncService {
         }
       }
     }
-    
+
     return DateTime.now();
   }
-  
+
+  double? _parseNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return value == null ? null : double.tryParse(value.toString());
+  }
+
   Future<void> _processServerEvent(Map<String, dynamic> event) async {
     final eventType = event['eventType'] as String;
     final payload = event['payload'] as Map<String, dynamic>;
@@ -523,25 +579,42 @@ class SyncService {
         break;
     }
   }
-  
+
   Future<void> _updateLocalProduct(Map<String, dynamic> data) async {
     final createdAt = _parseTimestamp(data['createdAt']);
     final updatedAt = _parseTimestamp(data['updatedAt']);
-    final productId = data['id'] as String;
+    final productId = data['id']?.toString();
+    final price = _parseNumber(data['price'] ?? data['basePrice']);
+    if (productId == null || price == null) return;
+
+    String? categoryId = data['categoryId']?.toString();
+    final rawCategories = data['categories'];
+    if (categoryId == null &&
+        rawCategories is List &&
+        rawCategories.isNotEmpty) {
+      final first = rawCategories.first;
+      if (first is Map) {
+        categoryId = first['categoryId']?.toString();
+        final category = first['category'];
+        if (categoryId == null && category is Map) {
+          categoryId = category['id']?.toString();
+        }
+      }
+    }
+    categoryId ??= (await _database.getProduct(productId))?.categoryId;
+    if (categoryId == null) return;
 
     await _database.insertProducts([
       ProductsCompanion(
         id: Value(productId),
-        sku: Value(data['sku']),
-        name: Value(data['name']),
-        description: Value(data['description']),
-        categoryId: Value(data['categoryId']),
-        price: Value((data['price'] as num).toDouble()),
-        costPrice: Value(data['costPrice'] != null
-            ? (data['costPrice'] as num).toDouble()
-            : null),
-        unit: Value(data['unit'] ?? 'piece'),
-        imageUrl: Value(data['imageUrl']),
+        sku: Value(data['sku']?.toString() ?? ''),
+        name: Value(data['name']?.toString() ?? ''),
+        description: Value(data['description']?.toString()),
+        categoryId: Value(categoryId),
+        price: Value(price),
+        costPrice: Value(_parseNumber(data['costPrice'])),
+        unit: Value(data['unit']?.toString() ?? 'piece'),
+        imageUrl: Value((data['imageUrl'] ?? data['image'])?.toString()),
         isActive: Value(data['isActive'] ?? true),
         trackInventory: Value(data['trackInventory'] ?? true),
         minStock: Value((data['minStock'] as num?)?.toInt() ?? 0),
@@ -561,16 +634,16 @@ class SyncService {
         final tier = rawTiers[i];
         if (tier is! Map) continue;
         final unit = tier['unit']?.toString();
-        final quantityPerUnit = tier['quantityPerUnit'];
-        final price = tier['price'];
+        final quantityPerUnit = _parseNumber(tier['quantityPerUnit']);
+        final price = _parseNumber(tier['price']);
         if (unit == null || quantityPerUnit == null || price == null) continue;
         companions.add(
           ProductPricingTiersCompanion.insert(
             id: tier['id']?.toString() ?? '$productId-tier-$i',
             productId: productId,
             unit: unit,
-            quantityPerUnit: num.parse(quantityPerUnit.toString()).toDouble(),
-            price: num.parse(price.toString()).toDouble(),
+            quantityPerUnit: quantityPerUnit,
+            price: price,
             sortOrder: Value((tier['sortOrder'] as num?)?.toInt() ?? i + 1),
           ),
         );
@@ -578,11 +651,11 @@ class SyncService {
       await _database.replacePricingTiersForProduct(productId, companions);
     }
   }
-  
+
   Future<void> _updateLocalCategory(Map<String, dynamic> data) async {
     final createdAt = _parseTimestamp(data['createdAt']);
     final updatedAt = _parseTimestamp(data['updatedAt']);
-    
+
     await _database.insertCategories([
       CategoriesCompanion(
         id: Value(data['id']),
@@ -597,11 +670,11 @@ class SyncService {
       ),
     ]);
   }
-  
+
   Future<void> _updateLocalPrice(Map<String, dynamic> data) async {
     // Update branch price override
   }
-  
+
   /// Applies a STOCK_ADJUSTED pull event to the on-device stock cache.
   /// The payload is a backend StockMovement row; `newQty` is the absolute
   /// quantity after the movement, so applying events in their pulled
@@ -613,7 +686,7 @@ class SyncService {
   Future<void> _updateLocalStock(Map<String, dynamic> data) async {
     final productId = data['productId'] as String?;
     final branchId = data['branchId'] as String?;
-    final rawNewQty = data['newQty'];
+    final rawNewQty = data['currentQuantity'] ?? data['newQty'];
     if (productId == null || branchId == null || rawNewQty == null) return;
 
     // Prisma Decimal fields serialize as strings over JSON; plain ints
@@ -622,31 +695,19 @@ class SyncService {
         rawNewQty is num ? rawNewQty : num.tryParse(rawNewQty.toString());
     if (newQty == null) return;
 
-    final now = DateTime.now();
-    final existing = await _database.getProductStock(productId, branchId);
-    if (existing != null) {
-      await (_database.update(_database.localStock)..where(
-            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
-          ))
-          .write(
-            LocalStockCompanion(
-              quantity: Value(newQty.round()),
-              updatedAt: Value(now),
-            ),
-          );
-    } else {
-      await _database.into(_database.localStock).insert(
-            LocalStockCompanion.insert(
-              id: 'stock-$branchId-$productId',
-              productId: productId,
-              branchId: branchId,
-              quantity: newQty.round(),
-              updatedAt: now,
-            ),
-          );
-    }
+    final received = parseReceivedStockNote(data['notes']?.toString());
+    await _database.upsertAuthoritativeStock(
+      productId: productId,
+      branchId: branchId,
+      quantity: newQty.toDouble(),
+      displayUnit: received?.unit,
+      displayQuantityPerUnit: received?.unitsPerQuantity,
+      lastReceivedQuantity: received?.quantity,
+      lastReceivedAt:
+          received == null ? null : _parseTimestamp(data['createdAt']),
+    );
   }
-  
+
   /// Applies a SALE_CREATED pull event to the local pending-sales cache.
   /// When Device A makes a sale, it pushes to the server. Device B's
   /// periodic pull now receives that sale and stores it locally so it
@@ -659,7 +720,11 @@ class SyncService {
 
     // Don't duplicate a sale that originated from this device.
     final existing = await _database.getPendingSaleById(saleId);
-    if (existing != null) return;
+    final offlineId = data['offlineId']?.toString();
+    final originatingSale = offlineId == null
+        ? null
+        : await _database.getPendingSaleById(offlineId);
+    if (existing != null || originatingSale != null) return;
 
     final createdAt = _parseTimestamp(data['createdAt']);
     final items = data['items'] as List<dynamic>? ?? [];
@@ -668,10 +733,10 @@ class SyncService {
       PendingSalesCompanion(
         id: Value(saleId),
         receiptNumber: Value(data['receiptNumber']?.toString() ?? ''),
-        subtotal: Value((data['subtotal'] as num?)?.toDouble() ?? 0),
-        discount: Value((data['discountAmount'] as num?)?.toDouble() ?? 0),
-        tax: Value((data['taxAmount'] as num?)?.toDouble() ?? 0),
-        total: Value((data['totalAmount'] as num?)?.toDouble() ?? 0),
+        subtotal: Value(_parseNumber(data['subtotal']) ?? 0),
+        discount: Value(_parseNumber(data['discountAmount']) ?? 0),
+        tax: Value(_parseNumber(data['taxAmount']) ?? 0),
+        total: Value(_parseNumber(data['totalAmount']) ?? 0),
         paymentMethod: Value(data['paymentMethod']?.toString() ?? 'CASH'),
         paymentReference: Value(data['paymentReference']?.toString()),
         customerId: Value(data['customerId']?.toString()),
@@ -689,14 +754,16 @@ class SyncService {
                 saleId: saleId,
                 productId: item['productId']?.toString() ?? '',
                 productName: item['productName']?.toString() ?? '',
-                sku: item['sku']?.toString() ?? '',
-                quantity: (item['quantity'] as num?)?.toInt() ?? 0,
-                unitPrice: (item['unitPrice'] as num?)?.toDouble() ?? 0,
-                discount: Value((item['discount'] as num?)?.toDouble() ?? 0),
-                total: (item['totalAmount'] as num?)?.toDouble() ?? 0,
+                sku: item['sku']?.toString() ??
+                    (item['product'] is Map
+                        ? (item['product'] as Map)['sku']?.toString() ?? ''
+                        : ''),
+                quantity: _parseNumber(item['quantity'])?.round() ?? 0,
+                unitPrice: _parseNumber(item['unitPrice']) ?? 0,
+                discount: Value(_parseNumber(item['discount']) ?? 0),
+                total: _parseNumber(item['totalAmount']) ?? 0,
                 unit: Value(item['unit']?.toString()),
-                quantityPerUnit: Value(
-                    (item['quantityPerUnit'] as num?)?.toDouble()),
+                quantityPerUnit: Value(_parseNumber(item['quantityPerUnit'])),
               ))
           .toList(),
     );
@@ -709,8 +776,7 @@ class SyncService {
     if (customerId == null) return;
 
     await _database.createCustomersTable();
-    // Use insertOrGetCustomer with the server's id so it upserts.
-    await _database.insertOrGetCustomer(
+    await _database.upsertCustomerById(
       customerId,
       data['name']?.toString() ?? '',
       phone: data['phone']?.toString(),
@@ -726,15 +792,14 @@ class SyncService {
       // Ignore heartbeat errors
     }
   }
-  
+
   /// Get sync statistics
   Future<SyncStats> getStats() async {
     final queueStats = await _database.getSyncQueueStats();
     final unsyncedSales = await _database.getUnsyncedSales();
-    
+
     return SyncStats(
-      pendingEvents:
-          (queueStats['pending'] ?? 0) +
+      pendingEvents: (queueStats['pending'] ?? 0) +
           (queueStats['failed'] ?? 0) +
           (queueStats['conflict'] ?? 0),
       unsyncedSales: unsyncedSales.length,
@@ -759,10 +824,12 @@ class SyncService {
       await _database.markSaleAsSynced(offlineId);
     }
   }
-  
+
   void dispose() {
     _syncTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _pullTimer?.cancel();
+    _connectivitySubscription?.cancel();
     _statusController.close();
   }
 }
@@ -780,7 +847,7 @@ class SyncStats {
   final int failedEvents;
   final int conflictEvents;
   final bool isOnline;
-  
+
   SyncStats({
     required this.pendingEvents,
     required this.unsyncedSales,
@@ -788,7 +855,7 @@ class SyncStats {
     this.conflictEvents = 0,
     required this.isOnline,
   });
-  
+
   bool get hasPendingSync =>
       pendingEvents > 0 ||
       unsyncedSales > 0 ||

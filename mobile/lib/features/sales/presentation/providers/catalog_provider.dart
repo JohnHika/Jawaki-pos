@@ -9,8 +9,9 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/storage_service.dart';
 
 // State providers for search/filter
-final selectedCategoryProvider = StateProvider<String?>((ref) => null);
-final searchQueryProvider = StateProvider<String>((ref) => '');
+final selectedCategoryProvider =
+    StateProvider.autoDispose<String?>((ref) => null);
+final searchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
 
 Future<Map<String, dynamic>> _productToPosMap(
   AppDatabase database,
@@ -214,7 +215,7 @@ LocalStockCompanion? _stockToCompanion(
     id: 'stock-$branchId-$productId',
     productId: productId,
     branchId: branchId,
-    quantity: (currentStock as num).toInt(),
+    quantity: (currentStock as num).toDouble(),
     updatedAt: DateTime.now(),
   );
 }
@@ -419,7 +420,10 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
       await database.replaceProducts(
-        productMaps.map(_productToCompanion).whereType<ProductsCompanion>().toList(),
+        productMaps
+            .map(_productToCompanion)
+            .whereType<ProductsCompanion>()
+            .toList(),
       );
       await database.replaceAllPricingTiers(
         productMaps.expand(_pricingTiersToCompanions).toList(),
@@ -461,27 +465,27 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
 // Filtered products provider
 final filteredProductsProvider =
     FutureProvider.family<List<Map<String, dynamic>>, FilterParams>((
-      ref,
-      params,
-    ) async {
-      final database = getIt<AppDatabase>();
+  ref,
+  params,
+) async {
+  final database = getIt<AppDatabase>();
 
-      List<Product> products;
+  List<Product> products;
 
-      if (params.searchQuery != null && params.searchQuery!.isNotEmpty) {
-        products = await database.searchProducts(params.searchQuery!);
-      } else if (params.categoryId != null) {
-        products = await database.getProductsByCategory(params.categoryId!);
-      } else {
-        products = await database.getAllProducts();
-      }
+  if (params.searchQuery != null && params.searchQuery!.isNotEmpty) {
+    products = await database.searchProducts(params.searchQuery!);
+  } else if (params.categoryId != null) {
+    products = await database.getProductsByCategory(params.categoryId!);
+  } else {
+    products = await database.getAllProducts();
+  }
 
-      final mapped = <Map<String, dynamic>>[];
-      for (final product in products.where((p) => p.isActive)) {
-        mapped.add(await _productToPosMap(database, product));
-      }
-      return mapped;
-    });
+  final mapped = <Map<String, dynamic>>[];
+  for (final product in products.where((p) => p.isActive)) {
+    mapped.add(await _productToPosMap(database, product));
+  }
+  return mapped;
+});
 
 // Favorites provider
 class FavoritesNotifier extends StateNotifier<Set<String>> {

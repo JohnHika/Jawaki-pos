@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../services/storage_service.dart';
 
 import 'secure_database.dart';
@@ -77,9 +78,13 @@ class LocalStock extends Table {
   TextColumn get id => text()();
   TextColumn get productId => text()();
   TextColumn get branchId => text()();
-  IntColumn get quantity => integer()();
+  RealColumn get quantity => real()();
   IntColumn get minQuantity => integer().withDefault(const Constant(0))();
   IntColumn get maxQuantity => integer().nullable()();
+  TextColumn get displayUnit => text().nullable()();
+  RealColumn get displayQuantityPerUnit => real().nullable()();
+  RealColumn get lastReceivedQuantity => real().nullable()();
+  DateTimeColumn get lastReceivedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
 
   @override
@@ -174,8 +179,8 @@ class SyncQueue extends Table {
   TextColumn get userId => text().withDefault(const Constant(''))();
   IntColumn get sequenceNumber => integer()();
   TextColumn get status => text().withDefault(
-    const Constant('pending'),
-  )(); // pending, synced, failed, conflict, resolved
+        const Constant('pending'),
+      )(); // pending, synced, failed, conflict, resolved
   TextColumn get errorMessage => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   IntColumn get maxRetries => integer().withDefault(const Constant(3))();
@@ -256,70 +261,124 @@ class AppDatabase extends _$AppDatabase {
 
   // Use encrypted database connection
   AppDatabase(this._storage)
-    : super(SecureDatabaseConnection.openSecureConnection());
+      : super(SecureDatabaseConnection.openSecureConnection());
+
+  @visibleForTesting
+  AppDatabase.forTesting(QueryExecutor executor, this._storage)
+      : super(executor);
 
   @override
-  int get schemaVersion => 10; // v10: soft-void fields on sales + sold-tier fields on sale items
+  int get schemaVersion => 12; // v12: preserve fractional authoritative stock
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (Migrator m) async {
-      await m.createAll();
-      await _createSupplierFinanceTables();
-    },
-    onUpgrade: (Migrator m, int from, int to) async {
-      if (from < 2) {
-        // Drop old sync_queue table and recreate with new schema
-        // Sync data is ephemeral, so it's safe to drop
-        await m.drop(syncQueue);
-        await m.createTable(syncQueue);
-      }
-      // (from < 3 used to add secondary/tertiary unit columns here — those
-      // columns and their v7 price counterparts no longer exist; the v9
-      // step below drops and recreates `products` unconditionally for any
-      // pre-v9 database, so those intermediate column additions are moot.)
-      if (from < 4) {
-        // Normalize status values
-        await customStatement("UPDATE sync_queue SET status = LOWER(status)");
-        await customStatement(
-          "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
-        );
-      }
-      if (from < 5) {
-        await _createSupplierFinanceTables();
-      }
-      if (from < 6) {
-        await _createSupplierFinanceTables();
-      }
-      // (from < 7 used to add secondary/tertiary price columns here — see
-      // note above; superseded by the v9 drop-and-recreate step.)
-      if (from < 8) {
-        // Add minStock so low-stock detection can use the real per-product
-        // reorder threshold instead of a hardcoded fallback
-        await m.addColumn(products, products.minStock);
-      }
-      if (from < 9) {
-        // Replace the fixed secondary/tertiary pricing columns with a
-        // proper pricing-tiers table (any number of tiers per product).
-        // Products is purely a cache rebuilt from the API on every catalog
-        // sync, so there's no local data to preserve -- drop and recreate
-        // instead of a fragile per-column migration.
-        await m.drop(products);
-        await m.createTable(products);
-        await m.createTable(productPricingTiers);
-      }
-      if (from < 10) {
-        // Soft-void tracking + the tier a line was sold at. Additive
-        // nullable columns — pending sales are real local data, so add
-        // columns rather than dropping the tables.
-        await m.addColumn(pendingSales, pendingSales.voidReason);
-        await m.addColumn(pendingSales, pendingSales.voidedBy);
-        await m.addColumn(pendingSales, pendingSales.voidedAt);
-        await m.addColumn(pendingSaleItems, pendingSaleItems.unit);
-        await m.addColumn(pendingSaleItems, pendingSaleItems.quantityPerUnit);
-      }
-    },
-  );
+        onCreate: (Migrator m) async {
+          await m.createAll();
+          await _createSupplierFinanceTables();
+        },
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            // Drop old sync_queue table and recreate with new schema
+            // Sync data is ephemeral, so it's safe to drop
+            await m.drop(syncQueue);
+            await m.createTable(syncQueue);
+          }
+          // (from < 3 used to add secondary/tertiary unit columns here — those
+          // columns and their v7 price counterparts no longer exist; the v9
+          // step below drops and recreates `products` unconditionally for any
+          // pre-v9 database, so those intermediate column additions are moot.)
+          if (from < 4) {
+            // Normalize status values
+            await customStatement(
+                "UPDATE sync_queue SET status = LOWER(status)");
+            await customStatement(
+              "UPDATE sync_queue SET status = 'synced' WHERE status = 'processed'",
+            );
+          }
+          if (from < 5) {
+            await _createSupplierFinanceTables();
+          }
+          if (from < 6) {
+            await _createSupplierFinanceTables();
+          }
+          // (from < 7 used to add secondary/tertiary price columns here — see
+          // note above; superseded by the v9 drop-and-recreate step.)
+          if (from < 8) {
+            // Add minStock so low-stock detection can use the real per-product
+            // reorder threshold instead of a hardcoded fallback
+            await m.addColumn(products, products.minStock);
+          }
+          if (from < 9) {
+            // Replace the fixed secondary/tertiary pricing columns with a
+            // proper pricing-tiers table (any number of tiers per product).
+            // Products is purely a cache rebuilt from the API on every catalog
+            // sync, so there's no local data to preserve -- drop and recreate
+            // instead of a fragile per-column migration.
+            await m.drop(products);
+            await m.createTable(products);
+            await m.createTable(productPricingTiers);
+          }
+          if (from < 10) {
+            // Soft-void tracking + the tier a line was sold at. Additive
+            // nullable columns — pending sales are real local data, so add
+            // columns rather than dropping the tables.
+            await m.addColumn(pendingSales, pendingSales.voidReason);
+            await m.addColumn(pendingSales, pendingSales.voidedBy);
+            await m.addColumn(pendingSales, pendingSales.voidedAt);
+            await m.addColumn(pendingSaleItems, pendingSaleItems.unit);
+            await m.addColumn(
+                pendingSaleItems, pendingSaleItems.quantityPerUnit);
+          }
+          if (from < 11) {
+            // Preserve how stock was last received (e.g. 20 dozen) while the
+            // authoritative quantity remains stored in base units for sales.
+            await m.addColumn(localStock, localStock.displayUnit);
+            await m.addColumn(
+              localStock,
+              localStock.displayQuantityPerUnit,
+            );
+            await m.addColumn(localStock, localStock.lastReceivedQuantity);
+            await m.addColumn(localStock, localStock.lastReceivedAt);
+          }
+          if (from < 12) {
+            // Backend stock is Decimal(10,3). SQLite cannot alter a column's
+            // affinity in place, so rebuild the cache table while preserving
+            // every existing row and the v11 receipt metadata.
+            await customStatement(
+              'ALTER TABLE local_stock RENAME TO local_stock_before_v12',
+            );
+            await customStatement('''
+              CREATE TABLE local_stock (
+                id TEXT NOT NULL PRIMARY KEY,
+                product_id TEXT NOT NULL,
+                branch_id TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                min_quantity INTEGER NOT NULL DEFAULT 0,
+                max_quantity INTEGER,
+                display_unit TEXT,
+                display_quantity_per_unit REAL,
+                last_received_quantity REAL,
+                last_received_at INTEGER,
+                updated_at INTEGER NOT NULL,
+                UNIQUE(product_id, branch_id)
+              )
+            ''');
+            await customStatement('''
+              INSERT INTO local_stock (
+                id, product_id, branch_id, quantity, min_quantity,
+                max_quantity, display_unit, display_quantity_per_unit,
+                last_received_quantity, last_received_at, updated_at
+              )
+              SELECT id, product_id, branch_id, CAST(quantity AS REAL),
+                min_quantity, max_quantity, display_unit,
+                display_quantity_per_unit, last_received_quantity,
+                last_received_at, updated_at
+              FROM local_stock_before_v12
+            ''');
+            await customStatement('DROP TABLE local_stock_before_v12');
+          }
+        },
+      );
 
   Future<void> _createSupplierFinanceTables() async {
     await customStatement('''
@@ -429,13 +488,15 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Product>> getProductsByCategory(String categoryId) {
     return (select(
       products,
-    )..where((p) => p.categoryId.equals(categoryId))).get();
+    )..where((p) => p.categoryId.equals(categoryId)))
+        .get();
   }
 
   Future<List<Product>> searchProducts(String query) {
     return (select(
       products,
-    )..where((p) => p.name.like('%$query%') | p.sku.like('%$query%'))).get();
+    )..where((p) => p.name.like('%$query%') | p.sku.like('%$query%')))
+        .get();
   }
 
   Stream<List<Product>> watchAllProducts() => select(products).watch();
@@ -651,7 +712,8 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final item = await (select(
       syncQueue,
-    )..where((q) => q.id.equals(id))).getSingleOrNull();
+    )..where((q) => q.id.equals(id)))
+        .getSingleOrNull();
     if (item == null) return;
 
     final newRetryCount = item.retryCount + 1;
@@ -715,11 +777,12 @@ class AppDatabase extends _$AppDatabase {
   /// Delete synced items older than X days
   Future<int> cleanupSyncQueue({int olderThanDays = 30}) {
     final cutoffDate = DateTime.now().subtract(Duration(days: olderThanDays));
-    return (delete(syncQueue)..where(
-          (q) =>
-              (q.status.equals('synced') | q.status.equals('resolved')) &
-              q.syncedAt.isSmallerThanValue(cutoffDate),
-        ))
+    return (delete(syncQueue)
+          ..where(
+            (q) =>
+                (q.status.equals('synced') | q.status.equals('resolved')) &
+                q.syncedAt.isSmallerThanValue(cutoffDate),
+          ))
         .go();
   }
 
@@ -727,23 +790,28 @@ class AppDatabase extends _$AppDatabase {
   Future<Map<String, int>> getSyncQueueStats() async {
     final pending = await (select(
       syncQueue,
-    )..where((q) => q.status.equals('pending'))).get();
+    )..where((q) => q.status.equals('pending')))
+        .get();
 
     final synced = await (select(
       syncQueue,
-    )..where((q) => q.status.equals('synced'))).get();
+    )..where((q) => q.status.equals('synced')))
+        .get();
 
     final failed = await (select(
       syncQueue,
-    )..where((q) => q.status.equals('failed'))).get();
+    )..where((q) => q.status.equals('failed')))
+        .get();
 
     final conflicts = await (select(
       syncQueue,
-    )..where((q) => q.status.equals('conflict'))).get();
+    )..where((q) => q.status.equals('conflict')))
+        .get();
 
     final resolved = await (select(
       syncQueue,
-    )..where((q) => q.status.equals('resolved'))).get();
+    )..where((q) => q.status.equals('resolved')))
+        .get();
 
     return {
       'pending': pending.length,
@@ -751,8 +819,7 @@ class AppDatabase extends _$AppDatabase {
       'failed': failed.length,
       'conflict': conflicts.length,
       'resolved': resolved.length,
-      'total':
-          pending.length +
+      'total': pending.length +
           synced.length +
           failed.length +
           conflicts.length +
@@ -791,13 +858,15 @@ class AppDatabase extends _$AppDatabase {
   Future<void> removeFavorite(String productId) {
     return (delete(
       favoriteProducts,
-    )..where((f) => f.productId.equals(productId))).go();
+    )..where((f) => f.productId.equals(productId)))
+        .go();
   }
 
   Future<bool> isFavorite(String productId) async {
     final result = await (select(
       favoriteProducts,
-    )..where((f) => f.productId.equals(productId))).getSingleOrNull();
+    )..where((f) => f.productId.equals(productId)))
+        .getSingleOrNull();
     return result != null;
   }
 
@@ -857,11 +926,12 @@ class AppDatabase extends _$AppDatabase {
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
 
-    await (delete(dailyPurchases)..where(
-          (p) =>
-              p.branchId.equals(branchId) &
-              p.purchaseDate.isBetweenValues(startOfDay, endOfDay),
-        ))
+    await (delete(dailyPurchases)
+          ..where(
+            (p) =>
+                p.branchId.equals(branchId) &
+                p.purchaseDate.isBetweenValues(startOfDay, endOfDay),
+          ))
         .go();
   }
 
@@ -884,12 +954,11 @@ class AppDatabase extends _$AppDatabase {
     String productId,
     String branchId,
   ) async {
-    final rows =
-        await (select(localStock)..where(
-              (s) =>
-                  s.productId.equals(productId) & s.branchId.equals(branchId),
-            ))
-            .get();
+    final rows = await (select(localStock)
+          ..where(
+            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
+          ))
+        .get();
     return rows.isEmpty ? null : rows.first;
   }
 
@@ -911,10 +980,97 @@ class AppDatabase extends _$AppDatabase {
     if (branchId == null) {
       return Stream.value(null);
     }
-    return (select(localStock)..where(
-          (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
-        ))
+    return (select(localStock)
+          ..where(
+            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
+          ))
         .watchSingleOrNull();
+  }
+
+  Stream<List<LocalStockData>> watchAllStock() => select(localStock).watch();
+
+  Future<void> upsertAuthoritativeStock({
+    required String productId,
+    required String branchId,
+    required double quantity,
+    String? displayUnit,
+    double? displayQuantityPerUnit,
+    double? lastReceivedQuantity,
+    DateTime? lastReceivedAt,
+  }) async {
+    final now = DateTime.now();
+    await customInsert(
+      '''
+        INSERT INTO local_stock (
+          id, product_id, branch_id, quantity, display_unit,
+          display_quantity_per_unit, last_received_quantity,
+          last_received_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, -1),
+          NULLIF(?, -1), NULLIF(?, 0), ?
+        )
+        ON CONFLICT(product_id, branch_id) DO UPDATE SET
+          quantity = excluded.quantity,
+          display_unit = COALESCE(excluded.display_unit, local_stock.display_unit),
+          display_quantity_per_unit = COALESCE(
+            excluded.display_quantity_per_unit,
+            local_stock.display_quantity_per_unit
+          ),
+          last_received_quantity = COALESCE(
+            excluded.last_received_quantity,
+            local_stock.last_received_quantity
+          ),
+          last_received_at = COALESCE(
+            excluded.last_received_at,
+            local_stock.last_received_at
+          ),
+          updated_at = excluded.updated_at
+      ''',
+      variables: [
+        Variable.withString('stock-$branchId-$productId'),
+        Variable.withString(productId),
+        Variable.withString(branchId),
+        Variable.withReal(quantity),
+        Variable.withString(displayUnit ?? ''),
+        Variable.withReal(displayQuantityPerUnit ?? -1),
+        Variable.withReal(lastReceivedQuantity ?? -1),
+        Variable.withInt(
+          lastReceivedAt == null
+              ? 0
+              : lastReceivedAt.millisecondsSinceEpoch ~/ 1000,
+        ),
+        Variable.withDateTime(now),
+      ],
+      updates: {localStock},
+    );
+  }
+
+  Future<double> incrementLocalStock({
+    required String productId,
+    required String branchId,
+    required double quantity,
+  }) async {
+    final row = await customSelect(
+      '''
+        INSERT INTO local_stock (
+          id, product_id, branch_id, quantity, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(product_id, branch_id) DO UPDATE SET
+          quantity = local_stock.quantity + excluded.quantity,
+          updated_at = excluded.updated_at
+        RETURNING quantity
+      ''',
+      variables: [
+        Variable.withString('stock-$branchId-$productId'),
+        Variable.withString(productId),
+        Variable.withString(branchId),
+        Variable.withReal(quantity),
+        Variable.withDateTime(DateTime.now()),
+      ],
+      readsFrom: {localStock},
+    ).getSingle();
+    notifyUpdates({TableUpdate.onTable(localStock)});
+    return row.read<double>('quantity');
   }
 
   Future<void> decrementStock(
@@ -924,15 +1080,17 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final stock = await getProductStock(productId, branchId);
     if (stock != null) {
-      await (update(localStock)..where(
-            (s) => s.productId.equals(productId) & s.branchId.equals(branchId),
-          ))
+      await (update(localStock)
+            ..where(
+              (s) =>
+                  s.productId.equals(productId) & s.branchId.equals(branchId),
+            ))
           .write(
-            LocalStockCompanion(
-              quantity: Value(stock.quantity - quantity),
-              updatedAt: Value(DateTime.now()),
-            ),
-          );
+        LocalStockCompanion(
+          quantity: Value(stock.quantity - quantity),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
     } else {
       // No local stock row yet for this product+branch — previously this
       // silently did nothing, so the first sale of a product never showed
@@ -944,7 +1102,7 @@ class AppDatabase extends _$AppDatabase {
           id: 'stock-$branchId-$productId',
           productId: productId,
           branchId: branchId,
-          quantity: start,
+          quantity: start.toDouble(),
           updatedAt: DateTime.now(),
         ),
         mode: InsertMode.insertOrReplace,
@@ -973,16 +1131,18 @@ class AppDatabase extends _$AppDatabase {
       }
 
       final now = DateTime.now();
-      await (update(localStock)..where(
-            (s) =>
-                s.productId.equals(productId) & s.branchId.equals(fromBranchId),
-          ))
+      await (update(localStock)
+            ..where(
+              (s) =>
+                  s.productId.equals(productId) &
+                  s.branchId.equals(fromBranchId),
+            ))
           .write(
-            LocalStockCompanion(
-              quantity: Value(available - quantity),
-              updatedAt: Value(now),
-            ),
-          );
+        LocalStockCompanion(
+          quantity: Value(available - quantity),
+          updatedAt: Value(now),
+        ),
+      );
 
       final toStock = await getProductStock(productId, toBranchId);
       if (toStock == null) {
@@ -991,21 +1151,23 @@ class AppDatabase extends _$AppDatabase {
             id: 'stock-$toBranchId-$productId',
             productId: productId,
             branchId: toBranchId,
-            quantity: quantity,
+            quantity: quantity.toDouble(),
             updatedAt: now,
           ),
         );
       } else {
-        await (update(localStock)..where(
-              (s) =>
-                  s.productId.equals(productId) & s.branchId.equals(toBranchId),
-            ))
+        await (update(localStock)
+              ..where(
+                (s) =>
+                    s.productId.equals(productId) &
+                    s.branchId.equals(toBranchId),
+              ))
             .write(
-              LocalStockCompanion(
-                quantity: Value(toStock.quantity + quantity),
-                updatedAt: Value(now),
-              ),
-            );
+          LocalStockCompanion(
+            quantity: Value(toStock.quantity + quantity),
+            updatedAt: Value(now),
+          ),
+        );
       }
     });
   }
@@ -1016,7 +1178,9 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getLowStockProducts() async {
     final result = await customSelect(
       'SELECT p.id, p.name, p.sku, p.price, p.min_stock, p.unit, '
-      'ls.quantity, ls.branch_id, '
+      'ls.quantity, ls.branch_id, ls.display_unit, '
+      'ls.display_quantity_per_unit, ls.last_received_quantity, '
+      'ls.last_received_at, '
       '(SELECT name FROM categories WHERE id = p.category_id) as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
@@ -1033,7 +1197,13 @@ class AppDatabase extends _$AppDatabase {
             'price': r.read<double>('price'),
             'minStock': r.read<int>('min_stock'),
             'unit': r.read<String>('unit'),
-            'quantity': r.readNullable<int>('quantity') ?? 0,
+            'displayUnit': r.readNullable<String>('display_unit'),
+            'displayQuantityPerUnit':
+                r.readNullable<double>('display_quantity_per_unit'),
+            'lastReceivedQuantity':
+                r.readNullable<double>('last_received_quantity'),
+            'lastReceivedAt': r.readNullable<DateTime>('last_received_at'),
+            'quantity': r.readNullable<double>('quantity') ?? 0.0,
             'branchId': r.readNullable<String>('branch_id') ?? '',
             'categoryName':
                 r.readNullable<String>('category_name') ?? 'Uncategorized',
@@ -1073,7 +1243,7 @@ class AppDatabase extends _$AppDatabase {
             'id': r.read<String>('id'),
             'name': r.read<String>('name'),
             'sku': r.read<String>('sku'),
-            'quantity': r.readNullable<int>('quantity') ?? 0,
+            'quantity': r.readNullable<double>('quantity') ?? 0.0,
             'branchId': r.readNullable<String>('branch_id') ?? '',
             'categoryName':
                 r.readNullable<String>('category_name') ?? 'Uncategorized',
@@ -1098,8 +1268,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Stream of all sales (for real-time).
   Stream<List<PendingSale>> watchAllSales() => (select(
-    pendingSales,
-  )..orderBy([(s) => OrderingTerm.desc(s.createdAt)])).watch();
+        pendingSales,
+      )..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
+          .watch();
 
   /// Stream of today's sales.
   Stream<List<PendingSale>> watchTodaysSales() {
@@ -1120,7 +1291,8 @@ class AppDatabase extends _$AppDatabase {
   Future<List<PendingSaleItem>> getSaleItems(String saleId) {
     return (select(
       pendingSaleItems,
-    )..where((i) => i.saleId.equals(saleId))).get();
+    )..where((i) => i.saleId.equals(saleId)))
+        .get();
   }
 
   Future<PendingSale?> getPendingSaleById(String saleId) {
@@ -1282,8 +1454,10 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getInventoryReport() async {
     final branchId = _storage.getBranchId();
     final result = await customSelect(
-      'SELECT p.id, p.name, p.sku, p.price, p.cost_price, '
+      'SELECT p.id, p.name, p.sku, p.price, p.cost_price, p.unit, '
       'COALESCE(ls.quantity, 0) as stock, p.min_stock as min_stock, '
+      'ls.display_unit, ls.display_quantity_per_unit, '
+      'ls.last_received_quantity, ls.last_received_at, '
       'c.name as category_name '
       'FROM products p '
       'LEFT JOIN local_stock ls ON ls.product_id = p.id '
@@ -1301,8 +1475,15 @@ class AppDatabase extends _$AppDatabase {
             'sku': r.read<String>('sku'),
             'price': r.read<double>('price'),
             'costPrice': r.readNullable<double>('cost_price') ?? 0.0,
-            'stock': r.read<int>('stock'),
+            'stock': r.read<double>('stock'),
             'minStock': r.read<int>('min_stock'),
+            'unit': r.read<String>('unit'),
+            'displayUnit': r.readNullable<String>('display_unit'),
+            'displayQuantityPerUnit':
+                r.readNullable<double>('display_quantity_per_unit'),
+            'lastReceivedQuantity':
+                r.readNullable<double>('last_received_quantity'),
+            'lastReceivedAt': r.readNullable<DateTime>('last_received_at'),
             'categoryName':
                 r.readNullable<String>('category_name') ?? 'Uncategorised',
           },
@@ -1865,6 +2046,38 @@ class AppDatabase extends _$AppDatabase {
     return id;
   }
 
+  Future<void> upsertCustomerById(
+    String id,
+    String name, {
+    String? phone,
+    String? location,
+    String? email,
+  }) async {
+    await createCustomersTable();
+    await customStatement(
+      '''
+        INSERT INTO customers (
+          id, name, phone, email, location, notes,
+          total_purchases, total_spent, created_at,
+          balance, credit_limit, loyalty_points
+        ) VALUES (?, ?, ?, ?, ?, '', 0, 0, ?, 0, 0, 0)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          phone = excluded.phone,
+          email = excluded.email,
+          location = excluded.location
+      ''',
+      [
+        id,
+        name,
+        phone ?? '',
+        email ?? '',
+        location ?? '',
+        DateTime.now().toIso8601String(),
+      ],
+    );
+  }
+
   // Customer Debt/Balance Management
   // NOTE: customStatement takes a positional List of RAW values, not
   // Variable wrappers (those belong to customSelect/customInsert's named
@@ -1983,7 +2196,8 @@ class AppDatabase extends _$AppDatabase {
   Future<Category?> getCategory(String id) {
     return (select(
       categories,
-    )..where((c) => c.id.equals(id))).getSingleOrNull();
+    )..where((c) => c.id.equals(id)))
+        .getSingleOrNull();
   }
 
   Future<void> insertProduct(ProductsCompanion item) {
@@ -2003,8 +2217,10 @@ class AppDatabase extends _$AppDatabase {
       await (delete(productPricingTiers)
             ..where((t) => t.productId.equals(productId)))
           .go();
-      await (delete(localStock)..where((s) => s.productId.equals(productId))).go();
-      await (delete(favoriteProducts)..where((f) => f.productId.equals(productId)))
+      await (delete(localStock)..where((s) => s.productId.equals(productId)))
+          .go();
+      await (delete(favoriteProducts)
+            ..where((f) => f.productId.equals(productId)))
           .go();
       await deleteProduct(productId);
     });
@@ -2077,10 +2293,9 @@ class AppDatabase extends _$AppDatabase {
             'phone': row.read<String?>('phone') ?? '',
             'email': row.read<String?>('email') ?? '',
             'totalInvoiced': row.read<double?>('total_invoiced') ?? 0,
-            'totalOwed':
-                ((row.read<double?>('total_invoiced') ?? 0) -
-                        (row.read<double?>('total_paid') ?? 0))
-                    .clamp(0, double.infinity),
+            'totalOwed': ((row.read<double?>('total_invoiced') ?? 0) -
+                    (row.read<double?>('total_paid') ?? 0))
+                .clamp(0, double.infinity),
             'totalPaid': (row.read<double?>('total_paid') ?? 0),
             'lastPaymentDate': row.read<String?>('last_payment_date'),
             'invoiceCount': row.read<int?>('invoice_count') ?? 0,
@@ -2351,8 +2566,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT id FROM products WHERE LOWER(name) = LOWER(?) OR sku = ? LIMIT 1',
       variables: [Variable.withString(name), Variable.withString(sku)],
     ).getSingleOrNull();
-    final productId =
-        existing?.read<String>('id') ??
+    final productId = existing?.read<String>('id') ??
         'product-${DateTime.now().microsecondsSinceEpoch}-${sku.hashCode.abs()}';
     final categoryId = await _ensureDefaultCategory(nowIso);
 
@@ -2418,9 +2632,8 @@ class AppDatabase extends _$AppDatabase {
         .toUpperCase()
         .replaceAll(RegExp(r'[^A-Z0-9]+'), '-')
         .replaceAll(RegExp(r'^-+|-+$'), '');
-    final prefix = cleaned.isEmpty
-        ? 'ITEM'
-        : cleaned.split('-').take(3).join('-');
+    final prefix =
+        cleaned.isEmpty ? 'ITEM' : cleaned.split('-').take(3).join('-');
     return 'SUP-$prefix';
   }
 }

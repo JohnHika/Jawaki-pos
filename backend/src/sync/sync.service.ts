@@ -17,6 +17,14 @@ import {
   ConflictResolutionDto,
 } from './dto/sync.dto';
 
+type PullCursor = {
+  timestamp: Date;
+  cutoff: Date;
+  eventType?: string;
+  entityId?: string;
+  composite: boolean;
+};
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -170,22 +178,131 @@ export class SyncService {
   /**
    * Pull events from server for offline device
    */
+  private parsePullCursor(rawCursor?: string): PullCursor {
+    if (!rawCursor) {
+      return {
+        timestamp: new Date(0),
+        cutoff: new Date(),
+        composite: false,
+      };
+    }
+
+    if (rawCursor.startsWith('v1|')) {
+      const parts = rawCursor.split('|');
+      if (parts.length !== 5) {
+        throw new BadRequestException('Invalid sync cursor');
+      }
+
+      const cutoff = new Date(parts[1]);
+      const timestamp = new Date(parts[2]);
+      if (
+        Number.isNaN(cutoff.getTime()) ||
+        Number.isNaN(timestamp.getTime()) ||
+        timestamp > cutoff
+      ) {
+        throw new BadRequestException('Invalid sync cursor');
+      }
+
+      let eventType: string;
+      let entityId: string;
+      try {
+        eventType = decodeURIComponent(parts[3]);
+        entityId = decodeURIComponent(parts[4]);
+      } catch {
+        throw new BadRequestException('Invalid sync cursor');
+      }
+      if (
+        !Object.values(SyncEventType).includes(eventType as SyncEventType) ||
+        entityId.length === 0 ||
+        entityId.length > 200
+      ) {
+        throw new BadRequestException('Invalid sync cursor');
+      }
+
+      return {
+        cutoff,
+        timestamp,
+        eventType,
+        entityId,
+        composite: true,
+      };
+    }
+
+    const timestamp = new Date(rawCursor);
+    if (Number.isNaN(timestamp.getTime())) {
+      throw new BadRequestException('Invalid sync timestamp');
+    }
+
+    return {
+      timestamp,
+      cutoff: new Date(),
+      composite: false,
+    };
+  }
+
+  private buildCursorWhere(
+    timestampField: 'createdAt' | 'updatedAt',
+    eventType: SyncEventType,
+    cursor: PullCursor,
+  ): any[] {
+    const afterTimestamp = {
+      [timestampField]: { gt: cursor.timestamp, lte: cursor.cutoff },
+    };
+
+    if (!cursor.composite) return [afterTimestamp];
+
+    const eventTypeOrder = eventType.localeCompare(cursor.eventType!);
+    if (eventTypeOrder < 0) return [afterTimestamp];
+
+    const atBoundary =
+      eventTypeOrder > 0
+        ? { [timestampField]: cursor.timestamp }
+        : {
+            [timestampField]: cursor.timestamp,
+            id: { gt: cursor.entityId! },
+          };
+
+    return [afterTimestamp, atBoundary];
+  }
+
+  private encodePullCursor(
+    cutoff: Date,
+    event: { timestamp: Date; eventType: SyncEventType; entityId: string },
+  ): string {
+    return [
+      'v1',
+      cutoff.toISOString(),
+      event.timestamp.toISOString(),
+      encodeURIComponent(event.eventType),
+      encodeURIComponent(event.entityId),
+    ].join('|');
+  }
+
   async pullEvents(
     deviceUuid: string | undefined,
     branchId: string,
     dto: PullSyncRequestDto,
   ): Promise<PullSyncResponseDto> {
     const limit = dto.limit || 100;
-    const since = dto.since ? new Date(dto.since) : new Date(0);
+    const cursor = this.parsePullCursor(dto.since);
+    // The encoded cursor carries the original cutoff through every page.
+    // Events created during this pull remain newer than that fixed watermark
+    // and are collected by the next pull.
+    const syncCutoff = cursor.cutoff;
 
     // Build query for changed entities
     const events: any[] = [];
+
 
     // Pull product updates
     if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.PRODUCT_UPDATED)) {
       const products = await this.prisma.product.findMany({
         where: {
-          updatedAt: { gt: since },
+          OR: this.buildCursorWhere(
+            'updatedAt',
+            SyncEventType.PRODUCT_UPDATED,
+            cursor,
+          ),
           stock: {
             some: { branchId },
           },
@@ -199,8 +316,8 @@ export class SyncService {
           },
           pricingTiers: { orderBy: { sortOrder: 'asc' } },
         },
-        take: limit,
-        orderBy: { updatedAt: 'asc' },
+        take: limit + 1,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       });
 
       events.push(
@@ -217,11 +334,15 @@ export class SyncService {
     if (!dto.eventTypes || dto.eventTypes.includes(SyncEventType.CATEGORY_UPDATED)) {
       const categories = await this.prisma.category.findMany({
         where: {
-          updatedAt: { gt: since },
+          OR: this.buildCursorWhere(
+            'updatedAt',
+            SyncEventType.CATEGORY_UPDATED,
+            cursor,
+          ),
           tenantId: await this.getTenantIdForBranch(branchId),
         },
-        take: limit,
-        orderBy: { updatedAt: 'asc' },
+        take: limit + 1,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       });
 
       events.push(
@@ -239,13 +360,17 @@ export class SyncService {
       const priceOverrides = await this.prisma.branchPriceOverride.findMany({
         where: {
           branchId,
-          updatedAt: { gt: since },
+          OR: this.buildCursorWhere(
+            'updatedAt',
+            SyncEventType.PRICE_OVERRIDE_UPDATED,
+            cursor,
+          ),
         },
         include: {
           product: true,
         },
-        take: limit,
-        orderBy: { updatedAt: 'asc' },
+        take: limit + 1,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       });
 
       events.push(
@@ -258,24 +383,40 @@ export class SyncService {
       );
     }
 
-    // Pull stock updates
+    // Pull stock updates. Include the current stock row so every movement in
+    // the page carries one authoritative quantity, even when tied movement
+    // timestamps are ordered by UUID rather than insertion order.
     const stockUpdates = await this.prisma.stockMovement.findMany({
       where: {
         branchId,
-        createdAt: { gt: since },
+        OR: this.buildCursorWhere(
+          'createdAt',
+          SyncEventType.STOCK_ADJUSTED,
+          cursor,
+        ),
       },
       include: {
-        product: true,
+        product: {
+          include: {
+            stock: {
+              where: { branchId },
+              select: { quantity: true },
+            },
+          },
+        },
       },
-      take: limit,
-      orderBy: { createdAt: 'asc' },
+      take: limit + 1,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
     events.push(
       ...stockUpdates.map((s) => ({
         eventType: SyncEventType.STOCK_ADJUSTED,
         entityId: s.id,
-        payload: s,
+        payload: {
+          ...s,
+          currentQuantity: s.product.stock[0]?.quantity ?? s.newQty,
+        },
         timestamp: s.createdAt,
       })),
     );
@@ -285,13 +426,21 @@ export class SyncService {
       const sales = await this.prisma.sale.findMany({
         where: {
           branchId,
-          createdAt: { gt: since },
+          OR: this.buildCursorWhere(
+            'createdAt',
+            SyncEventType.SALE_CREATED,
+            cursor,
+          ),
         },
         include: {
-          items: true,
+          items: {
+            include: {
+              product: { select: { sku: true } },
+            },
+          },
         },
-        take: limit,
-        orderBy: { createdAt: 'asc' },
+        take: limit + 1,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
 
       events.push(
@@ -310,10 +459,14 @@ export class SyncService {
       const customers = await this.prisma.customer.findMany({
         where: {
           tenantId: customerTenantId,
-          updatedAt: { gt: since },
+          OR: this.buildCursorWhere(
+            'updatedAt',
+            SyncEventType.CUSTOMER_UPDATED,
+            cursor,
+          ),
         },
-        take: limit,
-        orderBy: { updatedAt: 'asc' },
+        take: limit + 1,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       });
 
       events.push(
@@ -326,8 +479,13 @@ export class SyncService {
       );
     }
 
-    // Sort all events by timestamp
-    events.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    // Stable global ordering makes timestamp ties safe across pages.
+    events.sort(
+      (a, b) =>
+        a.timestamp.getTime() - b.timestamp.getTime() ||
+        a.eventType.localeCompare(b.eventType) ||
+        a.entityId.localeCompare(b.entityId),
+    );
 
     // Limit total results
     const limitedEvents = events.slice(0, limit);
@@ -338,9 +496,12 @@ export class SyncService {
     return {
       events: limitedEvents,
       hasMore: events.length > limit,
-      serverTimestamp: new Date(),
+      serverTimestamp: syncCutoff,
       nextCursor: limitedEvents.length > 0
-        ? limitedEvents[limitedEvents.length - 1].timestamp.toISOString()
+        ? this.encodePullCursor(
+            syncCutoff,
+            limitedEvents[limitedEvents.length - 1],
+          )
         : undefined,
     };
   }
@@ -567,7 +728,7 @@ export class SyncService {
           paidAmount: payload.paidAmount || payload.totalAmount || 0,
           tenders: payload.tenders,
           notes: payload.notes,
-          offlineId: event.eventId,
+          offlineId: payload.offlineId || payload.id || event.eventId,
         });
         return { serverId: sale.id };
 
@@ -637,6 +798,7 @@ export class SyncService {
       case SyncEventType.CUSTOMER_CREATED:
         const newCustomer = await this.prisma.customer.create({
           data: {
+            id: payload.id || undefined,
             tenantId,
             name: payload.name,
             phone: payload.phone || null,

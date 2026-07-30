@@ -213,6 +213,56 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         'batches': batchesData,
       });
 
+      // Inventory and product details render from Drift. Update that cache
+      // before returning so a successful receipt is visible immediately.
+      final db = getIt<AppDatabase>();
+      final existingStock =
+          await db.getProductStock(widget.productId!, branchId);
+      final currentQuantity = (result['currentQuantity'] as num?)?.toDouble() ??
+          ((existingStock?.quantity ?? 0) +
+              ((result['totalQuantity'] as num?)?.toDouble() ?? 0));
+      final receivedUnits = (result['receivedUnits'] as List?)
+              ?.whereType<Map>()
+              .map((entry) => Map<String, dynamic>.from(entry))
+              .toList() ??
+          batchesData;
+      final receiptMetadata = result['receiptMetadata'] is Map
+          ? Map<String, dynamic>.from(result['receiptMetadata'] as Map)
+          : null;
+      final lastUnit = receivedUnits.isEmpty ? null : receivedUnits.last;
+      final preferredUnit =
+          receiptMetadata?['unit']?.toString() ?? lastUnit?['unit']?.toString();
+      final unitsPerQuantity =
+          (receiptMetadata?['unitsPerQuantity'] as num?)?.toDouble() ??
+              (lastUnit?['unitsPerQuantity'] as num?)?.toDouble() ??
+              1;
+      final samePackaging = lastUnit != null &&
+          receivedUnits.every(
+            (entry) =>
+                entry['unit']?.toString() == preferredUnit &&
+                ((entry['unitsPerQuantity'] as num?)?.toDouble() ?? 1) ==
+                    unitsPerQuantity,
+          );
+      final receivedQuantity =
+          (receiptMetadata?['quantity'] as num?)?.toDouble() ??
+              (samePackaging
+                  ? receivedUnits.fold<double>(
+                      0,
+                      (sum, entry) =>
+                          sum + ((entry['quantity'] as num?)?.toDouble() ?? 0),
+                    )
+                  : (lastUnit?['quantity'] as num?)?.toDouble());
+
+      await db.upsertAuthoritativeStock(
+        productId: widget.productId!,
+        branchId: branchId,
+        quantity: currentQuantity,
+        displayUnit: preferredUnit,
+        displayQuantityPerUnit: unitsPerQuantity,
+        lastReceivedQuantity: receivedQuantity,
+        lastReceivedAt: DateTime.now(),
+      );
+
       if (!mounted) return;
 
       final createdBatches = (result['batches'] as List?) ?? const [];
@@ -331,7 +381,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final borderColor = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final borderColor =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final fill = isDark
         ? DesignColors.darkSurfaceElevated
         : DesignColors.surfaceBorder.withValues(alpha: 0.15);
@@ -348,8 +399,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       prefixStyle: prefixText != null
           ? TextStyle(color: secondaryColor, fontWeight: FontWeight.w600)
           : null,
-      prefixIcon:
-          prefixIcon != null ? Icon(prefixIcon, color: tertiaryColor, size: 20) : null,
+      prefixIcon: prefixIcon != null
+          ? Icon(prefixIcon, color: tertiaryColor, size: 20)
+          : null,
       filled: true,
       fillColor: fill,
       border: OutlineInputBorder(
@@ -428,8 +480,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: surface,
-                    border:
-                        Border.all(color: DesignColors.brand.withValues(alpha: 0.25)),
+                    border: Border.all(
+                        color: DesignColors.brand.withValues(alpha: 0.25)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -464,7 +516,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
-                                  style: TextStyle(fontSize: 13, color: secondaryColor),
+                                  style: TextStyle(
+                                      fontSize: 13, color: secondaryColor),
                                 ),
                               ],
                             ),
@@ -601,14 +654,16 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+        decoration:
+            BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -714,8 +769,10 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       child: DropdownButton<String>(
                         value: batch.selectedUnit,
                         isExpanded: true,
-                        dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
-                        icon: Icon(Icons.expand_more_rounded, color: tertiaryColor),
+                        dropdownColor:
+                            isDark ? DesignColors.darkSurface : Colors.white,
+                        icon: Icon(Icons.expand_more_rounded,
+                            color: tertiaryColor),
                         style: TextStyle(
                           color: titleColor,
                           fontWeight: FontWeight.w600,
@@ -765,7 +822,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_today_rounded, color: tertiaryColor, size: 20),
+                    Icon(Icons.calendar_today_rounded,
+                        color: tertiaryColor, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -799,7 +857,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right_rounded, color: tertiaryColor, size: 20),
+                    Icon(Icons.chevron_right_rounded,
+                        color: tertiaryColor, size: 20),
                   ],
                 ),
               ),
@@ -837,7 +896,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                       decoration: BoxDecoration(
                         color: isDark
                             ? DesignColors.darkSurfaceElevated
-                            : DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                            : DesignColors.surfaceBorder
+                                .withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -892,7 +952,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                     style: TextStyle(color: titleColor),
                     decoration: _fieldDecoration(
                       context,
-                      labelText: 'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
+                      labelText:
+                          'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
                       prefixText: 'KES ',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
