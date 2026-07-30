@@ -514,7 +514,7 @@ class ProductsScreen extends ConsumerWidget {
     if (confirmed) {
       try {
         await getIt<ApiClient>().deleteProduct(product.id);
-        await catalog_cache.syncCatalogCacheFromApi();
+        await catalog_cache.deleteProductFromCache(product.id);
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -944,7 +944,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
               onPressed: () async {
                 if (nameController.text.trim().isEmpty) return;
                 try {
-                  await getIt<ApiClient>().createCategory(
+                  final category = await getIt<ApiClient>().createCategory(
                     name: nameController.text.trim(),
                     description: descController.text.trim().isEmpty
                         ? null
@@ -952,7 +952,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     image: categoryImageUrl,
                     imagePublicId: categoryImagePublicId,
                   );
-                  await catalog_cache.syncCatalogCacheFromApi();
+                  await catalog_cache.upsertCategoryCacheFromApi(category);
                   if (ctx.mounted) Navigator.pop(ctx);
                 } catch (e) {
                   if (ctx.mounted) {
@@ -1066,7 +1066,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
               onPressed: () async {
                 if (nameController.text.trim().isEmpty) return;
                 try {
-                  await getIt<ApiClient>().updateCategory(
+                  final category = await getIt<ApiClient>().updateCategory(
                     cat.id,
                     name: nameController.text.trim(),
                     description: descController.text.trim().isEmpty
@@ -1077,7 +1077,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     clearImage:
                         cat.imageUrl != null && categoryImageUrl == null,
                   );
-                  await catalog_cache.syncCatalogCacheFromApi();
+                  await catalog_cache.upsertCategoryCacheFromApi(category);
                   if (ctx.mounted) Navigator.pop(ctx);
                 } catch (e) {
                   if (ctx.mounted) {
@@ -1120,7 +1120,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
     if (confirmed) {
       try {
         await getIt<ApiClient>().deleteCategory(cat.id);
-        await catalog_cache.syncCatalogCacheFromApi();
+        await catalog_cache.deleteCategoryFromCache(cat.id);
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

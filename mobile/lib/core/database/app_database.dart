@@ -1998,6 +1998,18 @@ class AppDatabase extends _$AppDatabase {
     return (delete(products)..where((p) => p.id.equals(id))).go();
   }
 
+  Future<void> deleteProductCacheReferences(String productId) async {
+    await transaction(() async {
+      await (delete(productPricingTiers)
+            ..where((t) => t.productId.equals(productId)))
+          .go();
+      await (delete(localStock)..where((s) => s.productId.equals(productId))).go();
+      await (delete(favoriteProducts)..where((f) => f.productId.equals(productId)))
+          .go();
+      await deleteProduct(productId);
+    });
+  }
+
   Future<int> getProductCount() async {
     final result = await customSelect(
       'SELECT COUNT(*) as count FROM products',

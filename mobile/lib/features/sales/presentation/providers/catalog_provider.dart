@@ -286,6 +286,56 @@ Future<void> syncCatalogCacheFromApi() async {
   }
 }
 
+/// Stores a single product returned by a successful create/update response in
+/// the local catalog cache without making an immediate follow-up catalog GET.
+Future<void> upsertProductCacheFromApi(Map<String, dynamic> product) async {
+  final database = getIt<AppDatabase>();
+  final storageService = getIt<StorageService>();
+  final item = _productToCompanion(product);
+  if (item == null) {
+    debugPrint(
+      '[CatalogSync] Skipped single-product cache upsert: invalid API product',
+    );
+    return;
+  }
+
+  await database.insertProduct(item);
+  final productId = product['id']?.toString();
+  if (productId != null) {
+    await database.replacePricingTiersForProduct(
+      productId,
+      _pricingTiersToCompanions(product),
+    );
+  }
+
+  final branchId = storageService.getBranchId();
+  if (branchId != null) {
+    final stockItem = _stockToCompanion(product, branchId);
+    if (stockItem != null) {
+      await database.updateLocalStock([stockItem]);
+    }
+  }
+}
+
+Future<void> upsertCategoryCacheFromApi(Map<String, dynamic> category) async {
+  final item = _categoryToCompanion(category);
+  if (item == null) {
+    debugPrint(
+      '[CatalogSync] Skipped single-category cache upsert: invalid API category',
+    );
+    return;
+  }
+  await getIt<AppDatabase>().insertCategory(item);
+}
+
+Future<void> deleteProductFromCache(String productId) async {
+  await getIt<AppDatabase>().deleteProductCacheReferences(productId);
+}
+
+Future<void> deleteCategoryFromCache(String categoryId) async {
+  await getIt<AppDatabase>().deleteCategory(categoryId);
+}
+
 // Filter params
 class FilterParams {
   final String? categoryId;

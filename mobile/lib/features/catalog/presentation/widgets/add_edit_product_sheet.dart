@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
@@ -53,6 +54,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     'bar',
     'roll',
     'jar',
+    'half dozen',
     'dozen',
     'kg',
     'g',
@@ -407,8 +409,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     }
 
     try {
+      Map<String, dynamic> savedProduct;
       if (isEditing) {
-        await apiClient.updateProduct(
+        savedProduct = await apiClient.updateProduct(
           widget.product!.id,
           name: _nameController.text.trim(),
           basePrice: primaryPrice,
@@ -422,7 +425,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           clearImage: clearImage,
         );
       } else {
-        await apiClient.createProduct(
+        savedProduct = await apiClient.createProduct(
           name: _nameController.text.trim(),
           basePrice: primaryPrice,
           categoryIds: [_selectedCategoryId!],
@@ -435,13 +438,13 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         );
       }
 
-      await catalog_cache.syncCatalogCacheFromApi();
+      await catalog_cache.upsertProductCacheFromApi(savedProduct);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not save product: $e'),
+            content: Text(_productSaveErrorMessage(e)),
             backgroundColor: DesignColors.error,
           ),
         );
@@ -449,6 +452,24 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  String _productSaveErrorMessage(Object error) {
+    if (error is DioException && error.response?.statusCode == 429) {
+      return 'Could not save product: server is busy. Please wait a moment and try again.';
+    }
+    if (error is DioException && error.response?.statusCode == 503) {
+      return 'Could not save product: server is unavailable. Please try again later.';
+    }
+    if (error is DioException) {
+      final message = error.response?.data is Map
+          ? (error.response?.data['message']?.toString())
+          : null;
+      if (message != null && message.isNotEmpty) {
+        return 'Could not save product: $message';
+      }
+    }
+    return 'Could not save product. Please check the details and try again.';
   }
 
   // ─── Reorder point ──────────────────────────────────────────────────────
