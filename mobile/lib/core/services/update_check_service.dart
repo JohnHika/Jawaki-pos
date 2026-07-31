@@ -545,20 +545,15 @@ class UpdateCheckService extends ChangeNotifier {
       _isInstalling = true;
       notifyListeners();
 
-      final result = await OpenFilex.open(
-        file.path,
-        type: 'application/vnd.android.package-archive',
-      );
+      final result = await _installApk(file.path);
 
       _isInstalling = false;
       _downloadProgress = null;
       _downloadDuration.stop();
 
-      if (result.type != ResultType.done) {
-        final message = result.message;
-        _errorMessage = message.isNotEmpty
-            ? message
-            : 'Android installer could not be opened automatically. Use the fallback download link if needed.';
+      if (!result) {
+        _errorMessage =
+            'Android installer could not be opened automatically. Use the fallback download link if needed.';
       } else {
         // The OS installer takes over from here and this process may be
         // killed before the app relaunches on the new build, so the
@@ -579,6 +574,36 @@ class UpdateCheckService extends ChangeNotifier {
       if (!kReleaseMode) {
         debugPrint('[UpdateCheck] Download/install error: $error');
       }
+    }
+  }
+
+  Future<bool> _installApk(String apkPath) async {
+    if (!_isAndroid) {
+      try {
+        final result = await OpenFilex.open(
+          apkPath,
+          type: 'application/vnd.android.package-archive',
+        );
+        return result.type == ResultType.done;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    try {
+      final result = await _installerChannel.invokeMethod<bool>(
+        'installApk',
+        {'apkPath': apkPath},
+      );
+      return result ?? false;
+    } catch (error) {
+      _errorMessage =
+          'Could not launch the Android installer automatically. Use the fallback download link if needed.';
+      notifyListeners();
+      if (!kReleaseMode) {
+        debugPrint('[UpdateCheck] Native installApk failed: $error');
+      }
+      return false;
     }
   }
 
