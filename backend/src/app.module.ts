@@ -28,6 +28,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { CustomersModule } from './customers/customers.module';
 import { PrintingModule } from './printing/printing.module';
 import { TenantActivationModule } from './tenant-activation/tenant-activation.module';
+import { TenantOnboardingModule } from './tenant-onboarding/tenant-onboarding.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -78,6 +79,7 @@ import { AppController } from './app.controller';
     CustomersModule,
     PrintingModule,
     TenantActivationModule,
+    TenantOnboardingModule,
   ],
   controllers: [AppController],
 })

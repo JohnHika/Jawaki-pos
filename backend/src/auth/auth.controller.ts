@@ -15,7 +15,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { AuthService } from './auth.service';
+import { AuthService, StaffRegistrationActor } from './auth.service';
 import {
   LoginDto,
   GoogleLoginDto,
@@ -30,6 +30,7 @@ import {
   AuthResponseDto,
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
+import { CreateEmailWorkspaceDto, CreateGoogleWorkspaceDto, RequestWorkspaceOtpDto } from './dto/workspace.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { RequirePermissions } from './decorators/require-permissions.decorator';
@@ -55,6 +56,25 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Google account is not linked to this business' })
   async loginWithGoogle(@Body() dto: GoogleLoginDto): Promise<AuthResponseDto> {
     return this.authService.loginWithGoogle(dto);
+  }
+
+  @Post('workspaces/google')
+  @ApiOperation({ summary: 'Create a workspace from a server-verified Google identity' })
+  async createWorkspaceWithGoogle(@Body() dto: CreateGoogleWorkspaceDto): Promise<AuthResponseDto> {
+    return this.authService.createWorkspaceWithGoogle(dto);
+  }
+
+  @Post('workspaces/email-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request a workspace email ownership code' })
+  async requestWorkspaceEmailOtp(@Body() dto: RequestWorkspaceOtpDto) {
+    return this.authService.requestWorkspaceEmailOtp(dto);
+  }
+
+  @Post('workspaces/email')
+  @ApiOperation({ summary: 'Create a workspace after consuming a verified email code' })
+  async createWorkspaceWithEmailOtp(@Body() dto: CreateEmailWorkspaceDto): Promise<AuthResponseDto> {
+    return this.authService.createWorkspaceWithEmailOtp(dto);
   }
 
   @Post('register-company')
@@ -100,8 +120,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new user (Admin/Manager only)' })
   @ApiResponse({ status: 201, description: 'User registered', type: AuthResponseDto })
   @ApiResponse({ status: 409, description: 'User already exists' })
-  async register(@Body() registerDto: RegisterDto): Promise<AuthResponseDto> {
-    return this.authService.register(registerDto);
+  async register(
+    @Request() req: { user: StaffRegistrationActor },
+    @Body() registerDto: RegisterDto,
+  ): Promise<AuthResponseDto> {
+    return this.authService.register(registerDto, req.user);
   }
 
   @Post('refresh')

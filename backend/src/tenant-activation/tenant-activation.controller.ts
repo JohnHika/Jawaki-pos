@@ -37,11 +37,12 @@ export class TenantActivationController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Initialize the one-time KSh 50,000 company activation checkout' })
-  initialize(@Req() req: any) {
+  initialize(@Req() req: any, @Headers('idempotency-key') idempotencyKey?: string) {
     return this.activationService.initialize(
       req.user.tenantId,
       req.user.sub,
       req.user.email,
+      idempotencyKey,
     );
   }
 

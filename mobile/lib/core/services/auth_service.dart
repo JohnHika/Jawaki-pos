@@ -198,6 +198,38 @@ class AuthService {
     await _handleAuthResponse(response);
   }
 
+  /// Creates a first-owner session only after Google verifies the identity.
+  Future<void> createWorkspaceWithGoogle({
+    required String idToken,
+    required WorkspaceCreationRequest workspace,
+  }) async {
+    final response = await _apiClient.createWorkspaceWithGoogle(
+      idToken: idToken,
+      workspace: workspace,
+    );
+    await _applyAuthResponse(response);
+  }
+
+  /// Sends an ownership code; it intentionally does not change local auth.
+  Future<Map<String, dynamic>> requestWorkspaceEmailOtp(String email) =>
+      _apiClient.requestWorkspaceEmailOtp(email: email);
+
+  /// Creates a first-owner session only after the server consumes the OTP.
+  Future<void> createWorkspaceWithEmailOtp({
+    required String email,
+    required String challengeId,
+    required String code,
+    required WorkspaceCreationRequest workspace,
+  }) async {
+    final response = await _apiClient.createWorkspaceWithEmailOtp(
+      email: email,
+      challengeId: challengeId,
+      code: code,
+      workspace: workspace,
+    );
+    await _applyAuthResponse(response);
+  }
+
   /// Authenticates with a PIN via the server. Used the first time a device
   /// enters a PIN (before a local PIN has ever been configured on it) — a
   /// real network round-trip against the account's server-side PIN, just

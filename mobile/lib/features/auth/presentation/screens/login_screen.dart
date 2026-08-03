@@ -29,6 +29,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _rememberMe = false;
   bool _biometricAvailable = false;
   bool _deviceAuthenticationAvailable = false;
+  bool _showPasswordFallback = false;
 
   // Dynamic company branding
   String? _companyName;
@@ -322,7 +323,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ),
               const SizedBox(height: 8),
               const Text(
-                'Save this company code. You and your staff will use it with email and password when logging in on any device.',
+                'Save this company code. You and your staff will use it with the verified Google account or email credentials registered for this business.',
                 style: TextStyle(height: 1.4),
               ),
               const SizedBox(height: 16),
@@ -691,59 +692,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ),
               const SizedBox(height: 20),
 
-              OutlinedButton.icon(
-                onPressed: authState.isLoading ? null : _handleGoogleLogin,
-                icon: const Icon(Icons.account_circle_outlined),
-                label: const Text('Continue with Google'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  side: BorderSide(
-                    color: isDark
-                        ? DesignColors.darkBorder
-                        : DesignColors.surfaceBorder,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-              // Divider
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: isDark
-                          ? DesignColors.darkBorder
-                          : DesignColors.surfaceBorder,
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'or sign in with email',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: DesignColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      color: isDark
-                          ? DesignColors.darkBorder
-                          : DesignColors.surfaceBorder,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Company identifier field
+              // Company identifier comes first: Google sign-in is always
+              // scoped to the business the staff member is joining.
               _buildPremiumTextField(
                 controller: _tenantSlugController,
                 label: 'Company Code',
@@ -805,167 +757,209 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
 
-              // Email field
-              _buildPremiumTextField(
-                controller: _emailController,
-                label: 'Email',
-                hint: 'your-email@company.com',
-                prefixIcon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                isDark: isDark,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your email';
-                  }
-                  if (!value.contains('@')) {
-                    return 'Please enter a valid email';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Password field
-              _buildPremiumTextField(
-                controller: _passwordController,
-                label: 'Password',
-                hint: 'Enter your password',
-                prefixIcon: Icons.lock_outlined,
-                obscureText: _obscurePassword,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _handleLogin(),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: isDark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
-                    size: 20,
+              OutlinedButton.icon(
+                onPressed: authState.isLoading ? null : _handleGoogleLogin,
+                icon: const Icon(Icons.account_circle_outlined),
+                label: const Text('Continue with Google'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
+                  side: BorderSide(
+                    color: isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorder,
+                  ),
                 ),
-                isDark: isDark,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your password';
-                  }
-                  if (value.length < 8) {
-                    return 'Password must be at least 8 characters';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              Text(
+                'Use the Google account already registered for this business.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? DesignColors.darkTextSecondary
+                      : DesignColors.textSecondary,
+                ),
+              ),
+              if (!_showPasswordFallback)
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton(
+                    onPressed: authState.isLoading
+                        ? null
+                        : () => setState(() => _showPasswordFallback = true),
+                    child: const Text('Use email and password instead'),
+                  ),
+                ),
 
-              // Remember me + Forgot password
-              Row(
-                children: [
-                  // Custom remember me toggle
-                  GestureDetector(
-                    onTap: () => setState(() => _rememberMe = !_rememberMe),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _rememberMe
-                                ? DesignColors.accent
-                                : isDark
-                                    ? DesignColors.darkSurfaceElevated
-                                    : Colors.white,
-                            border: Border.all(
+              if (_showPasswordFallback) ...[
+                const SizedBox(height: 16),
+
+                // Email field
+                _buildPremiumTextField(
+                  controller: _emailController,
+                  label: 'Email',
+                  hint: 'your-email@company.com',
+                  prefixIcon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  autocorrect: false,
+                  isDark: isDark,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your email';
+                    }
+                    if (!value.contains('@')) {
+                      return 'Please enter a valid email';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Password field
+                _buildPremiumTextField(
+                  controller: _passwordController,
+                  label: 'Password',
+                  hint: 'Enter your password',
+                  prefixIcon: Icons.lock_outlined,
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _handleLogin(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      color: isDark
+                          ? DesignColors.darkTextTertiary
+                          : DesignColors.textTertiary,
+                      size: 20,
+                    ),
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                  isDark: isDark,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    if (value.length < 8) {
+                      return 'Password must be at least 8 characters';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+
+                // Remember me + Forgot password
+                Row(
+                  children: [
+                    // Custom remember me toggle
+                    GestureDetector(
+                      onTap: () => setState(() => _rememberMe = !_rememberMe),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
                               color: _rememberMe
                                   ? DesignColors.accent
                                   : isDark
-                                      ? DesignColors.darkBorder
-                                      : DesignColors.surfaceBorder,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: _rememberMe
-                              ? const Icon(
-                                  Icons.check_rounded,
-                                  size: 16,
-                                  color: Colors.black,
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const SizedBox(
-                                height: 2), // Adjust vertical alignment
-                            Text(
-                              'Stay signed in',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: isDark
-                                    ? DesignColors.darkTextSecondary
-                                    : DesignColors.textSecondary,
+                                      ? DesignColors.darkSurfaceElevated
+                                      : Colors.white,
+                              border: Border.all(
+                                color: _rememberMe
+                                    ? DesignColors.accent
+                                    : isDark
+                                        ? DesignColors.darkBorder
+                                        : DesignColors.surfaceBorder,
+                                width: 1.5,
                               ),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  // Forgot password link
-                  GestureDetector(
-                    onTap: () {
-                      showGlassSnackBar(
-                        context,
-                        'Contact administrator to reset password',
-                        icon: Icons.lock_reset_rounded,
-                        color: DesignColors.info,
-                      );
-                    },
-                    child: const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        SizedBox(height: 2), // Adjust vertical alignment
-                        Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.brand,
+                            child: _rememberMe
+                                ? const Icon(
+                                    Icons.check_rounded,
+                                    size: 16,
+                                    color: Colors.black,
+                                  )
+                                : null,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const SizedBox(
+                                  height: 2), // Adjust vertical alignment
+                              Text(
+                                'Stay signed in',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? DesignColors.darkTextSecondary
+                                      : DesignColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+                    const Spacer(),
+                    // Forgot password link
+                    GestureDetector(
+                      onTap: () {
+                        showGlassSnackBar(
+                          context,
+                          'Contact administrator to reset password',
+                          icon: Icons.lock_reset_rounded,
+                          color: DesignColors.info,
+                        );
+                      },
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          SizedBox(height: 2), // Adjust vertical alignment
+                          Text(
+                            'Forgot Password?',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: DesignColors.brand,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
 
-              // Sign In button
-              GradientButton(
-                label: 'Sign in to business',
-                icon: Icons.arrow_forward_rounded,
-                onPressed: authState.isLoading ? null : _handleLogin,
-                isLoading: authState.isLoading,
-                height: 48,
-                borderRadius: 12,
-                gradient: isDark
-                    ? [DesignColors.brand, DesignColors.brandDark]
-                    : [DesignColors.brand, DesignColors.brandDark],
-              ),
+                // Sign In button
+                GradientButton(
+                  label: 'Sign in to business',
+                  icon: Icons.arrow_forward_rounded,
+                  onPressed: authState.isLoading ? null : _handleLogin,
+                  isLoading: authState.isLoading,
+                  height: 48,
+                  borderRadius: 12,
+                  gradient: isDark
+                      ? [DesignColors.brand, DesignColors.brandDark]
+                      : [DesignColors.brand, DesignColors.brandDark],
+                ),
 
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
               // Error message
               if (authState.error != null)

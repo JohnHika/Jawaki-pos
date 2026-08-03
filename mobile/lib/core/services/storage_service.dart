@@ -266,8 +266,10 @@ class StorageService {
     return getFavoriteProducts().contains(productId);
   }
 
+  /// Trusted devices retain their authenticated session by default. Shared
+  /// devices can opt out at sign-in or enable an explicit Security lock timer.
   bool isRememberLoginEnabled() {
-    return _prefs?.getBool(keyRememberLogin) ?? false;
+    return _prefs?.getBool(keyRememberLogin) ?? true;
   }
 
   String? getRememberedEmail() {
@@ -303,8 +305,10 @@ class StorageService {
     await _prefs!.setBool(keyBiometricEnabled, enabled);
   }
 
+  /// New trusted devices stay signed in across normal app switching by
+  /// default. Owners can opt into an explicit lock timer in Security.
   bool requireUnlockOnResume() {
-    return _prefs?.getBool(keyRequireUnlockOnResume) ?? true;
+    return _prefs?.getBool(keyRequireUnlockOnResume) ?? false;
   }
 
   Future<void> setRequireUnlockOnResume(bool enabled) async {
@@ -326,7 +330,7 @@ class StorageService {
   }
 
   int getAutoLockMinutes() {
-    return _prefs?.getInt(keyAutoLockMinutes) ?? -1;
+    return _prefs?.getInt(keyAutoLockMinutes) ?? 0;
   }
 
   Future<void> setAutoLockMinutes(int minutes) async {

@@ -1,6 +1,71 @@
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
+/// Verified workspace fields shared by the Google and email-OTP flows.
+/// This deliberately has no password field: the server creates owners only
+/// after it verifies an identity token or email ownership code.
+class WorkspaceCreationRequest {
+  const WorkspaceCreationRequest({
+    required this.companyName,
+    required this.firstName,
+    required this.lastName,
+    required this.branch,
+    this.companySlug,
+    this.logo,
+    this.logoPublicId,
+    this.settings,
+    this.deviceId,
+  });
+
+  final String companyName;
+  final String firstName;
+  final String lastName;
+  final WorkspaceBranchDetails branch;
+  final String? companySlug;
+  final String? logo;
+  final String? logoPublicId;
+  final Map<String, dynamic>? settings;
+  final String? deviceId;
+
+  Map<String, dynamic> toJson() => {
+        'companyName': companyName,
+        'firstName': firstName,
+        'lastName': lastName,
+        if (companySlug != null && companySlug!.isNotEmpty)
+          'companySlug': companySlug,
+        if (logo != null && logo!.isNotEmpty) 'logo': logo,
+        if (logoPublicId != null && logoPublicId!.isNotEmpty)
+          'logoPublicId': logoPublicId,
+        if (settings != null) 'settings': settings,
+        if (deviceId != null && deviceId!.isNotEmpty) 'deviceId': deviceId,
+        'branch': branch.toJson(),
+      };
+}
+
+class WorkspaceBranchDetails {
+  const WorkspaceBranchDetails({
+    required this.name,
+    this.code,
+    this.address,
+    this.phone,
+    this.email,
+  });
+
+  final String name;
+  final String? code;
+  final String? address;
+  final String? phone;
+  final String? email;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        if (code != null && code!.isNotEmpty) 'code': code,
+        if (address != null && address!.isNotEmpty) 'address': address,
+        if (phone != null && phone!.isNotEmpty) 'phone': phone,
+        if (email != null && email!.isNotEmpty) 'email': email,
+      };
+}
+
 class ApiClient {
   final Dio _dio;
 
@@ -43,6 +108,74 @@ class ApiClient {
       if (branchId != null) 'branchId': branchId,
     });
     return response.data;
+  }
+
+  Future<Map<String, dynamic>> createWorkspaceWithGoogle({
+    required String idToken,
+    required WorkspaceCreationRequest workspace,
+  }) async {
+    final response = await _dio.post('/auth/workspaces/google', data: {
+      ...workspace.toJson(),
+      'idToken': idToken,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> requestWorkspaceEmailOtp({
+    required String email,
+  }) async {
+    final response = await _dio.post('/auth/workspaces/email-otp', data: {
+      'email': email,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createWorkspaceWithEmailOtp({
+    required String email,
+    required String challengeId,
+    required String code,
+    required WorkspaceCreationRequest workspace,
+  }) async {
+    final response = await _dio.post('/auth/workspaces/email', data: {
+      ...workspace.toJson(),
+      'email': email,
+      'challengeId': challengeId,
+      'code': code,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getTenantOnboarding() async {
+    final response = await _dio.get('/tenant-onboarding');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateTenantOnboardingStep({
+    required String key,
+    required String status,
+  }) async {
+    final response = await _dio.patch('/tenant-onboarding/steps/$key', data: {
+      'status': status,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createStaffInvitation({
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String roleId,
+    required String branchId,
+  }) async {
+    final response =
+        await _dio.post('/tenant-onboarding/staff-invitations', data: {
+      'email': email,
+      'firstName': firstName,
+      'lastName': lastName,
+      'roleId': roleId,
+      'branchId': branchId,
+    });
+    return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> loginWithPin({

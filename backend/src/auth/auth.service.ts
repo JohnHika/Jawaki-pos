@@ -5,6 +5,7 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -29,8 +30,10 @@ import {
   AuthResponseDto,
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
-import { OAuth2Client } from 'google-auth-library';
-import { DEFAULT_GOOGLE_WEB_CLIENT_ID } from './google-auth.config';
+import { CreateEmailWorkspaceDto, CreateGoogleWorkspaceDto, RequestWorkspaceOtpDto } from './dto/workspace.dto';
+import { GoogleIdentityService } from '../identity/google-identity.service';
+import { EmailOtpService } from '../identity/email-otp.service';
+import { WorkspaceService } from '../workspace/workspace.service';
 import { LegacyUserRole } from '@prisma/client';
 
 export interface JwtPayload {
@@ -43,6 +46,10 @@ export interface JwtPayload {
   permissions?: string[];
 }
 
+export type StaffRegistrationActor = Pick<JwtPayload, 'sub' | 'tenantId' | 'role'> & {
+  permissions?: string[];
+};
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -54,6 +61,9 @@ export class AuthService {
     private redisService: RedisService,
     private auditService: AuditService,
     private permissionsService: PermissionsService,
+    private googleIdentityService: GoogleIdentityService,
+    private emailOtpService: EmailOtpService,
+    private workspaceService: WorkspaceService,
   ) {}
 
   async validateUser(email: string, password: string, tenantId?: string) {
@@ -84,6 +94,9 @@ export class AuthService {
       throw new UnauthorizedException('Account is disabled');
     }
 
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -112,29 +125,10 @@ export class AuthService {
   }
 
   async loginWithGoogle(dto: GoogleLoginDto): Promise<AuthResponseDto> {
-    const clientId =
-      this.configService.get<string>('GOOGLE_WEB_CLIENT_ID') ||
-      DEFAULT_GOOGLE_WEB_CLIENT_ID;
-
-    let payload;
-    try {
-      const client = new OAuth2Client(clientId);
-      const ticket = await client.verifyIdToken({
-        idToken: dto.idToken,
-        audience: clientId,
-      });
-      payload = ticket.getPayload();
-    } catch (error) {
-      this.logger.warn(
-        `Google ID token verification failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw new UnauthorizedException('Invalid Google sign-in token');
-    }
-
-    const email = payload?.email?.trim().toLowerCase();
-    if (!email || payload?.email_verified !== true) {
-      throw new UnauthorizedException('Google account email is not verified');
-    }
+    // Keep the existing login contract: server-verified Google identity must
+    // match an existing active user in the requested active tenant.
+    const identity = await this.googleIdentityService.verify(dto.idToken);
+    const email = identity.email;
 
     const tenantId = await this.resolveTenantId(undefined, dto.tenantSlug);
     const user = await this.prisma.user.findFirst({
@@ -152,7 +146,7 @@ export class AuthService {
     const branchId = this.resolveLoginBranchId(user, dto.branchId);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date(), identityProvider: 'GOOGLE', identityVerifiedAt: new Date() },
     });
     await this.auditService.record({
       userId: user.id,
@@ -203,255 +197,74 @@ export class AuthService {
     throw new UnauthorizedException('Invalid PIN');
   }
 
-  async registerCompany(dto: RegisterCompanyDto): Promise<AuthResponseDto> {
-    try {
-      // Validate required fields at the top level
-      if (!dto || !dto.companyName) {
-        throw new BadRequestException('Company information is required');
-      }
-
-      // Validate admin information
-      if (!dto.admin) {
-        throw new BadRequestException('Admin information is required');
-      }
-
-      if (!dto.admin.email || !dto.admin.password || !dto.admin.firstName || !dto.admin.lastName) {
-        throw new BadRequestException('Admin information is incomplete');
-      }
-
-      // Validate branch information
-      if (!dto.branch) {
-        throw new BadRequestException('Branch information is required');
-      }
-
-      if (!dto.branch.name) {
-        throw new BadRequestException('Branch name is required');
-      }
-
-      // Validate company name format
-      if (typeof dto.companyName !== 'string' || dto.companyName.trim().length < 2) {
-        throw new BadRequestException('Company name must be at least 2 characters');
-      }
-
-      // Generate slug and check for existing company
-      const slug = dto.companySlug || this.slugify(dto.companyName);
-      const existingTenantBySlug = await this.prisma.tenant.findUnique({
-        where: { slug },
-      });
-
-      if (existingTenantBySlug) {
-        throw new BadRequestException('Company with this slug already exists');
-      }
-
-      // Check if company name already exists (case-insensitive)
-      try {
-        const existingTenantByName = await this.prisma.tenant.findFirst({
-          where: {
-            name: {
-              equals: dto.companyName.trim(),
-              mode: 'insensitive',
-            },
-          },
-        });
-
-        if (existingTenantByName) {
-          throw new BadRequestException('Company name already exists');
-        }
-      } catch (error) {
-        // Log the error but continue
-        console.warn('Failed to check company name uniqueness: ' + error.message);
-      }
-
-      // Validate phone numbers if provided
-      const validatePhoneNumber = (phone) => {
-        if (!phone) return true; // Optional
-        const phoneRegex = /^\+?[\d\s\-\(\)]+$/;
-        if (!phoneRegex.test(phone)) {
-          throw new BadRequestException('Invalid phone number format');
-        }
-        return true;
-      };
-
-      // Validate branch phone if provided
-      if (dto.branch.phone && !validatePhoneNumber(dto.branch.phone)) {
-        throw new BadRequestException('Invalid branch phone number format');
-      }
-
-      // Validate admin phone if provided
-      if (dto.admin.phone && !validatePhoneNumber(dto.admin.phone)) {
-        throw new BadRequestException('Invalid admin phone number format');
-      }
-
-      // Validate email formats
-      const validateEmail = (email) => {
-        if (!email) return true; // Should not happen due to DTO validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          throw new BadRequestException('Invalid email format');
-        }
-        return true;
-      };
-
-      if (!validateEmail(dto.admin.email)) {
-        throw new BadRequestException('Invalid admin email format');
-      }
-
-      if (dto.branch.email && !validateEmail(dto.branch.email)) {
-        throw new BadRequestException('Invalid branch email format');
-      }
-
-      // Validate password strength for admin
-      const password = dto.admin.password;
-      if (password.length < 8) {
-        throw new BadRequestException('Password must be at least 8 characters');
-      }
-      if (!/[A-Z]/.test(password)) {
-        throw new BadRequestException('Password must contain at least one uppercase letter');
-      }
-      if (!/[a-z]/.test(password)) {
-        throw new BadRequestException('Password must contain at least one lowercase letter');
-      }
-      if (!/\d/.test(password)) {
-        throw new BadRequestException('Password must contain at least one number');
-      }
-
-      const passwordHash = await bcrypt.hash(dto.admin.password, 12);
-      const branchCode = dto.branch.code || 'MAIN';
-
-      // Process registration in transaction
-      try {
-        const user = await this.prisma.$transaction(async (tx) => {
-          const tenant = await tx.tenant.create({
-            data: {
-              name: dto.companyName.trim(),
-              slug,
-              logo: dto.logo,
-              logoPublicId: dto.logoPublicId,
-              settings: dto.settings || {},
-            },
-          });
-
-          const branch = await tx.branch.create({
-            data: {
-              tenantId: tenant.id,
-              name: dto.branch.name.trim(),
-              code: branchCode,
-              address: dto.branch.address?.trim() || null,
-              phone: dto.branch.phone?.trim() || null,
-              email: dto.branch.email?.trim() || null,
-            },
-          });
-
-          const createdUser = await tx.user.create({
-            data: {
-              tenantId: tenant.id,
-              email: dto.admin.email.trim().toLowerCase(),
-              passwordHash,
-              firstName: dto.admin.firstName.trim(),
-              lastName: dto.admin.lastName.trim(),
-              phone: dto.admin.phone?.trim() || null,
-              role: LegacyUserRole.ADMIN,
-              lastLoginAt: new Date(),
-              branches: {
-                create: {
-                  branchId: branch.id,
-                  isPrimary: true,
-                },
-              },
-            },
-            include: {
-              tenant: true,
-              branches: {
-                include: { branch: true },
-              },
-            },
-          });
-
-          // New company creators are legacy ADMINs for compatibility with
-          // older guards, but they must also receive the tenant-scoped
-          // granular Admin role. Without this join row the login response
-          // contains an empty permission set, which hides Dashboard and
-          // makes the creator look like a cashier in the mobile shell.
-          const permissionCatalog = await tx.permission.findMany({
-            select: { key: true },
-          });
-          if (permissionCatalog.length === 0) {
-            throw new BadRequestException(
-              'Permission catalog is not initialized; company setup cannot continue safely',
-            );
-          }
-
-          const adminRole = await tx.role.create({
-            data: {
-              tenantId: tenant.id,
-              name: 'Admin',
-              description: 'Initial company owner administrator',
-              isSystem: true,
-              permissions: {
-                create: permissionCatalog.map(({ key }) => ({
-                  permissionKey: key,
-                })),
-              },
-            },
-          });
-
-          await tx.userRole.create({
-            data: {
-              userId: createdUser.id,
-              roleId: adminRole.id,
-            },
-          });
-
-          return tx.user.findUniqueOrThrow({
-            where: { id: createdUser.id },
-            include: {
-              tenant: true,
-              branches: {
-                include: { branch: true },
-              },
-            },
-          });
-        });
-
-        return this.generateTokens(user, user.branches[0]?.branchId, dto.deviceId);
-      } catch (error) {
-        // Handle specific database errors
-        if (error.code === 'P2002') {
-          // Unique constraint violation
-          if (error.meta?.target?.includes('slug')) {
-            throw new BadRequestException('Company with this slug already exists');
-          }
-          if (error.meta?.target?.includes('email')) {
-            throw new BadRequestException('Admin email already exists');
-          }
-          if (error.meta?.target?.includes('phone')) {
-            throw new BadRequestException('Admin phone number already exists');
-          }
-          throw new BadRequestException('Company registration failed due to duplicate data');
-        } else if (error.code === 'P2003') {
-          // Foreign key constraint violation
-          throw new BadRequestException('Invalid branch or tenant reference');
-        } else if (error.code === 'P2025') {
-          // Record not found
-          throw new NotFoundException('Database operation failed');
-        } else {
-          // Log the error for debugging
-          console.error('Register company error:', error);
-          throw new BadRequestException(`Company registration failed: ${error.message || 'Unknown error'}`);
-        }
-      }
-    } catch (error) {
-      // Handle validation errors at the top level
-      console.error('Register company validation error:', error);
-      throw error;
-    }
+  async requestWorkspaceEmailOtp(dto: RequestWorkspaceOtpDto) {
+    return this.emailOtpService.request({ purpose: 'WORKSPACE_CREATION', email: dto.email });
   }
 
-  async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
+  async createWorkspaceWithGoogle(dto: CreateGoogleWorkspaceDto): Promise<AuthResponseDto> {
+    const identity = await this.googleIdentityService.verify(dto.idToken);
+    const user = await this.workspaceService.createFromVerifiedIdentity({
+      ...dto, email: identity.email, provider: 'GOOGLE',
+      firstName: dto.firstName || identity.firstName || 'Owner',
+      lastName: dto.lastName || identity.lastName || 'Owner',
+    });
+    return this.generateTokens(user, user.branches[0]?.branchId, dto.deviceId);
+  }
+
+  async createWorkspaceWithEmailOtp(dto: CreateEmailWorkspaceDto): Promise<AuthResponseDto> {
+    const proof = await this.emailOtpService.consume({
+      challengeId: dto.challengeId, purpose: 'WORKSPACE_CREATION', email: dto.email, code: dto.code,
+    });
+    if (!proof.consumed) throw new UnauthorizedException('Invalid or expired verification code');
+    const user = await this.workspaceService.createFromVerifiedIdentity({ ...dto, provider: 'EMAIL_OTP' });
+    return this.generateTokens(user, user.branches[0]?.branchId, dto.deviceId);
+  }
+
+  async registerCompany(dto: RegisterCompanyDto): Promise<AuthResponseDto> {
+    throw new ForbiddenException('Verified identity is required. Use the verified workspace creation endpoints.');
+  }
+
+  async register(
+    registerDto: RegisterDto,
+    actor: StaffRegistrationActor,
+  ): Promise<AuthResponseDto> {
+    if (!actor?.tenantId) {
+      throw new ForbiddenException('Authenticated tenant context is required');
+    }
+
+    // The legacy request contract includes tenantId, but it is never an
+    // authority source. Reject a conflicting value rather than silently
+    // accepting a cross-tenant attempt.
+    if (registerDto.tenantId && registerDto.tenantId !== actor.tenantId) {
+      throw new ForbiddenException('Cannot register staff for another company');
+    }
+
+    const role = registerDto.role ?? LegacyUserRole.CASHIER;
+    if (!this.canAssignLegacyRole(actor.role, role)) {
+      throw new ForbiddenException(
+        'Cannot assign an equal or higher legacy role. Use the tenant-scoped staff invitation flow for role-managed onboarding.',
+      );
+    }
+
+    const branchIds = [...new Set(registerDto.branchIds ?? [])];
+    if (branchIds.length) {
+      const activeTenantBranches = await this.prisma.branch.findMany({
+        where: {
+          id: { in: branchIds },
+          tenantId: actor.tenantId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (activeTenantBranches.length !== branchIds.length) {
+        throw new ForbiddenException('Every assigned branch must be active and belong to this company');
+      }
+    }
+
     // Check if user already exists
     const existingUser = await this.prisma.user.findFirst({
       where: {
-        tenantId: registerDto.tenantId,
+        tenantId: actor.tenantId,
         email: registerDto.email,
       },
     });
@@ -466,16 +279,16 @@ export class AuthService {
     // Create user with branch assignments
     const user = await this.prisma.user.create({
       data: {
-        tenantId: registerDto.tenantId,
+        tenantId: actor.tenantId,
         email: registerDto.email,
         passwordHash,
         firstName: registerDto.firstName,
         lastName: registerDto.lastName,
         phone: registerDto.phone,
-        role: registerDto.role || LegacyUserRole.CASHIER,
-        branches: registerDto.branchIds
+        role,
+        branches: branchIds.length
           ? {
-              create: registerDto.branchIds.map((branchId, index) => ({
+              create: branchIds.map((branchId, index) => ({
                 branchId,
                 isPrimary: index === 0,
               })),
@@ -519,7 +332,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token expired');
     }
 
-    if (!storedToken.user.isActive) {
+    if (!storedToken.user.isActive || !storedToken.user.tenant.isActive) {
       throw new UnauthorizedException('Account is disabled');
     }
 
@@ -880,6 +693,16 @@ export class AuthService {
 
     const primaryBranch = user.branches.find((ub: any) => ub.isPrimary);
     return primaryBranch?.branchId || user.branches[0].branchId;
+  }
+
+  private canAssignLegacyRole(actorRole: LegacyUserRole, requestedRole: LegacyUserRole): boolean {
+    const rank: Record<LegacyUserRole, number> = {
+      [LegacyUserRole.CASHIER]: 0,
+      [LegacyUserRole.SUPERVISOR]: 1,
+      [LegacyUserRole.MANAGER]: 2,
+      [LegacyUserRole.ADMIN]: 3,
+    };
+    return rank[actorRole] > rank[requestedRole];
   }
 
   async getCompanyInfo(slug: string): Promise<CompanyInfoResponseDto> {

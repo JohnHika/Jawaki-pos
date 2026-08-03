@@ -34,6 +34,10 @@ model Tenant {
   categories Category[]
   products   Product[]
   roles      Role[]
+  otpChallenges      EmailOtpChallenge[]
+  activationAttempts TenantActivationAttempt[]
+  onboarding         TenantOnboarding?
+  staffInvitations   TenantStaffInvitation[]
 
   @@map("tenants")
 }
@@ -72,6 +76,7 @@ model Branch {
   dailyBriefs           DailyBrief[]
   dailyCloses           DailyClose[]
   printJobs             PrintJob[]
+  staffInvitations      TenantStaffInvitation[]
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -163,7 +168,7 @@ model User {
   tenantId             String
   email                String
   phone                String?
-  passwordHash         String
+  passwordHash         String?
   firstName            String
   lastName             String
   role                 LegacyUserRole @default(CASHIER)
@@ -177,6 +182,8 @@ model User {
   // directory sync (GET /users/offline-directory), where it's verified
   // entirely on-device.
   offlineAccessPinHash String?
+  identityProvider     String?
+  identityVerifiedAt   DateTime?
   avatar               String?
   isActive             Boolean        @default(true)
   lastLoginAt          DateTime?
@@ -201,6 +208,9 @@ model User {
   roles                      UserRole[]
   permissionOverrides        UserPermissionOverride[]
   pushTokens                 PushToken[]
+  activationAttempts         TenantActivationAttempt[]
+  ownedOnboarding            TenantOnboarding[]       @relation("OnboardingOwner")
+  createdStaffInvitations    TenantStaffInvitation[]  @relation("StaffInvitationCreator")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -242,6 +252,7 @@ model Role {
   tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   permissions RolePermission[]
   userRoles   UserRole[]
+  staffInvitations TenantStaffInvitation[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -326,6 +337,117 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+// Email ownership proof is persisted independently of a user account. Raw
+// codes never enter this table; codeHash is an HMAC using OTP_PEPPER.
+model EmailOtpChallenge {
+  id                String   @id @default(uuid())
+  purpose           String
+  email             String
+  tenantId          String?
+  codeHash          String
+  attempts          Int      @default(0)
+  expiresAt         DateTime
+  resendAvailableAt DateTime
+  sentAt            DateTime @default(now())
+  consumedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  tenant     Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitation TenantStaffInvitation?
+
+  @@index([email, purpose, tenantId, createdAt])
+  @@index([expiresAt])
+  @@map("email_otp_challenges")
+}
+
+// Each checkout attempt has a durable, unique provider reference. The old
+// Tenant activation fields remain only as compatibility snapshots.
+model TenantActivationAttempt {
+  id               String   @id @default(uuid())
+  tenantId         String
+  userId           String
+  email            String
+  idempotencyKey   String
+  reference        String   @unique
+  provider         String
+  amount           Decimal  @db.Decimal(12, 2)
+  authorizationUrl String?
+  status           String   @default("INITIALIZED")
+  providerResponse Json?
+  verifiedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, createdAt])
+  @@map("tenant_activation_attempts")
+}
+
+model TenantOnboarding {
+  id          String   @id @default(uuid())
+  tenantId    String   @unique
+  ownerUserId String
+  state       String   @default("IN_PROGRESS")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner  User   @relation("OnboardingOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  steps  TenantOnboardingStep[]
+
+  @@index([ownerUserId])
+  @@map("tenant_onboarding")
+}
+
+model TenantOnboardingStep {
+  id           String   @id @default(uuid())
+  onboardingId String
+  key          String
+  position     Int
+  status       String   @default("PENDING")
+  completedAt  DateTime?
+  deferredAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  onboarding TenantOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+
+  @@unique([onboardingId, key])
+  @@unique([onboardingId, position])
+  @@map("tenant_onboarding_steps")
+}
+
+// An invite describes a least-privilege membership proposal. It deliberately
+// has no password or PIN fields; acceptance requires its email OTP proof.
+model TenantStaffInvitation {
+  id          String   @id @default(uuid())
+  tenantId    String
+  email       String
+  firstName   String
+  lastName    String
+  roleId      String
+  branchId    String
+  createdById String
+  status      String   @default("PENDING")
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  challengeId String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role      Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  branch    Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User               @relation("StaffInvitationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  challenge EmailOtpChallenge? @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, email, status])
+  @@map("tenant_staff_invitations")
 }
 
 // ==================== CATALOG & PRICING ====================

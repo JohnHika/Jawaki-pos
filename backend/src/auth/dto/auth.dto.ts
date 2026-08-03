@@ -140,9 +140,12 @@ export class RegisterDto {
   @IsEnum(LegacyUserRole, { message: 'Invalid role' })
   role?: LegacyUserRole;
 
-  @ApiProperty({ description: 'Tenant ID' })
+  @ApiPropertyOptional({
+    description: 'Deprecated compatibility field. When supplied, it must match the authenticated tenant.',
+  })
+  @IsOptional()
   @IsUUID('4', { message: 'Tenant ID must be a valid UUID' })
-  tenantId: string;
+  tenantId?: string;
 
   @ApiPropertyOptional({ description: 'Branch IDs to assign' })
   @IsOptional()

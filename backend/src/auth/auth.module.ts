@@ -9,6 +9,8 @@ import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { AuditModule } from '../audit/audit.module';
 import { PermissionsModule } from '../permissions/permissions.module';
+import { IdentityModule } from '../identity/identity.module';
+import { WorkspaceModule } from '../workspace/workspace.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { PermissionsModule } from '../permissions/permissions.module';
     }),
     AuditModule,
     PermissionsModule,
+    IdentityModule,
+    WorkspaceModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, RolesGuard, PermissionsGuard],

@@ -180,7 +180,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                             'Use your company code to connect this device.',
                         detail: 'Staff access · ready when you are',
                         isPrimary: false,
-                        onTap: () => context.go('/login'),
+                        onTap: () => context.push('/login'),
                       ),
                       const SizedBox(height: 26),
                       Center(

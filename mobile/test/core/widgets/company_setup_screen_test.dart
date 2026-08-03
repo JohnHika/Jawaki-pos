@@ -28,6 +28,31 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
   });
 
+  testWidgets('verification follows business, owner, and branch details',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: CompanySetupScreen()));
+    await tester.pump(const Duration(milliseconds: 450));
+
+    await tester.enterText(find.byType(TextFormField), 'Acme Retail');
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'Ada');
+    await tester.enterText(find.byType(TextFormField).at(1), 'Lovelace');
+    await tester.enterText(find.byType(TextFormField).at(2), 'ada@acme.test');
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'Main Store');
+    await tester.enterText(find.byType(TextFormField).at(1), 'MAIN');
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Verify your ownership'), findsOneWidget);
+    expect(find.text('Verify with Google & create workspace'), findsOneWidget);
+    expect(find.text('Use an email code instead'), findsOneWidget);
+    expect(find.textContaining('password'), findsOneWidget);
+  });
+
   testWidgets('company name rejects server-invalid characters on step one',
       (tester) async {
     await tester.pumpWidget(
