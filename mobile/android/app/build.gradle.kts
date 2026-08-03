@@ -5,7 +5,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
+    id("com.google.gms.google-services") apply false
 }
 
 val keystoreProperties = Properties()
@@ -23,6 +23,13 @@ val hasReleaseSigningConfig =
         keystoreProperties["keyPassword"] != null
 val isReleaseTask = gradle.startParameter.taskNames.any {
     it.contains("Release", ignoreCase = true)
+}
+
+// google-services.json contains the production Firebase client only. The
+// isolated debug application ID intentionally does not use production
+// Firebase resources, while release builds keep the normal Firebase setup.
+if (isReleaseTask) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {
@@ -90,6 +97,15 @@ android {
     }
 
     buildTypes {
+        // Never let a locally installed debug APK occupy the production
+        // package ID. Release builds must remain in-place upgrades for
+        // customers, while debug builds need to coexist with production
+        // without causing INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
+
         release {
             if (!hasReleaseSigningConfig && isReleaseTask) {
                 throw GradleException(
