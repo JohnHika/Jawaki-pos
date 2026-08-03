@@ -18,6 +18,7 @@ import {
 import { AuthService } from './auth.service';
 import {
   LoginDto,
+  GoogleLoginDto,
   PinLoginDto,
   RegisterCompanyDto,
   RegisterDto,
@@ -45,6 +46,15 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
+  }
+
+  @Post('login/google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login with a verified Google ID token' })
+  @ApiResponse({ status: 200, description: 'Login successful', type: AuthResponseDto })
+  @ApiResponse({ status: 401, description: 'Google account is not linked to this business' })
+  async loginWithGoogle(@Body() dto: GoogleLoginDto): Promise<AuthResponseDto> {
+    return this.authService.loginWithGoogle(dto);
   }
 
   @Post('register-company')

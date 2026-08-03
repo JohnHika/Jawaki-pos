@@ -30,6 +30,21 @@ class ApiClient {
     return response.data;
   }
 
+  Future<Map<String, dynamic>> loginWithGoogle({
+    required String idToken,
+    required String tenantSlug,
+    String? deviceId,
+    String? branchId,
+  }) async {
+    final response = await _dio.post('/auth/login/google', data: {
+      'idToken': idToken,
+      'tenantSlug': tenantSlug,
+      if (deviceId != null) 'deviceId': deviceId,
+      if (branchId != null) 'branchId': branchId,
+    });
+    return response.data;
+  }
+
   Future<Map<String, dynamic>> loginWithPin({
     required String pin,
     required String deviceId,

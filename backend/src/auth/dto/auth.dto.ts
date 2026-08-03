@@ -55,6 +55,32 @@ export class LoginDto {
   branchId?: string;
 }
 
+export class GoogleLoginDto {
+  @ApiProperty({ description: 'Google ID token returned by the Android client' })
+  @IsString()
+  @IsNotEmpty()
+  idToken: string;
+
+  @ApiProperty({ example: 'acme-stores' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(50)
+  @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
+    message: 'Tenant slug must be lowercase alphanumeric with hyphens',
+  })
+  tenantSlug: string;
+
+  @ApiPropertyOptional({ description: 'Device UUID for mobile login' })
+  @IsOptional()
+  @IsUUID('4')
+  deviceId?: string;
+
+  @ApiPropertyOptional({ description: 'Branch ID for context' })
+  @IsOptional()
+  @IsUUID('4')
+  branchId?: string;
+}
+
 export class PinLoginDto {
   @ApiProperty({ example: '1234' })
   @IsString()

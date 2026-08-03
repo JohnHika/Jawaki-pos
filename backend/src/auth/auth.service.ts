@@ -17,6 +17,7 @@ import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import {
   LoginDto,
+  GoogleLoginDto,
   PinLoginDto,
   RegisterCompanyDto,
   RegisterDto,
@@ -28,6 +29,8 @@ import {
   AuthResponseDto,
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
+import { OAuth2Client } from 'google-auth-library';
+import { DEFAULT_GOOGLE_WEB_CLIENT_ID } from './google-auth.config';
 import { LegacyUserRole } from '@prisma/client';
 
 export interface JwtPayload {
@@ -106,6 +109,58 @@ export class AuthService {
     });
 
     return this.generateTokens(user, branchId, loginDto.deviceId);
+  }
+
+  async loginWithGoogle(dto: GoogleLoginDto): Promise<AuthResponseDto> {
+    const clientId =
+      this.configService.get<string>('GOOGLE_WEB_CLIENT_ID') ||
+      DEFAULT_GOOGLE_WEB_CLIENT_ID;
+
+    let payload;
+    try {
+      const client = new OAuth2Client(clientId);
+      const ticket = await client.verifyIdToken({
+        idToken: dto.idToken,
+        audience: clientId,
+      });
+      payload = ticket.getPayload();
+    } catch (error) {
+      this.logger.warn(
+        `Google ID token verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new UnauthorizedException('Invalid Google sign-in token');
+    }
+
+    const email = payload?.email?.trim().toLowerCase();
+    if (!email || payload?.email_verified !== true) {
+      throw new UnauthorizedException('Google account email is not verified');
+    }
+
+    const tenantId = await this.resolveTenantId(undefined, dto.tenantSlug);
+    const user = await this.prisma.user.findFirst({
+      where: { email, tenantId },
+      include: {
+        tenant: true,
+        branches: { include: { branch: true } },
+      },
+    });
+
+    if (!user || !user.isActive || !user.tenant.isActive) {
+      throw new UnauthorizedException('This Google account is not linked to this business');
+    }
+
+    const branchId = this.resolveLoginBranchId(user, dto.branchId);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    await this.auditService.record({
+      userId: user.id,
+      action: 'LOGIN',
+      entityType: 'session',
+    });
+
+    return this.generateTokens(user, branchId, dto.deviceId);
   }
 
   async loginWithPin(pinLoginDto: PinLoginDto): Promise<AuthResponseDto> {

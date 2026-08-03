@@ -176,6 +176,28 @@ class AuthService {
     await _handleAuthResponse(response);
   }
 
+  Future<void> loginWithGoogle({
+    required String idToken,
+    required String tenantSlug,
+    String? deviceId,
+  }) async {
+    final resolvedDeviceId = (deviceId != null && deviceId.isNotEmpty)
+        ? deviceId
+        : await _storage.ensureDeviceId();
+
+    if (_storage.getDeviceId() != resolvedDeviceId) {
+      await _storage.saveDeviceId(resolvedDeviceId);
+    }
+
+    final response = await _apiClient.loginWithGoogle(
+      idToken: idToken,
+      tenantSlug: tenantSlug,
+      deviceId: resolvedDeviceId,
+    );
+
+    await _handleAuthResponse(response);
+  }
+
   /// Authenticates with a PIN via the server. Used the first time a device
   /// enters a PIN (before a local PIN has ever been configured on it) — a
   /// real network round-trip against the account's server-side PIN, just

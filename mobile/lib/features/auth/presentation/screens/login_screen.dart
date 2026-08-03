@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:axon_pos/core/config/google_auth_config.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
@@ -198,6 +200,73 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       if (!mounted) return;
       unawaited(getIt<UpdateCheckService>().checkAfterLogin());
       context.go('/');
+    }
+  }
+
+  Future<void> _handleGoogleLogin() async {
+    final tenantSlug = _normalizeCompanyCode(_tenantSlugController.text);
+    if (tenantSlug.isEmpty || !_isValidCompanyCode(tenantSlug)) {
+      showGlassSnackBar(
+        context,
+        'Enter your company code before continuing with Google.',
+        icon: Icons.business_outlined,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+
+    try {
+      final googleSignIn = GoogleSignIn(serverClientId: googleWebClientId);
+      final account = await googleSignIn.signIn();
+      if (account == null) return;
+
+      final authentication = await account.authentication;
+      final idToken = authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        if (!mounted) return;
+        showGlassSnackBar(
+          context,
+          'Google did not return a secure sign-in token. Try again.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+        return;
+      }
+
+      final result = await ref
+          .read(authControllerProvider.notifier)
+          .loginWithGoogle(idToken: idToken, tenantSlug: tenantSlug);
+      if (!result || !mounted) return;
+
+      await getIt<StorageService>().saveRememberedLogin(
+        enabled: _rememberMe,
+        email: account.email,
+        tenantSlug: tenantSlug,
+      );
+      final user = ref.read(authControllerProvider).user;
+      final tenant = user?['tenant'];
+      final companyName = tenant is Map<String, dynamic>
+          ? tenant['name'] as String?
+          : _companyName;
+      final companyCode =
+          (user?['tenantSlug'] as String?)?.trim().isNotEmpty == true
+              ? (user?['tenantSlug'] as String).trim()
+              : tenantSlug;
+      await _showLoginSuccessDialog(
+        companyName: companyName ?? 'Your company',
+        companyCode: companyCode,
+      );
+      if (!mounted) return;
+      unawaited(getIt<UpdateCheckService>().checkAfterLogin());
+      context.go('/');
+    } catch (_) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        'Google sign-in could not be completed. Try again or use email and password.',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
     }
   }
 
@@ -619,6 +688,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     ),
                 ],
+              ),
+              const SizedBox(height: 20),
+
+              OutlinedButton.icon(
+                onPressed: authState.isLoading ? null : _handleGoogleLogin,
+                icon: const Icon(Icons.account_circle_outlined),
+                label: const Text('Continue with Google'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: BorderSide(
+                    color: isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorder,
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
 

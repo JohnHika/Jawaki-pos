@@ -104,6 +104,33 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  Future<bool> loginWithGoogle({
+    required String idToken,
+    required String tenantSlug,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      await _authService.loginWithGoogle(
+        idToken: idToken,
+        tenantSlug: tenantSlug,
+      );
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: true,
+        user: _authService.currentUser,
+      );
+      _registerPushTokenIfPermitted();
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _getErrorMessage(e),
+      );
+      return false;
+    }
+  }
+
   Future<bool> loginWithPin(String pin) async {
     state = state.copyWith(isLoading: true, error: null);
 
@@ -297,7 +324,8 @@ final userRoleProvider = Provider<String?>((ref) {
 /// rather than guessing, since an empty/missing list from a logged-in
 /// session would itself indicate something is wrong upstream.
 final userPermissionsProvider = Provider<List<dynamic>>((ref) {
-  return ref.watch(currentUserProvider)?['permissions'] as List<dynamic>? ?? const [];
+  return ref.watch(currentUserProvider)?['permissions'] as List<dynamic>? ??
+      const [];
 });
 
 final permissionsProvider = Provider<RolePermissions>((ref) {
