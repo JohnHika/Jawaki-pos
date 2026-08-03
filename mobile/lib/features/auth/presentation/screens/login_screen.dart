@@ -31,6 +31,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   // Dynamic company branding
   String? _companyName;
   String? _companyLogoUrl;
+  String? _companyLookupError;
   bool _isFetchingCompany = false;
   Timer? _debounceTimer;
 
@@ -101,26 +102,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   void _onSlugChanged(String slug) {
     _debounceTimer?.cancel();
-    if (slug.trim().isEmpty) {
+    final normalizedSlug = _normalizeCompanyCode(slug);
+    if (normalizedSlug.isEmpty) {
       setState(() {
         _companyName = null;
         _companyLogoUrl = null;
+        _companyLookupError = null;
         _isFetchingCompany = false;
       });
       return;
     }
-    setState(() => _isFetchingCompany = true);
+    setState(() {
+      _companyName = null;
+      _companyLogoUrl = null;
+      _companyLookupError = null;
+      _isFetchingCompany = true;
+    });
+    final lookupSlug = normalizedSlug;
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      final result = await getIt<ApiClient>().getCompanyInfo(slug.trim());
-      if (mounted) {
+      final result = await getIt<ApiClient>().getCompanyInfo(lookupSlug);
+      if (mounted &&
+          _normalizeCompanyCode(_tenantSlugController.text) == lookupSlug) {
         setState(() {
           _isFetchingCompany = false;
           _companyName = result?['name'] as String?;
           _companyLogoUrl = result?['logoUrl'] as String?;
+          _companyLookupError = result == null
+              ? 'We couldn’t find that business. Check the code with your administrator.'
+              : result['isActive'] == false
+                  ? 'This business is currently unavailable. Contact your administrator.'
+                  : null;
         });
       }
     });
   }
+
+  String _normalizeCompanyCode(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+
+  bool _isValidCompanyCode(String value) =>
+      RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(value);
 
   Future<void> _checkBiometric() async {
     debugPrint('[LoginScreen] Checking biometric availability...');
@@ -145,7 +166,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final tenantSlug = _tenantSlugController.text.trim();
+    final tenantSlug = _normalizeCompanyCode(_tenantSlugController.text);
     final result = await ref.read(authControllerProvider.notifier).login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
@@ -451,7 +472,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                       // Title — dynamic based on fetched company
                       Text(
-                        _companyName ?? 'Axon POS',
+                        _companyName ?? 'Join your business',
                         style: TextStyle(
                           fontSize: isSmallScreen ? 26 : 32,
                           fontWeight: FontWeight.w700,
@@ -461,7 +482,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Point of Sale System',
+                        _companyName == null
+                            ? 'CONNECT YOUR STAFF ACCOUNT'
+                            : 'READY FOR STAFF SIGN IN',
                         style: TextStyle(
                           fontSize: isSmallScreen ? 12 : 14,
                           fontWeight: FontWeight.w400,
@@ -535,7 +558,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    'Sign In',
+                    'Join an existing business',
                     style: TextStyle(
                       fontSize: isSmallScreen ? 20 : 22,
                       fontWeight: FontWeight.w700,
@@ -548,7 +571,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'Secure staff access for POS, products, and analytics',
+                'Enter the company code from your administrator, then sign in with your staff account.',
                 style: TextStyle(
                   fontSize: 13,
                   color: isDark
@@ -561,7 +584,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               // Quick sign-in options — placed at the top of the card so users
               // can see PIN / biometric without scrolling past the email form.
               Text(
-                'Quick sign in',
+                'Already set up on this device?',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -638,8 +661,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 controller: _tenantSlugController,
                 label: 'Company Code',
                 hint: 'your-company-code',
+                helperText: 'Ask your business owner or manager for this code.',
                 prefixIcon: Icons.business_outlined,
                 keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.none,
+                autocorrect: false,
                 isDark: isDark,
                 onChanged: _onSlugChanged,
                 suffixIcon: _isFetchingCompany
@@ -653,12 +680,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       )
                     : null,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  final code = _normalizeCompanyCode(value ?? '');
+                  if (code.isEmpty) {
                     return 'Please enter your company code';
+                  }
+                  if (code.length < 2 || !_isValidCompanyCode(code)) {
+                    return 'Use the lowercase code format, for example acme-stores';
                   }
                   return null;
                 },
               ),
+              if (_companyLookupError != null) ...[
+                const SizedBox(height: 8),
+                Semantics(
+                  liveRegion: true,
+                  label: _companyLookupError!,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        color: DesignColors.warning,
+                        size: 17,
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          _companyLookupError!,
+                          style: const TextStyle(
+                            color: DesignColors.warning,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Email field
@@ -668,6 +727,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 hint: 'your-email@company.com',
                 prefixIcon: Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autocorrect: false,
                 isDark: isDark,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -708,8 +769,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   if (value == null || value.isEmpty) {
                     return 'Please enter your password';
                   }
-                  if (value.length < 3) {
-                    return 'Password must be at least 3 characters';
+                  if (value.length < 8) {
+                    return 'Password must be at least 8 characters';
                   }
                   return null;
                 },
@@ -806,7 +867,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
               // Sign In button
               GradientButton(
-                label: 'Sign In',
+                label: 'Sign in to business',
                 icon: Icons.arrow_forward_rounded,
                 onPressed: authState.isLoading ? null : _handleLogin,
                 isLoading: authState.isLoading,
@@ -821,34 +882,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
               // Error message
               if (authState.error != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: DesignColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: DesignColors.error.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        color: DesignColors.error,
-                        size: 20,
+                Semantics(
+                  liveRegion: true,
+                  label: 'Sign-in error: ${authState.error}',
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: DesignColors.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: DesignColors.error.withValues(alpha: 0.3),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          authState.error!,
-                          style: const TextStyle(
-                            color: DesignColors.error,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: DesignColors.error,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            authState.error!,
+                            style: const TextStyle(
+                              color: DesignColors.error,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              height: 1.35,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
 
@@ -895,6 +961,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     ValueChanged<String>? onFieldSubmitted,
     String? Function(String?)? validator,
     bool isDark = false,
+    String? helperText,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    bool autocorrect = true,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,6 +984,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           obscureText: obscureText,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
+          textCapitalization: textCapitalization,
+          autocorrect: autocorrect,
           onChanged: onChanged,
           onFieldSubmitted: onFieldSubmitted,
           style: TextStyle(
@@ -940,6 +1011,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ? DesignColors.darkTextTertiary
                   : DesignColors.textTertiary,
               fontSize: 15,
+            ),
+            helperText: helperText,
+            helperStyle: TextStyle(
+              color: isDark
+                  ? DesignColors.darkTextTertiary
+                  : DesignColors.textTertiary,
+              fontSize: 11,
+              height: 1.3,
             ),
             filled: true,
             fillColor: isDark
@@ -1045,13 +1124,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     return const Column(
       children: [
         Icon(
-          Icons.cloud_done_rounded,
+          Icons.shield_outlined,
           size: 20,
-          color: DesignColors.success,
+          color: DesignColors.info,
         ),
         SizedBox(height: 8),
         Text(
-          'Connected to cloud POS',
+          'Secure business access',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
