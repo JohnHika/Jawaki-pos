@@ -322,12 +322,11 @@ class ProductsScreen extends ConsumerWidget {
                       return EmptyState(
                         icon: Icons.sync_problem_rounded,
                         title: 'Couldn\'t load your product catalog',
-                        subtitle:
-                            'Check your connection and try again.',
+                        subtitle: 'Check your connection and try again.',
                         iconColor: DesignColors.error,
                         actionLabel: 'Retry',
-                        onAction: () => ref
-                            .invalidate(_catalogSyncProvider(currentUserId)),
+                        onAction: () =>
+                            ref.invalidate(_catalogSyncProvider(currentUserId)),
                       );
                     }
                     return EmptyState(
@@ -335,7 +334,11 @@ class ProductsScreen extends ConsumerWidget {
                       title: searchQuery.isNotEmpty
                           ? 'No products match "$searchQuery"'
                           : 'No products yet',
-                      subtitle: 'Tap + to add a new product',
+                      subtitle: searchQuery.isNotEmpty
+                          ? 'Try a different search or clear the filters.'
+                          : perms.canEditProducts
+                              ? 'Tap + to add a new product.'
+                              : 'Ask an administrator to add products to this catalog.',
                     );
                   }
 
@@ -552,7 +555,8 @@ class _ProductListTile extends ConsumerWidget {
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     final stockAsync = ref.watch(_productStockProvider(product.id));
     final stock = stockAsync.valueOrNull;
@@ -570,10 +574,12 @@ class _ProductListTile extends ConsumerWidget {
           onTap: onEdit,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+            decoration: BoxDecoration(
+                color: surface, border: Border.all(color: border)),
             child: Row(
               children: [
-                const Icon(Icons.inventory_2_rounded, color: DesignColors.brand, size: 22),
+                const Icon(Icons.inventory_2_rounded,
+                    color: DesignColors.brand, size: 22),
                 const SizedBox(width: 14),
 
                 // Product info
@@ -598,7 +604,8 @@ class _ProductListTile extends ConsumerWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: DesignColors.accent.withValues(alpha: 0.12),
+                              color:
+                                  DesignColors.accent.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -637,38 +644,38 @@ class _ProductListTile extends ConsumerWidget {
                   ),
                 ),
 
-            // Price
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'KES ${product.price.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: DesignColors.brand,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                if (onDelete != null)
-                  GestureDetector(
-                    onTap: onDelete,
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: DesignColors.error.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.delete_outline_rounded,
-                        size: 16,
-                        color: DesignColors.error,
+                // Price
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'KES ${product.price.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: DesignColors.brand,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                  ),
-              ],
-            ),
+                    if (onDelete != null)
+                      GestureDetector(
+                        onTap: onDelete,
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: DesignColors.error.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 16,
+                            color: DesignColors.error,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -868,118 +875,119 @@ class _CategoryManagementSheet extends ConsumerWidget {
               ? DesignColors.darkTextTertiary
               : DesignColors.textTertiary;
           return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text('Add Category',
-              style: TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                style: TextStyle(color: titleColor),
-                decoration: InputDecoration(
-                  labelText: 'Category Name',
-                  hintText: 'e.g. Painkillers',
-                  hintStyle: TextStyle(color: tertiaryColor),
-                  labelStyle: TextStyle(
-                    color: secondaryColor,
-                    fontWeight: FontWeight.w500,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Text('Add Category',
+                style:
+                    TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: TextStyle(color: titleColor),
+                  decoration: InputDecoration(
+                    labelText: 'Category Name',
+                    hintText: 'e.g. Painkillers',
+                    hintStyle: TextStyle(color: tertiaryColor),
+                    labelStyle: TextStyle(
+                      color: secondaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    filled: true,
+                    fillColor: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceSubtle,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                   ),
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceSubtle,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  textCapitalization: TextCapitalization.words,
+                  autofocus: true,
                 ),
-                textCapitalization: TextCapitalization.words,
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descController,
-                style: TextStyle(color: titleColor),
-                decoration: InputDecoration(
-                  labelText: 'Description (optional)',
-                  hintStyle: TextStyle(color: tertiaryColor),
-                  labelStyle: TextStyle(
-                    color: secondaryColor,
-                    fontWeight: FontWeight.w500,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  style: TextStyle(color: titleColor),
+                  decoration: InputDecoration(
+                    labelText: 'Description (optional)',
+                    hintStyle: TextStyle(color: tertiaryColor),
+                    labelStyle: TextStyle(
+                      color: secondaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    filled: true,
+                    fillColor: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceSubtle,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                   ),
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceSubtle,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  textCapitalization: TextCapitalization.sentences,
                 ),
-                textCapitalization: TextCapitalization.sentences,
+                const SizedBox(height: 12),
+                ImagePickerSection(
+                  initialImageUrl: categoryImageUrl,
+                  type: 'category',
+                  label: 'Add category image (optional)',
+                  onImageChanged: (url, publicId) => setDialogState(() {
+                    categoryImageUrl = url;
+                    categoryImagePublicId = publicId;
+                  }),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(foregroundColor: secondaryColor),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 12),
-              ImagePickerSection(
-                initialImageUrl: categoryImageUrl,
-                type: 'category',
-                label: 'Add category image (optional)',
-                onImageChanged: (url, publicId) => setDialogState(() {
-                  categoryImageUrl = url;
-                  categoryImagePublicId = publicId;
-                }),
+              FilledButton(
+                onPressed: () async {
+                  if (nameController.text.trim().isEmpty) return;
+                  try {
+                    final category = await getIt<ApiClient>().createCategory(
+                      name: nameController.text.trim(),
+                      description: descController.text.trim().isEmpty
+                          ? null
+                          : descController.text.trim(),
+                      image: categoryImageUrl,
+                      imagePublicId: categoryImagePublicId,
+                    );
+                    await catalog_cache.upsertCategoryCacheFromApi(category);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('Could not add category: $e'),
+                          backgroundColor: DesignColors.error,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: DesignColors.accent,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('Add'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              style: TextButton.styleFrom(foregroundColor: secondaryColor),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                if (nameController.text.trim().isEmpty) return;
-                try {
-                  final category = await getIt<ApiClient>().createCategory(
-                    name: nameController.text.trim(),
-                    description: descController.text.trim().isEmpty
-                        ? null
-                        : descController.text.trim(),
-                    image: categoryImageUrl,
-                    imagePublicId: categoryImagePublicId,
-                  );
-                  await catalog_cache.upsertCategoryCacheFromApi(category);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text('Could not add category: $e'),
-                        backgroundColor: DesignColors.error,
-                      ),
-                    );
-                  }
-                }
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: DesignColors.accent,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-              child: const Text('Add'),
-            ),
-          ],
           );
         },
       ),
@@ -1002,109 +1010,110 @@ class _CategoryManagementSheet extends ConsumerWidget {
               ? DesignColors.darkTextSecondary
               : DesignColors.textSecondary;
           return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text('Edit Category',
-              style: TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                style: TextStyle(color: titleColor),
-                decoration: InputDecoration(
-                  labelText: 'Category Name',
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceSubtle,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Text('Edit Category',
+                style:
+                    TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: TextStyle(color: titleColor),
+                  decoration: InputDecoration(
+                    labelText: 'Category Name',
+                    filled: true,
+                    fillColor: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceSubtle,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  textCapitalization: TextCapitalization.words,
                 ),
-                textCapitalization: TextCapitalization.words,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descController,
-                style: TextStyle(color: titleColor),
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceSubtle,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  style: TextStyle(color: titleColor),
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    filled: true,
+                    fillColor: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceSubtle,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  textCapitalization: TextCapitalization.sentences,
                 ),
-                textCapitalization: TextCapitalization.sentences,
+                const SizedBox(height: 12),
+                ImagePickerSection(
+                  initialImageUrl: categoryImageUrl,
+                  type: 'category',
+                  label: 'Change category image',
+                  onImageChanged: (url, publicId) => setDialogState(() {
+                    categoryImageUrl = url;
+                    categoryImagePublicId = publicId;
+                  }),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(foregroundColor: secondaryColor),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 12),
-              ImagePickerSection(
-                initialImageUrl: categoryImageUrl,
-                type: 'category',
-                label: 'Change category image',
-                onImageChanged: (url, publicId) => setDialogState(() {
-                  categoryImageUrl = url;
-                  categoryImagePublicId = publicId;
-                }),
+              FilledButton(
+                onPressed: () async {
+                  if (nameController.text.trim().isEmpty) return;
+                  try {
+                    final category = await getIt<ApiClient>().updateCategory(
+                      cat.id,
+                      name: nameController.text.trim(),
+                      description: descController.text.trim().isEmpty
+                          ? null
+                          : descController.text.trim(),
+                      image: categoryImageUrl,
+                      imagePublicId: categoryImagePublicId,
+                      clearImage:
+                          cat.imageUrl != null && categoryImageUrl == null,
+                    );
+                    await catalog_cache.upsertCategoryCacheFromApi(category);
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('Could not update category: $e'),
+                          backgroundColor: DesignColors.error,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: DesignColors.accent,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('Save'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              style: TextButton.styleFrom(foregroundColor: secondaryColor),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                if (nameController.text.trim().isEmpty) return;
-                try {
-                  final category = await getIt<ApiClient>().updateCategory(
-                    cat.id,
-                    name: nameController.text.trim(),
-                    description: descController.text.trim().isEmpty
-                        ? null
-                        : descController.text.trim(),
-                    image: categoryImageUrl,
-                    imagePublicId: categoryImagePublicId,
-                    clearImage:
-                        cat.imageUrl != null && categoryImageUrl == null,
-                  );
-                  await catalog_cache.upsertCategoryCacheFromApi(category);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text('Could not update category: $e'),
-                        backgroundColor: DesignColors.error,
-                      ),
-                    );
-                  }
-                }
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: DesignColors.accent,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-              child: const Text('Save'),
-            ),
-          ],
           );
         },
       ),
@@ -1137,4 +1146,3 @@ class _CategoryManagementSheet extends ConsumerWidget {
     }
   }
 }
-

@@ -1,487 +1,55 @@
-name: Build and Publish Android Update
+name: Build Android APK
 
 on:
   push:
-    branches: [ main, update-feature ]
-  pull_request:
-    branches: [ main, update-feature ]
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      release_notes:
-        description: Optional release notes for the published update manifest
-        required: false
-        type: string
-      force_update:
-        description: Force users onto this build immediately
-        required: false
-        default: 'false'
-        type: string
-      min_supported_version:
-        description: Optional minimum supported user-facing version (for example 1.0.0)
-        required: false
-        type: string
-      min_supported_build_number:
-        description: Optional minimum supported Android build number
-        required: false
-        type: string
 
 permissions:
-  contents: write
-
-env:
-  CF_R2_BUCKET: pos-updates
-  R2_PUBLIC_BASE_URL: https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev
-
-concurrency:
-  group: android-update-${{ github.ref }}
-  cancel-in-progress: true
+  contents: read
 
 jobs:
-  build:
+  build-android:
+    name: Test and build release APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7.0.1
+      - name: Check out repository
+        uses: actions/checkout@v7
 
-      - name: Setup Java
-        uses: actions/setup-java@v5.6.0
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
+          distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Setup Flutter
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version-file: .fvmrc
+          channel: stable
           cache: true
 
-      - name: Get Dependencies
-        working-directory: ./mobile
+      - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Static analysis and tests
-        working-directory: ./mobile
-        run: |
-          flutter analyze --no-fatal-infos
-          flutter test
+      - name: Analyze Flutter code
+        run: flutter analyze
 
-      - name: Read app version
-        id: version
-        shell: bash
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
+      - name: Run Flutter tests
+        run: flutter test
 
-          content = Path('mobile/pubspec.yaml').read_text(encoding='utf-8')
-          match = re.search(r'^version:\s*([^\s+]+)(?:\+(\S+))?', content, re.MULTILINE)
-          if not match:
-              raise SystemExit('Could not find Flutter version in mobile/pubspec.yaml')
+      - name: Build release APK
+        run: flutter build apk --release
 
-          semantic_version = match.group(1)
-          build_number = match.group(2) or ''
-          full_version = semantic_version if not build_number else f'{semantic_version}+{build_number}'
-          version_parts = semantic_version.split('.')
-          marketing_version = '.'.join(version_parts[:2]) if len(version_parts) >= 2 else semantic_version
-          if len(version_parts) >= 3 and version_parts[2] != '0':
-              marketing_version = '.'.join(version_parts[:3])
-          release_name = f'Axon POS {marketing_version}'
-          legacy_patch = ''
-          if build_number and build_number.isdigit():
-              legacy_patch = str(max(0, int(build_number) - 2002))
-          compatibility_version = f'1.0.{legacy_patch}' if legacy_patch else semantic_version
-          # Git tags cannot contain '+' - replace with dashed build number
-          git_tag_version = semantic_version if not build_number else f'{semantic_version}-{build_number}'
-          release_path = f'releases/{semantic_version}' if not build_number else f'releases/{semantic_version}/{build_number}'
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'semantic_version={semantic_version}\n')
-              fh.write(f'build_number={build_number}\n')
-              fh.write(f'full_version={full_version}\n')
-              fh.write(f'compatibility_version={compatibility_version}\n')
-              fh.write(f'release_name={release_name}\n')
-              fh.write(f'git_tag_version={git_tag_version}\n')
-              fh.write(f'release_path={release_path}\n')
-          PY
-
-      - name: Resolve Android release floor
-        if: github.event_name != 'pull_request'
-        id: release_floor
-        shell: bash
-        env:
-          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
-          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
-        run: |
-          mkdir -p dist/update-manifest
-          min_version_code=2015
-          if curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
-            parsed="$(
-              python -c "import json; from pathlib import Path; data=json.loads(Path('dist/update-manifest/existing-latest.json').read_text(encoding='utf-8')); value=data.get('buildNumber'); print(int(value) if value is not None else '')" || true
-            )"
-            if [[ "$parsed" =~ ^[0-9]+$ ]]; then
-              min_version_code="$parsed"
-            fi
-          else
-            echo "No existing remote manifest found; using customer baseline build 2015."
-          fi
-
-          [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || {
-            echo "::error::mobile/pubspec.yaml must include a numeric +buildNumber for production Android releases."
-            exit 1
-          }
-
-          publish_release=false
-          if (( BUILD_NUMBER > min_version_code )); then
-            publish_release=true
-          fi
-
-          echo "min_version_code=$min_version_code" >> "$GITHUB_OUTPUT"
-          echo "publish_release=$publish_release" >> "$GITHUB_OUTPUT"
-          echo "Current published Android build floor: $min_version_code"
-          echo "Candidate Android build: $BUILD_NUMBER"
-
-      - name: Skip unchanged Android release
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release != 'true'
-        shell: bash
-        run: |
-          {
-            echo "## Android update not published"
-            echo
-            echo "Candidate build \`${{ steps.version.outputs.build_number }}\` is not greater than the currently published build \`${{ steps.release_floor.outputs.min_version_code }}\`."
-            echo "No APK, manifest, tag, or GitHub Release was created."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Prepare Android release signing
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          missing=()
-          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
-          [[ -z "$ANDROID_KEYSTORE_PASSWORD" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
-          [[ -z "$ANDROID_KEY_ALIAS" ]] && missing+=("ANDROID_KEY_ALIAS")
-          [[ -z "$ANDROID_KEY_PASSWORD" ]] && missing+=("ANDROID_KEY_PASSWORD")
-
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing Android release signing secrets: ${missing[*]}"
-            exit 1
-          fi
-
-          mkdir -p mobile/android/app
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > mobile/android/app/upload-keystore.jks
-          cat > mobile/android/key.properties <<EOF
-          storeFile=app/upload-keystore.jks
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          EOF
-
-      - name: Validate R2 publish credentials
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        shell: bash
-        env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          AWS_EC2_METADATA_DISABLED: true
-          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
-        run: |
-          missing=()
-          [[ -z "$CF_ACCOUNT_ID" ]] && missing+=("CF_ACCOUNT_ID")
-          [[ -z "$AWS_ACCESS_KEY_ID" ]] && missing+=("CF_R2_ACCESS_KEY_ID")
-          [[ -z "$AWS_SECRET_ACCESS_KEY" ]] && missing+=("CF_R2_SECRET_ACCESS_KEY")
-          [[ -z "$CF_R2_BUCKET" ]] && missing+=("CF_R2_BUCKET")
-
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing required GitHub secrets/variables: ${missing[*]}"
-            exit 1
-          fi
-
-          export CF_ACCOUNT_ID="$(printf '%s' "$CF_ACCOUNT_ID" | tr -d '\r\n')"
-          export AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
-          export AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
-          export CF_R2_BUCKET="$(printf '%s' "$CF_R2_BUCKET" | tr -d '\r\n')"
-
-          R2_ENDPOINT="https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          AUTH_TEST_KEY="ci-auth-check/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
-          auth_file="$RUNNER_TEMP/r2-auth-check.txt"
-          : > "$auth_file"
-
-          if ! aws s3api put-object \
-            --bucket "$CF_R2_BUCKET" \
-            --key "$AUTH_TEST_KEY" \
-            --body "$auth_file" \
-            --endpoint-url "$R2_ENDPOINT" \
-            >/dev/null; then
-            echo "::error::R2 auth probe failed. Re-check CF_ACCOUNT_ID, CF_R2_ACCESS_KEY_ID, and CF_R2_SECRET_ACCESS_KEY. Use an R2 S3 access key pair from the same Cloudflare account as the bucket, not a generic Cloudflare API token."
-            exit 1
-          fi
-
-          aws s3api delete-object \
-            --bucket "$CF_R2_BUCKET" \
-            --key "$AUTH_TEST_KEY" \
-            --endpoint-url "$R2_ENDPOINT" \
-            >/dev/null || true
-
-      - name: Build APK
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        working-directory: ./mobile
-        run: |
-          # Clear any cached Gradle config with stale Windows paths
-          rm -f ~/.gradle/gradle.properties
-          # arm64-v8a only: virtually every Android device in the field
-          # (2019+) is arm64, and this is a single-APK direct-download
-          # updater (no Play Store per-ABI delivery) — bundling
-          # armeabi-v7a/x86/x86_64 too was dead weight that every update
-          # re-downloaded in full. Gradle's ndk.abiFilters in
-          # build.gradle.kts alone does not stop Flutter's own engine/AOT
-          # binaries from including every arch; --target-platform is the
-          # flag that actually restricts what Flutter itself builds.
-          flutter build apk --release --target-platform android-arm64
-
-      - name: Verify Android release lineage
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        id: release_verify
-        shell: bash
-        env:
-          APK_PATH: mobile/build/app/outputs/flutter-apk/app-release.apk
-          EXPECTED_ANDROID_PACKAGE: com.archeaxon.axonpos
-          EXPECTED_ANDROID_CERT_SHA256: 0289d757a110883956bc03faeedc3c281d1eb685b98d9bfbad533a9b0d340393
-          MIN_ANDROID_VERSION_CODE: ${{ steps.release_floor.outputs.min_version_code }}
-        run: bash scripts/verify-android-release.sh
-
-      - name: Upload APK artifact
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        uses: actions/upload-artifact@v7.0.1
+      - name: Upload release APK
+        uses: actions/upload-artifact@v7
         with:
-          name: axon-pos-apk-${{ steps.version.outputs.full_version }}
+          name: axon-pos-android-${{ github.run_number }}
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
-
-      - name: Download current manifest
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        shell: bash
-        env:
-          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
-        run: |
-          mkdir -p dist/update-manifest
-          if [[ -f dist/update-manifest/existing-latest.json ]]; then
-            echo "Using existing manifest downloaded during release-floor validation."
-          elif ! curl -fsSL "$R2_PUBLIC_BASE_URL/android/latest.json" -o dist/update-manifest/existing-latest.json; then
-            echo "No existing remote manifest found yet; starting fresh."
-          fi
-
-      - name: Build update manifest
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        id: manifest
-        shell: bash
-        env:
-          FULL_VERSION: ${{ steps.version.outputs.full_version }}
-          SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
-          COMPATIBILITY_VERSION: ${{ steps.version.outputs.compatibility_version }}
-          RELEASE_NAME: ${{ steps.version.outputs.release_name }}
-          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
-          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
-          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          dist_dir = Path('dist/update-manifest')
-          dist_dir.mkdir(parents=True, exist_ok=True)
-          existing_path = dist_dir / 'existing-latest.json'
-          existing = {}
-          if existing_path.exists():
-              try:
-                  existing = json.loads(existing_path.read_text(encoding='utf-8'))
-              except json.JSONDecodeError:
-                  existing = {}
-
-          workflow_inputs = {}
-          event_path = os.environ.get('GITHUB_EVENT_PATH')
-          if event_path:
-            try:
-              workflow_inputs = json.loads(Path(event_path).read_text(encoding='utf-8')).get('inputs') or {}
-            except (OSError, json.JSONDecodeError, TypeError):
-              workflow_inputs = {}
-
-          full_version = os.environ['FULL_VERSION']
-          release_path = os.environ['RELEASE_PATH'].strip('/')
-          base_url = os.environ['R2_PUBLIC_BASE_URL'].rstrip('/')
-
-          min_supported_version = str(workflow_inputs.get('min_supported_version') or '').strip()
-          if not min_supported_version:
-              min_supported_version = str(existing.get('minSupportedVersion') or '0.0.0')
-
-          build_number_raw = os.environ.get('BUILD_NUMBER', '').strip()
-          build_number = int(build_number_raw) if build_number_raw.isdigit() else None
-
-          min_supported_build_number_raw = str(workflow_inputs.get('min_supported_build_number') or '').strip()
-          if min_supported_build_number_raw.isdigit():
-              min_supported_build_number = int(min_supported_build_number_raw)
-          else:
-              existing_build = existing.get('minSupportedBuildNumber')
-              min_supported_build_number = existing_build if isinstance(existing_build, int) else None
-
-          release_notes = str(workflow_inputs.get('release_notes') or '').strip()
-          if not release_notes:
-              short_sha = os.environ.get('GITHUB_SHA', '')[:7]
-              branch = os.environ.get('GITHUB_REF_NAME', 'unknown')
-              release_notes = (
-                  f'{os.environ["RELEASE_NAME"]} starts the clean Axon release line. '
-                  f'Build {build_number or "internal"} was published from {short_sha} on {branch}.'
-              )
-
-          force_update = str(workflow_inputs.get('force_update') or '').strip().lower() == 'true'
-
-          manifest = {
-              'platform': 'android',
-              # Older installed apps only compare this field, so keep it
-              # monotonically increasing even when the visible release line resets.
-              'latestVersion': os.environ['COMPATIBILITY_VERSION'],
-              'releaseName': os.environ['RELEASE_NAME'],
-              'buildNumber': build_number,
-              'minSupportedVersion': min_supported_version,
-              'minSupportedBuildNumber': min_supported_build_number,
-              'forceUpdate': force_update,
-              'apkUrl': f'{base_url}/{release_path}/app-release.apk',
-              'releaseNotes': release_notes,
-              'publishedAt': datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-          }
-
-          latest_path = dist_dir / 'latest.json'
-          latest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'latest_manifest_path={latest_path.as_posix()}\n')
-          PY
-
-      - name: Publish APK to Cloudflare R2
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        shell: bash
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          AWS_EC2_METADATA_DISABLED: true
-          R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
-          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
-        run: |
-          export AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
-          export AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
-          export R2_ENDPOINT="$(printf '%s' "$R2_ENDPOINT" | tr -d '\r\n')"
-          export CF_R2_BUCKET="$(printf '%s' "$CF_R2_BUCKET" | tr -d '\r\n')"
-          export RELEASE_PATH="$(printf '%s' "$RELEASE_PATH" | tr -d '\r\n')"
-
-          # Use a single PUT request for the APK because multipart uploads to R2
-          # can fail signature validation for larger artifacts in GitHub Actions.
-          aws s3api put-object \
-            --bucket "$CF_R2_BUCKET" \
-            --key "$RELEASE_PATH/app-release.apk" \
-            --body mobile/build/app/outputs/flutter-apk/app-release.apk \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type "application/vnd.android.package-archive"
-
-      - name: Publish update manifest to Cloudflare R2
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        shell: bash
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          AWS_EC2_METADATA_DISABLED: true
-          R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
-          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
-          LATEST_MANIFEST_PATH: ${{ steps.manifest.outputs.latest_manifest_path }}
-        run: |
-          export AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
-          export AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
-          export R2_ENDPOINT="$(printf '%s' "$R2_ENDPOINT" | tr -d '\r\n')"
-          export CF_R2_BUCKET="$(printf '%s' "$CF_R2_BUCKET" | tr -d '\r\n')"
-          export RELEASE_PATH="$(printf '%s' "$RELEASE_PATH" | tr -d '\r\n')"
-          export LATEST_MANIFEST_PATH="$(printf '%s' "$LATEST_MANIFEST_PATH" | tr -d '\r\n')"
-
-          aws s3 cp \
-            "$LATEST_MANIFEST_PATH" \
-            "s3://$CF_R2_BUCKET/android/latest.json" \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type "application/json" \
-            --cache-control "no-store, max-age=0"
-
-          aws s3 cp \
-            "$LATEST_MANIFEST_PATH" \
-            "s3://$CF_R2_BUCKET/$RELEASE_PATH/latest.json" \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type "application/json"
-
-      - name: Create GitHub Release
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        uses: softprops/action-gh-release@v3.0.2
-        with:
-          tag_name: v${{ steps.version.outputs.git_tag_version }}
-          target_commitish: ${{ github.sha }}
-          name: Axon POS Android ${{ steps.version.outputs.release_name }}
-          body: |
-            ## Axon POS Android Update
-
-            **Release:** ${{ steps.version.outputs.release_name }}
-            **Internal build:** ${{ steps.version.outputs.build_number }}
-            **Source:** Dual (Cloudflare R2 + GitHub Releases)
-
-            ### Download
-            - [Cloudflare R2](${{ env.R2_PUBLIC_BASE_URL }}/${{ steps.version.outputs.release_path }}/app-release.apk)
-            - [GitHub Release](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.git_tag_version }})
-
-            ### Update Sources
-            1. **Cloudflare R2** (Primary): `${{ env.R2_PUBLIC_BASE_URL }}/android/latest.json`
-            2. **GitHub Releases** (Secondary): GitHub Releases API
-
-            ${{ github.event.inputs.release_notes || 'Automated Android build from GitHub Actions.' }}
-          files: |
-            mobile/build/app/outputs/flutter-apk/app-release.apk
-            ${{ steps.manifest.outputs.latest_manifest_path }}
-          make_latest: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Write publish summary
-        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
-        shell: bash
-        env:
-          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
-          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
-          FULL_VERSION: ${{ steps.version.outputs.full_version }}
-          SEMANTIC_VERSION: ${{ steps.version.outputs.semantic_version }}
-          RELEASE_NAME: ${{ steps.version.outputs.release_name }}
-          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
-          GIT_TAG_VERSION: ${{ steps.version.outputs.git_tag_version }}
-        run: |
-          {
-            echo "## Android update published (Dual Source)"
-            echo
-            echo "- Release: \\`$RELEASE_NAME\\`"
-            echo "- Internal build: \\`$BUILD_NUMBER\\`"
-            echo "- APK: $R2_PUBLIC_BASE_URL/$RELEASE_PATH/app-release.apk"
-            echo "- Manifest: $R2_PUBLIC_BASE_URL/android/latest.json"
-            echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$GIT_TAG_VERSION"
-            echo
-            echo "### Update Sources"
-            echo "1. **Cloudflare R2** (Primary) - in-app updater"
-            echo "2. **GitHub Packages** (Secondary) - fallback direct download"
-          } >> "$GITHUB_STEP_SUMMARY"
+          if-no-files-found: error
+          retention-days: 14

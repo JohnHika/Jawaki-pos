@@ -18,6 +18,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _overdueInstallments = [];
   bool _isLoading = true;
+  String? _loadError;
   bool _showDebtOnly = false;
   final _searchController = TextEditingController();
 
@@ -40,7 +41,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   Future<void> _loadCustomers({String? query}) async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final db = getIt<AppDatabase>();
       final customers = _showDebtOnly
@@ -52,11 +56,18 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         setState(() {
           _customers = customers;
           _isLoading = false;
+          _loadError = null;
         });
       }
       _loadOverdue();
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError =
+              'Couldn\'t load customers. Check your connection and try again.';
+        });
+      }
     }
   }
 
@@ -81,8 +92,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       scrollable: true,
       child: StatefulBuilder(
         builder: (sheetContext, setSheetState) {
-          final isDark =
-              Theme.of(sheetContext).brightness == Brightness.dark;
+          final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
           final titleColor =
               isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
           final secondaryColor = isDark
@@ -121,9 +131,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       labelText: 'Customer or shop name',
                       prefixIcon: Icon(Icons.storefront_outlined),
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Enter a name'
-                        : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Enter a name' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -192,8 +201,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         initialDate:
                             DateTime.now().add(const Duration(days: 1)),
                         firstDate: DateTime.now(),
-                        lastDate:
-                            DateTime.now().add(const Duration(days: 365)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (picked != null) {
                         setSheetState(() => firstDueDate = picked);
@@ -209,9 +217,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                             ? 'Select a date'
                             : '${firstDueDate!.day}/${firstDueDate!.month}/${firstDueDate!.year}',
                         style: TextStyle(
-                          color: firstDueDate == null
-                              ? tertiaryColor
-                              : titleColor,
+                          color:
+                              firstDueDate == null ? tertiaryColor : titleColor,
                         ),
                       ),
                     ),
@@ -301,7 +308,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Scaffold(
@@ -364,8 +372,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration:
-                    BoxDecoration(color: surface, border: Border.all(color: border)),
+                decoration: BoxDecoration(
+                    color: surface, border: Border.all(color: border)),
                 child: TextField(
                   controller: _searchController,
                   style: TextStyle(color: titleColor),
@@ -377,7 +385,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     border: InputBorder.none,
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
-                            icon: Icon(Icons.clear, size: 18, color: tertiaryColor),
+                            icon: Icon(Icons.clear,
+                                size: 18, color: tertiaryColor),
                             onPressed: () {
                               _searchController.clear();
                               _loadCustomers();
@@ -425,132 +434,158 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ? const Center(
                       child:
                           CircularProgressIndicator(color: DesignColors.brand))
-                  : _customers.isEmpty
+                  : _loadError != null
                       ? EmptyState(
-                          icon: Icons.people_outlined,
-                          title: _showDebtOnly
-                              ? 'No customers owe money'
-                              : 'No Customers Yet',
-                          subtitle: _showDebtOnly
-                              ? 'Everyone is paid up'
-                              : 'Add your first customer to get started',
-                          actionLabel: _showDebtOnly ? null : 'Add Customer',
-                          onAction: _showDebtOnly ? null : _showAddCustomerSheet,
+                          icon: Icons.cloud_off_rounded,
+                          title: 'Couldn\'t load customers',
+                          subtitle: _loadError!,
+                          iconColor: DesignColors.error,
+                          actionLabel: 'Retry',
+                          onAction: () => _loadCustomers(
+                              query: _searchController.text.trim()),
                         )
-                      : RefreshIndicator(
-                          onRefresh: () => _loadCustomers(),
-                          child: ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                            itemCount: _customers.length,
-                            itemBuilder: (context, index) {
-                              final c = _customers[index];
-                              final balance =
-                                  (c['balance'] as num?)?.toDouble() ?? 0;
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () =>
-                                        context.push('/customers/${c['id']}'),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: surface,
-                                        border: Border.all(
-                                          color: balance > 0
-                                              ? DesignColors.error
-                                                  .withValues(alpha: 0.4)
-                                              : border,
-                                        ),
-                                      ),
-                                      child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        backgroundColor: DesignColors.brand
-                                            .withValues(alpha: 0.15),
-                                        child: Text(
-                                          (c['name'] as String? ?? '?')[0]
-                                              .toUpperCase(),
-                                          style: const TextStyle(
-                                              color: DesignColors.brand,
-                                              fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(c['name'] ?? '',
-                                                style: TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 14,
-                                                    color: titleColor)),
-                                            if ((c['phone'] ?? '')
-                                                .toString()
-                                                .isNotEmpty)
-                                              Text(c['phone'],
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: secondaryColor)),
-                                            if ((c['location'] ?? '')
-                                                .toString()
-                                                .isNotEmpty)
-                                              Row(
-                                                mainAxisSize:
-                                                    MainAxisSize.min,
+                      : _customers.isEmpty
+                          ? EmptyState(
+                              icon: Icons.people_outlined,
+                              title: _showDebtOnly
+                                  ? 'No customers owe money'
+                                  : 'No Customers Yet',
+                              subtitle: _showDebtOnly
+                                  ? 'Everyone is paid up'
+                                  : 'Add your first customer to get started',
+                              actionLabel:
+                                  _showDebtOnly ? null : 'Add Customer',
+                              onAction:
+                                  _showDebtOnly ? null : _showAddCustomerSheet,
+                            )
+                          : RefreshIndicator(
+                              onRefresh: () => _loadCustomers(),
+                              child: ListView.builder(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                                itemCount: _customers.length,
+                                itemBuilder: (context, index) {
+                                  final c = _customers[index];
+                                  final balance =
+                                      (c['balance'] as num?)?.toDouble() ?? 0;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: () => context
+                                            .push('/customers/${c['id']}'),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: surface,
+                                            border: Border.all(
+                                              color: balance > 0
+                                                  ? DesignColors.error
+                                                      .withValues(alpha: 0.4)
+                                                  : border,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              CircleAvatar(
+                                                backgroundColor: DesignColors
+                                                    .brand
+                                                    .withValues(alpha: 0.15),
+                                                child: Text(
+                                                  (c['name'] as String? ??
+                                                          '?')[0]
+                                                      .toUpperCase(),
+                                                  style: const TextStyle(
+                                                      color: DesignColors.brand,
+                                                      fontWeight:
+                                                          FontWeight.bold),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(c['name'] ?? '',
+                                                        style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            fontSize: 14,
+                                                            color: titleColor)),
+                                                    if ((c['phone'] ?? '')
+                                                        .toString()
+                                                        .isNotEmpty)
+                                                      Text(c['phone'],
+                                                          style: TextStyle(
+                                                              fontSize: 12,
+                                                              color:
+                                                                  secondaryColor)),
+                                                    if ((c['location'] ?? '')
+                                                        .toString()
+                                                        .isNotEmpty)
+                                                      Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                              Icons
+                                                                  .location_on_outlined,
+                                                              size: 11,
+                                                              color:
+                                                                  tertiaryColor),
+                                                          const SizedBox(
+                                                              width: 2),
+                                                          Text(c['location'],
+                                                              style: TextStyle(
+                                                                  fontSize: 11,
+                                                                  color:
+                                                                      tertiaryColor)),
+                                                        ],
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.end,
                                                 children: [
-                                                  Icon(
-                                                      Icons
-                                                          .location_on_outlined,
-                                                      size: 11,
-                                                      color: tertiaryColor),
-                                                  const SizedBox(width: 2),
-                                                  Text(c['location'],
+                                                  if (balance > 0)
+                                                    Text(
+                                                        'Owes KES ${balance.toStringAsFixed(0)}',
+                                                        style: const TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 13,
+                                                            color: DesignColors
+                                                                .error))
+                                                  else
+                                                    Text(
+                                                        'KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                                                        style: const TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 13,
+                                                            color: DesignColors
+                                                                .brand)),
+                                                  Text(
+                                                      '${c['totalPurchases'] ?? 0} purchases',
                                                       style: TextStyle(
                                                           fontSize: 11,
-                                                          color: tertiaryColor)),
+                                                          color:
+                                                              tertiaryColor)),
                                                 ],
                                               ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          if (balance > 0)
-                                            Text(
-                                                'Owes KES ${balance.toStringAsFixed(0)}',
-                                                style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
-                                                    color: DesignColors.error))
-                                          else
-                                            Text(
-                                                'KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}',
-                                                style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
-                                                    color: DesignColors.brand)),
-                                          Text(
-                                              '${c['totalPurchases'] ?? 0} purchases',
-                                              style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: tertiaryColor)),
-                                        ],
-                                      ),
-                                    ],
-                                      ),
                                     ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
+                                  );
+                                },
+                              ),
+                            ),
             ),
           ],
         ),

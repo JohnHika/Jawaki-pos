@@ -29,6 +29,39 @@ export class PermissionsService {
       }
     }
 
+    // Backward compatibility for users created before granular roles were
+    // introduced. Legacy ADMIN/MANAGER accounts still need the matching
+    // tenant role reflected until an administrator explicitly changes them.
+    if (userRoles.length === 0) {
+      const legacyUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { tenantId: true, role: true },
+      });
+      const roleNameByLegacyRole: Record<string, string> = {
+        CASHIER: 'Cashier',
+        SUPERVISOR: 'Supervisor',
+        MANAGER: 'Manager',
+        ADMIN: 'Admin',
+      };
+      const roleName = legacyUser
+        ? roleNameByLegacyRole[String(legacyUser.role)]
+        : undefined;
+      if (legacyUser && roleName) {
+        const fallbackRole = await this.prisma.role.findUnique({
+          where: {
+            tenantId_name: {
+              tenantId: legacyUser.tenantId,
+              name: roleName,
+            },
+          },
+          select: { permissions: { select: { permissionKey: true } } },
+        });
+        for (const permission of fallbackRole?.permissions ?? []) {
+          effective.add(permission.permissionKey);
+        }
+      }
+    }
+
     for (const override of overrides) {
       if (override.grant) {
         effective.add(override.permissionKey);

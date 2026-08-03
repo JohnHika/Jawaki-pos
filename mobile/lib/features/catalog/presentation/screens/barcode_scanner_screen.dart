@@ -12,7 +12,8 @@ class BarcodeScannerScreen extends ConsumerStatefulWidget {
   const BarcodeScannerScreen({super.key});
 
   @override
-  ConsumerState<BarcodeScannerScreen> createState() => _BarcodeScannerScreenState();
+  ConsumerState<BarcodeScannerScreen> createState() =>
+      _BarcodeScannerScreenState();
 }
 
 class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
@@ -51,7 +52,8 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           backgroundColor: Theme.of(dialogContext).brightness == Brightness.dark
               ? DesignColors.darkSurface
               : Colors.white,
@@ -78,7 +80,8 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
                       const SizedBox(height: 4),
                       Text(
                         'Barcode: $barcode',
-                        style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
+                        style: const TextStyle(
+                            fontSize: 12, color: DesignColors.textSecondary),
                       ),
                     ],
                   ),
@@ -151,7 +154,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
           icon: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha:0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.close_rounded, color: Colors.white),
@@ -164,10 +167,10 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
         ),
         centerTitle: true,
         actions: [
-          ValueListenableBuilder(
-            valueListenable: _controller!.torchState,
+          ValueListenableBuilder<MobileScannerState>(
+            valueListenable: _controller!,
             builder: (context, state, child) {
-              if (state == TorchState.on) {
+              if (state.torchState == TorchState.on) {
                 return IconButton(
                   icon: const Icon(Icons.flash_on_rounded, color: Colors.amber),
                   onPressed: () => _controller?.toggleTorch(),
@@ -211,9 +214,10 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha:0.7),
+                    color: Colors.black.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(30),
                   ),
                   margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -232,16 +236,18 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha:0.7),
+                        color: Colors.black.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Row(
+                      child: const Row(
                         children: [
-                          const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 20),
-                          const SizedBox(width: 8),
-                          const Text(
+                          Icon(Icons.qr_code_scanner_rounded,
+                              color: Colors.white, size: 20),
+                          SizedBox(width: 8),
+                          Text(
                             'Auto-detect',
                             style: TextStyle(
                               color: Colors.white,
@@ -267,7 +273,7 @@ class _BarcodeScannerScreenState extends ConsumerState<BarcodeScannerScreen> {
 class ScannerOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black.withValues(alpha:0.6);
+    final paint = Paint()..color = Colors.black.withValues(alpha: 0.6);
     final scanAreaSize = size.width * 0.7;
     final scanAreaOffset = Offset(
       (size.width - scanAreaSize) / 2,
@@ -292,7 +298,9 @@ class ScannerOverlayPainter extends CustomPainter {
 
     canvas.drawPath(
       path..fillType = PathFillType.evenOdd,
-      Paint()..color = Colors.transparent..blendMode = BlendMode.clear,
+      Paint()
+        ..color = Colors.transparent
+        ..blendMode = BlendMode.clear,
     );
 
     // Draw scan area border
@@ -302,7 +310,7 @@ class ScannerOverlayPainter extends CustomPainter {
       ..strokeWidth = 3;
 
     // Draw corners
-    final cornerLength = 30.0;
+    const cornerLength = 30.0;
     canvas.drawLine(
       Offset(scanAreaOffset.dx, scanAreaOffset.dy + cornerLength),
       Offset(scanAreaOffset.dx, scanAreaOffset.dy),
@@ -315,46 +323,55 @@ class ScannerOverlayPainter extends CustomPainter {
     );
 
     canvas.drawLine(
-      Offset(scanAreaOffset.dx + scanAreaSize - cornerLength, scanAreaOffset.dy),
+      Offset(
+          scanAreaOffset.dx + scanAreaSize - cornerLength, scanAreaOffset.dy),
       Offset(scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy),
       borderPaint,
     );
     canvas.drawLine(
       Offset(scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy),
-      Offset(scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + cornerLength),
+      Offset(
+          scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + cornerLength),
       borderPaint,
     );
 
     canvas.drawLine(
-      Offset(scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + scanAreaSize - cornerLength),
-      Offset(scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + scanAreaSize),
+      Offset(scanAreaOffset.dx + scanAreaSize,
+          scanAreaOffset.dy + scanAreaSize - cornerLength),
+      Offset(
+          scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + scanAreaSize),
       borderPaint,
     );
     canvas.drawLine(
-      Offset(scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + scanAreaSize),
-      Offset(scanAreaOffset.dx + scanAreaSize - cornerLength, scanAreaOffset.dy + scanAreaSize),
+      Offset(
+          scanAreaOffset.dx + scanAreaSize, scanAreaOffset.dy + scanAreaSize),
+      Offset(scanAreaOffset.dx + scanAreaSize - cornerLength,
+          scanAreaOffset.dy + scanAreaSize),
       borderPaint,
     );
 
     canvas.drawLine(
-      Offset(scanAreaOffset.dx + cornerLength, scanAreaOffset.dy + scanAreaSize),
+      Offset(
+          scanAreaOffset.dx + cornerLength, scanAreaOffset.dy + scanAreaSize),
       Offset(scanAreaOffset.dx, scanAreaOffset.dy + scanAreaSize),
       borderPaint,
     );
     canvas.drawLine(
       Offset(scanAreaOffset.dx, scanAreaOffset.dy + scanAreaSize),
-      Offset(scanAreaOffset.dx, scanAreaOffset.dy + scanAreaSize - cornerLength),
+      Offset(
+          scanAreaOffset.dx, scanAreaOffset.dy + scanAreaSize - cornerLength),
       borderPaint,
     );
 
     // Draw scanning line animation
     final linePaint = Paint()
-      ..color = DesignColors.brand.withValues(alpha:0.5)
+      ..color = DesignColors.brand.withValues(alpha: 0.5)
       ..strokeWidth = 2;
 
     canvas.drawLine(
       Offset(scanAreaOffset.dx + 10, scanAreaOffset.dy + scanAreaSize / 2),
-      Offset(scanAreaOffset.dx + scanAreaSize - 10, scanAreaOffset.dy + scanAreaSize / 2),
+      Offset(scanAreaOffset.dx + scanAreaSize - 10,
+          scanAreaOffset.dy + scanAreaSize / 2),
       linePaint,
     );
   }

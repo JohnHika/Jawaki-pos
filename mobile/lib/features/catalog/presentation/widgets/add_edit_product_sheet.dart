@@ -154,6 +154,16 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoriesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final fieldBorder =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final fieldFill =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Form(
@@ -182,10 +192,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 const SizedBox(width: 12),
                 Text(
                   isEditing ? 'Edit Product' : 'Add New Product',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
-                    color: DesignColors.textPrimary,
+                    color: titleColor,
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -196,28 +206,27 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             // Product Name
             TextFormField(
               controller: _nameController,
+              style: TextStyle(color: titleColor),
               decoration: InputDecoration(
                 labelText: 'Product Name *',
                 hintText: 'e.g. Panadol Extra (10 tablets)',
-                hintStyle: TextStyle(color: DesignColors.textTertiary),
-                labelStyle: const TextStyle(
-                  color: DesignColors.textSecondary,
+                hintStyle: TextStyle(color: tertiaryColor),
+                labelStyle: TextStyle(
+                  color: secondaryColor,
                   fontWeight: FontWeight.w500,
                 ),
                 floatingLabelBehavior: FloatingLabelBehavior.auto,
-                prefixIcon: const Icon(Icons.inventory_2_outlined,
-                    color: DesignColors.textTertiary),
+                prefixIcon:
+                    Icon(Icons.inventory_2_outlined, color: tertiaryColor),
                 filled: true,
-                fillColor: isDark
-                    ? DesignColors.darkSurfaceElevated
-                    : DesignColors.surfaceSubtle,
+                fillColor: fieldFill,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: fieldBorder),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: fieldBorder),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -239,24 +248,24 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 final ac = categories.where((c) => c.isActive).toList();
                 return Container(
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? DesignColors.darkSurfaceElevated
-                        : DesignColors.surfaceSubtle,
+                    color: fieldFill,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: fieldBorder),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButtonFormField<String>(
                       initialValue: _selectedCategoryId,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: titleColor),
+                      decoration: InputDecoration(
                         labelText: 'Category *',
                         labelStyle: TextStyle(
-                          color: DesignColors.textSecondary,
+                          color: secondaryColor,
                           fontWeight: FontWeight.w500,
                         ),
                         floatingLabelBehavior: FloatingLabelBehavior.auto,
-                        prefixIcon: Icon(Icons.category_outlined,
-                            color: DesignColors.textTertiary),
+                        prefixIcon:
+                            Icon(Icons.category_outlined, color: tertiaryColor),
                         border: InputBorder.none,
                       ),
                       dropdownColor:
@@ -291,27 +300,26 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             // Description
             TextFormField(
               controller: _descriptionController,
+              style: TextStyle(color: titleColor),
               decoration: InputDecoration(
                 labelText: 'Description (optional)',
-                hintStyle: TextStyle(color: DesignColors.textTertiary),
-                labelStyle: const TextStyle(
-                  color: DesignColors.textSecondary,
+                hintStyle: TextStyle(color: tertiaryColor),
+                labelStyle: TextStyle(
+                  color: secondaryColor,
                   fontWeight: FontWeight.w500,
                 ),
                 floatingLabelBehavior: FloatingLabelBehavior.auto,
-                prefixIcon: const Icon(Icons.description_outlined,
-                    color: DesignColors.textTertiary),
+                prefixIcon:
+                    Icon(Icons.description_outlined, color: tertiaryColor),
                 filled: true,
-                fillColor: isDark
-                    ? DesignColors.darkSurfaceElevated
-                    : DesignColors.surfaceSubtle,
+                fillColor: fieldFill,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: fieldBorder),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: fieldBorder),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -381,8 +389,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
       // shouldn't be silently dropped just because this was left blank.
       // Default to 1 (1:1 with the primary unit) until the admin sets a
       // real count.
-      final tierQty =
-          double.tryParse(tier.qtyController.text.trim()) ?? 1;
+      final tierQty = double.tryParse(tier.qtyController.text.trim()) ?? 1;
       pricingTiers.add({
         'unit': tier.unit,
         'quantityPerUnit': tierQty,
@@ -479,9 +486,16 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     if (!tierUnits.contains(_minStockUnit)) {
       _minStockUnit = tierUnits.first;
     }
-    final fill = isDark
-        ? DesignColors.darkSurfaceElevated
-        : DesignColors.surfaceSubtle;
+    final fill =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final fieldBorder =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,25 +505,26 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           child: TextFormField(
             controller: _minStockController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(color: titleColor),
             decoration: InputDecoration(
               labelText: 'Reorder when below (optional)',
-              hintStyle: TextStyle(color: DesignColors.textTertiary),
-              labelStyle: const TextStyle(
-                color: DesignColors.textSecondary,
+              hintStyle: TextStyle(color: tertiaryColor),
+              labelStyle: TextStyle(
+                color: secondaryColor,
                 fontWeight: FontWeight.w500,
               ),
               floatingLabelBehavior: FloatingLabelBehavior.auto,
-              prefixIcon: const Icon(Icons.warning_amber_rounded,
-                  color: DesignColors.textTertiary),
+              prefixIcon:
+                  Icon(Icons.warning_amber_rounded, color: tertiaryColor),
               filled: true,
               fillColor: fill,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(color: fieldBorder),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(color: fieldBorder),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -534,11 +549,14 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             decoration: BoxDecoration(
               color: fill,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: fieldBorder),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _minStockUnit,
                 isExpanded: true,
+                style: TextStyle(color: titleColor),
+                dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
                 items: tierUnits
                     .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                     .toList(),
@@ -556,6 +574,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   // ─── Pricing section helpers ────────────────────────────────────────────
 
   Widget _buildPricingSection(bool isDark) {
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -572,19 +594,18 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   color: DesignColors.brand, size: 16),
             ),
             const SizedBox(width: 8),
-            const Text(
+            Text(
               'Pricing by Unit',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: DesignColors.textPrimary,
+                color: titleColor,
                 letterSpacing: -0.2,
               ),
             ),
             const Spacer(),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: isDark
                     ? DesignColors.darkSurfaceElevated
@@ -594,10 +615,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               child: Text(
                 '${_unitPriceTiers.length} '
                 '${_unitPriceTiers.length == 1 ? 'tier' : 'tiers'}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: DesignColors.textTertiary,
+                  color: tertiaryColor,
                 ),
               ),
             ),
@@ -628,6 +649,14 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   Widget _buildPricingRow(int index, bool isDark) {
     final tier = _unitPriceTiers[index];
     final isPrimary = index == 0;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiaryColor =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final fieldBorder =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -651,8 +680,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 flex: 5,
                 child: Container(
                   decoration: BoxDecoration(
-                    color:
-                        isDark ? DesignColors.darkSurface : Colors.white,
+                    color: isDark ? DesignColors.darkSurface : Colors.white,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -664,13 +692,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: isDark
-                            ? Colors.white
-                            : DesignColors.textPrimary,
+                        color: titleColor,
                       ),
-                      dropdownColor: isDark
-                          ? DesignColors.darkSurface
-                          : Colors.white,
+                      dropdownColor:
+                          isDark ? DesignColors.darkSurface : Colors.white,
                       items: _units
                           .map(
                             (u) => DropdownMenuItem(
@@ -681,8 +706,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                             ),
                           )
                           .toList(),
-                      onChanged: (val) => setState(
-                          () => tier.unit = val ?? tier.unit),
+                      onChanged: (val) =>
+                          setState(() => tier.unit = val ?? tier.unit),
                     ),
                   ),
                 ),
@@ -693,32 +718,33 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 flex: 7,
                 child: TextFormField(
                   controller: tier.priceController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                   decoration: InputDecoration(
                     hintText: '0.00',
                     hintStyle: TextStyle(
-                      color: DesignColors.textTertiary,
+                      color: tertiaryColor,
                       fontWeight: FontWeight.normal,
                     ),
                     prefixText: 'KES ',
-                    prefixStyle: const TextStyle(
-                      color: DesignColors.textSecondary,
+                    prefixStyle: TextStyle(
+                      color: secondaryColor,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
                     filled: true,
-                    fillColor: isDark
-                        ? DesignColors.darkSurface
-                        : Colors.white,
+                    fillColor: isDark ? DesignColors.darkSurface : Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: fieldBorder),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: fieldBorder),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -775,25 +801,32 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               controller: tier.qtyController,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              style: TextStyle(
+                color: titleColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
               decoration: InputDecoration(
                 labelText:
                     'How many ${_unitPriceTiers[0].unit} per ${tier.unit}? (optional)',
-                labelStyle: const TextStyle(fontSize: 12),
+                labelStyle: TextStyle(
+                  color: secondaryColor,
+                  fontSize: 12,
+                ),
                 hintText: 'e.g. 12 — defaults to 1 if left blank',
                 hintStyle: TextStyle(
-                  color: DesignColors.textTertiary,
+                  color: tertiaryColor,
                   fontWeight: FontWeight.normal,
                 ),
                 filled: true,
                 fillColor: isDark ? DesignColors.darkSurface : Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: fieldBorder),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: fieldBorder),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -830,9 +863,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                         const SizedBox(width: 4),
                         Text(
                           'Primary — base for stock deductions',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: DesignColors.textTertiary,
+                            color: tertiaryColor,
                           ),
                         ),
                       ],
@@ -843,16 +876,16 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                       'bigger units like Pack or Carton as tiers below.',
                       style: TextStyle(
                         fontSize: 11,
-                        color: DesignColors.textTertiary.withValues(alpha: 0.8),
+                        color: tertiaryColor.withValues(alpha: 0.9),
                       ),
                     ),
                   ],
                 )
               : Text(
                   'Tier ${index + 1} — set the real pack/carton size',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: DesignColors.textTertiary,
+                    color: tertiaryColor,
                   ),
                 ),
         ),
@@ -880,9 +913,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ),
           ),
         ),
-        child: Row(
+        child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
+          children: [
             Icon(Icons.add_circle_outline_rounded,
                 color: DesignColors.brand, size: 17),
             SizedBox(width: 6),

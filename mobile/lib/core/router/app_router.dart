@@ -7,6 +7,7 @@ import '../../features/auth/presentation/screens/pin_login_screen.dart';
 import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
+import '../../features/auth/presentation/screens/company_activation_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -59,10 +60,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // Provider is first evaluated.
   final String initialLocation;
   if (authService.isAuthenticated) {
-    // Returning user with a valid token → go straight to the POS screen,
-    // unless this device hasn't run the first-login staff tour yet (e.g.
-    // the app was killed mid-tour on a previous launch).
-    initialLocation = storageService.hasSeenStaffTour() ? '/' : '/staff-tour';
+    if (authService.requiresTenantActivation) {
+      initialLocation = '/activation';
+    } else {
+      // Returning owner/manager accounts should land on the business overview;
+      // staff without that capability continue to land on POS.
+      final canSeeDashboard = RolePermissions(
+        authService.currentUser?['permissions'] as List<dynamic>?,
+      ).canSeeDashboard;
+      initialLocation = canSeeDashboard
+          ? '/dashboard'
+          : (storageService.hasSeenStaffTour() ? '/' : '/staff-tour');
+    }
   } else if (authService.isLocked) {
     // Session exists but is soft-locked (backgrounded past the auto-lock
     // window, or "remember me" kept it across a relaunch) — send them to
@@ -89,6 +98,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Setup routes (company-choice, company-setup) are always accessible
       final isSetupRoute =
           path == '/company-choice' || path == '/company-setup';
+      final isActivationRoute = path == '/activation';
 
       // Login routes
       final isLoginRoute = path == '/login' || path == '/pin-login';
@@ -110,13 +120,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return '/company-choice';
       }
 
+      if (authService.requiresTenantActivation && !isActivationRoute) {
+        return '/activation';
+      }
+
+      if (!authService.requiresTenantActivation && isActivationRoute) {
+        return '/dashboard';
+      }
+
       // If logged in and on setup/login page, go to main app — unless this
       // device has never seen the first-login staff tour yet, in which
       // case that runs once before the user ever reaches the real POS
       // screen unguided. The tour itself sets hasSeenStaffTour(true) when
       // it finishes/is skipped, so this only ever fires once per device.
       if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
-        return storageService.hasSeenStaffTour() ? '/' : '/staff-tour';
+        final canSeeDashboard = RolePermissions(
+          authService.currentUser?['permissions'] as List<dynamic>?,
+        ).canSeeDashboard;
+        return canSeeDashboard
+            ? '/dashboard'
+            : (storageService.hasSeenStaffTour() ? '/' : '/staff-tour');
       }
 
       // Role-based route guards
@@ -133,9 +156,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             !perms.canSeeProducts) {
           return '/';
         }
-        // Reports & Dashboard require store manager+
-        if ((path == '/reports' || path == '/dashboard') &&
-            !perms.canSeeReports) {
+        // Reports require reporting capability. Dashboard is the shared
+        // overview and remains reachable for every signed-in role.
+        if (path == '/reports' && !perms.canSeeReports) {
           return '/';
         }
       }
@@ -159,6 +182,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'owner-welcome',
         builder: (context, state) =>
             OwnerWelcomeScreen(companyName: state.extra as String?),
+      ),
+      GoRoute(
+        path: '/activation',
+        name: 'activation',
+        builder: (context, state) => CompanyActivationScreen(
+          companyName: state.extra as String?,
+        ),
       ),
 
       // Auth Routes
@@ -457,7 +487,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return AiTrialScreen(
                 branchId: branchId,
                 branchName: '', // Not used anymore
-                onSubscribe: () => context.push('/ai/subscribe', extra: branchId),
+                onSubscribe: () =>
+                    context.push('/ai/subscribe', extra: branchId),
               );
             },
           ),
@@ -474,7 +505,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               );
             },
           ),
-
         ],
       ),
     ],

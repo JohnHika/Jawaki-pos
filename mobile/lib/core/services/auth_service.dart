@@ -73,6 +73,14 @@ class AuthService {
   String? get tenantSlug => _storage.getTenantSlug();
   String? get userRole => _currentUser?['role'];
 
+  String? get activationStatus {
+    final tenant = _currentUser?['tenant'];
+    if (tenant is Map) return tenant['activationStatus'] as String?;
+    return _currentUser?['activationStatus'] as String?;
+  }
+
+  bool get requiresTenantActivation => activationStatus == 'PENDING';
+
   /// Whether this account has a PIN set server-side — refreshed on every
   /// login and token refresh, so it stays current even on a device that
   /// never locally stored a PIN itself (e.g. the account's PIN was set
@@ -192,7 +200,8 @@ class AuthService {
     required String email,
     required String pin,
   }) async {
-    final response = await _apiClient.loginWithOfflinePin(email: email, pin: pin);
+    final response =
+        await _apiClient.loginWithOfflinePin(email: email, pin: pin);
     await _applyAuthResponse(response);
   }
 
@@ -487,7 +496,8 @@ class AuthService {
       if (!canCheck || !isSupported) return false;
 
       return await _localAuth.authenticate(
-        localizedReason: 'Confirm your fingerprint or face to enable biometric login',
+        localizedReason:
+            'Confirm your fingerprint or face to enable biometric login',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: false,

@@ -347,6 +347,9 @@ export class AuthResponseDto {
       slug: string;
       logo?: string;
       logoPublicId?: string;
+      activationStatus: string;
+      activationAmount: unknown;
+      activationPaidAt?: Date;
       settings?: Record<string, any>;
       isActive: boolean;
     };

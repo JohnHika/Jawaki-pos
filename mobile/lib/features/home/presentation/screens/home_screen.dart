@@ -45,19 +45,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
-    // AI Assistant — the app's primary destination, first in the row.
+    // Dashboard is the shared business overview. Its cards and actions remain
+    // role-aware inside the screen, but every signed-in user should be able
+    // to see the same orientation point instead of losing the destination.
     items.add(_NavItem(
-        icon: Icons.auto_awesome_outlined,
-        activeIcon: Icons.auto_awesome_rounded,
-        label: 'AI',
-        path: '/ai'));
-    if (perms.canSeeDashboard) {
-      items.add(_NavItem(
-          icon: Icons.dashboard_outlined,
-          activeIcon: Icons.dashboard_rounded,
-          label: 'Dashboard',
-          path: '/dashboard'));
-    }
+        icon: Icons.dashboard_outlined,
+        activeIcon: Icons.dashboard_rounded,
+        label: 'Dashboard',
+        path: '/dashboard'));
     items.add(_NavItem(
         icon: Icons.point_of_sale_outlined,
         activeIcon: Icons.point_of_sale_rounded,
@@ -107,6 +102,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Finance',
           path: '/finance'));
     }
+    // AI is a supporting capability rather than the primary POS destination;
+    // keep it available from More without displacing Dashboard or Payments.
+    items.add(_NavItem(
+        icon: Icons.auto_awesome_outlined,
+        activeIcon: Icons.auto_awesome_rounded,
+        label: 'AI',
+        path: '/ai'));
     return items;
   }
 
@@ -317,31 +319,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   final isSelected = currentIndex == idx;
                   return Expanded(
                       child: KeyedSubtree(
-                        key: item.path == '/' ? HomeNavKeys.pos : null,
-                        child: _NavItemWidget(
-                            item: item,
-                            isSelected: isSelected,
-                            isPrimary: idx == 0,
-                            onTap: () => context.go(item.path),
-                            isDark: isDark),
-                      ));
+                    key: item.path == '/' ? HomeNavKeys.pos : null,
+                    child: _NavItemWidget(
+                        item: item,
+                        isSelected: isSelected,
+                        isPrimary: item.path == '/ai' && idx == 0,
+                        onTap: () => context.go(item.path),
+                        isDark: isDark),
+                  ));
                 }),
                 if (hasMore)
                   Expanded(
                       child: KeyedSubtree(
-                        key: HomeNavKeys.more,
-                        child: _NavItemWidget(
-                          item: _NavItem(
-                              icon: Icons.apps_outlined,
-                              activeIcon: Icons.apps_rounded,
-                              label: 'More',
-                              path: ''),
-                          isSelected: currentIndex >= maxVisible,
-                          isPrimary: false,
-                          onTap: () => _showMoreSheet(moreItems),
-                          isDark: isDark,
-                        ),
-                      )),
+                    key: HomeNavKeys.more,
+                    child: _NavItemWidget(
+                      item: _NavItem(
+                          icon: Icons.apps_outlined,
+                          activeIcon: Icons.apps_rounded,
+                          label: 'More',
+                          path: ''),
+                      isSelected: currentIndex >= maxVisible,
+                      isPrimary: false,
+                      onTap: () => _showMoreSheet(moreItems),
+                      isDark: isDark,
+                    ),
+                  )),
               ],
             ),
           ),

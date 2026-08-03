@@ -13,7 +13,7 @@ class ApiClient {
 
   /// Get the current base URL.
   String get baseUrl => _dio.options.baseUrl;
-  
+
   // Auth endpoints
   Future<Map<String, dynamic>> login({
     required String email,
@@ -29,7 +29,7 @@ class ApiClient {
     });
     return response.data;
   }
-  
+
   Future<Map<String, dynamic>> loginWithPin({
     required String pin,
     required String deviceId,
@@ -88,7 +88,7 @@ class ApiClient {
     });
     return response.data;
   }
-  
+
   Future<void> logout({
     String? refreshToken,
     bool allDevices = false,
@@ -130,6 +130,25 @@ class ApiClient {
       },
     });
     return response.data;
+  }
+
+  Future<Map<String, dynamic>> getTenantActivationStatus() async {
+    final response = await _dio.get('/tenant-activation/status');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> initializeTenantActivationPayment() async {
+    final response = await _dio.post('/tenant-activation/paystack/initialize');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> verifyTenantActivationPayment(
+    String reference,
+  ) async {
+    final response = await _dio.get(
+      '/tenant-activation/paystack/verify/${Uri.encodeComponent(reference)}',
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> updateCurrentTenant({
@@ -221,12 +240,15 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> assignUserRole(String userId, String roleId) async {
-    final response = await _dio.post('/users/$userId/roles', data: {'roleId': roleId});
+  Future<Map<String, dynamic>> assignUserRole(
+      String userId, String roleId) async {
+    final response =
+        await _dio.post('/users/$userId/roles', data: {'roleId': roleId});
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> removeUserRole(String userId, String roleId) async {
+  Future<Map<String, dynamic>> removeUserRole(
+      String userId, String roleId) async {
     final response = await _dio.delete('/users/$userId/roles/$roleId');
     return response.data as Map<String, dynamic>;
   }
@@ -237,7 +259,8 @@ class ApiClient {
     required bool grant,
     String? reason,
   }) async {
-    final response = await _dio.post('/users/$userId/permission-overrides', data: {
+    final response =
+        await _dio.post('/users/$userId/permission-overrides', data: {
       'permissionKey': permissionKey,
       'grant': grant,
       if (reason != null) 'reason': reason,
@@ -249,7 +272,8 @@ class ApiClient {
     String userId,
     String permissionKey,
   ) async {
-    final response = await _dio.delete('/users/$userId/permission-overrides/$permissionKey');
+    final response =
+        await _dio.delete('/users/$userId/permission-overrides/$permissionKey');
     return response.data as Map<String, dynamic>;
   }
 
@@ -333,7 +357,8 @@ class ApiClient {
   /// Admin-only. Returns recent tenant activity (logins, branch/PIN
   /// changes, etc.) — the actual data behind the Settings > Audit Trail
   /// screen.
-  Future<Map<String, dynamic>> getAuditLog({int page = 1, int limit = 50}) async {
+  Future<Map<String, dynamic>> getAuditLog(
+      {int page = 1, int limit = 50}) async {
     final response = await _dio.get('/audit-log', queryParameters: {
       'page': page,
       'limit': limit,
@@ -404,7 +429,7 @@ class ApiClient {
   Future<void> deleteCategory(String id) async {
     await _dio.delete('/catalog/categories/$id');
   }
-  
+
   Future<List<dynamic>> getProducts({
     String? categoryId,
     String? search,
@@ -479,23 +504,23 @@ class ApiClient {
   Future<void> deleteProduct(String id) async {
     await _dio.delete('/catalog/products/$id');
   }
-  
+
   Future<Map<String, dynamic>> getProduct(String id) async {
     final response = await _dio.get('/catalog/products/$id');
     return response.data;
   }
-  
+
   Future<List<dynamic>> getPriceOverrides() async {
     final response = await _dio.get('/catalog/prices');
     return response.data;
   }
-  
+
   // Sales endpoints
   Future<Map<String, dynamic>> createSale(Map<String, dynamic> data) async {
     final response = await _dio.post('/sales', data: data);
     return response.data;
   }
-  
+
   Future<List<dynamic>> getSales({
     String? startDate,
     String? endDate,
@@ -510,12 +535,12 @@ class ApiClient {
     });
     return response.data['items'];
   }
-  
+
   Future<Map<String, dynamic>> getSale(String id) async {
     final response = await _dio.get('/sales/$id');
     return response.data;
   }
-  
+
   Future<Map<String, dynamic>> getReceipt(String saleId) async {
     final response = await _dio.get('/sales/$saleId/receipt');
     return response.data;
@@ -523,16 +548,18 @@ class ApiClient {
 
   /// Soft-voids a sale on the backend (status=VOIDED, records the reason +
   /// who/when, restores stock). Requires the sales.void permission.
-  Future<Map<String, dynamic>> voidSale(String saleId, {required String reason}) async {
-    final response = await _dio.post('/sales/$saleId/void', data: {'reason': reason});
+  Future<Map<String, dynamic>> voidSale(String saleId,
+      {required String reason}) async {
+    final response =
+        await _dio.post('/sales/$saleId/void', data: {'reason': reason});
     return response.data as Map<String, dynamic>;
   }
-  
+
   Future<Map<String, dynamic>> getDailySummary() async {
     final response = await _dio.get('/sales/daily-summary');
     return response.data;
   }
-  
+
   // Inventory endpoints
   Future<List<dynamic>> getStock({String? branchId}) async {
     final response = await _dio.get('/inventory/stock', queryParameters: {
@@ -540,23 +567,24 @@ class ApiClient {
     });
     return response.data;
   }
-  
+
   Future<List<dynamic>> getLowStockItems() async {
     final response = await _dio.get('/inventory/low-stock');
     return response.data;
   }
-  
+
   Future<Map<String, dynamic>> receiveBatches(Map<String, dynamic> data) async {
     final response = await _dio.post('/inventory/batches/receive', data: data);
     return response.data;
   }
-  
+
   // Stock Request endpoints
-  Future<Map<String, dynamic>> createStockRequest(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createStockRequest(
+      Map<String, dynamic> data) async {
     final response = await _dio.post('/inventory/stock-requests', data: data);
     return response.data;
   }
-  
+
   Future<List<dynamic>> getStockRequests({
     String? branchId,
     String? status,
@@ -564,7 +592,8 @@ class ApiClient {
     int? page,
     int? limit,
   }) async {
-    final response = await _dio.get('/inventory/stock-requests', queryParameters: {
+    final response =
+        await _dio.get('/inventory/stock-requests', queryParameters: {
       if (branchId != null) 'branchId': branchId,
       if (status != null) 'status': status,
       if (priority != null) 'priority': priority,
@@ -573,55 +602,68 @@ class ApiClient {
     });
     return response.data;
   }
-  
+
   Future<Map<String, dynamic>> getStockRequest(String id) async {
     final response = await _dio.get('/inventory/stock-requests/$id');
     return response.data;
   }
-  
-  Future<Map<String, dynamic>> updateStockRequest(String id, Map<String, dynamic> data) async {
-    final response = await _dio.put('/inventory/stock-requests/$id', data: data);
+
+  Future<Map<String, dynamic>> updateStockRequest(
+      String id, Map<String, dynamic> data) async {
+    final response =
+        await _dio.put('/inventory/stock-requests/$id', data: data);
     return response.data;
   }
-  
-  Future<Map<String, dynamic>> resolveStockRequest(String id, Map<String, dynamic> data) async {
-    final response = await _dio.put('/inventory/stock-requests/$id/resolve', data: data);
+
+  Future<Map<String, dynamic>> resolveStockRequest(
+      String id, Map<String, dynamic> data) async {
+    final response =
+        await _dio.put('/inventory/stock-requests/$id/resolve', data: data);
     return response.data;
   }
-  
-  Future<Map<String, dynamic>> cancelStockRequest(String id, Map<String, dynamic> data) async {
-    final response = await _dio.put('/inventory/stock-requests/$id/cancel', data: data);
+
+  Future<Map<String, dynamic>> cancelStockRequest(
+      String id, Map<String, dynamic> data) async {
+    final response =
+        await _dio.put('/inventory/stock-requests/$id/cancel', data: data);
     return response.data;
   }
-  
+
   Future<Map<String, dynamic>> getStockRequestStats({String? branchId}) async {
-    final response = await _dio.get('/inventory/stock-requests/stats/summary', queryParameters: {
+    final response = await _dio
+        .get('/inventory/stock-requests/stats/summary', queryParameters: {
       if (branchId != null) 'branchId': branchId,
     });
     return response.data;
   }
-  
+
   // Payment endpoints
-  Future<Map<String, dynamic>> initiateMpesaPayment(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> initiateMpesaPayment(
+      Map<String, dynamic> data) async {
     final response = await _dio.post('/payments/mpesa/initiate', data: data);
     return response.data;
   }
-  
-  Future<Map<String, dynamic>> checkMpesaPaymentStatus(String checkoutRequestId) async {
-    final response = await _dio.get('/payments/mpesa/status/$checkoutRequestId');
+
+  Future<Map<String, dynamic>> checkMpesaPaymentStatus(
+      String checkoutRequestId) async {
+    final response =
+        await _dio.get('/payments/mpesa/status/$checkoutRequestId');
     return response.data;
   }
-  
-  Future<Map<String, dynamic>> initiatePesaPalPayment(Map<String, dynamic> data) async {
+
+  Future<Map<String, dynamic>> initiatePesaPalPayment(
+      Map<String, dynamic> data) async {
     final response = await _dio.post('/payments/pesapal/initiate', data: data);
     return response.data;
   }
-  
-  Future<Map<String, dynamic>> initiateTouristTapPayment(Map<String, dynamic> data) async {
-    final response = await _dio.post('/payments/touristtap/initiate', data: data);
+
+  Future<Map<String, dynamic>> initiateTouristTapPayment(
+      Map<String, dynamic> data) async {
+    final response =
+        await _dio.post('/payments/touristtap/initiate', data: data);
     return response.data;
   }
-  
+
   // Sync endpoints
   Future<Map<String, dynamic>> pushSyncEvents(Map<String, dynamic> data) async {
     final response = await _dio.post('/sync/push', data: data);
@@ -646,7 +688,8 @@ class ApiClient {
     return response.data as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> updateCustomer(String id, Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> updateCustomer(
+      String id, Map<String, dynamic> data) async {
     final response = await _dio.patch('/customers/$id', data: data);
     return response.data as Map<String, dynamic>;
   }
@@ -658,7 +701,8 @@ class ApiClient {
   Future<List<dynamic>> resolveSyncConflicts(
     List<Map<String, dynamic>> conflicts,
   ) async {
-    final response = await _dio.post('/sync/conflicts/resolve', data: conflicts);
+    final response =
+        await _dio.post('/sync/conflicts/resolve', data: conflicts);
     return response.data as List<dynamic>;
   }
 
@@ -671,11 +715,11 @@ class ApiClient {
     final response = await _dio.post('/sync/retry');
     return response.data;
   }
-  
+
   Future<void> sendHeartbeat() async {
     await _dio.post('/sync/heartbeat');
   }
-  
+
   // Reports endpoints
   Future<Map<String, dynamic>> getDashboard({
     String? period,
@@ -688,7 +732,8 @@ class ApiClient {
     return response.data;
   }
 
-  Future<Map<String, dynamic>> getDailyProfitLoss(String branchId, String date) async {
+  Future<Map<String, dynamic>> getDailyProfitLoss(
+      String branchId, String date) async {
     final response = await _dio.get('/reports/profit-loss/$branchId/$date');
     return response.data;
   }
@@ -709,7 +754,8 @@ class ApiClient {
     return response.data as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> createSupplierInvoice(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> createSupplierInvoice(
+      Map<String, dynamic> data) async {
     final response = await _dio.post('/suppliers/invoices', data: data);
     return response.data as Map<String, dynamic>;
   }
@@ -718,7 +764,8 @@ class ApiClient {
     String invoiceId,
     Map<String, dynamic> data,
   ) async {
-    final response = await _dio.post('/suppliers/invoices/$invoiceId/payments', data: data);
+    final response =
+        await _dio.post('/suppliers/invoices/$invoiceId/payments', data: data);
     return response.data as Map<String, dynamic>;
   }
 
@@ -728,8 +775,10 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> updateCashFlowSettings(String branchId, String mode) async {
-    final response = await _dio.put('/cash-flow/settings/$branchId', data: {'mode': mode});
+  Future<Map<String, dynamic>> updateCashFlowSettings(
+      String branchId, String mode) async {
+    final response =
+        await _dio.put('/cash-flow/settings/$branchId', data: {'mode': mode});
     return response.data as Map<String, dynamic>;
   }
 
@@ -743,7 +792,8 @@ class ApiClient {
     int? page,
     int? limit,
   }) async {
-    final response = await _dio.get('/cash-flow/ledger/$branchId', queryParameters: {
+    final response =
+        await _dio.get('/cash-flow/ledger/$branchId', queryParameters: {
       if (page != null) 'page': page,
       if (limit != null) 'limit': limit,
     });
@@ -758,7 +808,8 @@ class ApiClient {
     required double countedCash,
     String? notes,
   }) async {
-    final response = await _dio.post('/cash-flow/reconciliations/$branchId', data: {
+    final response =
+        await _dio.post('/cash-flow/reconciliations/$branchId', data: {
       'countedCash': countedCash,
       if (notes != null) 'notes': notes,
     });
@@ -770,7 +821,8 @@ class ApiClient {
     int? page,
     int? limit,
   }) async {
-    final response = await _dio.get('/cash-flow/reconciliations/$branchId', queryParameters: {
+    final response = await _dio
+        .get('/cash-flow/reconciliations/$branchId', queryParameters: {
       if (page != null) 'page': page,
       if (limit != null) 'limit': limit,
     });
@@ -781,17 +833,22 @@ class ApiClient {
 
   /// The day's sales summary for a branch (total, transactions, payment
   /// split) — shown before closing so the user reviews the figures.
-  Future<Map<String, dynamic>> getSalesDailySummary(String branchId, String date) async {
+  Future<Map<String, dynamic>> getSalesDailySummary(
+      String branchId, String date) async {
     final response = await _dio.get('/sales/summary/$branchId/$date');
     return response.data as Map<String, dynamic>;
   }
 
   /// The close for a day (or today if [date] omitted); null if not yet closed.
-  Future<Map<String, dynamic>?> getDailyClose(String branchId, {String? date}) async {
-    final response = await _dio.get('/sales/daily-close/$branchId', queryParameters: {
+  Future<Map<String, dynamic>?> getDailyClose(String branchId,
+      {String? date}) async {
+    final response =
+        await _dio.get('/sales/daily-close/$branchId', queryParameters: {
       if (date != null) 'date': date,
     });
-    return response.data == null ? null : (response.data as Map<String, dynamic>);
+    return response.data == null
+        ? null
+        : (response.data as Map<String, dynamic>);
   }
 
   /// Closes the end of day: finalizes the Z-report and books the cash count.
@@ -901,7 +958,8 @@ class ApiClient {
       'imageUrl': imageUrl,
       if (branchId != null) 'branchId': branchId,
     });
-    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
   }
 
   /// General-purpose "what's in this photo" analysis — used when the AI
@@ -919,16 +977,20 @@ class ApiClient {
       'prompt': prompt,
       if (branchId != null) 'branchId': branchId,
     });
-    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
   }
 
   /// Durable shop memories the AI recalls across sessions (owner
   /// preferences, policies, customer notes) — tenant-wide, shared by every
   /// staff member the same way the chat thread itself is shared. Backend
   /// only supports create/list/delete (no edit-in-place).
-  Future<List<Map<String, dynamic>>> getAiMemories({required String branchId}) async {
-    final response = await _dio.get('/ai/memory', queryParameters: {'branchId': branchId});
-    final data = (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
+  Future<List<Map<String, dynamic>>> getAiMemories(
+      {required String branchId}) async {
+    final response =
+        await _dio.get('/ai/memory', queryParameters: {'branchId': branchId});
+    final data =
+        (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
     return data.cast<Map<String, dynamic>>();
   }
 
@@ -944,11 +1006,14 @@ class ApiClient {
       if (type != null) 'type': type,
       if (title != null) 'title': title,
     });
-    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
   }
 
-  Future<void> deleteAiMemory({required String id, required String branchId}) async {
-    await _dio.post('/ai/memory/delete', data: {'id': id, 'branchId': branchId});
+  Future<void> deleteAiMemory(
+      {required String id, required String branchId}) async {
+    await _dio
+        .post('/ai/memory/delete', data: {'id': id, 'branchId': branchId});
   }
 
   // ─── Shared-printer print queue ───────────────────────────────────────
@@ -965,15 +1030,19 @@ class ApiClient {
       'deviceId': deviceId,
       'payload': payload,
     });
-    return (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
   }
 
   /// Called only by the device designated as the printer holder — claims
   /// and returns any pending jobs (oldest first) for this branch so it can
   /// print them one at a time.
-  Future<List<Map<String, dynamic>>> claimPrintJobs({required String deviceId}) async {
-    final response = await _dio.post('/printing/jobs/claim', data: {'deviceId': deviceId});
-    final data = (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
+  Future<List<Map<String, dynamic>>> claimPrintJobs(
+      {required String deviceId}) async {
+    final response =
+        await _dio.post('/printing/jobs/claim', data: {'deviceId': deviceId});
+    final data =
+        (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
     return data.cast<Map<String, dynamic>>();
   }
 
@@ -992,15 +1061,19 @@ class ApiClient {
 
   /// Lets the requesting device show "queued" -> "printed"/"failed" for
   /// jobs it raised itself, without needing to be the printer holder.
-  Future<List<Map<String, dynamic>>> getMyPrintJobs({required String deviceId}) async {
-    final response = await _dio.get('/printing/jobs/mine', queryParameters: {'deviceId': deviceId});
-    final data = (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
+  Future<List<Map<String, dynamic>>> getMyPrintJobs(
+      {required String deviceId}) async {
+    final response = await _dio
+        .get('/printing/jobs/mine', queryParameters: {'deviceId': deviceId});
+    final data =
+        (response.data as Map<String, dynamic>)['data'] as List<dynamic>;
     return data.cast<Map<String, dynamic>>();
   }
 
   Future<String?> getPrinterDevice() async {
     final response = await _dio.get('/printing/printer-device');
-    final data = (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    final data =
+        (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
     return data['printerDeviceId'] as String?;
   }
 

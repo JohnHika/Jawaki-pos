@@ -30,6 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         isActive: true,
         role: true,
         tenantId: true,
+        tenant: { select: { activationStatus: true } },
       },
     });
 
@@ -66,6 +67,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       branchId: payload.branchId,
       deviceId: payload.deviceId,
       permissions,
+      activationStatus: user.tenant.activationStatus,
     };
   }
 }

@@ -13,6 +13,66 @@ import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 
+String companySetupErrorMessage(Object error) {
+  if (error is DioException) {
+    final statusCode = error.response?.statusCode;
+    final serverMessage = _serverErrorMessage(error.response?.data);
+    final normalized = serverMessage?.toLowerCase() ?? '';
+
+    if (normalized.contains('already exists') ||
+        normalized.contains('company with this slug')) {
+      return 'A workspace with this name already exists. Choose a different name.';
+    }
+    if (normalized.contains('email')) {
+      return 'This email is already registered. Use another email or sign in.';
+    }
+
+    switch (statusCode) {
+      case 400:
+      case 422:
+        return 'Check the workspace details and try again.';
+      case 401:
+        return 'Your session has expired. Please sign in again.';
+      case 409:
+        return 'A workspace with these details already exists.';
+    }
+
+    if (statusCode != null && statusCode >= 500) {
+      return 'Axon could not create your workspace right now. Try again in a moment.';
+    }
+
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return 'The connection timed out. Check your network and try again.';
+      case DioExceptionType.connectionError:
+        return 'We could not reach Axon. Check your connection and try again.';
+      default:
+        break;
+    }
+  }
+
+  final normalized = error.toString().toLowerCase();
+  if (normalized.contains('already exists')) {
+    return 'A workspace with this name already exists. Choose a different name.';
+  }
+  if (normalized.contains('email')) {
+    return 'This email is already registered. Use another email or sign in.';
+  }
+  return 'We could not create your workspace. Please try again.';
+}
+
+String? _serverErrorMessage(Object? data) {
+  if (data is! Map) return null;
+  final message = data['message'];
+  if (message is String && message.trim().isNotEmpty) return message.trim();
+  if (message is List && message.isNotEmpty) {
+    return message.map((item) => item.toString()).join(' ');
+  }
+  return null;
+}
+
 /// Collects company, admin account, and first-branch details to
 /// register a new tenant. Part of the first-time setup flow.
 class CompanySetupScreen extends ConsumerStatefulWidget {
@@ -22,17 +82,15 @@ class CompanySetupScreen extends ConsumerStatefulWidget {
   ConsumerState<CompanySetupScreen> createState() => _CompanySetupScreenState();
 }
 
-class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
-    with SingleTickerProviderStateMixin {
+class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _scrollController = ScrollController();
 
   // Company fields
   final _companyNameController = TextEditingController();
   File? _logoFile; // local preview
   // When set, the picked logo is traced into a crisp scalable SVG on upload
   // (deterministic vectorization) instead of stored as a raster image.
-  bool _vectorizeLogo = false;
+  final bool _vectorizeLogo = false;
 
   // Admin fields
   final _emailController = TextEditingController();
@@ -51,28 +109,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   String? _errorMessage;
-
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _fadeController = AnimationController(
-      duration: DesignAnimation.normal,
-      vsync: this,
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: DesignAnimation.defaultCurve,
-    );
-    _fadeController.forward();
-  }
+  int _currentStep = 0;
 
   @override
   void dispose() {
-    _fadeController.dispose();
-    _scrollController.dispose();
     _companyNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -209,37 +249,15 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
         // afterward on the same device would be redundant.
         await getIt<StorageService>().setHasSeenStaffTour(true);
         if (!mounted) return;
-        context.go('/owner-welcome', extra: companyName);
+        context.go(
+          authService.requiresTenantActivation
+              ? '/activation'
+              : '/owner-welcome',
+          extra: companyName,
+        );
       }
     } catch (e) {
-      String errorMsg;
-      if (e is DioException) {
-        final url = e.requestOptions.uri.toString();
-        switch (e.type) {
-          case DioExceptionType.connectionTimeout:
-          case DioExceptionType.receiveTimeout:
-          case DioExceptionType.sendTimeout:
-            errorMsg = 'Connection timed out.\nURL: $url';
-            break;
-          case DioExceptionType.connectionError:
-            errorMsg = 'Cannot reach server.\nURL: $url\n${e.message ?? ''}';
-            break;
-          case DioExceptionType.badResponse:
-            final code = e.response?.statusCode;
-            final body = e.response?.data?.toString() ?? '';
-            errorMsg = 'Server error $code.\n$body';
-            break;
-          default:
-            errorMsg = 'Network error: ${e.message ?? e.type.name}';
-            break;
-        }
-      } else if (e.toString().contains('already exists')) {
-        errorMsg = 'A company with this name already exists';
-      } else if (e.toString().contains('email')) {
-        errorMsg = 'This email is already registered';
-      } else {
-        errorMsg = 'Failed to create company: ${e.toString()}';
-      }
+      final errorMsg = companySetupErrorMessage(e);
 
       setState(() {
         _errorMessage = errorMsg;
@@ -263,336 +281,572 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
-    // This flow always renders on the dark Axon setup canvas, matching
-    // the company-choice screen it's reached from — not tied to the
-    // device theme, since it's a focused first-run task, not app chrome.
-    const isDark = true;
-    final size = MediaQuery.of(context).size;
-    final isSmallScreen = size.height < 700;
+  Widget build(BuildContext context) => _buildWizard();
 
+  Widget _buildWizard() {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: DesignColors.darkBg,
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              _buildHeader(isDark),
-
-              // Form
-              Expanded(
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SingleChildScrollView(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Form(
-                      key: _formKey,
+      backgroundColor: DesignColors.darkBg,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            _buildSetupAmbientField(),
+            Column(
+              children: [
+                _buildWizardHeader(),
+                Expanded(
+                  child: Form(
+                    key: _formKey,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(height: isSmallScreen ? 16 : 24),
-
-                          // Company section
-                          _buildSectionTitle('Company Details', isDark),
-                          const SizedBox(height: 16),
-                          _buildLogoField(isDark),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _companyNameController,
-                            label: 'Company Name',
-                            hint: 'Your Business Name',
-                            icon: Icons.business_rounded,
-                            isDark: isDark,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Company name is required';
-                              }
-                              if (value.trim().length < 2) {
-                                return 'Company name is too short';
-                              }
-                              return null;
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 420),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) {
+                              final slide = Tween<Offset>(
+                                begin: const Offset(0.08, 0),
+                                end: Offset.zero,
+                              ).animate(animation);
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: slide,
+                                  child: child,
+                                ),
+                              );
                             },
-                          ),
-
-                          SizedBox(height: isSmallScreen ? 24 : 32),
-
-                          // Admin section
-                          _buildSectionTitle('Admin Account', isDark),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _firstNameController,
-                                  label: 'First Name',
-                                  hint: 'John',
-                                  icon: Icons.person_outline_rounded,
-                                  isDark: isDark,
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _lastNameController,
-                                  label: 'Last Name',
-                                  hint: 'Doe',
-                                  icon: Icons.person_outline_rounded,
-                                  isDark: isDark,
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _emailController,
-                            label: 'Email Address',
-                            hint: 'admin@yourcompany.com',
-                            icon: Icons.email_outlined,
-                            isDark: isDark,
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Email is required';
-                              }
-                              final emailRegex =
-                                  RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
-                              if (!emailRegex.hasMatch(value.trim())) {
-                                return 'Enter a valid email address';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _passwordController,
-                            label: 'Password',
-                            hint: 'Create a strong password',
-                            icon: Icons.lock_outline_rounded,
-                            isDark: isDark,
-                            obscureText: _obscurePassword,
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: DesignColors.darkTextSecondary,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Password is required';
-                              }
-                              if (value.length < 8) {
-                                return 'Password must be at least 8 characters';
-                              }
-                              if (!RegExp(r'[A-Z]').hasMatch(value)) {
-                                return 'Include at least one uppercase letter';
-                              }
-                              if (!RegExp(r'[0-9]').hasMatch(value)) {
-                                return 'Include at least one number';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _confirmPasswordController,
-                            label: 'Confirm Password',
-                            hint: 'Re-enter your password',
-                            icon: Icons.lock_outline_rounded,
-                            isDark: isDark,
-                            obscureText: _obscureConfirmPassword,
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscureConfirmPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: DesignColors.darkTextSecondary,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _obscureConfirmPassword =
-                                      !_obscureConfirmPassword;
-                                });
-                              },
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please confirm your password';
-                              }
-                              if (value != _passwordController.text) {
-                                return 'Passwords do not match';
-                              }
-                              return null;
-                            },
-                          ),
-
-                          SizedBox(height: isSmallScreen ? 24 : 32),
-
-                          // Branch section
-                          _buildSectionTitle('First Branch', isDark),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: _buildTextField(
-                                  controller: _branchNameController,
-                                  label: 'Branch Name',
-                                  hint: 'Main Store',
-                                  icon: Icons.store_rounded,
-                                  isDark: isDark,
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Required';
-                                    }
-                                    if (value.trim().length < 2) {
-                                      return 'Too short';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _branchCodeController,
-                                  label: 'Code',
-                                  hint: 'MAIN',
-                                  icon: Icons.tag_rounded,
-                                  isDark: isDark,
-                                  inputFormatters: [
-                                    UpperCaseTextFormatter(),
-                                    FilteringTextInputFormatter.allow(
-                                        RegExp(r'[A-Za-z0-9]')),
-                                    LengthLimitingTextInputFormatter(10),
-                                  ],
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Required';
-                                    }
-                                    if (value.trim().length < 2) {
-                                      return 'Too short';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _branchAddressController,
-                            label: 'Address (optional)',
-                            hint: '123 Main Street, City',
-                            icon: Icons.location_on_outlined,
-                            isDark: isDark,
-                            maxLines: 2,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _branchPhoneController,
-                            label: 'Phone (optional)',
-                            hint: '+1 (555) 123-4567',
-                            icon: Icons.phone_outlined,
-                            isDark: isDark,
-                            keyboardType: TextInputType.phone,
-                          ),
-
-                          const SizedBox(height: 32),
-
-                          // Error message
-                          if (_errorMessage != null)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              margin: const EdgeInsets.only(bottom: 16),
-                              decoration: BoxDecoration(
-                                color:
-                                    DesignColors.error.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color:
-                                      DesignColors.error.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.error_outline_rounded,
-                                    color: DesignColors.error,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: const TextStyle(
-                                        color: DesignColors.error,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                          // Submit button
-                          GradientButton(
-                            onPressed: _isLoading ? null : _submit,
-                            label: 'Create Company',
-                            isLoading: _isLoading,
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Back to choice
-                          Center(
-                            child: TextButton(
-                              onPressed: () => context.go('/company-choice'),
-                              child: const Text(
-                                'Back to options',
-                                style: TextStyle(
-                                  color: DesignColors.darkTextSecondary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                            child: KeyedSubtree(
+                              key: ValueKey(_currentStep),
+                              child: _buildWizardStep(),
                             ),
                           ),
-
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 20),
+                          _buildWizardFooter(),
                         ],
                       ),
                     ),
                   ),
                 ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSetupAmbientField() {
+    final size = MediaQuery.sizeOf(context);
+    return Positioned(
+      left: -size.width * 0.28,
+      right: -size.width * 0.28,
+      bottom: -size.height * 0.22,
+      height: size.width * 1.05,
+      child: IgnorePointer(
+        child: TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 1100),
+          curve: Curves.easeOutCubic,
+          tween: Tween(begin: 0.86, end: 1.0),
+          builder: (context, scale, child) {
+            return Transform.scale(scale: scale, child: child);
+          },
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  DesignColors.brand.withValues(alpha: 0.10),
+                  DesignColors.accent.withValues(alpha: 0.035),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.34, 1.0],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildWizardHeader() {
+    const labels = [
+      'Workspace identity',
+      'Owner profile',
+      'Secure access',
+      'First counter',
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 20, 0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _goBack,
+                  child: Ink(
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: DesignColors.darkTextPrimary,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Text(
+                  'AXON / SETUP',
+                  style: TextStyle(
+                    color: DesignColors.darkTextSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.2,
+                  ),
+                ),
+              ),
+              Text(
+                '${_currentStep + 1} / 4',
+                style: const TextStyle(
+                  color: DesignColors.accent,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: List.generate(4, (index) {
+              final active = index <= _currentStep;
+              return Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                  height: 4,
+                  margin: EdgeInsets.only(right: index == 3 ? 0 : 6),
+                  decoration: BoxDecoration(
+                    color:
+                        active ? DesignColors.accent : DesignColors.darkBorder,
+                    borderRadius: BorderRadius.circular(99),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color:
+                                  DesignColors.accent.withValues(alpha: 0.28),
+                              blurRadius: 10,
+                            ),
+                          ]
+                        : null,
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 240),
+              child: Text(
+                'Step ${_currentStep + 1} of 4 · ${labels[_currentStep]}',
+                key: ValueKey(_currentStep),
+                style: const TextStyle(
+                  color: DesignColors.darkTextTertiary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWizardStep() {
+    late String title;
+    late String subtitle;
+    late List<Widget> fields;
+
+    switch (_currentStep) {
+      case 0:
+        title = 'Build your workspace';
+        subtitle = 'Start with the identity your team and customers will see.';
+        fields = [
+          _buildLogoPicker(true),
+          const SizedBox(height: 20),
+          _buildTextField(
+            controller: _companyNameController,
+            label: 'Company name',
+            hint: 'Your business name',
+            icon: Icons.business_rounded,
+            isDark: true,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Company name is required';
+              }
+              if (value.trim().length < 2) return 'Company name is too short';
+              if (value.trim().length > 100) {
+                return 'Company name must be 100 characters or fewer';
+              }
+              if (!RegExp(r"^[a-zA-Z0-9\s&'-]+$").hasMatch(value.trim())) {
+                return "Only letters, numbers, spaces, &, ' and - are allowed";
+              }
+              return null;
+            },
+          ),
+        ];
+        break;
+      case 1:
+        title = 'Meet the owner';
+        subtitle = 'Tell us who will be the first person in control.';
+        fields = [
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _firstNameController,
+                  label: 'First name',
+                  hint: 'John',
+                  icon: Icons.person_outline_rounded,
+                  isDark: true,
+                  validator: (value) =>
+                      value == null || value.trim().isEmpty ? 'Required' : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  controller: _lastNameController,
+                  label: 'Last name',
+                  hint: 'Doe',
+                  icon: Icons.person_outline_rounded,
+                  isDark: true,
+                  validator: (value) =>
+                      value == null || value.trim().isEmpty ? 'Required' : null,
+                ),
+              ),
+            ],
+          ),
+        ];
+        break;
+      case 2:
+        title = 'Secure your account';
+        subtitle = 'Use an email and password you can access when you need us.';
+        fields = [
+          _buildTextField(
+            controller: _emailController,
+            label: 'Email address',
+            hint: 'admin@yourcompany.com',
+            icon: Icons.email_outlined,
+            isDark: true,
+            keyboardType: TextInputType.emailAddress,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Email is required';
+              }
+              if (!RegExp(r'^[\w.-]+@([\w-]+\.)+[\w-]{2,}$')
+                  .hasMatch(value.trim())) {
+                return 'Enter a valid email address';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _passwordController,
+            label: 'Password',
+            hint: 'At least 8 characters',
+            icon: Icons.lock_outline_rounded,
+            isDark: true,
+            obscureText: _obscurePassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: DesignColors.darkTextSecondary,
+              ),
+              onPressed: () => setState(
+                () => _obscurePassword = !_obscurePassword,
+              ),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) return 'Password is required';
+              if (value.length < 8) return 'Use at least 8 characters';
+              if (!RegExp(r'[A-Z]').hasMatch(value)) {
+                return 'Include one uppercase letter';
+              }
+              if (!RegExp(r'[0-9]').hasMatch(value)) {
+                return 'Include one number';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _confirmPasswordController,
+            label: 'Confirm password',
+            hint: 'Re-enter your password',
+            icon: Icons.lock_outline_rounded,
+            isDark: true,
+            obscureText: _obscureConfirmPassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureConfirmPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: DesignColors.darkTextSecondary,
+              ),
+              onPressed: () => setState(
+                () => _obscureConfirmPassword = !_obscureConfirmPassword,
+              ),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please confirm your password';
+              }
+              if (value != _passwordController.text) {
+                return 'Passwords do not match';
+              }
+              return null;
+            },
+          ),
+        ];
+        break;
+      default:
+        title = 'Open your first counter';
+        subtitle = 'Add the location where your first sale will happen.';
+        fields = [
+          _buildTextField(
+            controller: _branchNameController,
+            label: 'Branch name',
+            hint: 'Main Store',
+            icon: Icons.store_rounded,
+            isDark: true,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'Required';
+              if (value.trim().length < 2) return 'Too short';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _branchCodeController,
+            label: 'Branch code',
+            hint: 'MAIN',
+            icon: Icons.tag_rounded,
+            isDark: true,
+            inputFormatters: [
+              UpperCaseTextFormatter(),
+              FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+              LengthLimitingTextInputFormatter(10),
+            ],
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'Required';
+              if (value.trim().length < 2) return 'Too short';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _branchAddressController,
+            label: 'Address (optional)',
+            hint: '123 Main Street, City',
+            icon: Icons.location_on_outlined,
+            isDark: true,
+            maxLines: 2,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _branchPhoneController,
+            label: 'Phone (optional)',
+            hint: '+254 700 000 000',
+            icon: Icons.phone_outlined,
+            isDark: true,
+            keyboardType: TextInputType.phone,
+          ),
+        ];
+    }
+
+    return Column(
+      key: ValueKey('step-content-$_currentStep'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            color: DesignColors.darkTextPrimary,
+            fontSize: 32,
+            height: 1.05,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: DesignColors.darkTextSecondary,
+            fontSize: 16,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 28),
+        ...fields,
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 20),
+          _buildWizardError(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWizardError() {
+    return Semantics(
+      liveRegion: true,
+      label: 'Error: $_errorMessage',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: DesignColors.error.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: DesignColors.error.withValues(alpha: 0.34),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: DesignColors.error.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: DesignColors.error,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Couldn’t create workspace',
+                    style: TextStyle(
+                      color: DesignColors.darkTextPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(
+                      color: DesignColors.darkTextSecondary,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Dismiss error',
+              onPressed: () => setState(() => _errorMessage = null),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: DesignColors.darkTextTertiary,
+                size: 19,
+              ),
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWizardFooter() {
+    final actionButton = GradientButton(
+      label: _currentStep == 3 ? 'Create Company' : 'Continue',
+      icon: _currentStep == 3
+          ? Icons.rocket_launch_rounded
+          : Icons.arrow_forward_rounded,
+      isLoading: _isLoading,
+      onPressed: _isLoading ? null : _nextStep,
+      height: 54,
+      borderRadius: 16,
+    );
+
+    return SafeArea(
+      top: false,
+      child: _currentStep == 0
+          ? SizedBox(
+              width: double.infinity,
+              child: actionButton,
+            )
+          : Row(
+              children: [
+                TextButton(
+                  onPressed: _goBack,
+                  child: const Text(
+                    'Back',
+                    style: TextStyle(color: DesignColors.darkTextSecondary),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: actionButton),
+              ],
+            ),
+    );
+  }
+
+  void _goBack() {
+    if (_currentStep > 0) {
+      setState(() {
+        _currentStep -= 1;
+        _errorMessage = null;
+      });
+    } else {
+      context.go('/company-choice');
+    }
+  }
+
+  void _nextStep() {
+    if (!(_formKey.currentState?.validate() ?? true)) return;
+    if (_currentStep == 3) {
+      unawaited(_submit());
+      return;
+    }
+    setState(() {
+      _currentStep += 1;
+      _errorMessage = null;
+    });
   }
 
   Future<void> _showCompanyCreatedDialog({
@@ -734,77 +988,6 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
         .replaceAll(RegExp(r'^-+|-+$'), '');
   }
 
-  Widget _buildHeader(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: DesignColors.darkTextPrimary,
-            ),
-            onPressed: () => context.go('/company-choice'),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Register your company',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w700,
-              color: DesignColors.darkTextPrimary,
-              letterSpacing: -0.2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title, bool isDark) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        color: DesignColors.darkTextPrimary,
-        letterSpacing: 0.3,
-      ),
-    );
-  }
-
-  Widget _buildLogoField(bool isDark) {
-    return Column(
-      children: [
-        _buildLogoPicker(isDark),
-        if (_logoFile != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: CheckboxListTile(
-              value: _vectorizeLogo,
-              onChanged: (v) => setState(() => _vectorizeLogo = v ?? false),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              controlAffinity: ListTileControlAffinity.leading,
-              activeColor: DesignColors.accent,
-              title: const Text(
-                'Make it a crisp SVG logo',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: DesignColors.darkTextPrimary,
-                ),
-              ),
-              subtitle: const Text(
-                'Traces your image into a scalable vector — stays sharp on receipts at any size. Best for clean, simple logos.',
-                style: TextStyle(fontSize: 12, color: DesignColors.darkTextSecondary),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildLogoPicker(bool isDark) {
     return InkWell(
       onTap: _pickLogo,
@@ -822,7 +1005,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
             Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: DesignColors.darkBorder,
                 shape: BoxShape.circle,
               ),
@@ -885,6 +1068,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
     bool obscureText = false,
     Widget? suffixIcon,
     String? Function(String?)? validator,
+    AutovalidateMode? autovalidateMode,
     int maxLines = 1,
     List<TextInputFormatter>? inputFormatters,
   }) {
@@ -906,6 +1090,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
           obscureText: obscureText,
           maxLines: maxLines,
           inputFormatters: inputFormatters,
+          autovalidateMode: autovalidateMode,
           style: const TextStyle(
             fontSize: 15,
             color: DesignColors.darkTextPrimary,
@@ -923,6 +1108,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen>
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 44),
             suffixIcon: suffixIcon,
+            errorMaxLines: 2,
             filled: true,
             fillColor: DesignColors.darkSurfaceElevated,
             contentPadding: const EdgeInsets.symmetric(

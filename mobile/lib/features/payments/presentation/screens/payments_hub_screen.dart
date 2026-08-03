@@ -143,8 +143,9 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                               ),
                               _buildGlassStatItem(
                                 label: 'Transactions',
-                                value:
-                                    _isLoading ? '...' : '$_todaysTransactionCount',
+                                value: _isLoading
+                                    ? '...'
+                                    : '$_todaysTransactionCount',
                                 icon: Icons.receipt_rounded,
                               ),
                             ],
@@ -223,9 +224,18 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: const [
-                        PaymentChip(method: 'Cash', isSelected: true),
-                        PaymentChip(method: 'M-Pesa'),
-                        PaymentChip(method: 'Manual'),
+                        _PaymentMethodBadge(
+                          method: 'Cash',
+                          icon: Icons.payments_outlined,
+                        ),
+                        _PaymentMethodBadge(
+                          method: 'M-Pesa',
+                          icon: Icons.phone_android_rounded,
+                        ),
+                        _PaymentMethodBadge(
+                          method: 'Manual',
+                          icon: Icons.receipt_long_outlined,
+                        ),
                       ],
                     ),
 
@@ -270,6 +280,40 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PaymentMethodBadge extends StatelessWidget {
+  const _PaymentMethodBadge({required this.method, required this.icon});
+
+  final String method;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: DesignColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DesignColors.surfaceBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: DesignColors.textSecondary),
+          const SizedBox(width: 7),
+          Text(
+            method,
+            style: const TextStyle(
+              color: DesignColors.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

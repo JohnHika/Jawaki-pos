@@ -287,7 +287,7 @@ export class AuthService {
             },
           });
 
-          return tx.user.create({
+          const createdUser = await tx.user.create({
             data: {
               tenantId: tenant.id,
               email: dto.admin.email.trim().toLowerCase(),
@@ -304,6 +304,51 @@ export class AuthService {
                 },
               },
             },
+            include: {
+              tenant: true,
+              branches: {
+                include: { branch: true },
+              },
+            },
+          });
+
+          // New company creators are legacy ADMINs for compatibility with
+          // older guards, but they must also receive the tenant-scoped
+          // granular Admin role. Without this join row the login response
+          // contains an empty permission set, which hides Dashboard and
+          // makes the creator look like a cashier in the mobile shell.
+          const permissionCatalog = await tx.permission.findMany({
+            select: { key: true },
+          });
+          if (permissionCatalog.length === 0) {
+            throw new BadRequestException(
+              'Permission catalog is not initialized; company setup cannot continue safely',
+            );
+          }
+
+          const adminRole = await tx.role.create({
+            data: {
+              tenantId: tenant.id,
+              name: 'Admin',
+              description: 'Initial company owner administrator',
+              isSystem: true,
+              permissions: {
+                create: permissionCatalog.map(({ key }) => ({
+                  permissionKey: key,
+                })),
+              },
+            },
+          });
+
+          await tx.userRole.create({
+            data: {
+              userId: createdUser.id,
+              roleId: adminRole.id,
+            },
+          });
+
+          return tx.user.findUniqueOrThrow({
+            where: { id: createdUser.id },
             include: {
               tenant: true,
               branches: {
@@ -708,6 +753,9 @@ export class AuthService {
               slug: user.tenant.slug,
               logo: user.tenant.logo ?? undefined,
               logoPublicId: user.tenant.logoPublicId ?? undefined,
+              activationStatus: user.tenant.activationStatus,
+              activationAmount: user.tenant.activationAmount,
+              activationPaidAt: user.tenant.activationPaidAt ?? undefined,
               settings: user.tenant.settings ?? {},
               isActive: user.tenant.isActive,
             }

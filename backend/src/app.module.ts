@@ -27,6 +27,7 @@ import { UsersManagementModule } from './users/users-management.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CustomersModule } from './customers/customers.module';
 import { PrintingModule } from './printing/printing.module';
+import { TenantActivationModule } from './tenant-activation/tenant-activation.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -76,6 +77,7 @@ import { AppController } from './app.controller';
     NotificationsModule,
     CustomersModule,
     PrintingModule,
+    TenantActivationModule,
   ],
   controllers: [AppController],
 })
