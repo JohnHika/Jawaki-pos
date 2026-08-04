@@ -178,6 +178,21 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> acceptStaffInvitation({
+    required String invitationId,
+    required String challengeId,
+    required String code,
+  }) async {
+    final response = await _dio.post(
+      '/tenant-onboarding/staff-invitations/$invitationId/accept',
+      data: {
+        'challengeId': challengeId,
+        'code': code,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> loginWithPin({
     required String pin,
     required String deviceId,

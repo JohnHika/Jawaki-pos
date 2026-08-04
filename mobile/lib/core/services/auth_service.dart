@@ -665,6 +665,54 @@ class AuthService implements LifecycleLockAuth {
     }
   }
 
+  // ── Tenant onboarding helpers ──
+
+  /// Fetches the current tenant's onboarding progress.
+  Future<Map<String, dynamic>> getTenantOnboarding() =>
+      _apiClient.getTenantOnboarding();
+
+  /// Marks an onboarding step as completed (or updates its status).
+  Future<Map<String, dynamic>> updateTenantOnboardingStep({
+    required String key,
+    required String status,
+  }) =>
+      _apiClient.updateTenantOnboardingStep(key: key, status: status);
+
+  /// Sends a staff invitation during onboarding.
+  Future<Map<String, dynamic>> createStaffInvitation({
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String roleId,
+    required String branchId,
+  }) =>
+      _apiClient.createStaffInvitation(
+        email: email,
+        firstName: firstName,
+        lastName: lastName,
+        roleId: roleId,
+        branchId: branchId,
+      );
+
+  /// Accepts a staff invitation using the challenge/code from the
+  /// invitation email.
+  Future<Map<String, dynamic>> acceptStaffInvitation({
+    required String invitationId,
+    required String challengeId,
+    required String code,
+  }) =>
+      _apiClient.acceptStaffInvitation(
+        invitationId: invitationId,
+        challengeId: challengeId,
+        code: code,
+      );
+
+  /// Fetches tenant-scoped roles (for the staff invitation form).
+  Future<List<dynamic>> getRoles() => _apiClient.getRoles();
+
+  /// Fetches tenant-scoped branches (for the staff invitation form).
+  Future<List<dynamic>> getBranches() => _apiClient.getBranches();
+
   void dispose() {
     _authStatusController.close();
   }

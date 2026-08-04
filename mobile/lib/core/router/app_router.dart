@@ -9,6 +9,7 @@ import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
+import '../../features/team/presentation/screens/invite_staff_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -183,6 +184,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'owner-welcome',
         builder: (context, state) =>
             OwnerWelcomeScreen(companyName: state.extra as String?),
+      ),
+      GoRoute(
+        path: '/invite-staff',
+        name: 'invite-staff',
+        builder: (context, state) => const InviteStaffScreen(),
       ),
       GoRoute(
         path: '/activation',

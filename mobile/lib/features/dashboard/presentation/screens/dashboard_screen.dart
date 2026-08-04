@@ -17,6 +17,7 @@ import '../../../../core/providers/tenant_provider.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
+import '../widgets/staff_invite_nudge.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -216,6 +217,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ),
               const SizedBox(height: 20),
+
+              // Staff invite nudge — persistent across sessions until
+              // at least one staff invitation is accepted.
+              const StaffInviteNudge(),
 
               // Summary Cards - Using Wrap+LayoutBuilder to prevent overflow in Column
               summaryAsync.when(
