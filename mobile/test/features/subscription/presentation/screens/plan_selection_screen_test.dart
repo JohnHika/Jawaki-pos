@@ -67,7 +67,7 @@ void main() {
 
       // Header
       expect(find.text('AXON / SUBSCRIPTION'), findsOneWidget);
-      expect(find.text('Choose your plan'), findsOneWidget);
+      expect(find.text('STEP 4 · CHOOSE PLAN'), findsOneWidget);
 
       // Plan names
       expect(find.text('CORE'), findsOneWidget);
@@ -90,7 +90,7 @@ void main() {
       expect(find.text('KES 35,000'), findsOneWidget);
 
       // Action button
-      expect(find.text('Start 14-Day Free Trial'), findsOneWidget);
+      expect(find.text('Start 7-Day Free Trial'), findsOneWidget);
     });
 
     testWidgets('shows CORE plan features', (tester) async {
@@ -98,10 +98,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // CORE features
-      expect(find.text('Up to 1 branch'), findsOneWidget);
-      expect(find.text('Up to 3 staff accounts'), findsOneWidget);
+      expect(find.text('Up to 3 branches'), findsOneWidget);
+      expect(find.text('Up to 10 staff accounts'), findsOneWidget);
       expect(find.text('Basic sales & inventory'), findsOneWidget);
       expect(find.text('Daily sales reports'), findsOneWidget);
+      expect(find.text('7-day free trial'), findsNWidgets(2)); // both plans
       expect(find.text('Email support'), findsOneWidget);
     });
 
@@ -110,11 +111,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // ENTERPRISE features
-      expect(find.text('Unlimited branches'), findsOneWidget);
-      expect(find.text('Unlimited staff accounts'), findsOneWidget);
+      expect(find.text('Up to 10 branches'), findsOneWidget);
+      expect(find.text('Up to 50 staff accounts'), findsOneWidget);
       expect(find.text('Advanced inventory management'), findsOneWidget);
       expect(find.text('Analytics dashboard & forecasting'), findsOneWidget);
       expect(find.text('AI-powered insights'), findsOneWidget);
+      expect(find.text('7-day free trial'), findsNWidgets(2)); // both plans
       expect(find.text('Priority phone & email support'), findsOneWidget);
       expect(find.text('Custom reports & data export'), findsOneWidget);
     });
@@ -167,7 +169,7 @@ void main() {
       // Scroll down and tap the trial button
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -1000));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Start 14-Day Free Trial'));
+      await tester.tap(find.text('Start 7-Day Free Trial'));
       await tester.pumpAndSettle();
 
       // Should navigate to owner-welcome
@@ -191,7 +193,7 @@ void main() {
       // Scroll down and tap the trial button
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -1000));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Start 14-Day Free Trial'));
+      await tester.tap(find.text('Start 7-Day Free Trial'));
       await tester.pumpAndSettle();
 
       // Error should be shown

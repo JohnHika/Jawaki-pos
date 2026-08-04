@@ -22,7 +22,7 @@ export const PLAN_PRICING: Record<string, PlanPricing> = {
     planId: 'TRIAL',
     name: 'Trial',
     monthlyAmountKes: 0,
-    trialDays: 14,
+    trialDays: 7,
     features: {
       maxBranches: 1,
       maxUsers: 3,
@@ -37,7 +37,7 @@ export const PLAN_PRICING: Record<string, PlanPricing> = {
     planId: 'CORE',
     name: 'Core',
     monthlyAmountKes: 3200,
-    trialDays: 14,
+    trialDays: 7,
     features: {
       maxBranches: 3,
       maxUsers: 10,
@@ -52,7 +52,7 @@ export const PLAN_PRICING: Record<string, PlanPricing> = {
     planId: 'ENTERPRISE',
     name: 'Enterprise',
     monthlyAmountKes: 5000,
-    trialDays: 14,
+    trialDays: 7,
     features: {
       maxBranches: 10,
       maxUsers: 50,

@@ -185,8 +185,15 @@ void main() {
       expect(find.text('CURRENT'), findsOneWidget);
     });
 
-    testWidgets('change plan dialog closes when no new plan is selected',
-        (tester) async {
+    testWidgets('change plan calls API with correct plan', (tester) async {
+      spyApi.planData = {
+        'planId': 'core',
+        'planName': 'CORE',
+        'status': 'TRIAL',
+        'trialEndsAt': '2026-09-04T00:00:00Z',
+        'nextBillingDate': '2026-09-04T00:00:00Z',
+      };
+
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
       await tester.pumpAndSettle();
 
@@ -194,22 +201,25 @@ void main() {
       await tester.tap(find.text('Change Plan'));
       await tester.pumpAndSettle();
 
+      // Select ENTERPRISE (tap the plan name text inside the dialog)
       final dialogFinder = find.byType(AlertDialog);
+      await tester.tap(
+        find.descendant(of: dialogFinder, matching: find.text('ENTERPRISE').first),
+      );
+      await tester.pumpAndSettle();
 
-      // The dialog button label defaults to the current plan (CORE) because
-      // no new plan has been selected.
+      // The GradientButton is in the dialog — tap by its label text
       await tester.tap(
         find.descendant(
           of: dialogFinder,
-          matching: find.text('Change to CORE'),
+          matching: find.text('Change to ENTERPRISE'),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Dialog has closed and no API call was made since no different plan
-      // was selected.
-      expect(find.text('Change Plan'), findsOneWidget);
-      expect(spyApi.lastChangePlanCall, isNull);
+      // API was called
+      expect(spyApi.lastChangePlanCall, isNotNull);
+      expect(spyApi.lastChangePlanCall!['planId'], 'enterprise');
     });
   });
 }

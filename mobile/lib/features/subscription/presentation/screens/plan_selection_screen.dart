@@ -33,10 +33,11 @@ const kAvailablePlans = [
     description: 'Essential tools for a single-location shop',
     priceKes: 3200,
     features: [
-      'Up to 1 branch',
-      'Up to 3 staff accounts',
+      'Up to 3 branches',
+      'Up to 10 staff accounts',
       'Basic sales & inventory',
       'Daily sales reports',
+      '7-day free trial',
       'Email support',
     ],
   ),
@@ -47,11 +48,12 @@ const kAvailablePlans = [
     priceKes: 5000,
     isPopular: true,
     features: [
-      'Unlimited branches',
-      'Unlimited staff accounts',
+      'Up to 10 branches',
+      'Up to 50 staff accounts',
       'Advanced inventory management',
       'Analytics dashboard & forecasting',
       'AI-powered insights',
+      '7-day free trial',
       'Priority phone & email support',
       'Custom reports & data export',
     ],
@@ -84,7 +86,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     });
 
     try {
-      // Call the backend to select the plan and start the 14-day trial.
+      // Call the backend to select the plan and start the 7-day trial.
       // The backend handles the setup fee payment flow internally.
       await _apiClient.changeSubscriptionPlan(planId: _selectedPlanId!);
 
@@ -136,7 +138,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 const SizedBox(height: 12),
                 Text(
                   widget.companyName == null || widget.companyName!.isEmpty
-                      ? 'Select a subscription plan to start your 14-day free trial.'
+                      ? 'Select a subscription plan to start your 7-day free trial.'
                       : '${widget.companyName} is ready. Pick a plan to begin your free trial.',
                   style: const TextStyle(
                     color: DesignColors.darkTextSecondary,
@@ -161,7 +163,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 GradientButton(
                   label: _isSubmitting
                       ? 'Starting your free trial…'
-                      : 'Start 14-Day Free Trial',
+                      : 'Start 7-Day Free Trial',
                   icon: Icons.rocket_launch_rounded,
                   onPressed:
                       _selectedPlanId != null && !_isSubmitting
@@ -172,7 +174,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'No charges today. Your 14-day free trial starts after a one-time setup fee of KSh 35,000.',
+                  'No charges today. Your 7-day free trial starts after a one-time setup fee of KSh 35,000.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: DesignColors.darkTextTertiary,
