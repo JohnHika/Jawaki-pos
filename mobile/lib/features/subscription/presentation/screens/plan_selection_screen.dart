@@ -325,7 +325,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   Container(
                     width: 26,
                     height: 26,
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: DesignColors.brand,
                       shape: BoxShape.circle,
                     ),

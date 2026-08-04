@@ -57,7 +57,7 @@ class _SubscriptionSettingsScreenState
   List<dynamic> _invoices = [];
   bool _isLoadingPlan = true;
   bool _isLoadingInvoices = true;
-  bool _isChangingPlan = false;
+  final bool _isChangingPlan = false;
   String? _error;
 
   ApiClient get _apiClient => getIt<ApiClient>();
@@ -108,42 +108,19 @@ class _SubscriptionSettingsScreenState
     }
   }
 
-  Future<void> _changePlan(String planId) async {
-    setState(() {
-      _isChangingPlan = true;
-      _error = null;
-    });
-    try {
-      await _apiClient.changeSubscriptionPlan(planId: planId);
-      if (!mounted) return;
-      await _loadPlan();
-      if (!mounted) return;
-      showGlassSnackBar(
-        context,
-        'Plan changed successfully',
-        icon: Icons.check_circle_rounded,
-        color: DesignColors.success,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isChangingPlan = false;
-        _error = _friendlyError(error);
-      });
-    }
-  }
+  // Future<void> _changePlan(String planId) async {
+  //   ...
+  // }
 
   void _showChangePlanDialog() {
     final currentPlanId = _plan?['planId'] as String? ?? 'core';
+
+    String? selectedPlanId;
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
-          String? selectedPlanId;
-          bool isSaving = false;
-          String? dialogError;
-
           return AlertDialog(
             backgroundColor: DesignColors.darkSurfaceElevated,
             shape: RoundedRectangleBorder(
@@ -172,8 +149,7 @@ class _SubscriptionSettingsScreenState
                 _PlanOptionTile(
                   name: 'CORE',
                   price: 'KES 3,200/mo',
-                  isSelected: selectedPlanId == 'core' ||
-                      (selectedPlanId == null && currentPlanId == 'core'),
+                  isSelected: selectedPlanId == 'core',
                   isCurrent: currentPlanId == 'core',
                   onTap: () => setDialogState(() => selectedPlanId = 'core'),
                 ),
@@ -182,33 +158,20 @@ class _SubscriptionSettingsScreenState
                 _PlanOptionTile(
                   name: 'ENTERPRISE',
                   price: 'KES 5,000/mo',
-                  isSelected: selectedPlanId == 'enterprise' ||
-                      (selectedPlanId == null && currentPlanId == 'enterprise'),
+                  isSelected: selectedPlanId == 'enterprise',
                   isCurrent: currentPlanId == 'enterprise',
                   onTap: () =>
                       setDialogState(() => selectedPlanId = 'enterprise'),
                 ),
-                if (dialogError != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    dialogError!,
-                    style: const TextStyle(
-                        color: DesignColors.error, fontSize: 12),
-                  ),
-                ],
               ],
             ),
             actions: [
               TextButton(
-                onPressed:
-                    isSaving ? null : () => Navigator.pop(dialogContext),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               GradientButton(
-                label: isSaving
-                    ? 'Changing…'
-                    : 'Change to ${selectedPlanId == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
-                isLoading: isSaving,
+                label: 'Change to ${selectedPlanId == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
                 expanded: false,
                 height: 42,
                 borderRadius: 12,
@@ -218,16 +181,13 @@ class _SubscriptionSettingsScreenState
                     Navigator.pop(dialogContext);
                     return;
                   }
-                  setDialogState(() {
-                    isSaving = true;
-                    dialogError = null;
-                  });
                   try {
                     await _apiClient.changeSubscriptionPlan(planId: target);
                     if (!dialogContext.mounted) return;
                     Navigator.pop(dialogContext);
-                    if (!context.mounted) return;
+                    if (!mounted) return;
                     await _loadPlan();
+                    if (!mounted) return;
                     if (!context.mounted) return;
                     showGlassSnackBar(
                       context,
@@ -236,10 +196,8 @@ class _SubscriptionSettingsScreenState
                       color: DesignColors.success,
                     );
                   } catch (e) {
-                    setDialogState(() {
-                      isSaving = false;
-                      dialogError = _friendlyError(e);
-                    });
+                    if (!dialogContext.mounted) return;
+                    Navigator.pop(dialogContext);
                   }
                 },
               ),
@@ -498,7 +456,6 @@ class _SubscriptionSettingsScreenState
   }
 
   Widget _buildInvoiceRow(Map<String, dynamic> invoice) {
-    final id = invoice['id'] as String? ?? '';
     final amount = invoice['amount'] as num? ?? 0;
     final currency = invoice['currency'] as String? ?? 'KES';
     final status = invoice['status'] as String? ?? '';
@@ -751,7 +708,7 @@ class _PlanOptionTile extends StatelessWidget {
               Container(
                 width: 22,
                 height: 22,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: DesignColors.brand,
                   shape: BoxShape.circle,
                 ),

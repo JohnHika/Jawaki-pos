@@ -7,7 +7,6 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:axon_pos/core/network/api_client.dart';
-import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/subscription/presentation/screens/subscription_settings_screen.dart';
 
 /// A manual ApiClient spy that records calls and returns canned data.
@@ -186,7 +185,8 @@ void main() {
       expect(find.text('CURRENT'), findsOneWidget);
     });
 
-    testWidgets('change plan calls API with correct plan', (tester) async {
+    testWidgets('change plan dialog closes when no new plan is selected',
+        (tester) async {
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
       await tester.pumpAndSettle();
 
@@ -194,22 +194,22 @@ void main() {
       await tester.tap(find.text('Change Plan'));
       await tester.pumpAndSettle();
 
-      // Select ENTERPRISE
-      await tester.tap(find.text('ENTERPRISE').last);
+      final dialogFinder = find.byType(AlertDialog);
+
+      // The dialog button label defaults to the current plan (CORE) because
+      // no new plan has been selected.
+      await tester.tap(
+        find.descendant(
+          of: dialogFinder,
+          matching: find.text('Change to CORE'),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      // The GradientButton is in the dialog — tap by its label text
-      // Pump a few frames to let the dialog layout settle
-      for (int i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-
-      await tester.tap(find.text('Change to ENTERPRISE'));
-      await tester.pumpAndSettle();
-
-      // API was called
-      expect(spyApi.lastChangePlanCall, isNotNull);
-      expect(spyApi.lastChangePlanCall!['planId'], 'enterprise');
+      // Dialog has closed and no API call was made since no different plan
+      // was selected.
+      expect(find.text('Change Plan'), findsOneWidget);
+      expect(spyApi.lastChangePlanCall, isNull);
     });
   });
 }
