@@ -264,8 +264,7 @@ class AppDatabase extends _$AppDatabase {
       : super(SecureDatabaseConnection.openSecureConnection());
 
   @visibleForTesting
-  AppDatabase.forTesting(QueryExecutor executor, this._storage)
-      : super(executor);
+  AppDatabase.forTesting(super.executor, this._storage);
 
   @override
   int get schemaVersion => 12; // v12: preserve fractional authoritative stock

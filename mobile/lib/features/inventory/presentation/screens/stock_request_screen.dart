@@ -36,7 +36,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
   String _priority = 'normal';
   String _unit = 'piece';
   bool _isLoading = false;
-  List<String> _images = [];
+  final List<String> _images = [];
   bool _showSuccess = false;
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -320,7 +320,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SectionHeader(
+          const SectionHeader(
             title: 'Stock Request',
             subtitle: 'Fill in the details to request stock',
             icon: Icons.add_shopping_cart_rounded,

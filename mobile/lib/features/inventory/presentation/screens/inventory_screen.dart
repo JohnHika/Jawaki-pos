@@ -929,7 +929,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           children: [
-            SectionHeader(
+            const SectionHeader(
               title: 'Stock Transfers',
               subtitle: 'Move stock from this branch to another branch',
               icon: Icons.swap_horiz_rounded,
@@ -1120,21 +1120,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                   color: surface, border: Border.all(color: border)),
-              child: Row(
+              child: const Row(
                 children: [
-                  const ShimmerWidget(width: 42, height: 42, borderRadius: 12),
-                  const SizedBox(width: 12),
+                  ShimmerWidget(width: 42, height: 42, borderRadius: 12),
+                  SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const ShimmerWidget(
+                        ShimmerWidget(
                           width: 160,
                           height: 14,
                           borderRadius: 4,
                         ),
-                        const SizedBox(height: 6),
-                        const ShimmerWidget(
+                        SizedBox(height: 6),
+                        ShimmerWidget(
                           width: 100,
                           height: 10,
                           borderRadius: 4,
@@ -1142,7 +1142,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ],
                     ),
                   ),
-                  const ShimmerWidget(width: 60, height: 14, borderRadius: 4),
+                  ShimmerWidget(width: 60, height: 14, borderRadius: 4),
                 ],
               ),
             ),

@@ -201,14 +201,14 @@ class GlassTheme {
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(
+      borderSide: const BorderSide(
         color: GlassColors.glassGlow,
         width: 2,
       ),
     ),
     prefixIconColor: GlassColors.glassTextSecondary,
     suffixIconColor: GlassColors.glassTextSecondary,
-    labelStyle: TextStyle(
+    labelStyle: const TextStyle(
       color: GlassColors.glassTextSecondary,
       fontSize: 15,
     ),
@@ -237,7 +237,7 @@ class GlassTheme {
     backgroundColor: GlassColors.glassBackground.withValues(alpha:0.3),
     selectedColor: GlassColors.glassGlow.withValues(alpha:0.3),
     deleteIconColor: GlassColors.glassTextSecondary,
-    labelStyle: TextStyle(
+    labelStyle: const TextStyle(
       color: GlassColors.glassTextPrimary,
       fontSize: 14,
       fontWeight: FontWeight.w500,
@@ -342,7 +342,7 @@ class GlassUI {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: GlassColors.glassTextPrimary,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -350,7 +350,7 @@ class GlassUI {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'Live Data',
                     style: TextStyle(
                       color: GlassColors.glassTextSecondary,
@@ -491,7 +491,7 @@ class GlassUI {
           const SizedBox(height: 16),
           Text(
             value,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
               color: GlassColors.glassTextPrimary,
@@ -501,7 +501,7 @@ class GlassUI {
           const SizedBox(height: 4),
           Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
               color: GlassColors.glassTextSecondary,
             ),
@@ -563,7 +563,7 @@ class GlassUI {
               const SizedBox(width: 12),
               Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: GlassColors.glassTextPrimary,

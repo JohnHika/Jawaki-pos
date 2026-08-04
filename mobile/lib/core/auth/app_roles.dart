@@ -10,6 +10,7 @@
 /// [AppRole] is kept only as a display concept (e.g. a "primary role" chip
 /// in the UI) computed from the user's highest-privilege assigned role; it
 /// no longer drives any access decision on its own.
+library;
 
 enum AppRole {
   seller,

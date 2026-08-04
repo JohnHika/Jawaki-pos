@@ -365,12 +365,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.image_not_supported_rounded,
+                  Icon(Icons.image_not_supported_rounded,
                       color: DesignColors.warning),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Text('This doesn\'t look like a receipt',
                         style: TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 16)),

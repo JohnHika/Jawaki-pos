@@ -190,7 +190,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       identity.userFirstName.isNotEmpty
                           ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
                           : 'Good ${_getGreeting()}',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                         color: DesignColors.textPrimary,
@@ -199,7 +199,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     const SizedBox(height: 2),
                     Text(
                       identity.companyName,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: DesignColors.accent,
@@ -208,7 +208,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     const SizedBox(height: 4),
                     Text(
                       _dateFmt.format(DateTime.now()),
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 14,
                         color: DesignColors.textSecondary,
                       ),
@@ -255,7 +255,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               const SizedBox(height: 8),
 
               // Recent Sales Section
-              SectionHeader(
+              const SectionHeader(
                 icon: Icons.receipt_long_rounded,
                 title: 'Recent Sales',
                 subtitle: 'Today\'s transactions',
@@ -677,13 +677,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 onTap: isLoading
                     ? null
                     : () => _openProfitAdjustment(context, ref, revenue, cost),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.tune_rounded,
+                    Icon(Icons.tune_rounded,
                         size: 14, color: DesignColors.accent),
-                    const SizedBox(width: 4),
-                    const Text('ADJUST',
+                    SizedBox(width: 4),
+                    Text('ADJUST',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w800,

@@ -88,7 +88,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SectionHeader(
+                    const SectionHeader(
                       title: 'Payment Management',
                       subtitle: "Today's takings, receipts, and credit",
                       icon: Icons.payments_rounded,
@@ -156,7 +156,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
 
                     const SizedBox(height: 24),
 
-                    SectionHeader(
+                    const SectionHeader(
                       title: 'Quick Access',
                       subtitle: 'Jump into receipts, analytics, or credit',
                       icon: Icons.dashboard_rounded,
@@ -214,16 +214,16 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     const SizedBox(height: 24),
 
                     // Payment Methods
-                    SectionHeader(
+                    const SectionHeader(
                       title: 'Accepted Payment Methods',
                       subtitle: 'Available at checkout',
                       icon: Icons.credit_card_rounded,
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
+                    const Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: const [
+                      children: [
                         _PaymentMethodBadge(
                           method: 'Cash',
                           icon: Icons.payments_outlined,

@@ -256,12 +256,12 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.shopping_bag_rounded,
+                        const Icon(Icons.shopping_bag_rounded,
                             size: 14, color: DesignColors.success),
-                        SizedBox(width: 6),
+                        const SizedBox(width: 6),
                         Text(
                           '${cart.itemCount} Cart',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             color: DesignColors.success,
@@ -561,17 +561,19 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                     color: DesignColors.success),
                                 onPressed: () {
                                   final current = ref.read(cartProvider);
-                                  if (current.items.isNotEmpty)
+                                  if (current.items.isNotEmpty) {
                                     ref
                                         .read(parkedSalesProvider.notifier)
                                         .park(current);
+                                  }
                                   final resumed = ref
                                       .read(parkedSalesProvider.notifier)
                                       .resume(s.id);
-                                  if (resumed != null)
+                                  if (resumed != null) {
                                     ref
                                         .read(cartProvider.notifier)
                                         .restoreFrom(resumed);
+                                  }
                                   Navigator.pop(ctx);
                                 }),
                             IconButton(

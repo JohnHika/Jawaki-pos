@@ -318,7 +318,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         const SizedBox(height: 20),
 
         // Description Section
-        SectionHeader(
+        const SectionHeader(
           title: 'Description',
           icon: Icons.description_outlined,
         ),
@@ -344,7 +344,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         const SizedBox(height: 20),
 
         // Additional Details
-        SectionHeader(
+        const SectionHeader(
           title: 'Additional Details',
           icon: Icons.info_outline_rounded,
         ),

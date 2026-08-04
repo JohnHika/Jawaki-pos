@@ -261,8 +261,8 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
           if (_isSystem)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
               child: StatusBadge(
                 label: 'System role — name is locked, permissions are editable',
                 color: DesignColors.info,

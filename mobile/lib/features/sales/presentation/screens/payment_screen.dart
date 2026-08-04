@@ -155,7 +155,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             const SizedBox(height: 24),
 
             // Select Payment Method
-            SectionHeader(
+            const SectionHeader(
               title: 'Payment Method',
               subtitle: 'Choose how to pay',
             ),
@@ -221,7 +221,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             // Phone number input for M-Pesa
             if (_selectedMethod == PaymentMethod.mpesa) ...[
               const SizedBox(height: 24),
-              LabelDivider(label: 'M-PESA DETAILS'),
+              const LabelDivider(label: 'M-PESA DETAILS'),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _phoneController,

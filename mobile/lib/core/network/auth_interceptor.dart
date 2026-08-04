@@ -25,19 +25,21 @@ class AuthInterceptor extends Interceptor {
       return handler.next(options);
     }
 
-    // Add access token if available
-    final token = _authService.accessToken;
-    if (token != null) {
-      options.headers['Authorization'] = 'Bearer $token';
-    }
+    // Add access token if available — use the async fallback to reload from
+    // storage if the in-memory token was cleared (e.g. after lock/unlock).
+    _authService.getAccessTokenWithFallback().then((token) {
+      if (token != null) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
 
-    // Add device ID if available
-    final deviceId = _authService.deviceId;
-    if (deviceId != null) {
-      options.headers['X-Device-ID'] = deviceId;
-    }
+      // Add device ID if available
+      final deviceId = _authService.deviceId;
+      if (deviceId != null) {
+        options.headers['X-Device-ID'] = deviceId;
+      }
 
-    handler.next(options);
+      handler.next(options);
+    });
   }
 
   @override

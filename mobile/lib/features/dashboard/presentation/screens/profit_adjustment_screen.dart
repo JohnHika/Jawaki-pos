@@ -278,11 +278,11 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                   ),
                   child: Column(
                     children: [
-                      Row(
+                      const Row(
                         children: [
-                          const Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 20),
-                          const SizedBox(width: 8),
-                          const Text(
+                          Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 20),
+                          SizedBox(width: 8),
+                          Text(
                             'Simple Profit Formula',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,

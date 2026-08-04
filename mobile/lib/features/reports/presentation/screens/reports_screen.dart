@@ -64,7 +64,7 @@ class ReportsScreen extends ConsumerWidget {
             const SizedBox(height: 20),
 
             // Reports section
-            SectionHeader(
+            const SectionHeader(
               title: 'Reports',
               subtitle: 'Detailed sales and operational reports',
               icon: Icons.description_rounded,
@@ -124,7 +124,7 @@ class ReportsScreen extends ConsumerWidget {
             const SizedBox(height: 20),
 
             // Analytics section
-            SectionHeader(
+            const SectionHeader(
               title: 'Analytics',
               subtitle: 'Advanced analytics and forecasting',
               icon: Icons.analytics_rounded,

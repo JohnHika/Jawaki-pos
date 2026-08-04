@@ -165,21 +165,22 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     final fieldFill =
         isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      padding: const EdgeInsets.fromLTRB(DesignSpacing.xxl, DesignSpacing.sm, DesignSpacing.xxl, DesignSpacing.xxl),
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
+            // ── Header ──────────────────────────────────────────────────
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(DesignSpacing.sm + 2),
                   decoration: BoxDecoration(
                     color: DesignColors.brand.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: Icon(
                     isEditing
@@ -189,7 +190,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     size: 22,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: DesignSpacing.md),
                 Text(
                   isEditing ? 'Edit Product' : 'Add New Product',
                   style: TextStyle(
@@ -201,9 +202,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
 
-            // Product Name
+            // ── Product Name ──────────────────────────────────────────
             TextFormField(
               controller: _nameController,
               style: TextStyle(color: titleColor),
@@ -221,38 +222,38 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 filled: true,
                 fillColor: fieldFill,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   borderSide: BorderSide(color: fieldBorder),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   borderSide: BorderSide(color: fieldBorder),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   borderSide:
                       const BorderSide(color: DesignColors.brand, width: 1.5),
                 ),
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.lg, vertical: 14),
               ),
               textCapitalization: TextCapitalization.words,
               validator: (v) =>
                   v == null || v.trim().isEmpty ? 'Enter product name' : null,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
-            // Category dropdown
+            // ── Category ──────────────────────────────────────────────
             categoriesAsync.when(
               data: (categories) {
                 final ac = categories.where((c) => c.isActive).toList();
                 return Container(
                   decoration: BoxDecoration(
                     color: fieldFill,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     border: Border.all(color: fieldBorder),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButtonFormField<String>(
                       initialValue: _selectedCategoryId,
@@ -280,24 +281,20 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   ),
                 );
               },
-              loading: () =>
-                  const LinearProgressIndicator(color: DesignColors.brand),
-              error: (e, _) => const Text(
-                'Couldn\'t load categories. Check your connection.',
-                style: TextStyle(color: DesignColors.error, fontSize: 12),
-              ),
+              loading: () => _buildCategoryLoading(isDark),
+              error: (e, _) => _buildCategoryError(isDark),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
-            // ── Multi-unit Pricing ────────────────────────────────────────
+            // ── Multi-unit Pricing ────────────────────────────────────
             _buildPricingSection(isDark),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
-            // ── Reorder Point ────────────────────────────────────────────
+            // ── Reorder Point ─────────────────────────────────────────
             _buildReorderPointSection(isDark),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
-            // Description
+            // ── Description ───────────────────────────────────────────
             TextFormField(
               controller: _descriptionController,
               style: TextStyle(color: titleColor),
@@ -314,27 +311,27 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 filled: true,
                 fillColor: fieldFill,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   borderSide: BorderSide(color: fieldBorder),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   borderSide: BorderSide(color: fieldBorder),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   borderSide:
                       const BorderSide(color: DesignColors.brand, width: 1.5),
                 ),
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.lg, vertical: 14),
               ),
               textCapitalization: TextCapitalization.sentences,
               maxLines: 2,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
-            // Product image
+            // ── Product image ─────────────────────────────────────────
             ImagePickerSection(
               initialImageUrl: _imageUrl,
               type: 'product',
@@ -344,20 +341,92 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 _imagePublicId = publicId;
               }),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: DesignSpacing.xxl),
 
-            // Save button
+            // ── Save button ───────────────────────────────────────────
             GradientButton(
               label: isEditing ? 'Save Changes' : 'Add Product',
               icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
               onPressed: _isSaving ? null : _saveProduct,
               isLoading: _isSaving,
               height: 52,
-              borderRadius: 12,
+              borderRadius: DesignSpacing.radiusMd,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Polished loading state for the category dropdown — uses a shimmer-like
+  /// skeleton instead of a bare LinearProgressIndicator.
+  Widget _buildCategoryLoading(bool isDark) {
+    final fill = isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
+      child: Row(
+        children: [
+          Icon(Icons.category_outlined,
+              color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+              size: 20),
+          const SizedBox(width: DesignSpacing.md),
+          Text(
+            'Loading categories...',
+            style: TextStyle(
+              color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+              fontSize: 14,
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: DesignColors.brand.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Polished error state for the category dropdown.
+  Widget _buildCategoryError(bool isDark) {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: DesignColors.errorSubtle,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(
+          color: DesignColors.error.withValues(alpha: 0.3),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
+      child: const Row(
+        children: [
+          Icon(Icons.cloud_off_rounded,
+              color: DesignColors.error, size: 20),
+          SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: Text(
+              'Couldn\'t load categories. Check your connection.',
+              style: TextStyle(
+                color: DesignColors.error,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -462,6 +531,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   }
 
   String _productSaveErrorMessage(Object error) {
+    if (error is DioException && error.response?.statusCode == 401) {
+      return 'Session expired. Please log in again and try saving the product.';
+    }
     if (error is DioException && error.response?.statusCode == 429) {
       return 'Could not save product: server is busy. Please wait a moment and try again.';
     }
@@ -519,20 +591,20 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               filled: true,
               fillColor: fill,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 borderSide: BorderSide(color: fieldBorder),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 borderSide: BorderSide(color: fieldBorder),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 borderSide:
                     const BorderSide(color: DesignColors.brand, width: 1.5),
               ),
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  const EdgeInsets.symmetric(horizontal: DesignSpacing.lg, vertical: 14),
             ),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return null;
@@ -541,14 +613,14 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             },
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: DesignSpacing.md),
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
             height: 52,
             decoration: BoxDecoration(
               color: fill,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               border: Border.all(color: fieldBorder),
             ),
             child: DropdownButtonHideUnderline(
@@ -588,12 +660,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: DesignColors.brand.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
               ),
               child: const Icon(Icons.local_offer_rounded,
                   color: DesignColors.brand, size: 16),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: DesignSpacing.sm),
             Text(
               'Pricing by Unit',
               style: TextStyle(
@@ -605,12 +677,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ),
             const Spacer(),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm, vertical: 3),
               decoration: BoxDecoration(
                 color: isDark
                     ? DesignColors.darkSurfaceElevated
                     : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
               ),
               child: Text(
                 '${_unitPriceTiers.length} '
@@ -624,7 +696,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: DesignSpacing.sm + 2),
         // Tiers container — no cap: add as many pricing tiers (piece,
         // dozen, carton, pallet, ...) as the business actually sells in.
         Container(
@@ -632,7 +704,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             color: isDark
                 ? DesignColors.darkSurfaceElevated
                 : DesignColors.surfaceSubtle,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
           ),
           child: Column(
             children: [
@@ -667,11 +739,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             color: isDark
                 ? Colors.white.withValues(alpha: 0.06)
                 : Colors.black.withValues(alpha: 0.06),
-            indent: 12,
-            endIndent: 12,
+            indent: DesignSpacing.md,
+            endIndent: DesignSpacing.md,
           ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.md, DesignSpacing.md, DesignSpacing.md, 0),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -681,9 +753,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: isDark ? DesignColors.darkSurface : Colors.white,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm + 2),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: tier.unit,
@@ -712,7 +784,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: DesignSpacing.sm),
               // Price field
               Expanded(
                 flex: 7,
@@ -739,20 +811,20 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     filled: true,
                     fillColor: isDark ? DesignColors.darkSurface : Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                       borderSide: BorderSide(color: fieldBorder),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                       borderSide: BorderSide(color: fieldBorder),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                       borderSide: const BorderSide(
                           color: DesignColors.brand, width: 1.5),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 12),
+                        horizontal: DesignSpacing.md, vertical: DesignSpacing.md),
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) {
@@ -775,10 +847,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     _unitPriceTiers.removeAt(index);
                   }),
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(DesignSpacing.sm),
                     decoration: BoxDecoration(
                       color: DesignColors.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                     ),
                     child: const Icon(Icons.delete_outline_rounded,
                         color: DesignColors.error, size: 18),
@@ -796,7 +868,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         // silently corrupt the real physical count.
         if (!isPrimary)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.fromLTRB(DesignSpacing.md, DesignSpacing.sm, DesignSpacing.md, 0),
             child: TextFormField(
               controller: tier.qtyController,
               keyboardType:
@@ -821,20 +893,20 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                 filled: true,
                 fillColor: isDark ? DesignColors.darkSurface : Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                   borderSide: BorderSide(color: fieldBorder),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                   borderSide: BorderSide(color: fieldBorder),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
                   borderSide:
                       const BorderSide(color: DesignColors.brand, width: 1.5),
                 ),
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.md, vertical: DesignSpacing.sm + 2),
               ),
               // Optional: only validate the format when something was
               // typed. A blank value is fine -- _saveProduct() defaults
@@ -851,7 +923,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           ),
         // Label below each row
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, DesignSpacing.md),
           child: isPrimary
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

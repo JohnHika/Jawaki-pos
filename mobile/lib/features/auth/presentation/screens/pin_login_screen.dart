@@ -419,7 +419,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             ),
           ),
         ),
-        SizedBox(height: DesignSpacing.md),
+        const SizedBox(height: DesignSpacing.md),
         Text(
           _workspaceIdentity.companyName,
           style: TextStyle(
@@ -597,7 +597,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                       : null,
                 ),
                 child: isFilled
-                    ? Icon(
+                    ? const Icon(
                         Icons.circle_rounded,
                         size: 14,
                         color: Colors.white,
@@ -622,7 +622,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
 
   Widget _buildErrorBanner() {
     return Container(
-      padding: EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: DesignSpacing.md,
         vertical: DesignSpacing.sm,
       ),
@@ -641,7 +641,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             color: DesignColors.error.withValues(alpha: 0.9),
             size: 18,
           ),
-          SizedBox(width: DesignSpacing.sm),
+          const SizedBox(width: DesignSpacing.sm),
           Flexible(
             child: Text(
               _errorMessage.isNotEmpty
@@ -667,15 +667,15 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         children: [
           // Row 1: 1 2 3
           _buildNumberPadRow(isSmallScreen, buttonSize, ['1', '2', '3']),
-          SizedBox(height: DesignSpacing.md),
+          const SizedBox(height: DesignSpacing.md),
 
           // Row 2: 4 5 6
           _buildNumberPadRow(isSmallScreen, buttonSize, ['4', '5', '6']),
-          SizedBox(height: DesignSpacing.md),
+          const SizedBox(height: DesignSpacing.md),
 
           // Row 3: 7 8 9
           _buildNumberPadRow(isSmallScreen, buttonSize, ['7', '8', '9']),
-          SizedBox(height: DesignSpacing.md),
+          const SizedBox(height: DesignSpacing.md),
 
           // Row 4: clear 0 backspace
           Row(
@@ -686,9 +686,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 onTap: _onClearPressed,
                 size: buttonSize,
               ),
-              SizedBox(width: DesignSpacing.md),
+              const SizedBox(width: DesignSpacing.md),
               _buildNumberButton('0', isSmallScreen, buttonSize),
-              SizedBox(width: DesignSpacing.md),
+              const SizedBox(width: DesignSpacing.md),
               _buildActionButton(
                 icon: Icons.backspace_outlined,
                 onTap: _onBackspacePressed,
@@ -710,7 +710,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: digits
           .map((digit) => Padding(
-                padding: EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
+                padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
                 child: _buildNumberButton(digit, isSmallScreen, buttonSize),
               ))
           .toList(),
@@ -829,7 +829,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
               ),
             ),
           ),
-          SizedBox(height: DesignSpacing.md),
+          const SizedBox(height: DesignSpacing.md),
         ],
         // Back to email login
         GestureDetector(
@@ -845,7 +845,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             ),
           ),
         ),
-        SizedBox(height: DesignSpacing.sm),
+        const SizedBox(height: DesignSpacing.sm),
 
         // Version
         if (_appVersion.isNotEmpty)

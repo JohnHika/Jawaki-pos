@@ -380,16 +380,16 @@ class _UnitConversionCalculatorState
               ),
               child: Column(
                 children: [
-                  Row(
+                  const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.arrow_downward_rounded,
                         color: DesignColors.brand,
                         size: 18,
                       ),
-                      const SizedBox(width: 6),
-                      const Text(
+                      SizedBox(width: 6),
+                      Text(
                         'Converts to',
                         style: TextStyle(
                           fontSize: 12,

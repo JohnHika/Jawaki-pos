@@ -431,9 +431,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingConfig || _unitConfig == null) {
-      return Scaffold(
-        appBar: const BrandedAppBar(title: 'Receive Stock'),
-        body: const Center(
+      return const Scaffold(
+        appBar: BrandedAppBar(title: 'Receive Stock'),
+        body: Center(
           child: CircularProgressIndicator(color: DesignColors.brand),
         ),
       );

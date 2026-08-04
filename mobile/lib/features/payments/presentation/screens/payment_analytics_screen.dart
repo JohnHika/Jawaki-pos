@@ -130,8 +130,8 @@ class _PaymentAnalyticsScreenState
                       // hours all have nothing to show) — one clear message
                       // covers the whole period instead of a long scroll of
                       // near-identical placeholder cards.
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
                         child: EmptyState(
                           icon: Icons.query_stats_rounded,
                           title: 'No transactions in this period',
@@ -623,7 +623,7 @@ class _PaymentAnalyticsScreenState
                       ),
                       child: Center(
                         child: Text(
-                          '${hourNum}:00',
+                          '$hourNum:00',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -689,7 +689,7 @@ class _PaymentAnalyticsScreenState
                   ],
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );

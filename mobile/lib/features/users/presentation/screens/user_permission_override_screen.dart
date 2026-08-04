@@ -134,7 +134,7 @@ class _UserPermissionOverrideScreenState
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          SectionHeader(
+          const SectionHeader(
             title: 'Assigned Roles',
             subtitle: 'A user can hold multiple roles at once',
             icon: Icons.badge_outlined,
@@ -154,7 +154,7 @@ class _UserPermissionOverrideScreenState
             ],
           ),
           const SizedBox(height: 8),
-          SectionHeader(
+          const SectionHeader(
             title: 'Permission Overrides',
             subtitle: 'Grant an extra permission, or revoke one this user would otherwise get from their roles',
             icon: Icons.tune_rounded,

@@ -241,7 +241,7 @@ class _TourCard extends StatelessWidget {
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: Text(
+                    child: const Text(
                       'Skip',
                       style: TextStyle(
                         color: DesignColors.darkTextTertiary,
@@ -264,7 +264,7 @@ class _TourCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 step.description,
-                style: TextStyle(
+                style: const TextStyle(
                   color: DesignColors.darkTextSecondary,
                   fontSize: 14,
                   height: 1.4,

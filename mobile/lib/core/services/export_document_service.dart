@@ -73,7 +73,7 @@ class ExportDocumentService {
                     pw.SizedBox(height: 2),
                     pw.Text(
                       title,
-                      style: pw.TextStyle(fontSize: 12, color: _muted),
+                      style: const pw.TextStyle(fontSize: 12, color: _muted),
                     ),
                   ],
                 ),
@@ -94,14 +94,14 @@ class ExportDocumentService {
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
             'Page ${context.pageNumber} of ${context.pagesCount}  •  Generated from Axon POS',
-            style: pw.TextStyle(fontSize: 8, color: _muted),
+            style: const pw.TextStyle(fontSize: 8, color: _muted),
           ),
         ),
         build: (context) => [
           if (subtitle != null) ...[
             pw.Text(
               subtitle,
-              style: pw.TextStyle(fontSize: 11, color: _muted),
+              style: const pw.TextStyle(fontSize: 11, color: _muted),
             ),
             pw.SizedBox(height: 14),
           ],
@@ -123,7 +123,7 @@ class ExportDocumentService {
             ),
             pw.SizedBox(height: 8),
             pw.Table(
-              border: pw.TableBorder.all(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.5),
+              border: pw.TableBorder.all(color: const PdfColor.fromInt(0xFFE5E7EB), width: 0.5),
               children: [
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF3F4F6)),

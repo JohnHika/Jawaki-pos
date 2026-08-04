@@ -171,9 +171,9 @@ class _CategoryChipSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: const ShimmerWidget(width: 80, height: 36, borderRadius: 18),
+    return const Padding(
+      padding: EdgeInsets.only(right: 8),
+      child: ShimmerWidget(width: 80, height: 36, borderRadius: 18),
     );
   }
 }

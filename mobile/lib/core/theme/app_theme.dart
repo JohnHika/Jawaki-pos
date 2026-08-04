@@ -38,7 +38,7 @@ class AppTheme {
           letterSpacing: -0.3,
         ),
         toolbarHeight: 60,
-        shape: Border(
+        shape: const Border(
           bottom: BorderSide(color: DesignColors.surfaceBorder, width: 1),
         ),
       ),
@@ -48,7 +48,7 @@ class AppTheme {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          side: BorderSide(color: DesignColors.surfaceBorder, width: 0.75),
+          side: const BorderSide(color: DesignColors.surfaceBorder, width: 0.75),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -351,7 +351,7 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           letterSpacing: -0.3,
         ),
-        shape: Border(
+        shape: const Border(
           bottom: BorderSide(color: DesignColors.darkBorder, width: 1),
         ),
       ),
@@ -360,7 +360,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(4),
-          side: BorderSide(color: DesignColors.darkBorder, width: 1),
+          side: const BorderSide(color: DesignColors.darkBorder, width: 1),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(

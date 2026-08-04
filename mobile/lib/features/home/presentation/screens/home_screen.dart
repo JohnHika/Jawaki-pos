@@ -274,7 +274,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Container(
                       width: 6,
                       height: 6,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                           color: DesignColors.warning, shape: BoxShape.circle)),
                   const SizedBox(width: 6),
                   const Text('Offline Mode',

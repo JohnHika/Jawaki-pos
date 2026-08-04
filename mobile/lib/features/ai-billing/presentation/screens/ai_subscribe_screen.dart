@@ -468,7 +468,7 @@ class _CodeInputField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final border = BorderSide(color: DesignColors.surfaceBorder);
+    const border = BorderSide(color: DesignColors.surfaceBorder);
 
     return TextField(
       controller: controller,

@@ -38,7 +38,7 @@ class LocalServerService {
   StreamSubscription<ConnectionStatus>? _autoStartSubscription;
   bool _isRunning = false;
   int _port = 3000;
-  List<Map<String, dynamic>> _connectedClients = [];
+  final List<Map<String, dynamic>> _connectedClients = [];
 
   bool get isRunning => _isRunning;
   int get port => _port;
@@ -104,29 +104,29 @@ class LocalServerService {
       // Register all route handlers directly into the main router.
       // IMPORTANT: Do NOT use mount() with the same prefix — it replaces
       // previously mounted routes. Each class must add to the same router.
-      final db_local = db;
-      await _seedDefaultAdmin(db_local);
+      final dbLocal = db;
+      await _seedDefaultAdmin(dbLocal);
       // Must run BEFORE the ApiClient base URL is redirected to localhost
       // below — this is the last moment the app's HTTP client still talks
       // to the real remote backend, which is what this pull needs.
-      await _syncOfflineDirectory(db_local);
+      await _syncOfflineDirectory(dbLocal);
 
-      AuthRoutes(db_local).addRoutes(appRouter);
-      CatalogRoutes(db_local).addRoutes(appRouter);
-      SalesRoutes(db_local).addRoutes(appRouter);
-      InventoryRoutes(db_local).addRoutes(appRouter);
-      SyncRoutes(db_local).addRoutes(appRouter);
-      ReportRoutes(db_local).addRoutes(appRouter);
+      AuthRoutes(dbLocal).addRoutes(appRouter);
+      CatalogRoutes(dbLocal).addRoutes(appRouter);
+      SalesRoutes(dbLocal).addRoutes(appRouter);
+      InventoryRoutes(dbLocal).addRoutes(appRouter);
+      SyncRoutes(dbLocal).addRoutes(appRouter);
+      ReportRoutes(dbLocal).addRoutes(appRouter);
       ImageRoutes().addRoutes(appRouter);
       PaymentRoutes().addRoutes(appRouter);
 
       // Build middleware pipeline
-      final handler = shelf.Pipeline()
+      final handler = const shelf.Pipeline()
           .addMiddleware(errorHandler())
           .addMiddleware(corsMiddleware())
           .addMiddleware(jsonBodyParser())
           .addMiddleware(authMiddleware())
-          .addHandler(appRouter);
+          .addHandler(appRouter.call);
 
       // Start the server on all interfaces
       _server = await shelf_io.serve(

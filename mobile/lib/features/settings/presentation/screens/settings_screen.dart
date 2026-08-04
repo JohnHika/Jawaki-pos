@@ -1016,7 +1016,7 @@ class SettingsScreen extends ConsumerWidget {
                           Uri.parse('https://arche-axon.xyz'),
                           mode: LaunchMode.externalApplication,
                         ),
-                        child: Text(
+                        child: const Text(
                           'arche-axon.xyz',
                           style: TextStyle(
                               color: DesignColors.brand,
@@ -1710,7 +1710,7 @@ class SettingsScreen extends ConsumerWidget {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (snapshot.hasError) {
-                        return EmptyState(
+                        return const EmptyState(
                           icon: Icons.error_outline_rounded,
                           title: 'Couldn\'t load audit trail',
                           subtitle: 'Check your connection and try again.',
@@ -1720,7 +1720,7 @@ class SettingsScreen extends ConsumerWidget {
                       final items = (snapshot.data?['items'] as List? ?? [])
                           .cast<Map<String, dynamic>>();
                       if (items.isEmpty) {
-                        return EmptyState(
+                        return const EmptyState(
                           icon: Icons.history_rounded,
                           title: 'No activity yet',
                           subtitle: 'Actions like logins and branch changes will appear here.',
@@ -2937,7 +2937,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                         onAction: _loadBranches,
                       )
                     : _branches.isEmpty
-                        ? EmptyState(
+                        ? const EmptyState(
                             icon: Icons.store_outlined,
                             title: 'No branches yet',
                             subtitle: 'Tap "Add Branch" to create your first one',

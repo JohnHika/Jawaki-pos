@@ -146,8 +146,8 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
     }
     if (_memories.isEmpty) {
       return ListView(
-        children: [
-          const SizedBox(height: 80),
+        children: const [
+          SizedBox(height: 80),
           EmptyState(
             icon: Icons.psychology_alt_outlined,
             title: 'No memories yet',

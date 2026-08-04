@@ -170,7 +170,7 @@ class _CompanyActivationScreenState
                     companyName == null || companyName.isEmpty
                         ? 'Your company is created. One payment unlocks the Axon POS workspace.'
                         : '$companyName is created. Complete activation before using Axon POS.',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: DesignColors.darkTextSecondary,
                       fontSize: 16,
                       height: 1.45,
@@ -231,7 +231,7 @@ class _CompanyActivationScreenState
                     ],
                   ],
                   const SizedBox(height: 20),
-                  Text(
+                  const Text(
                     'Secure checkout powered by Paystack. Axon will only unlock the workspace after the payment is verified by the server.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -268,7 +268,7 @@ class _CompanyActivationScreenState
           ),
         ),
         const SizedBox(width: 14),
-        Expanded(
+        const Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -280,7 +280,7 @@ class _CompanyActivationScreenState
                   letterSpacing: 1.6,
                 ),
               ),
-              const SizedBox(height: 3),
+              SizedBox(height: 3),
               Text(
                 'STEP 4 · PAYMENT REQUIRED',
                 style: TextStyle(
@@ -312,11 +312,11 @@ class _CompanyActivationScreenState
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: DesignColors.brand.withValues(alpha: 0.55)),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          const Icon(Icons.workspace_premium_rounded,
+          Icon(Icons.workspace_premium_rounded,
               color: DesignColors.brand, size: 38),
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +329,7 @@ class _CompanyActivationScreenState
                     fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 Text(
                   'One-time setup payment',
                   style: TextStyle(color: DesignColors.darkTextSecondary),
@@ -371,11 +371,11 @@ class _CompanyActivationScreenState
                 leading: const Icon(Icons.check_circle_rounded,
                     color: DesignColors.accent, size: 22),
                 title: Text(item.$1,
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: DesignColors.darkTextPrimary,
                         fontWeight: FontWeight.w700)),
                 subtitle: Text(item.$2,
-                    style: TextStyle(color: DesignColors.darkTextSecondary)),
+                    style: const TextStyle(color: DesignColors.darkTextSecondary)),
               ),
             )
             .toList(),

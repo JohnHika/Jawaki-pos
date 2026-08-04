@@ -34,6 +34,14 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
     _checkStaffStatus();
   }
 
+  @override
+  void didUpdateWidget(covariant StaffInviteNudge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Re-check on every dashboard rebuild so the nudge stays in sync
+    // with the onboarding state (e.g. after returning from /invite-staff).
+    _checkStaffStatus();
+  }
+
   Future<void> _checkStaffStatus() async {
     setState(() {
       _isLoading = true;
@@ -106,11 +114,11 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
+                const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Invite your team',
                         style: TextStyle(
                           color: DesignColors.darkTextPrimary,
@@ -118,7 +126,7 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2),
                       Text(
                         'Add staff members to help manage sales, inventory, and reports.',
                         style: TextStyle(
@@ -157,7 +165,7 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: DesignColors.darkTextSecondary,
-                      side: BorderSide(
+                      side: const BorderSide(
                         color: DesignColors.darkBorder,
                       ),
                       shape: RoundedRectangleBorder(

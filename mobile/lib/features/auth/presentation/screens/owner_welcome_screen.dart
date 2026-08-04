@@ -266,10 +266,19 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
-                child: OutlinedButton(
-              onPressed: isBusy ? null : () => _performStepAction(key),
-              child: Text(detail.actionLabel),
-            )),
+              child: key == 'invite_staff'
+                  ? GradientButton(
+                      label: detail.actionLabel,
+                      icon: Icons.send_rounded,
+                      onPressed: isBusy ? null : () => _performStepAction(key),
+                      height: 42,
+                      borderRadius: 10,
+                    )
+                  : OutlinedButton(
+                      onPressed: isBusy ? null : () => _performStepAction(key),
+                      child: Text(detail.actionLabel),
+                    ),
+            ),
             const SizedBox(width: 8),
             TextButton(
               onPressed: isBusy ? null : () => _updateStep(key, 'DEFERRED'),

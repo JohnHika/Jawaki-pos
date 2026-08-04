@@ -90,7 +90,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EmptyState(
+    return const EmptyState(
       icon: Icons.inventory_2_outlined,
       title: 'No products found',
       subtitle: 'Try adjusting your search or category filter',
@@ -275,7 +275,7 @@ class _ProductCard extends ConsumerWidget {
                   ),
                   if (secondaryUnit != null &&
                       secondaryUnitPriceDisplay != null)
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                   if (secondaryUnit != null &&
                       secondaryUnitPriceDisplay != null)
                     Text(

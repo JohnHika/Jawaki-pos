@@ -6,6 +6,7 @@
 /// - Tertiary unit (e.g., carton) with quantity per unit
 /// - Branch-specific price overrides
 /// - Manual price adjustments during checkout
+library;
 
 class UnitPriceInfo {
   final String unit;

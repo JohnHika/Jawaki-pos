@@ -114,8 +114,8 @@ class UserGuideScreen extends StatelessWidget {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
+                            const Padding(
+                              padding: EdgeInsets.only(top: 2),
                               child: Icon(Icons.check_circle_rounded,
                                   size: 16, color: DesignColors.success),
                             ),

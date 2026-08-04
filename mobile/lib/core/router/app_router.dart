@@ -10,6 +10,8 @@ import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
 import '../../features/team/presentation/screens/invite_staff_screen.dart';
+import '../../features/team/presentation/screens/accept_invite_screen.dart';
+import '../../features/team/presentation/screens/set_password_after_invite_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -189,6 +191,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/invite-staff',
         name: 'invite-staff',
         builder: (context, state) => const InviteStaffScreen(),
+      ),
+      GoRoute(
+        path: '/accept-invite',
+        name: 'accept-invite',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, String>? ?? {};
+          return AcceptInviteScreen(
+            invitationId: extra['invitationId'] ?? '',
+            challengeId: extra['challengeId'] ?? '',
+          );
+        },
+      ),
+      GoRoute(
+        path: '/set-password-after-invite',
+        name: 'set-password-after-invite',
+        builder: (context, state) => const SetPasswordAfterInviteScreen(),
       ),
       GoRoute(
         path: '/activation',

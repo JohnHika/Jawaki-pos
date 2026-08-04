@@ -434,7 +434,7 @@ class _CustomerProfileScreenState
                       const SizedBox(height: 20),
                       // Top Products
                       if (_topProducts.isNotEmpty) ...[
-                        SectionHeader(
+                        const SectionHeader(
                             title: 'Frequently Bought',
                             icon: Icons.trending_up_rounded),
                         const SizedBox(height: 8),
@@ -464,7 +464,7 @@ class _CustomerProfileScreenState
                         const SizedBox(height: 20),
                       ],
                       // Purchase History
-                      SectionHeader(
+                      const SectionHeader(
                           title: 'Purchase History',
                           icon: Icons.history_rounded),
                       const SizedBox(height: 8),

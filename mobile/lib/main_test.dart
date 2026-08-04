@@ -9,7 +9,7 @@ void main() async {
       DeviceOrientation.portraitUp,
     ]);
   } catch (e) {
-    print('Orientation error: $e');
+    debugPrint('Orientation error: $e');
   }
 
   runApp(const MinimalTestApp());
@@ -47,7 +47,7 @@ class MinimalTestApp extends StatelessWidget {
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: () {
-                  print('BUTTON WORKS!');
+                  debugPrint('BUTTON WORKS!');
                 },
                 child: const Text('Click Me'),
               ),

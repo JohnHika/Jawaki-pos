@@ -272,9 +272,9 @@ class ProductCardShimmer extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(14)),
+                    BorderRadius.vertical(top: Radius.circular(14)),
                 color: Colors.transparent,
               ),
               child: const ShimmerWidget(
@@ -283,18 +283,18 @@ class ProductCardShimmer extends StatelessWidget {
                   borderRadius: 14),
             ),
           ),
-          Expanded(
+          const Expanded(
             flex: 2,
             child: Padding(
-              padding: const EdgeInsets.all(10),
+              padding: EdgeInsets.all(10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const ShimmerWidget(width: double.infinity, height: 12),
-                  const SizedBox(height: 6),
-                  const ShimmerWidget(width: 80, height: 12),
-                  const Spacer(),
-                  const ShimmerWidget(width: 100, height: 16),
+                  ShimmerWidget(width: double.infinity, height: 12),
+                  SizedBox(height: 6),
+                  ShimmerWidget(width: 80, height: 12),
+                  Spacer(),
+                  ShimmerWidget(width: 100, height: 16),
                 ],
               ),
             ),

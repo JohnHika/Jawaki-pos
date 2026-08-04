@@ -1011,6 +1011,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
 
+              const SizedBox(height: 12),
+
+              // Invitation code entry point
+              Align(
+                alignment: Alignment.center,
+                child: TextButton(
+                  onPressed: () => context.push('/accept-invite'),
+                  child: const Text(
+                    'Have an invitation code?',
+                    style: TextStyle(
+                      color: DesignColors.brand,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 8), // Reduced bottom padding for balance
             ],
           ),

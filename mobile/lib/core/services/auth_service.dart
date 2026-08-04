@@ -64,6 +64,20 @@ class AuthService implements LifecycleLockAuth {
   AuthStatus get currentStatus => _currentStatus;
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get accessToken => _accessToken;
+
+  /// Returns the in-memory access token if available, otherwise attempts to
+  /// reload it from secure storage. This is the safe getter for the auth
+  /// interceptor to use — it handles the edge case where the token was
+  /// cleared from memory (e.g. after a lock/unlock cycle) but still exists
+  /// in storage.
+  Future<String?> getAccessTokenWithFallback() async {
+    if (_accessToken != null) return _accessToken;
+    final stored = await _storage.getAccessToken();
+    if (stored != null && stored.isNotEmpty) {
+      _accessToken = stored;
+    }
+    return _accessToken;
+  }
   @override
   bool get isAuthenticated => _currentStatus == AuthStatus.authenticated;
   @override
