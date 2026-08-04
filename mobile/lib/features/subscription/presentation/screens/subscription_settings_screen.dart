@@ -312,10 +312,10 @@ class _SubscriptionSettingsScreenState
       );
     }
 
-    final planName = _plan?['planName'] as String? ?? 'CORE';
-    final status = _plan?['status'] as String? ?? 'TRIAL';
-    final nextBilling = _plan?['nextBillingDate'] as String?;
-    final trialEnds = _plan?['trialEndsAt'] as String?;
+    final planName = _plan?['plan'] as String? ?? 'CORE';
+    final status = _plan?['subscriptionStatus'] as String? ?? 'TRIAL';
+    final nextBilling = _plan?['currentPeriodEnd'] as String?;
+    final trialEnds = _plan?['currentPeriodEnd'] as String?;
     final isTrial = status.toUpperCase() == 'TRIAL';
 
     return Container(

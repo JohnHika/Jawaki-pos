@@ -16,12 +16,56 @@ class _SpyApiClient extends ApiClient {
   /// If set, getSubscriptionPlan returns this completer's future instead.
   Completer<Map<String, dynamic>>? planCompleter;
 
+  /// Mock data matching the real backend response format.
+  /// Backend returns: plan, subscriptionStatus, currentPeriodStart, currentPeriodEnd,
+  /// setupFeePaidAt, maxBranches, maxUsers, activationStatus, activationPaidAt,
+  /// planMeta (with planId, name, monthlyAmountKes, trialDays, features),
+  /// availablePlans (array of plan pricing objects).
   Map<String, dynamic> planData = {
-    'planId': 'core',
-    'planName': 'CORE',
-    'status': 'TRIAL',
-    'trialEndsAt': '2026-09-04T00:00:00Z',
-    'nextBillingDate': '2026-09-04T00:00:00Z',
+    'plan': 'CORE',
+    'subscriptionStatus': 'TRIAL',
+    'currentPeriodStart': '2026-08-04T00:00:00Z',
+    'currentPeriodEnd': '2026-09-04T00:00:00Z',
+    'setupFeePaidAt': '2026-08-04T00:00:00Z',
+    'maxBranches': 3,
+    'maxUsers': 10,
+    'activationStatus': 'ACTIVE',
+    'activationPaidAt': '2026-08-04T00:00:00Z',
+    'planMeta': {
+      'planId': 'CORE',
+      'name': 'Core',
+      'monthlyAmountKes': 3200,
+      'trialDays': 7,
+      'features': {
+        'maxBranches': 3,
+        'maxUsers': 10,
+        'analytics': true,
+        'prioritySupport': false,
+        'aiAssistant': false,
+        'customReports': false,
+        'multiCurrency': false,
+      },
+    },
+    'availablePlans': [
+      {
+        'planId': 'TRIAL',
+        'name': 'Trial',
+        'monthlyAmountKes': 0,
+        'trialDays': 7,
+      },
+      {
+        'planId': 'CORE',
+        'name': 'Core',
+        'monthlyAmountKes': 3200,
+        'trialDays': 7,
+      },
+      {
+        'planId': 'ENTERPRISE',
+        'name': 'Enterprise',
+        'monthlyAmountKes': 5000,
+        'trialDays': 7,
+      },
+    ],
   };
   List<dynamic> invoices = [];
   Object? planError;
@@ -46,8 +90,8 @@ class _SpyApiClient extends ApiClient {
   }) async {
     if (changePlanError != null) throw changePlanError!;
     lastChangePlanCall = {'planId': planId};
-    planData['planId'] = planId;
-    planData['planName'] = planId == 'enterprise' ? 'ENTERPRISE' : 'CORE';
+    planData['plan'] = planId.toUpperCase();
+    planData['subscriptionStatus'] = 'ACTIVE';
     return planData;
   }
 }
@@ -109,10 +153,22 @@ void main() {
 
     testWidgets('shows ENTERPRISE plan details', (tester) async {
       spyApi.planData = {
-        'planId': 'enterprise',
-        'planName': 'ENTERPRISE',
-        'status': 'ACTIVE',
-        'nextBillingDate': '2026-09-04T00:00:00Z',
+        'plan': 'ENTERPRISE',
+        'subscriptionStatus': 'ACTIVE',
+        'currentPeriodStart': '2026-08-04T00:00:00Z',
+        'currentPeriodEnd': '2026-09-04T00:00:00Z',
+        'setupFeePaidAt': '2026-08-04T00:00:00Z',
+        'maxBranches': 10,
+        'maxUsers': 50,
+        'activationStatus': 'ACTIVE',
+        'activationPaidAt': '2026-08-04T00:00:00Z',
+        'planMeta': {
+          'planId': 'ENTERPRISE',
+          'name': 'Enterprise',
+          'monthlyAmountKes': 5000,
+          'trialDays': 7,
+        },
+        'availablePlans': [],
       };
 
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
@@ -187,11 +243,16 @@ void main() {
 
     testWidgets('change plan calls API with correct plan', (tester) async {
       spyApi.planData = {
-        'planId': 'core',
-        'planName': 'CORE',
-        'status': 'TRIAL',
-        'trialEndsAt': '2026-09-04T00:00:00Z',
-        'nextBillingDate': '2026-09-04T00:00:00Z',
+        'plan': 'CORE',
+        'subscriptionStatus': 'TRIAL',
+        'currentPeriodEnd': '2026-09-04T00:00:00Z',
+        'planMeta': {
+          'planId': 'CORE',
+          'name': 'Core',
+          'monthlyAmountKes': 3200,
+          'trialDays': 7,
+        },
+        'availablePlans': [],
       };
 
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
