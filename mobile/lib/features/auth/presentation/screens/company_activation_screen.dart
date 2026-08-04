@@ -114,7 +114,7 @@ class _CompanyActivationScreenState
         'activationPaidAt': status['paidAt'],
       });
       if (!mounted) return;
-      context.go('/owner-welcome', extra: widget.companyName);
+      context.go('/plan-selection', extra: widget.companyName);
     } catch (error) {
       if (!mounted) return;
       setState(() {

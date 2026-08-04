@@ -25,6 +25,16 @@ model Tenant {
   activationProvider String?
   activationAuthorizationUrl String?
   activationPaidAt DateTime?
+  // Subscription plan fields
+  plan                String   @default("TRIAL")
+  subscriptionStatus  String?
+  subscriptionProvider String?
+  subscriptionReference String? @unique
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  setupFeePaidAt      DateTime?
+  maxBranches         Int      @default(1)
+  maxUsers            Int      @default(3)
   settings     Json     @default("{}")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -38,8 +48,33 @@ model Tenant {
   activationAttempts TenantActivationAttempt[]
   onboarding         TenantOnboarding?
   staffInvitations   TenantStaffInvitation[]
+  subscriptionInvoices SubscriptionInvoice[]
 
   @@map("tenants")
+}
+
+// ==================== SUBSCRIPTION BILLING ====================
+
+model SubscriptionInvoice {
+  id           String    @id @default(uuid())
+  tenantId     String
+  userId       String?
+  plan         String
+  amount       Decimal   @db.Decimal(12, 2)
+  currency     String    @default("KES")
+  status       String    @default("PENDING")
+  provider     String?
+  reference    String?   @unique
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  paidAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("subscription_invoices")
 }
 
 model Branch {
@@ -211,6 +246,7 @@ model User {
   activationAttempts         TenantActivationAttempt[]
   ownedOnboarding            TenantOnboarding[]       @relation("OnboardingOwner")
   createdStaffInvitations    TenantStaffInvitation[]  @relation("StaffInvitationCreator")
+  subscriptionInvoices       SubscriptionInvoice[]
 
   @@unique([tenantId, email])
   @@map("users")

@@ -258,6 +258,12 @@ class SettingsScreen extends ConsumerWidget {
             const SettingsGroupLabel('Administration'),
             GroupedCard(children: [
               SettingsRow(
+                icon: Icons.subscriptions_rounded,
+                title: 'Subscription',
+                subtitle: 'View plan, change plan & invoices',
+                onTap: () => context.push('/settings/subscription'),
+              ),
+              SettingsRow(
                 icon: Icons.people_rounded,
                 title: 'User Management',
                 subtitle: 'Manage staff, roles & permissions',

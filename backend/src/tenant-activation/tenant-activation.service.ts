@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { PaystackService } from '../ai-billing/paystack.service';
 
-export const AXON_STARTUP_FEE_KES = 50000;
+export const AXON_STARTUP_FEE_KES = 35000;
 const ACTIVATION_PRODUCT = 'axon_startup_activation';
 
 @Injectable()
@@ -116,7 +116,7 @@ export class TenantActivationService {
   private async activateFromCharge(reference: string, charge: any) {
     if (charge?.status !== 'success') throw new BadRequestException('Activation payment has not completed successfully');
     if (Number(charge.amount) !== AXON_STARTUP_FEE_KES * 100) {
-      throw new BadRequestException('Activation payment amount does not match KSh 50,000');
+      throw new BadRequestException('Activation payment amount does not match KES 35,000');
     }
     const attempt = await this.prisma.tenantActivationAttempt.findUnique({ where: { reference } });
     if (!attempt) throw new NotFoundException('Activation payment reference not found');
@@ -133,6 +133,8 @@ export class TenantActivationService {
       data: {
         activationStatus: 'ACTIVE', isActive: true, activationAmount: AXON_STARTUP_FEE_KES,
         activationReference: reference, activationProvider: 'PAYSTACK', activationPaidAt: paidAt,
+        plan: 'CORE', subscriptionStatus: 'ACTIVE', setupFeePaidAt: paidAt,
+        maxBranches: 3, maxUsers: 10,
       },
       select: { activationStatus: true, activationAmount: true, activationPaidAt: true },
     });

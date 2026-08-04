@@ -1243,4 +1243,31 @@ class ApiClient {
   Future<void> setPrinterDevice(String? deviceId) async {
     await _dio.put('/printing/printer-device', data: {'deviceId': deviceId});
   }
+
+  // ── Subscription endpoints ──────────────────────────────────────────
+
+  /// Fetch the current subscription plan details.
+  /// GET /api/v1/subscription/plan
+  Future<Map<String, dynamic>> getSubscriptionPlan() async {
+    final response = await _dio.get('/subscription/plan');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Change the subscription plan (upgrade/downgrade).
+  /// POST /api/v1/subscription/change-plan
+  Future<Map<String, dynamic>> changeSubscriptionPlan({
+    required String planId,
+  }) async {
+    final response = await _dio.post('/subscription/change-plan', data: {
+      'planId': planId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Fetch invoice history for the current tenant.
+  /// GET /api/v1/subscription/invoices
+  Future<List<dynamic>> getSubscriptionInvoices() async {
+    final response = await _dio.get('/subscription/invoices');
+    return response.data as List<dynamic>;
+  }
 }

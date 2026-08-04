@@ -9,6 +9,8 @@ import '../../features/auth/presentation/screens/company_choice_screen.dart';
 import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
+import '../../features/subscription/presentation/screens/plan_selection_screen.dart';
+import '../../features/subscription/presentation/screens/subscription_settings_screen.dart';
 import '../../features/team/presentation/screens/invite_staff_screen.dart';
 import '../../features/team/presentation/screens/accept_invite_screen.dart';
 import '../../features/team/presentation/screens/set_password_after_invite_screen.dart';
@@ -101,7 +103,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Setup routes (company-choice, company-setup) are always accessible
       final isSetupRoute =
-          path == '/company-choice' || path == '/company-setup';
+          path == '/company-choice' || path == '/company-setup' || path == '/plan-selection';
       final isActivationRoute = path == '/activation';
 
       // Login routes
@@ -212,6 +214,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/activation',
         name: 'activation',
         builder: (context, state) => CompanyActivationScreen(
+          companyName: state.extra as String?,
+        ),
+      ),
+      GoRoute(
+        path: '/plan-selection',
+        name: 'plan-selection',
+        builder: (context, state) => PlanSelectionScreen(
           companyName: state.extra as String?,
         ),
       ),
@@ -410,6 +419,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             name: 'settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+
+          // Subscription Settings Screen
+          GoRoute(
+            path: '/settings/subscription',
+            name: 'subscription-settings',
+            builder: (context, state) => const SubscriptionSettingsScreen(),
           ),
 
           // User Guide (Help & Support)
