@@ -1,0 +1,326 @@
+{
+  "mode": "dry-run",
+  "target": {
+    "id": "1aded45f-edb2-4285-98f1-6607387a4c29",
+    "name": "levisa ventures",
+    "slug": "levisa-ventures"
+  },
+  "admin": {
+    "id": "a772fe65-da0d-4426-92d3-5cbd172cee0a",
+    "email": "admin@levisa.com"
+  },
+  "report": [
+    {
+      "table": "mpesa_transactions",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "pesapal_transactions",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "touristtap_transactions",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "conflict_logs",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "audit_logs",
+      "total": 271,
+      "keep": 271,
+      "remove": 0
+    },
+    {
+      "table": "ai_messages",
+      "total": 353,
+      "keep": 353,
+      "remove": 0
+    },
+    {
+      "table": "ai_payments",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "role_permissions",
+      "total": 369,
+      "keep": 369,
+      "remove": 0
+    },
+    {
+      "table": "user_roles",
+      "total": 3,
+      "keep": 3,
+      "remove": 0
+    },
+    {
+      "table": "user_permission_overrides",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "product_categories",
+      "total": 251,
+      "keep": 251,
+      "remove": 0
+    },
+    {
+      "table": "product_pricing_tiers",
+      "total": 5,
+      "keep": 5,
+      "remove": 0
+    },
+    {
+      "table": "sale_item_batches",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "refund_items",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "expense_items",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "supplier_invoice_items",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "supplier_payments",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "payments",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "refunds",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "manual_payment_requests",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "sync_events",
+      "total": 13,
+      "keep": 13,
+      "remove": 0
+    },
+    {
+      "table": "print_jobs",
+      "total": 49,
+      "keep": 49,
+      "remove": 0
+    },
+    {
+      "table": "daily_briefs",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "branch_cash_settings",
+      "total": 1,
+      "keep": 1,
+      "remove": 0
+    },
+    {
+      "table": "cash_ledger_entries",
+      "total": 13,
+      "keep": 13,
+      "remove": 0
+    },
+    {
+      "table": "cash_reconciliations",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "daily_closes",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "stock_movements",
+      "total": 448,
+      "keep": 448,
+      "remove": 0
+    },
+    {
+      "table": "stock_requests",
+      "total": 1,
+      "keep": 1,
+      "remove": 0
+    },
+    {
+      "table": "stock_transfer_items",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "stock_transfers",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "branch_price_overrides",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "sales",
+      "total": 11,
+      "keep": 11,
+      "remove": 0
+    },
+    {
+      "table": "stock_batches",
+      "total": 68,
+      "keep": 68,
+      "remove": 0
+    },
+    {
+      "table": "stock",
+      "total": 243,
+      "keep": 243,
+      "remove": 0
+    },
+    {
+      "table": "supplier_invoices",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "expenses",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "ai_subscriptions",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "devices",
+      "total": 9,
+      "keep": 9,
+      "remove": 0
+    },
+    {
+      "table": "customers",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "products",
+      "total": 251,
+      "keep": 251,
+      "remove": 0
+    },
+    {
+      "table": "suppliers",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "ai_conversations",
+      "total": 3,
+      "keep": 3,
+      "remove": 0
+    },
+    {
+      "table": "ai_memories",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "push_tokens",
+      "total": 0,
+      "keep": 0,
+      "remove": 0
+    },
+    {
+      "table": "refresh_tokens",
+      "total": 304,
+      "keep": 304,
+      "remove": 0
+    },
+    {
+      "table": "user_branches",
+      "total": 1,
+      "keep": 1,
+      "remove": 0
+    },
+    {
+      "table": "categories",
+      "total": 12,
+      "keep": 12,
+      "remove": 0
+    },
+    {
+      "table": "roles",
+      "total": 4,
+      "keep": 4,
+      "remove": 0
+    },
+    {
+      "table": "users",
+      "total": 1,
+      "keep": 1,
+      "remove": 0
+    },
+    {
+      "table": "branches",
+      "total": 1,
+      "keep": 1,
+      "remove": 0
+    },
+    {
+      "table": "tenants",
+      "total": 1,
+      "keep": 1,
+      "remove": 0
+    }
+  ]
+}

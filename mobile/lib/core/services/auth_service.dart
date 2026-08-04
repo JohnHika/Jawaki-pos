@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'storage_service.dart';
+import 'lifecycle_lock_controller.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
 
@@ -19,7 +20,7 @@ enum AuthStatus {
   unauthenticated,
 }
 
-class AuthService {
+class AuthService implements LifecycleLockAuth {
   final StorageService _storage;
   final ApiClient _apiClient;
   final AppDatabase _database;
@@ -63,7 +64,9 @@ class AuthService {
   AuthStatus get currentStatus => _currentStatus;
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get accessToken => _accessToken;
+  @override
   bool get isAuthenticated => _currentStatus == AuthStatus.authenticated;
+  @override
   bool get isLocked => _currentStatus == AuthStatus.locked;
 
   String? get userId => _currentUser?['id'];
@@ -166,12 +169,14 @@ class AuthService {
       await _storage.saveDeviceId(resolvedDeviceId);
     }
 
-    final response = await _apiClient.login(
-      email: email,
-      password: password,
-      tenantSlug: tenantSlug,
-      deviceId: resolvedDeviceId,
-    );
+    final response = await _apiClient
+        .login(
+          email: email,
+          password: password,
+          tenantSlug: tenantSlug,
+          deviceId: resolvedDeviceId,
+        )
+        .timeout(const Duration(seconds: 30));
 
     await _handleAuthResponse(response);
   }
@@ -189,11 +194,13 @@ class AuthService {
       await _storage.saveDeviceId(resolvedDeviceId);
     }
 
-    final response = await _apiClient.loginWithGoogle(
-      idToken: idToken,
-      tenantSlug: tenantSlug,
-      deviceId: resolvedDeviceId,
-    );
+    final response = await _apiClient
+        .loginWithGoogle(
+          idToken: idToken,
+          tenantSlug: tenantSlug,
+          deviceId: resolvedDeviceId,
+        )
+        .timeout(const Duration(seconds: 30));
 
     await _handleAuthResponse(response);
   }
@@ -237,11 +244,13 @@ class AuthService {
   Future<void> loginWithPin(String pin) async {
     final resolvedDeviceId = await _storage.ensureDeviceId();
 
-    final response = await _apiClient.loginWithPin(
-      pin: pin,
-      deviceId: resolvedDeviceId,
-      branchId: _storage.getBranchId(),
-    );
+    final response = await _apiClient
+        .loginWithPin(
+          pin: pin,
+          deviceId: resolvedDeviceId,
+          branchId: _storage.getBranchId(),
+        )
+        .timeout(const Duration(seconds: 30));
 
     await _applyAuthResponse(response);
   }
@@ -254,8 +263,9 @@ class AuthService {
     required String email,
     required String pin,
   }) async {
-    final response =
-        await _apiClient.loginWithOfflinePin(email: email, pin: pin);
+    final response = await _apiClient
+        .loginWithOfflinePin(email: email, pin: pin)
+        .timeout(const Duration(seconds: 30));
     await _applyAuthResponse(response);
   }
 
@@ -293,7 +303,9 @@ class AuthService {
       throw Exception('No refresh token available');
     }
 
-    final response = await _apiClient.refreshToken(refreshToken);
+    final response = await _apiClient
+        .refreshToken(refreshToken)
+        .timeout(const Duration(seconds: 30));
 
     _accessToken = response['accessToken'];
     await _storage.saveAccessToken(_accessToken!);
@@ -477,17 +489,27 @@ class AuthService {
   }
 
   Future<void> lockIfRequiredAfterResume() async {
-    if (!isAuthenticated || !_storage.requireUnlockOnResume()) return;
+    if (!isAuthenticated) return;
 
+    final requireUnlock = _storage.requireUnlockOnResume();
     final autoLockMinutes = _storage.getAutoLockMinutes();
-    if (autoLockMinutes == 0) return;
-
     final backgroundedAt = _backgroundedAt;
     _backgroundedAt = null;
-    if (backgroundedAt == null) return;
 
-    final shouldLock = autoLockMinutes < 0 ||
-        DateTime.now().difference(backgroundedAt).inMinutes >= autoLockMinutes;
+    // Determine whether a lock is needed.
+    final bool shouldLock;
+
+    if (requireUnlock) {
+      // Immediate lock on resume — always lock regardless of timer.
+      shouldLock = true;
+    } else if (autoLockMinutes > 0 && backgroundedAt != null) {
+      // Timer-based lock: lock only if the elapsed time exceeds the window.
+      final elapsed = DateTime.now().difference(backgroundedAt);
+      shouldLock = elapsed.inMinutes >= autoLockMinutes;
+    } else {
+      shouldLock = false;
+    }
+
     if (shouldLock) {
       await lockSession();
     }
@@ -500,6 +522,7 @@ class AuthService {
   /// PIN login — would both fail), so locking would strand the user on a
   /// numpad that can never succeed. In that case the session simply stays
   /// authenticated, same as an app with no lock feature configured at all.
+  @override
   Future<void> lockSession() async {
     if (!isAuthenticated) return;
 

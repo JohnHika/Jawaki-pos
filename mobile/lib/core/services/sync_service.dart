@@ -341,7 +341,7 @@ class SyncService {
       final result = await BackgroundSyncService.processPendingQueue(
         database: _database,
         apiClient: _apiClient,
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (result.hasErrors) {
         _statusController.add(SyncStatus.error);
@@ -470,7 +470,9 @@ class SyncService {
       // Consume bounded pages and persist the server cursor. Previously each
       // two-minute tick downloaded the same first page from epoch forever.
       for (var page = 0; page < 20; page++) {
-        final response = await _apiClient.pullSyncEvents(since: cursor);
+        final response = await _apiClient
+            .pullSyncEvents(since: cursor)
+            .timeout(const Duration(seconds: 15));
         final events = response['events'] as List? ?? const [];
 
         for (final event in events) {

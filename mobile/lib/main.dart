@@ -11,6 +11,7 @@ import 'core/theme/theme_provider.dart';
 import 'core/services/background_sync_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/local_server_service.dart';
+import 'core/services/lifecycle_lock_controller.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
@@ -57,7 +58,8 @@ void main() async {
     debugPrint('[main] Screen orientation locked to portrait');
 
     debugPrint('[main] Initializing dependency injection...');
-    await configureDependencies();
+    await configureDependencies()
+        .timeout(const Duration(seconds: 30));
     debugPrint('[main] Dependency injection initialized successfully');
 
     debugPrint('[main] Initializing connectivity service...');
@@ -72,7 +74,8 @@ void main() async {
 
     debugPrint('[main] Initializing background sync (non-blocking)...');
     try {
-      await BackgroundSyncService.initialize();
+      await BackgroundSyncService.initialize()
+          .timeout(const Duration(seconds: 15));
       debugPrint('[main] Background sync initialized successfully');
     } catch (e, stackTrace) {
       debugPrint('[main] Background sync init failed (non-critical): $e');
@@ -82,12 +85,14 @@ void main() async {
     debugPrint('[main] Initializing notifications (non-blocking)...');
     try {
       final notificationService = getIt<NotificationService>();
-      await notificationService.initialize();
+      await notificationService.initialize()
+          .timeout(const Duration(seconds: 15));
       // Re-register the token on every cold start if the user already
       // granted permission previously — FCM tokens can rotate, and this
       // keeps the backend's copy fresh without asking again.
       if (await notificationService.hasPermission()) {
-        await notificationService.registerToken();
+        await notificationService.registerToken()
+            .timeout(const Duration(seconds: 10));
       }
       debugPrint('[main] Notifications initialized successfully');
     } catch (e, stackTrace) {
@@ -143,18 +148,21 @@ class POSApp extends ConsumerStatefulWidget {
 class _POSAppState extends ConsumerState<POSApp> {
   bool _checkedForUpdates = false;
 
-  late final _POSAppLifecycleObserver _lifecycleObserver;
+  late final LifecycleLockController _lifecycleController;
 
   @override
   void initState() {
     super.initState();
-    _lifecycleObserver = _POSAppLifecycleObserver();
-    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    _lifecycleController = LifecycleLockController(
+      authService: getIt<AuthService>(),
+      storageService: getIt<StorageService>(),
+    );
+    WidgetsBinding.instance.addObserver(_lifecycleController);
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    WidgetsBinding.instance.removeObserver(_lifecycleController);
     super.dispose();
   }
 
@@ -212,28 +220,5 @@ class _POSAppState extends ConsumerState<POSApp> {
         );
       },
     );
-  }
-}
-
-class _POSAppLifecycleObserver extends WidgetsBindingObserver {
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
-    final authService = getIt<AuthService>();
-
-    // Only `paused`/`detached` mean the user actually left the app.
-    // `inactive` also fires for transient system UI (notification shade,
-    // app-switcher preview, permission dialogs) and would otherwise trigger
-    // an unwanted re-lock moments later on `resumed`.
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      authService.markAppBackgrounded();
-      return;
-    }
-
-    if (state == AppLifecycleState.resumed) {
-      await authService.lockIfRequiredAfterResume();
-      getIt<UpdateCheckService>().checkForUpdates(force: true);
-      unawaited(authService.refreshPermissions());
-    }
   }
 }

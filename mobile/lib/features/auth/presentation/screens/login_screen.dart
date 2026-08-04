@@ -123,19 +123,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     });
     final lookupSlug = normalizedSlug;
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
-      final result = await getIt<ApiClient>().getCompanyInfo(lookupSlug);
-      if (mounted &&
-          _normalizeCompanyCode(_tenantSlugController.text) == lookupSlug) {
-        setState(() {
-          _isFetchingCompany = false;
-          _companyName = result?['name'] as String?;
-          _companyLogoUrl = result?['logoUrl'] as String?;
-          _companyLookupError = result == null
-              ? 'We couldn’t find that business. Check the code with your administrator.'
-              : result['isActive'] == false
-                  ? 'This business is currently unavailable. Contact your administrator.'
-                  : null;
-        });
+      try {
+        final result = await getIt<ApiClient>()
+            .getCompanyInfo(lookupSlug)
+            .timeout(const Duration(seconds: 10));
+        if (mounted &&
+            _normalizeCompanyCode(_tenantSlugController.text) == lookupSlug) {
+          setState(() {
+            _isFetchingCompany = false;
+            _companyName = result?['name'] as String?;
+            _companyLogoUrl = result?['logoUrl'] as String?;
+            _companyLookupError = result == null
+                ? 'We couldn\u2019t find that business. Check the code with your administrator.'
+                : result['isActive'] == false
+                    ? 'This business is currently unavailable. Contact your administrator.'
+                    : null;
+          });
+        }
+      } catch (_) {
+        if (mounted &&
+            _normalizeCompanyCode(_tenantSlugController.text) == lookupSlug) {
+          setState(() {
+            _isFetchingCompany = false;
+            _companyLookupError = null;
+          });
+        }
       }
     });
   }

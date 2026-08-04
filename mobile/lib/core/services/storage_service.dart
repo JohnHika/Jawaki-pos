@@ -4,8 +4,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'lifecycle_lock_controller.dart';
 
-class StorageService {
+class StorageService implements LifecycleLockStorage {
   FlutterSecureStorage? _secureStorage;
   SharedPreferences? _prefs;
   static const Uuid _uuid = Uuid();
@@ -307,6 +308,7 @@ class StorageService {
 
   /// New trusted devices stay signed in across normal app switching by
   /// default. Owners can opt into an explicit lock timer in Security.
+  @override
   bool requireUnlockOnResume() {
     return _prefs?.getBool(keyRequireUnlockOnResume) ?? false;
   }
@@ -329,6 +331,7 @@ class StorageService {
     await _prefs!.setBool(keyHasSeenStaffTour, value);
   }
 
+  @override
   int getAutoLockMinutes() {
     return _prefs?.getInt(keyAutoLockMinutes) ?? 0;
   }

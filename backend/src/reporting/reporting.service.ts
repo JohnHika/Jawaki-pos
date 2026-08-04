@@ -569,7 +569,7 @@ export class ReportingService {
     let totalValue = 0;
     let lowStock = 0;
     let outOfStock = 0;
-    let overStock = 0;
+    const overStock = 0;
 
     for (const stock of stocks) {
       const qty = Number(stock.quantity);

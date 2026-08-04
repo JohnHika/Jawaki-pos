@@ -961,7 +961,7 @@ export class InventoryService {
           const maxAttempts = 50;
           for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
             seq += 1;
-            let candidateBatchNumber = `${batchPrefix}${String(seq).padStart(3, '0')}`;
+            const candidateBatchNumber = `${batchPrefix}${String(seq).padStart(3, '0')}`;
 
             // If this exact number is already known, don't waste a DB round-trip.
             if (existingBatchNumbers.has(candidateBatchNumber)) {

@@ -253,7 +253,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// previous session — fire-and-forget so a slow/failed network call
   /// never delays showing the authenticated UI.
   void _registerPushTokenIfPermitted() {
-    unawaited(() async {
+    Future.microtask(() async {
       try {
         final notifications = getIt<NotificationService>();
         if (await notifications.hasPermission()) {
@@ -262,7 +262,7 @@ class AuthController extends StateNotifier<AuthState> {
       } catch (_) {
         // Non-fatal — next cold start or explicit toggle will retry.
       }
-    }());
+    });
   }
 
   Future<bool> isBiometricAvailable() async {
