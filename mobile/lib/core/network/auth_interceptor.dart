@@ -18,7 +18,7 @@ class AuthInterceptor extends Interceptor {
   AuthInterceptor(this._authService, this._dio);
 
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
     // Skip auth for public auth endpoints; logout still needs the bearer token.
     final noAuthPaths = ['/auth/login', '/auth/register', '/auth/refresh'];
     if (noAuthPaths.any((path) => options.path.contains(path))) {
@@ -27,19 +27,23 @@ class AuthInterceptor extends Interceptor {
 
     // Add access token if available — use the async fallback to reload from
     // storage if the in-memory token was cleared (e.g. after lock/unlock).
-    _authService.getAccessTokenWithFallback().then((token) {
+    try {
+      final token = await _authService.getAccessTokenWithFallback();
       if (token != null) {
         options.headers['Authorization'] = 'Bearer $token';
       }
+    } catch (_) {
+      // If reading the token fails (e.g. secure storage locked), continue
+      // without it and let the backend return 401 if auth is required.
+    }
 
-      // Add device ID if available
-      final deviceId = _authService.deviceId;
-      if (deviceId != null) {
-        options.headers['X-Device-ID'] = deviceId;
-      }
+    // Add device ID if available
+    final deviceId = _authService.deviceId;
+    if (deviceId != null) {
+      options.headers['X-Device-ID'] = deviceId;
+    }
 
-      handler.next(options);
-    });
+    handler.next(options);
   }
 
   @override
@@ -55,35 +59,44 @@ class AuthInterceptor extends Interceptor {
     }
 
     // Refresh (or wait for the refresh already in flight), then retry.
-    try {
-      _refreshFuture ??= _authService.refreshTokens().whenComplete(() {
+    // We retry the refresh itself on transient failures so a cold-starting
+    // backend (e.g. Render free tier) doesn't kill a live session.
+    const maxRefreshAttempts = 3;
+    for (var attempt = 0; attempt < maxRefreshAttempts; attempt++) {
+      try {
+        _refreshFuture ??= _authService.refreshTokens().whenComplete(() {
+          _refreshFuture = null;
+        });
+        await _refreshFuture;
+        break; // Refresh succeeded.
+      } catch (e) {
+        final refreshStatus = e is DioException ? e.response?.statusCode : null;
+
+        // Server explicitly rejected the refresh token → session is dead.
+        if (refreshStatus == 401 || refreshStatus == 403) {
+          await _authService.logout();
+          return handler.next(err);
+        }
+
+        // Transient failure (timeout, DNS, 5xx from cold backend). Retry
+        // with exponential backoff unless we've exhausted attempts.
         _refreshFuture = null;
-      });
-      await _refreshFuture;
-    } catch (e) {
-      // Only the server explicitly rejecting the refresh token (401/403)
-      // means the session is truly dead. Anything else — timeout, no
-      // connectivity, DNS failure, a 5xx from a cold-starting backend —
-      // is a transient failure to *verify* the session, not proof it's
-      // invalid, so we must not log the user out for it.
-      final refreshStatus = e is DioException ? e.response?.statusCode : null;
-      if (refreshStatus == 401 || refreshStatus == 403) {
-        await _authService.logout();
+        if (attempt < maxRefreshAttempts - 1) {
+          await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+          continue;
+        }
+
+        // Exhausted retries on transient failures. Don't kill the session;
+        // just propagate the original 401 so the caller can show a retryable
+        // error instead of forcing a full re-login.
+        return handler.next(err);
       }
-      return handler.next(err);
     }
 
     // Refresh succeeded — retry the original request with the new token.
-    // A failure here is the retried request's own problem (its real
-    // response/error), not a reason to kill the session.
     try {
       final opts = err.requestOptions;
       opts.headers['Authorization'] = 'Bearer ${_authService.accessToken}';
-      // Reuse the shared, timeout-configured Dio instance to retry — a bare
-      // `Dio()` here has no connect/receive timeout at all, so a stalled
-      // connection on the retry would hang this request (and every request
-      // queued behind the same _refreshFuture) forever instead of failing
-      // after 30s like every other request in the app.
       final response = await _dio.fetch(opts);
       return handler.resolve(response);
     } on DioException catch (retryErr) {

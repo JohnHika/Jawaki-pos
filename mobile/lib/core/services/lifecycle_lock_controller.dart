@@ -117,7 +117,7 @@ class LifecycleLockController extends WidgetsBindingObserver {
       final ctx = navigatorKey!.currentContext!;
       if (!ctx.mounted) return;
       final currentPath = GoRouterState.of(ctx).matchedLocation;
-      if (currentPath != '/pin-login') {
+      if (currentPath != '/pin-login' && currentPath != '/login') {
         ctx.go('/pin-login');
       }
     }
