@@ -2179,6 +2179,8 @@ class _NotificationSettingsSheetState
   late bool _notifySales;
   late bool _notifyInventory;
   late bool _notifySync;
+  bool _osPermissionGranted = false;
+  bool _checkingPermission = true;
 
   @override
   void initState() {
@@ -2186,6 +2188,17 @@ class _NotificationSettingsSheetState
     _notifySales = widget.notifySales;
     _notifyInventory = widget.notifyInventory;
     _notifySync = widget.notifySync;
+    _checkPermission();
+  }
+
+  Future<void> _checkPermission() async {
+    final granted = await getIt<NotificationService>().hasPermission();
+    if (mounted) {
+      setState(() {
+        _osPermissionGranted = granted;
+        _checkingPermission = false;
+      });
+    }
   }
 
   @override
@@ -2205,6 +2218,62 @@ class _NotificationSettingsSheetState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── OS Permission Status ──
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: _checkingPermission
+                        ? Icons.hourglass_empty_rounded
+                        : _osPermissionGranted
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_off_rounded,
+                    iconColor: _checkingPermission
+                        ? null
+                        : _osPermissionGranted
+                            ? DesignColors.success
+                            : DesignColors.error,
+                    title: 'Push Notifications',
+                    subtitle: _checkingPermission
+                        ? 'Checking…'
+                        : _osPermissionGranted
+                            ? 'Enabled — you will receive alerts'
+                            : 'Blocked — enable in phone settings',
+                    trailing: _checkingPermission
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : _osPermissionGranted
+                            ? const Icon(Icons.check_circle_rounded,
+                                color: DesignColors.success)
+                            : const Icon(Icons.warning_rounded,
+                                color: DesignColors.error),
+                  ),
+                  if (!_osPermissionGranted && !_checkingPermission)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: SettingsPrimaryButton(
+                          label: 'Enable Notifications',
+                          onPressed: () async {
+                            final granted = await getIt<NotificationService>()
+                                .requestPermission();
+                            if (mounted) {
+                              setState(() {
+                                _osPermissionGranted = granted;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // ── Category Toggles ──
               GroupedCard(
                 margin: EdgeInsets.zero,
                 children: [
@@ -2260,12 +2329,16 @@ class _NotificationSettingsSheetState
                     final anyEnabled =
                         _notifySales || _notifyInventory || _notifySync;
                     String? permissionMessage;
-                    if (anyEnabled) {
+                    if (anyEnabled && !_osPermissionGranted) {
                       final granted = await getIt<NotificationService>()
                           .requestPermission();
                       if (!granted) {
                         permissionMessage =
                             'Notifications are blocked in your phone settings — enable them there to receive alerts.';
+                      } else if (mounted) {
+                        setState(() {
+                          _osPermissionGranted = true;
+                        });
                       }
                     }
 
