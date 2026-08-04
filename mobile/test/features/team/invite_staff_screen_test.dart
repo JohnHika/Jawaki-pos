@@ -7,7 +7,6 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:axon_pos/core/network/api_client.dart';
-import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/features/team/presentation/screens/invite_staff_screen.dart';
 
 /// A manual ApiClient spy that records calls and returns canned data.
@@ -82,7 +81,7 @@ void main() {
     // Leave getIt as-is for other tests
   });
 
-  GoRouter _router() => GoRouter(
+  GoRouter router() => GoRouter(
         initialLocation: '/invite-staff',
         routes: [
           GoRoute(
@@ -102,7 +101,7 @@ void main() {
     testWidgets('shows loading indicator on init', (tester) async {
       spyApi.loadCompleter = Completer(); // never completes
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pump(); // Start the async load
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -112,7 +111,7 @@ void main() {
       spyApi.rolesError = Exception('Network error');
       spyApi.branchesError = Exception('Network error');
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       expect(find.text('Could not load roles and branches'), findsOneWidget);
@@ -123,7 +122,7 @@ void main() {
       spyApi.roles = [];
       spyApi.branches = [];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       expect(find.text('Setup required'), findsOneWidget);
@@ -140,7 +139,7 @@ void main() {
         {'id': 'branch-2', 'name': 'Downtown'},
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       // Header
@@ -165,7 +164,7 @@ void main() {
         {'id': 'branch-1', 'name': 'Main Branch'},
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       // Scroll to submit button and tap
@@ -183,7 +182,7 @@ void main() {
         {'id': 'branch-1', 'name': 'Main Branch'},
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       // Fill fields with invalid email
@@ -207,7 +206,7 @@ void main() {
         {'id': 'branch-1', 'name': 'Main Branch'},
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       // Fill valid data
@@ -236,7 +235,7 @@ void main() {
       ];
       spyApi.createError = Exception('API error');
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -266,7 +265,7 @@ void main() {
         {'id': 'branch-2', 'name': 'Downtown'},
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router()));
       await tester.pumpAndSettle();
 
       // Open role dropdown — scroll to it first

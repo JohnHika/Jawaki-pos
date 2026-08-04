@@ -207,7 +207,7 @@ void main() {
     testWidgets('nudge reappears on rebuild after Remind Later',
         (tester) async {
       // Shared loader factory so both widget instances behave identically.
-      Map<String, dynamic> Function() makeData = () => {
+      Map<String, dynamic> makeData() => {
             'steps': [
               {'key': 'invite_staff', 'status': 'PENDING'},
             ],
