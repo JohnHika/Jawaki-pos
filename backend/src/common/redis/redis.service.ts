@@ -4,12 +4,21 @@ import Redis from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
-  private readonly client: Redis;
+  private readonly client: Redis | null;
   private readonly logger = new Logger(RedisService.name);
 
   constructor(private configService: ConfigService) {
+    const host = this.configService.get<string>('REDIS_HOST');
+    // Skip Redis entirely when no host is configured — the app degrades
+    // gracefully to Postgres for cache/counter operations.
+    if (!host) {
+      this.logger.log('REDIS_HOST not set — Redis disabled, using Postgres fallback');
+      this.client = null;
+      return;
+    }
+
     this.client = new Redis({
-      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      host,
       port: this.configService.get<number>('REDIS_PORT', 6379),
       password: this.configService.get<string>('REDIS_PASSWORD') || undefined,
       // Without these, ioredis's defaults (enableOfflineQueue: true,
@@ -34,7 +43,7 @@ export class RedisService implements OnModuleDestroy {
     });
   }
 
-  getClient(): Redis {
+  getClient(): Redis | null {
     return this.client;
   }
 
@@ -49,6 +58,7 @@ export class RedisService implements OnModuleDestroy {
    * no such usage of RedisService in this codebase.
    */
   async get(key: string): Promise<string | null> {
+    if (!this.client) return null;
     try {
       return await this.client.get(key);
     } catch (error) {
@@ -58,6 +68,7 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    if (!this.client) return;
     try {
       if (ttlSeconds) {
         await this.client.set(key, value, 'EX', ttlSeconds);
@@ -70,6 +81,7 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async del(key: string): Promise<void> {
+    if (!this.client) return;
     try {
       await this.client.del(key);
     } catch (error) {
@@ -78,6 +90,7 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async exists(key: string): Promise<boolean> {
+    if (!this.client) return false;
     try {
       const result = await this.client.exists(key);
       return result === 1;
@@ -103,6 +116,7 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async invalidatePattern(pattern: string): Promise<void> {
+    if (!this.client) return;
     try {
       const keys = await this.client.keys(pattern);
       if (keys.length > 0) {
@@ -130,6 +144,6 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.client.quit();
+    if (this.client) await this.client.quit();
   }
 }
