@@ -279,6 +279,12 @@ class _SubscriptionSettingsScreenState
             const SizedBox(height: 16),
           ],
 
+          // ── What's included in your plan ──
+          if (!_isLoadingPlan && _plan != null) ...[
+            _buildFeatureBreakdownCard(),
+            const SizedBox(height: 24),
+          ],
+
           // ── Invoice History ──
           const SettingsGroupLabel('Invoice History'),
           const SizedBox(height: 8),
@@ -637,6 +643,92 @@ class _SubscriptionSettingsScreenState
     }
     return amount.toStringAsFixed(2);
   }
+
+  Widget _buildFeatureBreakdownCard() {
+    final planName = _plan?['plan'] as String? ?? 'CORE';
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: DesignColors.darkBorder),
+      ),
+      child: Text(
+        'What\u2019s included in $planName',
+        style: const TextStyle(
+          color: DesignColors.darkTextPrimary,
+          fontWeight: FontWeight.w800,
+          fontSize: 16,
+        ),
+      ),
+    );
+  }
+
+  // Widget _buildFeatureGroup(_FeatureItem group, bool isEnterprise) {
+  //   return Padding(
+  //     padding: const EdgeInsets.only(bottom: 18),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         Row(
+  //           children: [
+  //             Icon(group.icon, color: DesignColors.accent, size: 18),
+  //             const SizedBox(width: 8),
+  //             Text(
+  //               group.category,
+  //               style: const TextStyle(
+  //                 color: DesignColors.darkTextPrimary,
+  //                 fontWeight: FontWeight.w700,
+  //                 fontSize: 13,
+  //                 letterSpacing: 0.4,
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         const SizedBox(height: 10),
+  //         ...group.items.map(
+  //           (item) => Padding(
+  //             padding: const EdgeInsets.only(bottom: 8),
+  //             child: Row(
+  //               crossAxisAlignment: CrossAxisAlignment.start,
+  //               children: [
+  //                 Icon(
+  //                   _isIncluded(item, isEnterprise)
+  //                       ? Icons.check_circle_rounded
+  //                       : Icons.cancel_rounded,
+  //                   color: _isIncluded(item, isEnterprise)
+  //                       ? DesignColors.success
+  //                       : DesignColors.error.withValues(alpha: 0.6),
+  //                   size: 18,
+  //                 ),
+  //                 const SizedBox(width: 10),
+  //                 Expanded(
+  //                   child: Text(
+  //                     item.text,
+  //                     style: TextStyle(
+  //                       color: _isIncluded(item, isEnterprise)
+  //                           ? DesignColors.darkTextSecondary
+  //                           : DesignColors.darkTextTertiary,
+  //                       fontSize: 13,
+  //                       height: 1.35,
+  //                       decoration: _isIncluded(item, isEnterprise)
+  //                           ? null
+  //                           : TextDecoration.lineThrough,
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+  // bool _isIncluded(_FeatureRow item, bool isEnterprise) {
+  //   return isEnterprise ? item.includedInEnterprise : item.includedInCore;
+  // }
 }
 
 /// A selectable plan option tile used in the change-plan dialog.

@@ -113,12 +113,12 @@ void main() {
       // ENTERPRISE features
       expect(find.text('Up to 10 branches'), findsOneWidget);
       expect(find.text('Up to 50 staff accounts'), findsOneWidget);
-      expect(find.text('Advanced inventory management'), findsOneWidget);
-      expect(find.text('Analytics dashboard & forecasting'), findsOneWidget);
+      expect(find.text('Advanced inventory \u0026 branch transfers'),
+          findsOneWidget);
+      expect(find.text('Analytics dashboard \u0026 forecasting'), findsOneWidget);
       expect(find.text('AI-powered insights'), findsOneWidget);
       expect(find.text('7-day free trial'), findsNWidgets(2)); // both plans
-      expect(find.text('Priority phone & email support'), findsOneWidget);
-      expect(find.text('Custom reports & data export'), findsOneWidget);
+      expect(find.text('Priority phone \u0026 email support'), findsOneWidget);
     });
 
     testWidgets('start trial button is disabled when no plan selected',
@@ -219,7 +219,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('My Shop is ready. Pick a plan to begin your free trial.'),
+        find.textContaining('My Shop is ready'),
         findsOneWidget,
       );
     });

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,52 +11,210 @@ import '../../../../core/theme/design_system.dart';
 class SubscriptionPlan {
   final String id;
   final String name;
-  final String description;
+  final String tagline;
   final double priceKes;
-  final List<String> features;
+  final List<PlanFeature> features;
   final bool isPopular;
 
   const SubscriptionPlan({
     required this.id,
     required this.name,
-    required this.description,
+    required this.tagline,
     required this.priceKes,
     required this.features,
     this.isPopular = false,
   });
 }
 
-/// Available plans shown on the selection screen.
+class PlanFeature {
+  final String text;
+  final bool includedInCore;
+  final bool includedInEnterprise;
+
+  const PlanFeature({
+    required this.text,
+    this.includedInCore = false,
+    this.includedInEnterprise = false,
+  });
+}
+
+/// Rich feature catalog used across plan selection and settings.
+const kPlanFeatures = [
+  // Sales & POS
+  PlanFeature(
+    text: 'Unlimited sales transactions',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Offline POS mode',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Multi-currency pricing',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  // Inventory
+  PlanFeature(
+    text: 'Real-time stock tracking',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Low-stock alerts',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Stock requests & transfers',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Multi-branch inventory transfers',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Supplier receipt OCR',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  // Branches & Staff
+  PlanFeature(
+    text: 'Up to 3 branches',
+    includedInCore: true,
+    includedInEnterprise: false,
+  ),
+  PlanFeature(
+    text: 'Up to 10 staff accounts',
+    includedInCore: true,
+    includedInEnterprise: false,
+  ),
+  PlanFeature(
+    text: 'Up to 10 branches',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Up to 50 staff accounts',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Role-based permissions',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Staff performance reports',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  // Reports & AI
+  PlanFeature(
+    text: 'Daily sales reports',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Advanced analytics dashboard',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Custom reports & data export',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'AI business insights',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'AI fraud detection',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'AI supply-chain auto-reorder',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  // Customer & Marketing
+  PlanFeature(
+    text: 'Customer 360 profiles',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'WhatsApp promotions & campaigns',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Supplier & WhatsApp bot management',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  // Support
+  PlanFeature(
+    text: 'Email support',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+  PlanFeature(
+    text: 'Priority phone & WhatsApp support',
+    includedInCore: false,
+    includedInEnterprise: true,
+  ),
+  // Trial
+  PlanFeature(
+    text: '7-day free trial',
+    includedInCore: true,
+    includedInEnterprise: true,
+  ),
+];
+
+/// Plan metadata used for the top cards.
 const kAvailablePlans = [
   SubscriptionPlan(
     id: 'core',
     name: 'CORE',
-    description: 'Essential tools for a single-location shop',
+    tagline: 'Everything a single-location business needs',
     priceKes: 3200,
     features: [
-      'Up to 3 branches',
-      'Up to 10 staff accounts',
-      'Basic sales & inventory',
-      'Daily sales reports',
-      '7-day free trial',
-      'Email support',
+      PlanFeature(text: 'Up to 3 branches', includedInCore: true),
+      PlanFeature(text: 'Up to 10 staff accounts', includedInCore: true),
+      PlanFeature(text: 'Basic sales & inventory', includedInCore: true),
+      PlanFeature(text: 'Daily sales reports', includedInCore: true),
+      PlanFeature(text: 'Email support', includedInCore: true),
+      PlanFeature(text: '7-day free trial', includedInCore: true),
     ],
   ),
   SubscriptionPlan(
     id: 'enterprise',
     name: 'ENTERPRISE',
-    description: 'Full power for growing multi-location businesses',
+    tagline: 'Power for multi-branch growth & AI decisions',
     priceKes: 5000,
     isPopular: true,
     features: [
-      'Up to 10 branches',
-      'Up to 50 staff accounts',
-      'Advanced inventory management',
-      'Analytics dashboard & forecasting',
-      'AI-powered insights',
-      '7-day free trial',
-      'Priority phone & email support',
-      'Custom reports & data export',
+      PlanFeature(text: 'Up to 10 branches', includedInEnterprise: true),
+      PlanFeature(text: 'Up to 50 staff accounts', includedInEnterprise: true),
+      PlanFeature(
+          text: 'Advanced inventory & branch transfers',
+          includedInEnterprise: true),
+      PlanFeature(
+          text: 'Analytics dashboard & forecasting',
+          includedInEnterprise: true),
+      PlanFeature(text: 'AI-powered insights', includedInEnterprise: true),
+      PlanFeature(
+          text: 'Priority phone & email support',
+          includedInEnterprise: true),
+      PlanFeature(text: '7-day free trial', includedInEnterprise: true),
     ],
   ),
 ];
@@ -86,14 +245,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     });
 
     try {
-      // Call the backend to select the plan and start the 7-day trial.
-      // The backend handles the setup fee payment flow internally.
       await _apiClient.changeSubscriptionPlan(planId: _selectedPlanId!);
 
       if (!mounted) return;
 
-      // After plan selection, navigate to the setup fee payment or
-      // directly to the owner welcome screen.
       context.go('/owner-welcome', extra: widget.companyName);
     } catch (error) {
       if (!mounted) return;
@@ -105,6 +260,23 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
   }
 
   String _friendlyError(Object error) {
+    if (error is DioException) {
+      if (error.response?.statusCode == 401) {
+        return 'Session expired. Please log in again.';
+      }
+      if (error.response?.statusCode == 403) {
+        return 'You don\u2019t have permission to change the plan.';
+      }
+      if (error.response?.statusCode != null &&
+          error.response!.statusCode! >= 500) {
+        return 'Server error. Please try again in a moment.';
+      }
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.connectionError) {
+        return 'Couldn\u2019t reach the server. Check your internet and try again.';
+      }
+    }
     final text = error.toString();
     if (text.contains('503') || text.contains('not configured')) {
       return 'Subscription service is not available yet. Please contact Axon support.';
@@ -123,10 +295,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
           children: [
             _buildAmbientField(),
             ListView(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
               children: [
                 _buildHeader(),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
                 Text(
                   'Choose your plan',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -135,14 +307,14 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         height: 1.05,
                       ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Text(
                   widget.companyName == null || widget.companyName!.isEmpty
-                      ? 'Select a subscription plan to start your 7-day free trial.'
-                      : '${widget.companyName} is ready. Pick a plan to begin your free trial.',
+                      ? 'Start with a 7-day free trial. No subscription charges until your trial ends.'
+                      : '${widget.companyName} is ready. Pick a plan to start your 7-day free trial.',
                   style: const TextStyle(
                     color: DesignColors.darkTextSecondary,
-                    fontSize: 16,
+                    fontSize: 15,
                     height: 1.45,
                   ),
                 ),
@@ -150,31 +322,29 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 // Plan cards
                 for (final plan in kAvailablePlans) ...[
                   _buildPlanCard(plan),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                 ],
-                // Setup fee notice
+                const SizedBox(height: 8),
                 _buildSetupFeeNotice(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 22),
                 if (_error != null) ...[
                   _buildErrorCard(_error!),
                   const SizedBox(height: 16),
                 ],
-                // Action button
                 GradientButton(
                   label: _isSubmitting
                       ? 'Starting your free trial…'
                       : 'Start 7-Day Free Trial',
                   icon: Icons.rocket_launch_rounded,
-                  onPressed:
-                      _selectedPlanId != null && !_isSubmitting
-                          ? _startFreeTrial
-                          : null,
+                  onPressed: _selectedPlanId != null && !_isSubmitting
+                      ? _startFreeTrial
+                      : null,
                   height: 58,
                   borderRadius: 16,
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'No charges today. Your 7-day free trial starts after a one-time setup fee of KSh 35,000.',
+                  'A one-time KSh 35,000 setup fee applies before your free trial begins. Cancel anytime during the trial.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: DesignColors.darkTextTertiary,
@@ -182,6 +352,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     height: 1.4,
                   ),
                 ),
+                const SizedBox(height: 36),
+                _buildComparisonSection(),
+                const SizedBox(height: 24),
               ],
             ),
           ],
@@ -245,7 +418,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       onTap: () => setState(() => _selectedPlanId = plan.id),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: isSelected
               ? LinearGradient(
@@ -257,7 +430,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: isSelected ? null : DesignColors.darkSurface.withValues(alpha: 0.82),
+          color: isSelected
+              ? null
+              : DesignColors.darkSurface.withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: isSelected
@@ -269,7 +444,6 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Plan header row
             Row(
               children: [
                 Expanded(
@@ -296,7 +470,8 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                                 color: DesignColors.accent.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(999),
                                 border: Border.all(
-                                  color: DesignColors.accent.withValues(alpha: 0.4),
+                                  color:
+                                      DesignColors.accent.withValues(alpha: 0.4),
                                 ),
                               ),
                               child: const Text(
@@ -314,10 +489,11 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        plan.description,
+                        plan.tagline,
                         style: const TextStyle(
                           color: DesignColors.darkTextSecondary,
                           fontSize: 13,
+                          height: 1.35,
                         ),
                       ),
                     ],
@@ -340,14 +516,13 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            // Price
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   'KES ${plan.priceKes.toStringAsFixed(0)}',
                   style: DesignType.numeric(
-                    fontSize: 28,
+                    fontSize: 30,
                     fontWeight: FontWeight.w900,
                     color: DesignColors.darkTextPrimary,
                   ),
@@ -365,32 +540,30 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            // Divider
+            const SizedBox(height: 14),
             Container(
               height: 1,
               color: DesignColors.darkBorder,
             ),
-            const SizedBox(height: 16),
-            // Features
+            const SizedBox(height: 14),
             ...plan.features.map(
               (feature) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 9),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(
                       Icons.check_circle_rounded,
                       color: DesignColors.accent,
-                      size: 20,
+                      size: 18,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        feature,
+                        feature.text,
                         style: const TextStyle(
                           color: DesignColors.darkTextSecondary,
-                          fontSize: 14,
+                          fontSize: 13,
                           height: 1.3,
                         ),
                       ),
@@ -437,7 +610,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'A one-time KSh 35,000 setup fee applies before your free trial begins.',
+                  'KSh 35,000 gets your business fully onboarded before your trial starts.',
                   style: TextStyle(
                     color: DesignColors.darkTextSecondary,
                     fontSize: 12,
@@ -453,6 +626,146 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               fontSize: 16,
               fontWeight: FontWeight.w800,
               color: DesignColors.accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComparisonSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Compare features',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: DesignColors.darkTextPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'See exactly what you get with each plan.',
+          style: TextStyle(
+            color: DesignColors.darkTextTertiary,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: DesignColors.darkSurface.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: DesignColors.darkBorder),
+          ),
+          child: Column(
+            children: [
+              // Header row
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  color: DesignColors.darkSurfaceElevated,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                  border: Border(
+                    bottom: BorderSide(color: DesignColors.darkBorder),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      flex: 3,
+                      child: Text(
+                        'Feature',
+                        style: TextStyle(
+                          color: DesignColors.darkTextTertiary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Center(
+                        child: Text(
+                          'CORE',
+                          style: TextStyle(
+                            color: DesignColors.darkTextPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Center(
+                        child: Text(
+                          'ENTERPRISE',
+                          style: TextStyle(
+                            color: DesignColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...kPlanFeatures.map((feature) => _buildComparisonRow(feature)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildComparisonRow(PlanFeature feature) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: DesignColors.darkBorder.withValues(alpha: 0.5)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Text(
+              feature.text,
+              style: const TextStyle(
+                color: DesignColors.darkTextSecondary,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: feature.includedInCore
+                  ? const Icon(Icons.check_circle_rounded,
+                      color: DesignColors.success, size: 20)
+                  : const Icon(Icons.remove_rounded,
+                      color: DesignColors.darkTextTertiary, size: 18),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: feature.includedInEnterprise
+                  ? const Icon(Icons.check_circle_rounded,
+                      color: DesignColors.success, size: 20)
+                  : const Icon(Icons.remove_rounded,
+                      color: DesignColors.darkTextTertiary, size: 18),
             ),
           ),
         ],
