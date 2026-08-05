@@ -76,6 +76,20 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
       return const SizedBox.shrink();
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark
+        ? DesignColors.darkTextPrimary
+        : DesignColors.textPrimary;
+    final subtitleColor = isDark
+        ? DesignColors.darkTextSecondary
+        : DesignColors.textSecondary;
+    final borderColor = isDark
+        ? DesignColors.darkBorder
+        : DesignColors.surfaceBorder;
+    final btnFgColor = isDark
+        ? DesignColors.darkTextSecondary
+        : DesignColors.textSecondary;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Container(
@@ -114,23 +128,23 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Invite your team',
                         style: TextStyle(
-                          color: DesignColors.darkTextPrimary,
+                          color: titleColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
                         'Add staff members to help manage sales, inventory, and reports.',
                         style: TextStyle(
-                          color: DesignColors.darkTextSecondary,
+                          color: subtitleColor,
                           fontSize: 12,
                           height: 1.3,
                         ),
@@ -164,17 +178,17 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                       setState(() => _dismissedThisSession = true);
                     },
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: DesignColors.darkTextSecondary,
-                      side: const BorderSide(
-                        color: DesignColors.darkBorder,
+                      foregroundColor: btnFgColor,
+                      side: BorderSide(
+                        color: borderColor,
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Remind Later',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: btnFgColor),
                     ),
                   ),
                 ),

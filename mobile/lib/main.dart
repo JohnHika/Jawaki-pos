@@ -17,8 +17,10 @@ import 'core/services/storage_service.dart';
 import 'core/services/update_check_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/print_queue_service.dart';
+import 'core/services/feature_announcement_service.dart';
 import 'core/widgets/forced_update_gate.dart';
 import 'core/widgets/optional_update_prompt_host.dart';
+import 'core/widgets/feature_announcement_host.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -198,22 +200,26 @@ class _POSAppState extends ConsumerState<POSApp> {
       routerConfig: router,
       builder: (context, child) {
         final updateService = getIt<UpdateCheckService>();
+        final featureService = getIt<FeatureAnnouncementService>();
         return AnimatedBuilder(
           animation: updateService,
           builder: (context, _) => MediaQuery(
             data: MediaQuery.of(context)
                 .copyWith(textScaler: TextScaler.noScaling),
-            child: OptionalUpdatePromptHost(
-              updateService: updateService,
-              child: Stack(
-                children: [
-                  child!,
-                  if (updateService.isForceUpdateRequired ||
-                      updateService.isPostLoginUpdateRequired)
-                    Positioned.fill(
-                      child: ForcedUpdateGate(updateService: updateService),
-                    ),
-                ],
+            child: FeatureAnnouncementHost(
+              service: featureService,
+              child: OptionalUpdatePromptHost(
+                updateService: updateService,
+                child: Stack(
+                  children: [
+                    child!,
+                    if (updateService.isForceUpdateRequired ||
+                        updateService.isPostLoginUpdateRequired)
+                      Positioned.fill(
+                        child: ForcedUpdateGate(updateService: updateService),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

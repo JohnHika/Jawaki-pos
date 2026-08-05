@@ -665,18 +665,18 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               // Header row
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: DesignColors.darkSurfaceElevated,
-                  borderRadius: const BorderRadius.vertical(
+                  borderRadius: BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
                   border: Border(
                     bottom: BorderSide(color: DesignColors.darkBorder),
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       flex: 3,
                       child: Text(
                         'Feature',

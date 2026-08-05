@@ -58,7 +58,7 @@ class _SubscriptionSettingsScreenState
   List<dynamic> _invoices = [];
   bool _isLoadingPlan = true;
   bool _isLoadingInvoices = true;
-  final bool _isChangingPlan = false;
+  bool _isChangingPlan = false;
   String? _error;
 
   ApiClient get _apiClient => getIt<ApiClient>();
@@ -182,6 +182,7 @@ class _SubscriptionSettingsScreenState
                     Navigator.pop(dialogContext);
                     return;
                   }
+                  setState(() => _isChangingPlan = true);
                   try {
                     await _apiClient.changeSubscriptionPlan(planId: target);
                     if (!dialogContext.mounted) return;
@@ -199,6 +200,8 @@ class _SubscriptionSettingsScreenState
                   } catch (e) {
                     if (!dialogContext.mounted) return;
                     Navigator.pop(dialogContext);
+                  } finally {
+                    if (mounted) setState(() => _isChangingPlan = false);
                   }
                 },
               ),

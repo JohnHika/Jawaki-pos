@@ -12,6 +12,7 @@ import '../../features/auth/presentation/screens/company_activation_screen.dart'
 import '../../features/subscription/presentation/screens/plan_selection_screen.dart';
 import '../../features/subscription/presentation/screens/subscription_settings_screen.dart';
 import '../../features/team/presentation/screens/invite_staff_screen.dart';
+import '../../features/team/presentation/screens/invitation_list_screen.dart';
 import '../../features/team/presentation/screens/accept_invite_screen.dart';
 import '../../features/team/presentation/screens/set_password_after_invite_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
@@ -455,6 +456,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'users',
             builder: (context, state) => const UserManagementScreen(),
             routes: [
+              GoRoute(
+                path: 'invitations',
+                name: 'invitations',
+                builder: (context, state) => const InvitationListScreen(),
+              ),
               GoRoute(
                 path: 'roles',
                 name: 'roles',

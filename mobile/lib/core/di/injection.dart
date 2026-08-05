@@ -17,6 +17,7 @@ import '../services/receipt_printer_service.dart';
 import '../services/print_queue_service.dart';
 import '../services/notification_service.dart';
 import '../services/receipt_vision_service.dart';
+import '../services/feature_announcement_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 
 final getIt = GetIt.instance;
@@ -142,7 +143,16 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] UpdateCheckService registered');
 
     // ============================================
-    // STEP 9: AI Billing Service
+    // STEP 9: Feature Announcement Service
+    // ============================================
+    debugPrint('[DI] Registering FeatureAnnouncementService...');
+    final featureAnnouncementService = FeatureAnnouncementService();
+    await featureAnnouncementService.initialize();
+    getIt.registerSingleton<FeatureAnnouncementService>(featureAnnouncementService);
+    debugPrint('[DI] FeatureAnnouncementService registered');
+
+    // ============================================
+    // STEP 10: AI Billing Service
     // ============================================
     debugPrint('[DI] Registering AiBillingService...');
     getIt.registerSingleton<AiBillingService>(AiBillingService());

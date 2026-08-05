@@ -53,6 +53,32 @@ export class TenantOnboardingService {
     return { accepted: true, invitationId: invite.id, challengeId: challenge.challengeId };
   }
 
+  async listInvitations(actor: Actor) {
+    await this.assertOwnerOrPermission(actor, 'users.create');
+    const invitations = await this.prisma.tenantStaffInvitation.findMany({
+      where: { tenantId: actor.tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        role: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+    return invitations.map((inv) => ({
+      id: inv.id,
+      email: inv.email,
+      firstName: inv.firstName,
+      lastName: inv.lastName,
+      status: inv.expiresAt <= new Date() && inv.status === 'PENDING' ? 'EXPIRED' : inv.status,
+      role: inv.role,
+      branch: inv.branch,
+      createdBy: inv.createdBy,
+      expiresAt: inv.expiresAt,
+      acceptedAt: inv.acceptedAt,
+      createdAt: inv.createdAt,
+    }));
+  }
+
   async acceptInvitation(invitationId: string, dto: { challengeId: string; code: string }) {
     const invite = await this.prisma.tenantStaffInvitation.findUnique({ where: { id: invitationId } });
     if (!invite || invite.status !== 'PENDING' || invite.expiresAt <= new Date() || invite.challengeId !== dto.challengeId) {

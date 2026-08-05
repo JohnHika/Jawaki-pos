@@ -855,10 +855,10 @@ class SettingsScreen extends ConsumerWidget {
               GroupedCard(
                 children: [
                   const SettingsRow(
-                    icon: Icons.email_outlined,
-                    title: 'Email Support',
-                    subtitle: 'johnkimani576@gmail.com',
-                  ),
+                                      icon: Icons.email_outlined,
+                                      title: 'Email Support',
+                                      subtitle: 'support@arche-axon.xyz',
+                                    ),
                   SettingsRow(
                     icon: Icons.phone_outlined,
                     title: 'Phone Support',
@@ -2181,6 +2181,7 @@ class _NotificationSettingsSheetState
   late bool _notifySync;
   bool _osPermissionGranted = false;
   bool _checkingPermission = true;
+  AppUpdateInfo? _availableUpdate;
 
   @override
   void initState() {
@@ -2189,6 +2190,21 @@ class _NotificationSettingsSheetState
     _notifyInventory = widget.notifyInventory;
     _notifySync = widget.notifySync;
     _checkPermission();
+    _checkForAvailableUpdate();
+    getIt<UpdateCheckService>().addListener(_onUpdateServiceChanged);
+  }
+
+  @override
+  void dispose() {
+    getIt<UpdateCheckService>().removeListener(_onUpdateServiceChanged);
+    super.dispose();
+  }
+
+  void _onUpdateServiceChanged() {
+    if (!mounted) return;
+    setState(() {
+      _availableUpdate = getIt<UpdateCheckService>().optionalUpdate;
+    });
   }
 
   Future<void> _checkPermission() async {
@@ -2199,6 +2215,11 @@ class _NotificationSettingsSheetState
         _checkingPermission = false;
       });
     }
+  }
+
+  void _checkForAvailableUpdate() {
+    final service = getIt<UpdateCheckService>();
+    _availableUpdate = service.optionalUpdate;
   }
 
   @override
@@ -2272,6 +2293,43 @@ class _NotificationSettingsSheetState
                     ),
                 ],
               ),
+              const SizedBox(height: 12),
+              // ── Available Update ──
+              if (_availableUpdate != null)
+                GroupedCard(
+                  margin: EdgeInsets.zero,
+                  children: [
+                    SettingsRow(
+                      icon: Icons.system_update_alt_rounded,
+                      iconColor: DesignColors.accent,
+                      title: 'Update Available',
+                      subtitle:
+                          'Version ${_availableUpdate!.displayVersion} is ready to install',
+                      trailing: SettingsPrimaryButton(
+                        label: 'Update',
+                        onPressed: () {
+                          Navigator.pop(context);
+                          getIt<UpdateCheckService>()
+                              .showCachedOptionalUpdateDialog(context);
+                        },
+                      ),
+                    ),
+                    if (_availableUpdate!.releaseNotes.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Text(
+                          _availableUpdate!.releaseNotes.trim(),
+                          style: const TextStyle(
+                            color: DesignColors.darkTextSecondary,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
               const SizedBox(height: 12),
               // ── Category Toggles ──
               GroupedCard(

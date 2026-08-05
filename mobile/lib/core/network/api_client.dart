@@ -160,6 +160,11 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  Future<List<dynamic>> getStaffInvitations() async {
+    final response = await _dio.get('/tenant-onboarding/staff-invitations');
+    return response.data as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> createStaffInvitation({
     required String email,
     required String firstName,

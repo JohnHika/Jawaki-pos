@@ -190,10 +190,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       identity.userFirstName.isNotEmpty
                           ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
                           : 'Good ${_getGreeting()}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
-                        color: DesignColors.textPrimary,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -208,9 +210,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     const SizedBox(height: 4),
                     Text(
                       _dateFmt.format(DateTime.now()),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: DesignColors.textSecondary,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
                       ),
                     ),
                   ],
@@ -255,7 +259,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               const SizedBox(height: 8),
 
               // Recent Sales Section
-              const SectionHeader(
+              SectionHeader(
                 icon: Icons.receipt_long_rounded,
                 title: 'Recent Sales',
                 subtitle: 'Today\'s transactions',
@@ -263,7 +267,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   'Last 10',
                   style: TextStyle(
                     fontSize: 12,
-                    color: DesignColors.textTertiary,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary,
                   ),
                 ),
               ),
@@ -722,16 +728,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _costMetric(String label, String value, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10.5,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.4,
-            color: DesignColors.textTertiary,
+            color: isDark
+                ? DesignColors.darkTextTertiary
+                : DesignColors.textTertiary,
           ),
         ),
         const SizedBox(height: 3),

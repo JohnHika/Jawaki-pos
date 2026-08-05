@@ -46,6 +46,11 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               onPressed: () => context.push('/users/roles'),
             ),
           IconButton(
+            tooltip: 'Invitations',
+            icon: const Icon(Icons.mail_outline_rounded),
+            onPressed: () => context.push('/users/invitations'),
+          ),
+          IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(managedUsersProvider),
