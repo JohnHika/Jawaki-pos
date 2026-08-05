@@ -17,8 +17,11 @@ services:
     # blocks a deploy — the seed is idempotent (all upserts) and retries on the
     # next deploy. This stops new permission keys from silently missing in prod
     # (e.g. sales.close_end_of_day previously needed a manual seed run).
-    preDeployCommand: cd backend && npx prisma migrate deploy && (npx ts-node --transpile-only scripts/seed-permissions.ts || echo "seed-permissions skipped (non-fatal)")
-    startCommand: cd backend && npm run start:prod
+    # NOTE: preDeployCommand does NOT run on Render free tier, so migrations
+    # must also run in startCommand. The --retries flag handles transient
+    # Neon advisory-lock timeouts (P1002).
+    preDeployCommand: cd backend && npx prisma migrate deploy --retries 3 && (npx ts-node --transpile-only scripts/seed-permissions.ts || echo "seed-permissions skipped (non-fatal)")
+    startCommand: cd backend && npx prisma migrate deploy --retries 3 && npm run start:prod
     envVars:
       - key: NODE_ENV
         value: production
