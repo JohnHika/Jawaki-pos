@@ -18,7 +18,7 @@ services:
     # next deploy. This stops new permission keys from silently missing in prod
     # (e.g. sales.close_end_of_day previously needed a manual seed run).
     preDeployCommand: cd backend && npx prisma migrate deploy && (npx ts-node --transpile-only scripts/seed-permissions.ts || echo "seed-permissions skipped (non-fatal)")
-    startCommand: cd backend && npx prisma migrate deploy && npm run start:prod
+    startCommand: cd backend && npm run start:prod
     envVars:
       - key: NODE_ENV
         value: production
