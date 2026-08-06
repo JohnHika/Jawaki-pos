@@ -90,6 +90,10 @@ class _UpdateDialog extends StatelessWidget {
               ),
             ],
             const SizedBox(height: DesignSpacing.xl),
+            _UpdateDialogButtonBar(
+              update: update,
+              dialogContext: dialogContext,
+            ),
           ],
         ),
       ),
