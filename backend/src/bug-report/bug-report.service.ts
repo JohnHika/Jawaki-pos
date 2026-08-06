@@ -7,12 +7,20 @@ import chunterPkg from '@hcengineering/chunter';
 import attachmentPkg from '@hcengineering/attachment';
 import corePkg from '@hcengineering/core';
 
-const apiClient = (apiClientPkg as any).default ?? apiClientPkg;
+function unwrapPkg(pkg: any): any {
+  if (pkg == null) return {};
+  // CommonJS interop can produce pkg.default.default; collapse it.
+  if (pkg.default != null) return unwrapPkg(pkg.default);
+  return pkg;
+}
+
+const apiClient = unwrapPkg(apiClientPkg);
+const tracker = unwrapPkg(trackerPkg);
+const chunter = unwrapPkg(chunterPkg);
+const attachment = unwrapPkg(attachmentPkg);
+const core = unwrapPkg(corePkg);
+
 const { connectRest, connectStorage } = apiClient;
-const tracker = ((trackerPkg as any).default ?? trackerPkg) as any;
-const chunter = ((chunterPkg as any).default ?? chunterPkg) as any;
-const attachment = ((attachmentPkg as any).default ?? attachmentPkg) as any;
-const core = corePkg as any;
 
 const CORE_SPACE_SPACE = 'core:space:Space';
 
