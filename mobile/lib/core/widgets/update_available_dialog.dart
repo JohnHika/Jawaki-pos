@@ -21,14 +21,21 @@ Future<void> showUpdateAvailableDialog({
   return showDialog<void>(
     context: context,
     barrierDismissible: true,
-    builder: (dialogContext) => _UpdateDialog(update: update),
+    builder: (dialogContext) => _UpdateDialog(
+      update: update,
+      dialogContext: dialogContext,
+    ),
   );
 }
 
 class _UpdateDialog extends StatelessWidget {
-  const _UpdateDialog({required this.update});
+  const _UpdateDialog({
+    required this.update,
+    required this.dialogContext,
+  });
 
   final AppUpdateInfo update;
+  final BuildContext dialogContext;
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +43,6 @@ class _UpdateDialog extends StatelessWidget {
     final surface = isDark ? DesignColors.darkSurface : Colors.white;
     final borderColor = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
     return Dialog(
       backgroundColor: surface,
@@ -84,35 +90,8 @@ class _UpdateDialog extends StatelessWidget {
               ),
             ],
             const SizedBox(height: DesignSpacing.xl),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    style: TextButton.styleFrom(
-                      foregroundColor: textSecondary,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                      ),
-                    ),
-                    child: const Text('Later'),
-                  ),
-                ),
-                const SizedBox(width: DesignSpacing.sm),
-                Expanded(
-                  child: SettingsPrimaryButton(
-                    label: 'Update now',
-                    onPressed: () {
-                      Navigator.of(dialogContext).pop();
-                      getIt<UpdateCheckService>().beginOptionalUpdateNow(update);
-                    },
-                  ),
-                ),
-              ],
-            ),
           ],
-        ).animate().fadeIn(duration: 350.ms, curve: Curves.easeOutCubic),
+        ),
       ),
     );
   }
@@ -140,15 +119,7 @@ class _IconBadge extends StatelessWidget {
         color: DesignColors.accent,
         size: 22,
       ),
-    )
-        .animate()
-        .scale(
-          begin: const Offset(0.7, 0.7),
-          end: const Offset(1.0, 1.0),
-          duration: 450.ms,
-          curve: Curves.easeOutBack,
-        )
-        .fadeIn(duration: 300.ms);
+    );
   }
 }
 
@@ -232,14 +203,7 @@ class UpdateAvailableCard extends StatelessWidget {
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 160),
                         child: SingleChildScrollView(
-                          child: Text(
-                            update.releaseNotes.trim(),
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: textSecondary,
-                                      height: 1.4,
-                                    ),
-                          ),
+                          child: CategorizedNotes(releaseNotes: update.releaseNotes.trim()),
                         ),
                       ),
                     ],
@@ -275,7 +239,7 @@ class UpdateAvailableCard extends StatelessWidget {
                       ],
                     ),
                   ],
-                ).animate().fadeIn(duration: 350.ms, curve: Curves.easeOutCubic),
+                ),
               ),
             ).animate().scale(
                   begin: const Offset(0.88, 0.88),
@@ -286,6 +250,50 @@ class UpdateAvailableCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _UpdateDialogButtonBar extends StatelessWidget {
+  const _UpdateDialogButtonBar({
+    required this.update,
+    required this.dialogContext,
+  });
+
+  final AppUpdateInfo update;
+  final BuildContext dialogContext;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
+    return Row(
+      children: [
+        Expanded(
+          child: TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            style: TextButton.styleFrom(
+              foregroundColor: textSecondary,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              ),
+            ),
+            child: const Text('Later'),
+          ),
+        ),
+        const SizedBox(width: DesignSpacing.sm),
+        Expanded(
+          child: SettingsPrimaryButton(
+            label: 'Update now',
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              getIt<UpdateCheckService>().beginOptionalUpdateNow(update);
+            },
+          ),
+        ),
+      ],
     );
   }
 }

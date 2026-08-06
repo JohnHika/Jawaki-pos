@@ -26,8 +26,7 @@ void main() {
 
       updateService.setOptionalUpdate(_optionalUpdate('1.0.3'));
 
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.text('Update available'), findsOneWidget);
       expect(find.text('Login Screen'), findsOneWidget);
@@ -54,8 +53,7 @@ void main() {
       );
 
       updateService.setOptionalUpdate(sameUpdate);
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.text('Update available'), findsOneWidget);
 
@@ -63,8 +61,7 @@ void main() {
       await tester.pumpAndSettle();
 
       updateService.setOptionalUpdate(sameUpdate);
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.text('Update available'), findsNothing);
     },

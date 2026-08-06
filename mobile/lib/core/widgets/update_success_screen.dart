@@ -166,9 +166,7 @@ class _SuccessMark extends StatelessWidget {
             duration: 600.ms,
             curve: Curves.easeOutBack,
           )
-          .fadeIn(duration: 400.ms)
-          .then()
-          .shake(hz: 2, rotation: 0.04, duration: 600.ms),
+          .fadeIn(duration: 400.ms),
     );
   }
 }

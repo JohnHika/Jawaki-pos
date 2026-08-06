@@ -101,7 +101,7 @@ class _CategorizedNoteRow extends StatelessWidget {
           Expanded(
             child: Text(
               note.text,
-              style: TextStyle(
+              style: const TextStyle(
                 color: DesignColors.darkTextSecondary,
                 fontSize: 13,
                 height: 1.35,
