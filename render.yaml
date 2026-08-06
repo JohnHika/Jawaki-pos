@@ -75,4 +75,4 @@ services:
       - key: ANDROID_APP_APK_URL
         value: "/api/v1/app-updates/android/download"
       - key: ANDROID_APP_RELEASE_NOTES
-        value: "Smarter AI assistant: it now reads your real POS data as fact (no more 'check your connection' when you simply have no sales yet), a cleaner chat with a working + button to attach camera/photos/files (reads text from images), copy and edit on messages, and the receipt now previews exactly as it prints."
+        value: "Adds: In-app bug reporting — submit issues directly to our team from Settings > Support. Adds: Invitation tracking — see who has accepted or is still pending in Users > Invitations. Fixes: Change Plan button now responds to taps. Fixes: AI Memory no longer shows 'Something went wrong' for active subscribers. Fixes: Audit Trail loads correctly for admin users. Improves: Subscription settings — larger pricing, setup fee badge, clearer billing info. Improves: Dashboard dark mode — greeting, date, and cost metrics now visible in dark mode. Improves: Logout moved under Account section for safer access."

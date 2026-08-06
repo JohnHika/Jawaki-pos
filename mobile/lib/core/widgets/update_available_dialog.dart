@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../di/injection.dart';
 import '../services/update_check_service.dart';
 import '../theme/design_system.dart';
+import 'release_notes.dart';
 
 /// A compact, dismissible "an update is available" dialog — used for the
 /// manual "Check for updates" entry point in Settings, where the app is
@@ -70,12 +71,7 @@ Future<void> showUpdateAvailableDialog({
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 140),
                 child: SingleChildScrollView(
-                  child: Text(
-                    update.releaseNotes.trim(),
-                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                          color: DesignColors.darkTextSecondary,
-                        ),
-                  ),
+                  child: CategorizedNotes(releaseNotes: update.releaseNotes.trim()),
                 ),
               ),
             ],
