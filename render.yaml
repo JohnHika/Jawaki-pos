@@ -14,9 +14,12 @@ services:
     # (e.g. sales.close_end_of_day previously needed a manual seed run).
     # NOTE: preDeployCommand does NOT run on Render free tier, so migrations
     # must also run in startCommand. The --retries flag handles transient
-    # Neon advisory-lock timeouts (P1002).
+    # Neon advisory-lock timeouts (P1002). The seed-permissions script is
+    # also here (not just preDeployCommand) for the same reason — it's
+    # idempotent (all upserts) and the || echo guard prevents a transient
+    # DB blip from blocking the deploy.
     preDeployCommand: cd backend && npx prisma migrate deploy --retries 3 && (npx ts-node --transpile-only scripts/seed-permissions.ts || echo "seed-permissions skipped (non-fatal)")
-    startCommand: cd backend && npx prisma migrate deploy --retries 3 && npm run start:prod
+    startCommand: cd backend && npx prisma migrate deploy --retries 3 && (npx ts-node --transpile-only scripts/seed-permissions.ts || echo "seed-permissions skipped (non-fatal)") && npm run start:prod
     envVars:
       - key: NODE_ENV
         value: production
