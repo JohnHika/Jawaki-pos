@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../di/injection.dart';
 import '../services/update_check_service.dart';
@@ -245,12 +244,7 @@ class UpdateAvailableCard extends StatelessWidget {
                   ],
                 ),
               ),
-            ).animate().scale(
-                  begin: const Offset(0.88, 0.88),
-                  end: const Offset(1.0, 1.0),
-                  duration: 450.ms,
-                  curve: Curves.easeOutBack,
-                ),
+            ),
           ),
         ),
       ),
