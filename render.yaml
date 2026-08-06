@@ -56,7 +56,7 @@ services:
       - key: AXON_GATEWAY_BASE_URL
         value: https://api.arche-axon.xyz/v1
       - key: AI_BILLING_DISABLED
-        value: "false"
+        value: "true"
       - key: ANDROID_APP_LATEST_VERSION
         value: "1.0.40"
       - key: ANDROID_APP_RELEASE_NAME

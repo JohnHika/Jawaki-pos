@@ -37,6 +37,7 @@ import '../../features/payments/presentation/screens/payment_analytics_screen.da
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/settings/presentation/screens/operating_hours_screen.dart';
+import '../../features/settings/presentation/screens/bug_report_screen.dart';
 import '../../features/ai/presentation/screens/ai_memory_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
@@ -441,6 +442,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings/operating-hours',
             name: 'operating-hours',
             builder: (context, state) => const OperatingHoursScreen(),
+          ),
+
+          // Bug Report
+          GoRoute(
+            path: '/settings/report-bug',
+            name: 'report-bug',
+            builder: (context, state) => const BugReportScreen(),
           ),
 
           // AI's durable shop memory (view/add/remove)

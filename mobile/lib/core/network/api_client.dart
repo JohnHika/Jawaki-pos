@@ -1275,4 +1275,25 @@ class ApiClient {
     final response = await _dio.get('/subscription/invoices');
     return response.data as List<dynamic>;
   }
+
+  // ── Bug Report ────────────────────────────────────────────────────
+
+  /// Submit a bug report that creates a Huly issue.
+  /// POST /api/v1/bug-report
+  Future<Map<String, dynamic>> submitBugReport({
+    required String title,
+    required String description,
+    required String severity,
+    String? screenshotBase64,
+    String? screenshotMimeType,
+  }) async {
+    final response = await _dio.post('/bug-report', data: {
+      'title': title,
+      'description': description,
+      'severity': severity,
+      if (screenshotBase64 != null) 'screenshotBase64': screenshotBase64,
+      if (screenshotMimeType != null) 'screenshotMimeType': screenshotMimeType,
+    });
+    return response.data as Map<String, dynamic>;
+  }
 }

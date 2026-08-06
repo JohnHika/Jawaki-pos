@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/di/injection.dart';
@@ -52,8 +53,20 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      String message;
+      if (e is DioException) {
+        if (e.response?.statusCode == 402) {
+          message = 'AI subscription required. Subscribe to use AI memory.';
+        } else if (e.response?.statusCode == 400) {
+          message = 'Could not identify your branch. Try logging in again.';
+        } else {
+          message = 'Could not load memories. Check your connection and try again.';
+        }
+      } else {
+        message = 'Could not load memories. Check your connection and try again.';
+      }
       setState(() {
-        _error = 'Could not load memories. Check your connection and try again.';
+        _error = message;
         _loading = false;
       });
     }

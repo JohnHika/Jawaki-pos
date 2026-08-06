@@ -222,6 +222,12 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: 'Biometrics & auto-lock',
               onTap: () => _showSecuritySettings(context),
             ),
+            SettingsRow(
+              icon: Icons.logout_rounded,
+              title: 'Logout',
+              isDestructive: true,
+              onTap: () => _showLogoutDialog(context, ref),
+            ),
           ]),
 
           // ── Support ──
@@ -232,6 +238,12 @@ class SettingsScreen extends ConsumerWidget {
               title: 'Help & Support',
               subtitle: 'Get help with the app',
               onTap: () => _showHelpSupport(context),
+            ),
+            SettingsRow(
+              icon: Icons.bug_report_rounded,
+              title: 'Report a Bug',
+              subtitle: 'Submit a bug report to our team',
+              onTap: () => context.push('/settings/report-bug'),
             ),
             SettingsRow(
               icon: Icons.system_update_rounded,
@@ -312,20 +324,6 @@ class SettingsScreen extends ConsumerWidget {
             ]),
           ],
 
-          const SizedBox(height: 8),
-
-          // ── Logout ──
-          GroupedCard(
-            margin: EdgeInsets.zero,
-            children: [
-              SettingsRow(
-                icon: Icons.logout_rounded,
-                title: 'Logout',
-                isDestructive: true,
-                onTap: () => _showLogoutDialog(context, ref),
-              ),
-            ],
-          ),
           const SizedBox(height: 12),
           Center(
             child: Text(
