@@ -4,10 +4,16 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../data/services/invitation_cache_service.dart';
 
 /// Displays all staff invitations with their status (PENDING / ACCEPTED /
 /// EXPIRED) and who created them.  Lets the admin track who has accepted
 /// and who still needs to act.
+///
+/// The list is loaded from a lightweight local [InvitationCacheService]
+/// first so the screen renders instantly, then a background fetch refreshes
+/// the data from the backend.  Any successful mutation on the invitation
+/// list invalidates the cache so the next visit starts fresh.
 class InvitationListScreen extends StatefulWidget {
   const InvitationListScreen({super.key});
 
@@ -17,6 +23,7 @@ class InvitationListScreen extends StatefulWidget {
 
 class _InvitationListScreenState extends State<InvitationListScreen> {
   ApiClient get _api => getIt<ApiClient>();
+  InvitationCacheService get _cache => getIt<InvitationCacheService>();
 
   List<Map<String, dynamic>> _invitations = [];
   bool _isLoading = true;
@@ -25,23 +32,34 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(showCacheFirst: true);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _isLoading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool showCacheFirst = false}) async {
     try {
+      if (showCacheFirst) {
+        final cached = _cache.getInvitations();
+        if (cached != null && cached.isNotEmpty && mounted) {
+          setState(() {
+            _invitations = cached;
+            _isLoading = false;
+          });
+        }
+      }
+
       final data = await _api.getStaffInvitations();
+      final invitations = data
+          .whereType<Map<String, dynamic>>()
+          .map(Map<String, dynamic>.from)
+          .toList();
+
+      await _cache.saveInvitations(invitations);
+
       if (!mounted) return;
       setState(() {
-        _invitations = data
-            .whereType<Map>()
-            .map(Map<String, dynamic>.from)
-            .toList();
+        _invitations = invitations;
         _isLoading = false;
+        _loadError = null;
       });
     } catch (error) {
       if (!mounted) return;
@@ -57,8 +75,10 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? DesignColors.darkBg : DesignColors.surface;
     final surface = isDark ? DesignColors.darkSurface : Colors.white;
-    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final textPrimary =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
     return Scaffold(
       backgroundColor: bg,
@@ -79,7 +99,7 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
           IconButton(
             tooltip: 'Refresh',
             icon: Icon(Icons.refresh_rounded, color: textSecondary),
-            onPressed: _load,
+            onPressed: () => _load(showCacheFirst: false),
           ),
         ],
         elevation: 0,
@@ -95,14 +115,14 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
         child: CircularProgressIndicator(color: DesignColors.accent),
       );
     }
-    if (_loadError != null) {
+    if (_loadError != null && _invitations.isEmpty) {
       return _loadFailure(isDark, textPrimary, textSecondary);
     }
     if (_invitations.isEmpty) {
       return _emptyState(isDark, textPrimary, textSecondary);
     }
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(showCacheFirst: false),
       color: DesignColors.accent,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -143,7 +163,7 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
             GradientButton(
               label: 'Retry',
               icon: Icons.refresh_rounded,
-              onPressed: _load,
+              onPressed: () => _load(showCacheFirst: false),
               height: 48,
               borderRadius: 12,
             ),
@@ -181,7 +201,7 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
             GradientButton(
               label: 'Invite Staff',
               icon: Icons.person_add_alt_1_rounded,
-              onPressed: () => context.push('/invite-staff'),
+              onPressed: () => _goToInviteStaff(),
               height: 48,
               borderRadius: 12,
             ),
@@ -189,6 +209,16 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _goToInviteStaff() async {
+    final didCreate = await context.push<bool>('/invite-staff');
+    if (didCreate == true) {
+      await _cache.invalidate();
+      if (mounted) {
+        _load(showCacheFirst: false);
+      }
+    }
   }
 }
 
@@ -225,8 +255,10 @@ class _InvitationCard extends StatelessWidget {
 
     final surface = isDark ? DesignColors.darkSurface : Colors.white;
     final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final textPrimary =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -299,11 +331,14 @@ class _InvitationCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             // Details grid
-            _detailRow(Icons.badge_outlined, 'Role', roleName, textSecondary, textPrimary),
+            _detailRow(Icons.badge_outlined, 'Role', roleName, textSecondary,
+                textPrimary),
             const SizedBox(height: 6),
-            _detailRow(Icons.store_outlined, 'Branch', branchName, textSecondary, textPrimary),
+            _detailRow(Icons.store_outlined, 'Branch', branchName, textSecondary,
+                textPrimary),
             const SizedBox(height: 6),
-            _detailRow(Icons.person_outline, 'Invited by', createdByName, textSecondary, textPrimary),
+            _detailRow(Icons.person_outline, 'Invited by', createdByName,
+                textSecondary, textPrimary),
             if (createdAt.isNotEmpty) ...[
               const SizedBox(height: 6),
               _detailRow(Icons.calendar_today_outlined, 'Sent',
@@ -325,7 +360,8 @@ class _InvitationCard extends StatelessWidget {
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value, Color textSecondary, Color textPrimary) {
+  Widget _detailRow(IconData icon, String label, String value,
+      Color textSecondary, Color textPrimary) {
     return Row(
       children: [
         Icon(icon, size: 14, color: textSecondary),

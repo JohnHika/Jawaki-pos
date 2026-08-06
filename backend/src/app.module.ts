@@ -44,8 +44,14 @@ import { AppController } from './app.controller';
     // Rate Limiting
     ThrottlerModule.forRoot([
       {
+        name: 'default',
         ttl: 60000,
         limit: 100,
+      },
+      {
+        name: 'bug-report',
+        ttl: 60000,
+        limit: 5,
       },
     ]),
 

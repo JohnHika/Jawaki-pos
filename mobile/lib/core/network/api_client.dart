@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
@@ -1279,21 +1281,44 @@ class ApiClient {
   // ── Bug Report ────────────────────────────────────────────────────
 
   /// Submit a bug report that creates a Huly issue.
-  /// POST /api/v1/bug-report
+  /// POST /api/v1/bug-report (multipart/form-data for file attachments).
   Future<Map<String, dynamic>> submitBugReport({
     required String title,
     required String description,
     required String severity,
-    String? screenshotBase64,
-    String? screenshotMimeType,
+    String? component,
+    File? attachment,
   }) async {
-    final response = await _dio.post('/bug-report', data: {
-      'title': title,
-      'description': description,
-      'severity': severity,
-      if (screenshotBase64 != null) 'screenshotBase64': screenshotBase64,
-      if (screenshotMimeType != null) 'screenshotMimeType': screenshotMimeType,
-    });
+    final formData = FormData();
+    formData.fields.addAll([
+      MapEntry('title', title),
+      MapEntry('description', description),
+      MapEntry('severity', severity),
+      if (component != null) MapEntry('component', component),
+    ]);
+    if (attachment != null) {
+      final fileName = attachment.path.split('/').last;
+      final mime = _mimeTypeForFile(fileName);
+      formData.files.add(
+        MapEntry(
+          'attachment',
+          await MultipartFile.fromFile(attachment.path, filename: fileName, contentType: DioMediaType.parse(mime)),
+        ),
+      );
+    }
+    final response = await _dio.post('/bug-report', data: formData);
     return response.data as Map<String, dynamic>;
+  }
+
+  String _mimeTypeForFile(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    return 'application/octet-stream';
   }
 }

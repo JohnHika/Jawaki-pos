@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../services/update_check_service.dart';
 import '../theme/design_system.dart';
@@ -51,15 +52,34 @@ class UpdateSuccessScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: DesignColors.darkTextPrimary,
+                          fontWeight: FontWeight.w700,
                         ),
-                  ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 450.ms, delay: 200.ms)
+                      .slideY(
+                        begin: 0.15,
+                        end: 0.0,
+                        duration: 450.ms,
+                        delay: 200.ms,
+                        curve: Curves.easeOutCubic,
+                      ),
                   const SizedBox(height: DesignSpacing.sm),
                   Center(
                     child: StatusBadge(
                       label: update.displayVersion,
                       color: DesignColors.success,
                     ),
-                  ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 350.ms, delay: 350.ms)
+                      .scale(
+                        begin: const Offset(0.85, 0.85),
+                        end: const Offset(1.0, 1.0),
+                        duration: 400.ms,
+                        delay: 350.ms,
+                        curve: Curves.easeOutBack,
+                      ),
                   if (notes.isNotEmpty) ...[
                     const SizedBox(height: DesignSpacing.xxl),
                     Flexible(
@@ -77,13 +97,14 @@ class UpdateSuccessScreen extends StatelessWidget {
                                     .labelLarge
                                     ?.copyWith(
                                       color: DesignColors.darkTextPrimary,
+                                      fontWeight: FontWeight.w700,
                                     ),
                               ),
                               const SizedBox(height: DesignSpacing.md),
                               CategorizedNotes(releaseNotes: update.releaseNotes),
                             ],
                           ),
-                        ),
+                        ).animate().fadeIn(duration: 500.ms, delay: 450.ms),
                       ),
                     ),
                   ],
@@ -91,7 +112,13 @@ class UpdateSuccessScreen extends StatelessWidget {
                   SettingsPrimaryButton(
                     label: 'Continue',
                     onPressed: onDismiss,
-                  ),
+                  ).animate().fadeIn(duration: 350.ms, delay: 600.ms).slideY(
+                        begin: 0.2,
+                        end: 0.0,
+                        duration: 350.ms,
+                        delay: 600.ms,
+                        curve: Curves.easeOutCubic,
+                      ),
                 ],
               ),
             ),
@@ -109,8 +136,8 @@ class _SuccessMark extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 84,
-        height: 84,
+        width: 96,
+        height: 96,
         decoration: BoxDecoration(
           color: DesignColors.successSubtle,
           shape: BoxShape.circle,
@@ -121,17 +148,27 @@ class _SuccessMark extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: DesignColors.success.withValues(alpha: 0.25),
-              blurRadius: 24,
+              blurRadius: 28,
               spreadRadius: 2,
             ),
           ],
         ),
         child: const Icon(
-          Icons.auto_awesome_rounded,
+          Icons.check_rounded,
           color: DesignColors.success,
-          size: 38,
+          size: 44,
         ),
-      ),
+      )
+          .animate()
+          .scale(
+            begin: const Offset(0.4, 0.4),
+            end: const Offset(1.0, 1.0),
+            duration: 600.ms,
+            curve: Curves.easeOutBack,
+          )
+          .fadeIn(duration: 400.ms)
+          .then()
+          .shake(hz: 2, rotation: 0.04, duration: 600.ms),
     );
   }
 }

@@ -19,6 +19,7 @@ import '../services/notification_service.dart';
 import '../services/receipt_vision_service.dart';
 import '../services/feature_announcement_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
+import '../../features/team/data/services/invitation_cache_service.dart';
 
 final getIt = GetIt.instance;
 const _defaultApiUrl = 'https://arche-axon-pos-api.onrender.com/api/v1';
@@ -41,6 +42,12 @@ Future<void> configureDependencies() async {
     await storageService.initialize();
     await storageService.ensureDeviceId();
     debugPrint('[DI] StorageService initialized');
+
+    debugPrint('[DI] Registering InvitationCacheService...');
+    final invitationCacheService = InvitationCacheService();
+    await invitationCacheService.initialize();
+    getIt.registerSingleton<InvitationCacheService>(invitationCacheService);
+    debugPrint('[DI] InvitationCacheService initialized');
 
     debugPrint('[DI] Registering ConnectivityService...');
     final connectivityService = ConnectivityService();

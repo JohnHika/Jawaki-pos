@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../di/injection.dart';
 import '../services/update_check_service.dart';
@@ -19,11 +20,29 @@ Future<void> showUpdateAvailableDialog({
 }) {
   return showDialog<void>(
     context: context,
-    builder: (ctx) => Dialog(
-      backgroundColor: DesignColors.darkSurface,
+    barrierDismissible: true,
+    builder: (dialogContext) => _UpdateDialog(update: update),
+  );
+}
+
+class _UpdateDialog extends StatelessWidget {
+  const _UpdateDialog({required this.update});
+
+  final AppUpdateInfo update;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? DesignColors.darkSurface : Colors.white;
+    final borderColor = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
+    return Dialog(
+      backgroundColor: surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-        side: const BorderSide(color: DesignColors.darkBorder),
+        side: BorderSide(color: borderColor),
       ),
       child: Padding(
         padding: const EdgeInsets.all(DesignSpacing.xl),
@@ -33,25 +52,14 @@ Future<void> showUpdateAvailableDialog({
           children: [
             Row(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: DesignColors.accentSubtle,
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  ),
-                  child: const Icon(
-                    Icons.system_update_alt_rounded,
-                    color: DesignColors.accent,
-                    size: 22,
-                  ),
-                ),
+                _IconBadge(isDark: isDark),
                 const SizedBox(width: DesignSpacing.md),
                 Expanded(
                   child: Text(
                     'Update available',
-                    style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                          color: DesignColors.darkTextPrimary,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: textPrimary,
+                          fontWeight: FontWeight.w700,
                         ),
                   ),
                 ),
@@ -69,7 +77,7 @@ Future<void> showUpdateAvailableDialog({
             if (update.releaseNotes.trim().isNotEmpty) ...[
               const SizedBox(height: DesignSpacing.md),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 140),
+                constraints: const BoxConstraints(maxHeight: 160),
                 child: SingleChildScrollView(
                   child: CategorizedNotes(releaseNotes: update.releaseNotes.trim()),
                 ),
@@ -80,9 +88,13 @@ Future<void> showUpdateAvailableDialog({
               children: [
                 Expanded(
                   child: TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
                     style: TextButton.styleFrom(
-                      foregroundColor: DesignColors.darkTextSecondary,
+                      foregroundColor: textSecondary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                      ),
                     ),
                     child: const Text('Later'),
                   ),
@@ -92,7 +104,7 @@ Future<void> showUpdateAvailableDialog({
                   child: SettingsPrimaryButton(
                     label: 'Update now',
                     onPressed: () {
-                      Navigator.of(ctx).pop();
+                      Navigator.of(dialogContext).pop();
                       getIt<UpdateCheckService>().beginOptionalUpdateNow(update);
                     },
                   ),
@@ -100,10 +112,44 @@ Future<void> showUpdateAvailableDialog({
               ],
             ),
           ],
+        ).animate().fadeIn(duration: 350.ms, curve: Curves.easeOutCubic),
+      ),
+    );
+  }
+}
+
+class _IconBadge extends StatelessWidget {
+  const _IconBadge({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: DesignColors.accentSubtle,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(
+          color: DesignColors.accent.withValues(alpha: isDark ? 0.25 : 0.15),
         ),
       ),
-    ),
-  );
+      child: const Icon(
+        Icons.system_update_alt_rounded,
+        color: DesignColors.accent,
+        size: 22,
+      ),
+    )
+        .animate()
+        .scale(
+          begin: const Offset(0.7, 0.7),
+          end: const Offset(1.0, 1.0),
+          duration: 450.ms,
+          curve: Curves.easeOutBack,
+        )
+        .fadeIn(duration: 300.ms);
+  }
 }
 
 /// Same visual content as [showUpdateAvailableDialog], but rendered inline
@@ -124,8 +170,14 @@ class UpdateAvailableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? DesignColors.darkSurface : Colors.white;
+    final borderColor = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
     return Material(
-      color: Colors.black54,
+      color: isDark ? Colors.black54 : Colors.black45,
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -133,9 +185,16 @@ class UpdateAvailableCard extends StatelessWidget {
             padding: const EdgeInsets.all(DesignSpacing.xl),
             child: Container(
               decoration: BoxDecoration(
-                color: DesignColors.darkSurface,
+                color: surface,
                 borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-                border: Border.all(color: DesignColors.darkBorder),
+                border: Border.all(color: borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.2),
+                    blurRadius: 32,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
               child: Padding(
                 padding: const EdgeInsets.all(DesignSpacing.xl),
@@ -145,27 +204,15 @@ class UpdateAvailableCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: DesignColors.accentSubtle,
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd),
-                          ),
-                          child: const Icon(
-                            Icons.system_update_alt_rounded,
-                            color: DesignColors.accent,
-                            size: 22,
-                          ),
-                        ),
+                        _IconBadge(isDark: isDark),
                         const SizedBox(width: DesignSpacing.md),
                         Expanded(
                           child: Text(
                             'Update available',
                             style:
                                 Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      color: DesignColors.darkTextPrimary,
+                                      color: textPrimary,
+                                      fontWeight: FontWeight.w700,
                                     ),
                           ),
                         ),
@@ -183,13 +230,14 @@ class UpdateAvailableCard extends StatelessWidget {
                     if (update.releaseNotes.trim().isNotEmpty) ...[
                       const SizedBox(height: DesignSpacing.md),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 140),
+                        constraints: const BoxConstraints(maxHeight: 160),
                         child: SingleChildScrollView(
                           child: Text(
                             update.releaseNotes.trim(),
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: DesignColors.darkTextSecondary,
+                                      color: textSecondary,
+                                      height: 1.4,
                                     ),
                           ),
                         ),
@@ -202,7 +250,13 @@ class UpdateAvailableCard extends StatelessWidget {
                           child: TextButton(
                             onPressed: onDismiss,
                             style: TextButton.styleFrom(
-                              foregroundColor: DesignColors.darkTextSecondary,
+                              foregroundColor: textSecondary,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  DesignSpacing.radiusMd,
+                                ),
+                              ),
                             ),
                             child: const Text('Later'),
                           ),
@@ -221,9 +275,14 @@ class UpdateAvailableCard extends StatelessWidget {
                       ],
                     ),
                   ],
-                ),
+                ).animate().fadeIn(duration: 350.ms, curve: Curves.easeOutCubic),
               ),
-            ),
+            ).animate().scale(
+                  begin: const Offset(0.88, 0.88),
+                  end: const Offset(1.0, 1.0),
+                  duration: 450.ms,
+                  curve: Curves.easeOutBack,
+                ),
           ),
         ),
       ),

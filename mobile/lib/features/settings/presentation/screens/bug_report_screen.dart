@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -47,20 +46,12 @@ class _BugReportScreenState extends State<BugReportScreen> {
     try {
       final api = getIt<ApiClient>();
 
-      String? screenshotBase64;
-      String? screenshotMimeType;
-      if (_screenshot != null) {
-        final bytes = await _screenshot!.readAsBytes();
-        screenshotBase64 = base64Encode(bytes);
-        screenshotMimeType = 'image/png';
-      }
-
       final result = await api.submitBugReport(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         severity: _severity,
-        screenshotBase64: screenshotBase64,
-        screenshotMimeType: screenshotMimeType,
+        component: 'Axon POS',
+        attachment: _screenshot,
       );
 
       if (!mounted) return;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../services/update_check_service.dart';
 import '../theme/design_system.dart';
@@ -49,8 +50,17 @@ class ForcedUpdateGate extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: DesignColors.darkTextPrimary,
+                          fontWeight: FontWeight.w700,
                         ),
-                  ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 400.ms)
+                      .slideY(
+                        begin: 0.1,
+                        end: 0.0,
+                        duration: 400.ms,
+                        curve: Curves.easeOutCubic,
+                      ),
                   const SizedBox(height: DesignSpacing.sm),
                   Text(
                     isBusy
@@ -59,19 +69,53 @@ class ForcedUpdateGate extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: DesignColors.darkTextSecondary,
+                          height: 1.45,
                         ),
-                  ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 400.ms, delay: 100.ms)
+                      .slideY(
+                        begin: 0.1,
+                        end: 0.0,
+                        duration: 400.ms,
+                        delay: 100.ms,
+                        curve: Curves.easeOutCubic,
+                      ),
                   const SizedBox(height: DesignSpacing.xxl),
                   if (isBusy)
                     _DownloadTelemetry(updateService: updateService)
+                        .animate()
+                        .fadeIn(duration: 400.ms)
+                        .slideY(
+                          begin: 0.08,
+                          end: 0.0,
+                          duration: 400.ms,
+                          curve: Curves.easeOutCubic,
+                        )
                   else
                     _UpdateSummary(
                       updateService: updateService,
                       update: update,
-                    ),
+                    )
+                        .animate()
+                        .fadeIn(duration: 500.ms)
+                        .slideY(
+                          begin: 0.12,
+                          end: 0.0,
+                          duration: 500.ms,
+                          curve: Curves.easeOutCubic,
+                        ),
                   if (updateService.errorMessage != null) ...[
                     const SizedBox(height: DesignSpacing.lg),
-                    _ErrorBanner(message: updateService.errorMessage!),
+                    _ErrorBanner(message: updateService.errorMessage!)
+                        .animate()
+                        .fadeIn(duration: 300.ms)
+                        .slideY(
+                          begin: 0.05,
+                          end: 0.0,
+                          duration: 300.ms,
+                          curve: Curves.easeOutCubic,
+                        ),
                   ],
                   const SizedBox(height: DesignSpacing.xxl),
                   if (updateService.requiresInstallerPermission)
@@ -101,6 +145,7 @@ class ForcedUpdateGate extends StatelessWidget {
                     onPressed: updateService.openDownloadFallback,
                     style: TextButton.styleFrom(
                       foregroundColor: DesignColors.darkTextSecondary,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     child: const Text('Open fallback download link'),
                   ),
@@ -110,6 +155,7 @@ class ForcedUpdateGate extends StatelessWidget {
                       onPressed: SystemNavigator.pop,
                       style: TextButton.styleFrom(
                         foregroundColor: DesignColors.darkTextTertiary,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       child: const Text('Close app'),
                     ),
@@ -133,8 +179,8 @@ class _Mark extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 84,
-        height: 84,
+        width: 96,
+        height: 96,
         decoration: BoxDecoration(
           color: DesignColors.accentSubtle,
           shape: BoxShape.circle,
@@ -144,8 +190,10 @@ class _Mark extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: DesignColors.accent.withValues(alpha: pulsing ? 0.35 : 0.18),
-              blurRadius: pulsing ? 28 : 18,
+              color: DesignColors.accent.withValues(
+                alpha: pulsing ? 0.35 : 0.18,
+              ),
+              blurRadius: pulsing ? 32 : 20,
               spreadRadius: pulsing ? 4 : 1,
             ),
           ],
@@ -155,9 +203,25 @@ class _Mark extends StatelessWidget {
               ? Icons.downloading_rounded
               : Icons.system_update_alt_rounded,
           color: DesignColors.accent,
-          size: 38,
+          size: 42,
         ),
-      ),
+      )
+          .animate()
+          .scale(
+            begin: const Offset(0.75, 0.75),
+            end: const Offset(1.0, 1.0),
+            duration: 500.ms,
+            curve: Curves.easeOutBack,
+          )
+          .fadeIn(duration: 350.ms)
+          .then()
+          .custom(
+            duration: 1800.ms,
+            builder: (context, value, child) {
+              final scale = 1.0 + (pulsing ? 0.05 * value : 0.0);
+              return Transform.scale(scale: scale, child: child);
+            },
+          ),
     );
   }
 }
@@ -214,6 +278,7 @@ class _UpdateSummary extends StatelessWidget {
                 "What's new",
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       color: DesignColors.darkTextPrimary,
+                      fontWeight: FontWeight.w700,
                     ),
               ),
             ),
@@ -224,7 +289,11 @@ class _UpdateSummary extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final note in notes) _ReleaseNoteRow(text: note),
+                    for (var i = 0; i < notes.length; i++)
+                      _ReleaseNoteRow(
+                        text: notes[i],
+                        delay: i * 60,
+                      ),
                   ],
                 ),
               ),
@@ -275,9 +344,10 @@ class _VersionColumn extends StatelessWidget {
 }
 
 class _ReleaseNoteRow extends StatelessWidget {
-  const _ReleaseNoteRow({required this.text});
+  const _ReleaseNoteRow({required this.text, required this.delay});
 
   final String text;
+  final int delay;
 
   @override
   Widget build(BuildContext context) {
@@ -300,12 +370,22 @@ class _ReleaseNoteRow extends StatelessWidget {
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: DesignColors.darkTextSecondary,
+                    height: 1.4,
                   ),
             ),
           ),
         ],
       ),
-    );
+    )
+        .animate()
+        .fadeIn(duration: 350.ms, delay: Duration(milliseconds: delay))
+        .slideX(
+          begin: -0.04,
+          end: 0.0,
+          duration: 350.ms,
+          delay: Duration(milliseconds: delay),
+          curve: Curves.easeOutCubic,
+        );
   }
 }
 
@@ -346,6 +426,7 @@ class _DownloadTelemetry extends StatelessWidget {
                 updateService.isInstalling ? 'Installing' : 'Downloading',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       color: DesignColors.darkTextPrimary,
+                      fontWeight: FontWeight.w700,
                     ),
               ),
               Text(
@@ -358,15 +439,7 @@ class _DownloadTelemetry extends StatelessWidget {
             ],
           ),
           const SizedBox(height: DesignSpacing.md),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: updateService.isInstalling ? null : progress,
-              minHeight: 8,
-              backgroundColor: DesignColors.darkSurfaceElevated,
-              valueColor: const AlwaysStoppedAnimation(DesignColors.accent),
-            ),
-          ),
+          _AnimatedProgressBar(progress: updateService.isInstalling ? null : progress),
           if (sizeLabel != null || speedLabel != null) ...[
             const SizedBox(height: DesignSpacing.md),
             Row(
@@ -395,6 +468,68 @@ class _DownloadTelemetry extends StatelessWidget {
   }
 }
 
+class _AnimatedProgressBar extends StatelessWidget {
+  const _AnimatedProgressBar({this.progress});
+
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = progress?.clamp(0.0, 1.0);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: Stack(
+        children: [
+          Container(
+            height: 8,
+            decoration: const BoxDecoration(
+              color: DesignColors.darkSurfaceElevated,
+            ),
+          ),
+          if (clamped != null)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              height: 8,
+              width: MediaQuery.of(context).size.width * clamped,
+              decoration: BoxDecoration(
+                color: DesignColors.accent,
+                boxShadow: [
+                  BoxShadow(
+                    color: DesignColors.accent.withValues(alpha: 0.45),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            )
+              .animate()
+              .shimmer(
+                duration: 1500.ms,
+                color: DesignColors.accentLight.withValues(alpha: 0.35),
+              )
+              .shake(
+                hz: 0.6,
+                rotation: 0.0,
+                duration: const Duration(seconds: 2),
+              )
+          else
+            Container(
+              height: 8,
+              decoration: BoxDecoration(
+                color: DesignColors.accent.withValues(alpha: 0.25),
+              ),
+            ).animate().shimmer(
+                  duration: 1200.ms,
+                  color: DesignColors.accent.withValues(alpha: 0.4),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.message});
 
@@ -407,7 +542,9 @@ class _ErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: DesignColors.errorSubtle,
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        border: Border.all(color: DesignColors.error.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: DesignColors.error.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,7 +558,11 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: DesignColors.error, fontSize: 13),
+              style: const TextStyle(
+                color: DesignColors.error,
+                fontSize: 13,
+                height: 1.35,
+              ),
             ),
           ),
         ],
