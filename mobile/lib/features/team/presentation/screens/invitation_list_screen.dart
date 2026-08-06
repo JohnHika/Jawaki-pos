@@ -54,48 +54,52 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? DesignColors.darkBg : DesignColors.surface;
+    final surface = isDark ? DesignColors.darkSurface : Colors.white;
+    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
     return Scaffold(
-      backgroundColor: DesignColors.darkBg,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: DesignColors.darkSurface,
+        backgroundColor: surface,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: DesignColors.darkTextPrimary),
+          icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
           onPressed: () => context.pop(),
         ),
-        title: const Text(
+        title: Text(
           'Invitations',
           style: TextStyle(
-            color: DesignColors.darkTextPrimary,
+            color: textPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded,
-                color: DesignColors.darkTextSecondary),
+            icon: Icon(Icons.refresh_rounded, color: textSecondary),
             onPressed: _load,
           ),
         ],
         elevation: 0,
         scrolledUnderElevation: 1,
       ),
-      body: _buildBody(),
+      body: _buildBody(isDark, textPrimary, textSecondary),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(bool isDark, Color textPrimary, Color textSecondary) {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: DesignColors.accent),
       );
     }
     if (_loadError != null) {
-      return _loadFailure();
+      return _loadFailure(isDark, textPrimary, textSecondary);
     }
     if (_invitations.isEmpty) {
-      return _emptyState();
+      return _emptyState(isDark, textPrimary, textSecondary);
     }
     return RefreshIndicator(
       onRefresh: _load,
@@ -103,13 +107,15 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         itemCount: _invitations.length,
-        itemBuilder: (context, index) =>
-            _InvitationCard(invitation: _invitations[index]),
+        itemBuilder: (context, index) => _InvitationCard(
+          invitation: _invitations[index],
+          isDark: isDark,
+        ),
       ),
     );
   }
 
-  Widget _loadFailure() {
+  Widget _loadFailure(bool isDark, Color textPrimary, Color textSecondary) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -119,19 +125,19 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
             const Icon(Icons.cloud_off_outlined,
                 color: DesignColors.warning, size: 48),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Could not load invitations',
               style: TextStyle(
-                color: DesignColors.darkTextPrimary,
+                color: textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Please check your connection and try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: DesignColors.darkTextSecondary),
+              style: TextStyle(color: textSecondary),
             ),
             const SizedBox(height: 20),
             GradientButton(
@@ -147,29 +153,29 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
     );
   }
 
-  Widget _emptyState() {
+  Widget _emptyState(bool isDark, Color textPrimary, Color textSecondary) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.mail_outline_rounded,
-                color: DesignColors.darkTextSecondary, size: 48),
+            Icon(Icons.mail_outline_rounded,
+                color: textSecondary, size: 48),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No invitations sent yet',
               style: TextStyle(
-                color: DesignColors.darkTextPrimary,
+                color: textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Invite staff members to join your company.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: DesignColors.darkTextSecondary),
+              style: TextStyle(color: textSecondary),
             ),
             const SizedBox(height: 20),
             GradientButton(
@@ -188,7 +194,8 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
 
 class _InvitationCard extends StatelessWidget {
   final Map<String, dynamic> invitation;
-  const _InvitationCard({required this.invitation});
+  final bool isDark;
+  const _InvitationCard({required this.invitation, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -216,12 +223,17 @@ class _InvitationCard extends StatelessWidget {
       _ => (DesignColors.warning, Icons.hourglass_empty_rounded, 'Pending'),
     };
 
+    final surface = isDark ? DesignColors.darkSurface : Colors.white;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary = isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface,
+        color: surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -238,8 +250,8 @@ class _InvitationCard extends StatelessWidget {
                     children: [
                       Text(
                         name.isEmpty ? email : name,
-                        style: const TextStyle(
-                          color: DesignColors.darkTextPrimary,
+                        style: TextStyle(
+                          color: textPrimary,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
@@ -248,8 +260,8 @@ class _InvitationCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           email,
-                          style: const TextStyle(
-                            color: DesignColors.darkTextSecondary,
+                          style: TextStyle(
+                            color: textSecondary,
                             fontSize: 13,
                           ),
                         ),
@@ -287,25 +299,25 @@ class _InvitationCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             // Details grid
-            _detailRow(Icons.badge_outlined, 'Role', roleName),
+            _detailRow(Icons.badge_outlined, 'Role', roleName, textSecondary, textPrimary),
             const SizedBox(height: 6),
-            _detailRow(Icons.store_outlined, 'Branch', branchName),
+            _detailRow(Icons.store_outlined, 'Branch', branchName, textSecondary, textPrimary),
             const SizedBox(height: 6),
-            _detailRow(Icons.person_outline, 'Invited by', createdByName),
+            _detailRow(Icons.person_outline, 'Invited by', createdByName, textSecondary, textPrimary),
             if (createdAt.isNotEmpty) ...[
               const SizedBox(height: 6),
               _detailRow(Icons.calendar_today_outlined, 'Sent',
-                  _formatDate(createdAt)),
+                  _formatDate(createdAt), textSecondary, textPrimary),
             ],
             if (acceptedAt != null && acceptedAt.isNotEmpty) ...[
               const SizedBox(height: 6),
               _detailRow(Icons.check_circle_outline, 'Accepted',
-                  _formatDate(acceptedAt)),
+                  _formatDate(acceptedAt), textSecondary, textPrimary),
             ],
             if (expiresAt.isNotEmpty && status == 'PENDING') ...[
               const SizedBox(height: 6),
               _detailRow(Icons.schedule_outlined, 'Expires',
-                  _formatDate(expiresAt)),
+                  _formatDate(expiresAt), textSecondary, textPrimary),
             ],
           ],
         ),
@@ -313,23 +325,23 @@ class _InvitationCard extends StatelessWidget {
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value) {
+  Widget _detailRow(IconData icon, String label, String value, Color textSecondary, Color textPrimary) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: DesignColors.darkTextSecondary),
+        Icon(icon, size: 14, color: textSecondary),
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: const TextStyle(
-            color: DesignColors.darkTextSecondary,
+          style: TextStyle(
+            color: textSecondary,
             fontSize: 13,
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              color: DesignColors.darkTextPrimary,
+            style: TextStyle(
+              color: textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
