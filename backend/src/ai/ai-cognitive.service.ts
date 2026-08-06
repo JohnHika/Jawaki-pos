@@ -2,11 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatRequestDto } from './dto/chat.dto';
 import { AiWebService } from './ai-web.service';
+import { ReportingService } from '../reporting/reporting.service';
+import { InventoryService } from '../inventory/inventory.service';
+import { ReportPeriod } from '../reporting/dto/reporting.dto';
+
+// Tenant/branch resolved server-side from the authenticated request (see
+// AiController) — never trusted from the request body, so callers can't
+// spoof which shop's data gets analyzed.
+export interface CognitiveTenantContext {
+  tenantId: string;
+  branchId?: string;
+}
 
 /**
  * Cognitive AI Service - Agentic Reasoning Engine
  * Implements Super Artificial Intelligence Cognitive Reasoning
- * No hardcoded responses - dynamic analysis and reasoning
+ * Pulls real business data straight from Postgres (via ReportingService /
+ * InventoryService) instead of trusting a caller-supplied data_context —
+ * any data_context on the DTO is merged in only as a supplement.
  */
 @Injectable()
 export class AiCognitiveService {
@@ -14,14 +27,19 @@ export class AiCognitiveService {
 
   constructor(
     private configService: ConfigService,
-    private aiWebService: AiWebService
+    private aiWebService: AiWebService,
+    private reportingService: ReportingService,
+    private inventoryService: InventoryService,
   ) {}
 
   /**
    * Agentic Cognitive Reasoning Engine
    * Analyzes business context, fetches real-time data, and generates insights
    */
-  async cognitiveBusinessAnalysis(dto: ChatRequestDto): Promise<{
+  async cognitiveBusinessAnalysis(
+    dto: ChatRequestDto,
+    tenantCtx: CognitiveTenantContext,
+  ): Promise<{
     analysis: any,
     insights: string[],
     recommendations: any[]
@@ -30,7 +48,7 @@ export class AiCognitiveService {
     const context = this.analyzeBusinessContext(dto);
 
     // Step 2: Gather real-time intelligence
-    const intelligence = await this.gatherIntelligence(context);
+    const intelligence = await this.gatherIntelligence(context, tenantCtx);
 
     // Step 3: Analyze and reason about the data
     const analysis = this.agenticReasoning(context, intelligence);
@@ -66,20 +84,63 @@ export class AiCognitiveService {
 
   /**
    * Gather intelligence from multiple sources
-   * Combines web research with business data
+   * Combines web research with real Postgres business data (sales,
+   * inventory) for the tenant/branch, merging in any caller-supplied
+   * dataPoints as a supplement rather than a replacement.
    */
-  private async gatherIntelligence(context: any): Promise<{
+  private async gatherIntelligence(
+    context: any,
+    tenantCtx: CognitiveTenantContext,
+  ): Promise<{
     webInsights: { insights: string[], sources: any[] },
     businessData: any
   }> {
-    // Search for current business trends and strategies
-    const searchQuery = `${context.businessType} business strategies ${context.location} 2025`;
-    const webInsights = await this.aiWebService.searchBusinessInsights(searchQuery);
+    const [webInsights, businessData] = await Promise.all([
+      this.aiWebService.searchBusinessInsights(
+        `${context.businessType} business strategies ${context.location} 2025`,
+      ),
+      this.fetchLiveBusinessData(tenantCtx),
+    ]);
 
     return {
       webInsights,
-      businessData: context.dataPoints
+      businessData: { ...businessData, ...context.dataPoints },
     };
+  }
+
+  /**
+   * Pulls the same real dashboard/inventory data the daily-brief cron and
+   * chat tool-calling path use, so cognitive analysis reflects the actual
+   * state of the shop rather than whatever (if anything) a caller passed in.
+   */
+  private async fetchLiveBusinessData(tenantCtx: CognitiveTenantContext): Promise<any> {
+    try {
+      const [summary, lowStock] = await Promise.all([
+        this.reportingService.getDashboardSummary(tenantCtx.tenantId, {
+          period: ReportPeriod.THIS_MONTH,
+          branchId: tenantCtx.branchId,
+        }),
+        this.inventoryService.getLowStockAlerts(tenantCtx.tenantId, tenantCtx.branchId),
+      ]);
+
+      return {
+        total_sales: summary.sales.totalRevenue,
+        transactions: summary.sales.totalSales,
+        average_ticket: summary.sales.averageTicket,
+        top_products: summary.topProducts.map((product) => ({
+          name: product.productName,
+          sku: product.sku,
+          category: product.categoryName,
+          quantity_sold: product.quantitySold,
+          revenue: product.revenue,
+        })),
+        low_stock_items: lowStock,
+        low_stock_count: lowStock.length,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch live business data for cognitive analysis: ${error?.message || error}`);
+      return {};
+    }
   }
 
   /**
@@ -249,14 +310,17 @@ export class AiCognitiveService {
    * Proactive Business Monitoring
    * Continuously analyzes business health and detects issues
    */
-  async proactiveMonitor(dto: ChatRequestDto): Promise<{
+  async proactiveMonitor(
+    dto: ChatRequestDto,
+    tenantCtx: CognitiveTenantContext,
+  ): Promise<{
     healthScore: number,
     criticalIssues: any[],
     improvementAreas: any[],
     growthOpportunities: any[]
   }> {
     const context = this.analyzeBusinessContext(dto);
-    const intelligence = await this.gatherIntelligence(context);
+    const intelligence = await this.gatherIntelligence(context, tenantCtx);
     const analysis = this.agenticReasoning(context, intelligence);
 
     // Calculate health score (0-100)
@@ -313,7 +377,10 @@ export class AiCognitiveService {
    * Cognitive Business Advisor
    * Provides comprehensive business advice using agentic reasoning
    */
-  async cognitiveBusinessAdvisor(dto: ChatRequestDto): Promise<{
+  async cognitiveBusinessAdvisor(
+    dto: ChatRequestDto,
+    tenantCtx: CognitiveTenantContext,
+  ): Promise<{
     summary: string,
     keyMetrics: any,
     insights: string[],
@@ -321,8 +388,8 @@ export class AiCognitiveService {
     webSources: any[]
   }> {
     // Perform full cognitive analysis
-    const analysis = await this.cognitiveBusinessAnalysis(dto);
-    const monitoring = await this.proactiveMonitor(dto);
+    const analysis = await this.cognitiveBusinessAnalysis(dto, tenantCtx);
+    const monitoring = await this.proactiveMonitor(dto, tenantCtx);
 
     // Generate summary
     const summary = this.generateBusinessSummary(analysis, monitoring);

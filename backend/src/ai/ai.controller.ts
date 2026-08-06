@@ -383,10 +383,13 @@ export class AiController {
   }
 
   @Post('cognitive/analyze')
-  @UseGuards(AiAccessGuard)
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
   @HttpCode(HttpStatus.OK)
-  async cognitiveAnalysis(@Body() dto: ChatRequestDto) {
-    const result = await this.aiCognitiveService.cognitiveBusinessAnalysis(dto);
+  async cognitiveAnalysis(@Body() dto: ChatRequestDto, @Request() req: any) {
+    const result = await this.aiCognitiveService.cognitiveBusinessAnalysis(
+      dto,
+      this.resolveCognitiveTenantContext(dto, req),
+    );
     return {
       success: true,
       data: result,
@@ -394,10 +397,13 @@ export class AiController {
   }
 
   @Post('cognitive/monitor')
-  @UseGuards(AiAccessGuard)
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
   @HttpCode(HttpStatus.OK)
-  async cognitiveMonitor(@Body() dto: ChatRequestDto) {
-    const result = await this.aiCognitiveService.proactiveMonitor(dto);
+  async cognitiveMonitor(@Body() dto: ChatRequestDto, @Request() req: any) {
+    const result = await this.aiCognitiveService.proactiveMonitor(
+      dto,
+      this.resolveCognitiveTenantContext(dto, req),
+    );
     return {
       success: true,
       data: result,
@@ -405,13 +411,26 @@ export class AiController {
   }
 
   @Post('cognitive/advisor')
-  @UseGuards(AiAccessGuard)
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
   @HttpCode(HttpStatus.OK)
-  async cognitiveAdvisor(@Body() dto: ChatRequestDto) {
-    const result = await this.aiCognitiveService.cognitiveBusinessAdvisor(dto);
+  async cognitiveAdvisor(@Body() dto: ChatRequestDto, @Request() req: any) {
+    const result = await this.aiCognitiveService.cognitiveBusinessAdvisor(
+      dto,
+      this.resolveCognitiveTenantContext(dto, req),
+    );
     return {
       success: true,
       data: result,
+    };
+  }
+
+  // JwtAuthGuard guarantees req.user is populated; branchId may still come
+  // from the request body/header like the rest of the AI endpoints.
+  private resolveCognitiveTenantContext(dto: ChatRequestDto, req: any) {
+    const user = req.user || {};
+    return {
+      tenantId: user.tenantId as string,
+      branchId: (dto.branchId || user.branchId) as string | undefined,
     };
   }
 
