@@ -344,6 +344,8 @@ class _SubscriptionSettingsScreenState
     final nextBilling = _plan?['currentPeriodEnd'] as String?;
     final trialEnds = _plan?['currentPeriodEnd'] as String?;
     final isTrial = status.toUpperCase() == 'TRIAL';
+    final isEnterprise = planName.toUpperCase() == 'ENTERPRISE';
+    final price = isEnterprise ? 'KES 5,000' : 'KES 3,200';
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -421,20 +423,21 @@ class _SubscriptionSettingsScreenState
             ],
           ),
           const SizedBox(height: 20),
-          // Price
+          // Price row
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                planName == 'ENTERPRISE' ? 'KES 5,000' : 'KES 3,200',
+                price,
                 style: DesignType.numeric(
-                  fontSize: 24,
+                  fontSize: 28,
                   fontWeight: FontWeight.w900,
                   color: DesignColors.darkTextPrimary,
                 ),
               ),
               const SizedBox(width: 6),
               const Padding(
-                padding: EdgeInsets.only(bottom: 2),
+                padding: EdgeInsets.only(bottom: 3),
                 child: Text(
                   '/month',
                   style: TextStyle(
@@ -443,19 +446,53 @@ class _SubscriptionSettingsScreenState
                   ),
                 ),
               ),
+              const Spacer(),
+              // Setup fee badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: DesignColors.accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: DesignColors.accent.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: const Text(
+                  'KES 35,000 setup',
+                  style: TextStyle(
+                    color: DesignColors.accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          // Divider
+          Container(
+            height: 1,
+            color: DesignColors.darkBorder.withValues(alpha: 0.6),
+          ),
+          const SizedBox(height: 16),
           // Trial / billing info
           if (isTrial && trialEnds != null) ...[
             _buildInfoRow(
               Icons.timer_outlined,
               'Trial ends ${_formatDate(trialEnds)}',
             ),
+            _buildInfoRow(
+              Icons.credit_card_rounded,
+              'No payment method on file yet',
+            ),
           ] else if (nextBilling != null) ...[
             _buildInfoRow(
               Icons.calendar_today_rounded,
               'Next billing: ${_formatDate(nextBilling)}',
+            ),
+            _buildInfoRow(
+              Icons.check_circle_outline_rounded,
+              'Auto-renew — cancel anytime',
             ),
           ],
         ],
