@@ -325,12 +325,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         ],
       ),
       body: PageContainer(
+        padding: EdgeInsets.zero,
         child: Column(
           children: [
             // Overdue payments — who to follow up with today
             if (_overdueInstallments.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -339,7 +340,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       _loadCustomers();
                     },
                     child: Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: DesignColors.error.withValues(alpha: 0.08),
                         border: Border.all(
@@ -348,19 +350,19 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       child: Row(
                         children: [
                           const Icon(Icons.warning_rounded,
-                              color: DesignColors.error, size: 20),
-                          const SizedBox(width: 10),
+                              color: DesignColors.error, size: 17),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               '${_overdueInstallments.length} overdue payment${_overdueInstallments.length == 1 ? '' : 's'} — follow up today',
                               style: const TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                   color: DesignColors.error),
                             ),
                           ),
                           const Icon(Icons.chevron_right_rounded,
-                              color: DesignColors.error, size: 18),
+                              color: DesignColors.error, size: 17),
                         ],
                       ),
                     ),
@@ -369,44 +371,55 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               ),
             // Search bar
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                    color: surface, border: Border.all(color: border)),
-                child: TextField(
-                  controller: _searchController,
-                  style: TextStyle(color: titleColor),
-                  decoration: InputDecoration(
-                    hintText: 'Search customers...',
-                    hintStyle: TextStyle(color: tertiaryColor),
-                    prefixIcon: Icon(Icons.search_rounded,
-                        size: 20, color: tertiaryColor),
-                    border: InputBorder.none,
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.clear,
-                                size: 18, color: tertiaryColor),
-                            onPressed: () {
-                              _searchController.clear();
-                              _loadCustomers();
-                            })
-                        : null,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+              child: TextField(
+                controller: _searchController,
+                style: TextStyle(color: titleColor),
+                decoration: InputDecoration(
+                  hintText: 'Search customers...',
+                  hintStyle: TextStyle(color: tertiaryColor),
+                  filled: true,
+                  fillColor: surface,
+                  prefixIcon: Icon(Icons.search_rounded,
+                      size: 19, color: tertiaryColor),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: border),
                   ),
-                  onChanged: (v) {
-                    setState(() {});
-                    _loadCustomers(query: v);
-                  },
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        const BorderSide(color: DesignColors.brand, width: 1.5),
+                  ),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon:
+                              Icon(Icons.clear, size: 18, color: tertiaryColor),
+                          onPressed: () {
+                            _searchController.clear();
+                            _loadCustomers();
+                          })
+                      : null,
                 ),
+                onChanged: (v) {
+                  setState(() {});
+                  _loadCustomers(query: v);
+                },
               ),
             ),
             // Filter: everyone vs. customers who owe money
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
               child: Row(
                 children: [
                   ChoiceChip(
                     label: const Text('All customers'),
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: const TextStyle(fontSize: 12),
                     selected: !_showDebtOnly,
                     onSelected: (_) {
                       setState(() => _showDebtOnly = false);
@@ -418,6 +431,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     label: const Text('Owes money'),
                     avatar: const Icon(Icons.account_balance_wallet_outlined,
                         size: 16),
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: const TextStyle(fontSize: 12),
                     selected: _showDebtOnly,
                     selectedColor: DesignColors.error.withValues(alpha: 0.15),
                     onSelected: (_) {

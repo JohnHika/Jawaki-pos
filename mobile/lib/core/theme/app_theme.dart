@@ -7,6 +7,7 @@ class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
+      splashFactory: InkRipple.splashFactory,
       brightness: Brightness.light,
       fontFamily: DesignType.body.fontFamily,
       colorScheme: const ColorScheme.light(
@@ -48,7 +49,8 @@ class AppTheme {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          side: const BorderSide(color: DesignColors.surfaceBorder, width: 0.75),
+          side:
+              const BorderSide(color: DesignColors.surfaceBorder, width: 0.75),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -175,110 +177,112 @@ class AppTheme {
         thickness: 0.5,
         space: 1,
       ),
-      textTheme: DesignType.textTheme.apply(
-        bodyColor: DesignColors.textPrimary,
-        displayColor: DesignColors.textPrimary,
-      ).merge(const TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 57,
-          fontWeight: FontWeight.w400,
-          letterSpacing: -0.25,
-          height: 1.12,
-        ),
-        displayMedium: TextStyle(
-          fontSize: 45,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0,
-          height: 1.16,
-        ),
-        displaySmall: TextStyle(
-          fontSize: 36,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0,
-          height: 1.22,
-        ),
-        headlineLarge: TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
-          height: 1.25,
-          color: DesignColors.textPrimary,
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.3,
-          height: 1.3,
-          color: DesignColors.textPrimary,
-        ),
-        headlineSmall: TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.2,
-          height: 1.35,
-          color: DesignColors.textPrimary,
-        ),
-        titleLarge: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.2,
-          height: 1.3,
-          color: DesignColors.textPrimary,
-        ),
-        titleMedium: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0,
-          height: 1.4,
-          color: DesignColors.textPrimary,
-        ),
-        titleSmall: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0,
-          height: 1.4,
-          color: DesignColors.textPrimary,
-        ),
-        bodyLarge: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0,
-          height: 1.5,
-          color: DesignColors.textPrimary,
-        ),
-        bodyMedium: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0,
-          height: 1.5,
-          color: DesignColors.textSecondary,
-        ),
-        bodySmall: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0,
-          height: 1.4,
-          color: DesignColors.textTertiary,
-        ),
-        labelLarge: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
-          height: 1.4,
-        ),
-        labelMedium: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-          height: 1.3,
-        ),
-        labelSmall: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-          height: 1.4,
-        ),
-      )),
+      textTheme: DesignType.textTheme
+          .apply(
+            bodyColor: DesignColors.textPrimary,
+            displayColor: DesignColors.textPrimary,
+          )
+          .merge(const TextTheme(
+            displayLarge: TextStyle(
+              fontSize: 57,
+              fontWeight: FontWeight.w400,
+              letterSpacing: -0.25,
+              height: 1.12,
+            ),
+            displayMedium: TextStyle(
+              fontSize: 45,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+              height: 1.16,
+            ),
+            displaySmall: TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+              height: 1.22,
+            ),
+            headlineLarge: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+              height: 1.25,
+              color: DesignColors.textPrimary,
+            ),
+            headlineMedium: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+              height: 1.3,
+              color: DesignColors.textPrimary,
+            ),
+            headlineSmall: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+              height: 1.35,
+              color: DesignColors.textPrimary,
+            ),
+            titleLarge: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+              height: 1.3,
+              color: DesignColors.textPrimary,
+            ),
+            titleMedium: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+              height: 1.4,
+              color: DesignColors.textPrimary,
+            ),
+            titleSmall: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+              height: 1.4,
+              color: DesignColors.textPrimary,
+            ),
+            bodyLarge: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+              height: 1.5,
+              color: DesignColors.textPrimary,
+            ),
+            bodyMedium: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+              height: 1.5,
+              color: DesignColors.textSecondary,
+            ),
+            bodySmall: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
+              height: 1.4,
+              color: DesignColors.textTertiary,
+            ),
+            labelLarge: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.1,
+              height: 1.4,
+            ),
+            labelMedium: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+              height: 1.3,
+            ),
+            labelSmall: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+              height: 1.4,
+            ),
+          )),
       iconTheme: const IconThemeData(
         color: DesignColors.textPrimary,
         size: 24,
@@ -305,28 +309,31 @@ class AppTheme {
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
+      splashFactory: InkRipple.splashFactory,
       brightness: Brightness.dark,
       fontFamily: DesignType.body.fontFamily,
-      textTheme: DesignType.textTheme.apply(
-        bodyColor: DesignColors.darkTextPrimary,
-        displayColor: DesignColors.darkTextPrimary,
-      ).merge(const TextTheme(
-        headlineLarge: TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
-          color: DesignColors.darkTextPrimary,
-        ),
-        titleMedium: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: DesignColors.darkTextPrimary,
-        ),
-        bodyMedium: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-          color: DesignColors.darkTextSecondary,
-        ),
-      )),
+      textTheme: DesignType.textTheme
+          .apply(
+            bodyColor: DesignColors.darkTextPrimary,
+            displayColor: DesignColors.darkTextPrimary,
+          )
+          .merge(const TextTheme(
+            headlineLarge: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w700,
+              color: DesignColors.darkTextPrimary,
+            ),
+            titleMedium: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: DesignColors.darkTextPrimary,
+            ),
+            bodyMedium: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: DesignColors.darkTextSecondary,
+            ),
+          )),
       colorScheme: const ColorScheme.dark(
         primary: DesignColors.accent,
         onPrimary: Colors.black,

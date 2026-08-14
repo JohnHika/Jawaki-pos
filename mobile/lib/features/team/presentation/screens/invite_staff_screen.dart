@@ -60,7 +60,8 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
       setState(() {
         _roles = roles;
         _branches = branches;
-        _selectedRoleId = roles.isNotEmpty ? roles.first['id'].toString() : null;
+        _selectedRoleId =
+            roles.isNotEmpty ? roles.first['id'].toString() : null;
         _selectedBranchId =
             branches.isNotEmpty ? branches.first['id'].toString() : null;
         _isLoading = false;
@@ -117,26 +118,31 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      appBar: AppBar(
-        backgroundColor: DesignColors.darkSurface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: DesignColors.darkTextPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Invite Staff',
-          style: TextStyle(
-            color: DesignColors.darkTextPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        elevation: 0,
-        scrolledUnderElevation: 1,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
       ),
-      body: _buildBody(),
+      child: Scaffold(
+        backgroundColor: DesignColors.darkBg,
+        appBar: AppBar(
+          backgroundColor: DesignColors.darkSurface,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded,
+                color: DesignColors.darkTextPrimary),
+            onPressed: () => context.pop(),
+          ),
+          title: const Text(
+            'Invite Staff',
+            style: TextStyle(
+              color: DesignColors.darkTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          elevation: 0,
+          scrolledUnderElevation: 1,
+        ),
+        body: _buildBody(),
+      ),
     );
   }
 
@@ -407,8 +413,7 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
 
   String? _emailValidator(String? value) {
     if (value == null || value.trim().isEmpty) return 'Required';
-    return RegExp(r'^[\w.+-]+@([\w-]+\.)+[\w-]{2,}$')
-            .hasMatch(value.trim())
+    return RegExp(r'^[\w.+-]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(value.trim())
         ? null
         : 'Enter a valid email address';
   }

@@ -230,14 +230,10 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Sales Report',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: DesignColors.brand),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child:
+                    StatusBadge(label: range.label, color: DesignColors.brand),
               ),
               const SizedBox(height: 8),
               // Report navigation tabs
@@ -359,14 +355,10 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Payment Methods',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: DesignColors.accent),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child:
+                    StatusBadge(label: range.label, color: DesignColors.accent),
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -478,14 +470,10 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Cashier Performance',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: DesignColors.accent),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child:
+                    StatusBadge(label: range.label, color: DesignColors.accent),
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -554,14 +542,10 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Category Sales',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: DesignColors.info),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child:
+                    StatusBadge(label: range.label, color: DesignColors.info),
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -673,14 +657,10 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Top Products',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  StatusBadge(label: range.label, color: DesignColors.warning),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: StatusBadge(
+                    label: range.label, color: DesignColors.warning),
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -751,9 +731,7 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Text('Inventory Report',
-                  style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 4),
               const SizedBox(height: 12),
               Expanded(
                 child: dataAsync.when(
@@ -838,29 +816,11 @@ class ReportsScreen extends ConsumerWidget {
       maxSize: 0.95,
       child: Consumer(builder: (ctx, ref, _) {
         final db = getIt<AppDatabase>();
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        final secondaryColor = isDark
-            ? DesignColors.darkTextSecondary
-            : DesignColors.textSecondary;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Customer Report',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  // Add a close button for Customer Report
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    color: secondaryColor,
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
               const SizedBox(height: 8),
               // Report navigation tabs
               SingleChildScrollView(

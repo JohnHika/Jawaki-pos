@@ -212,8 +212,7 @@ const kAvailablePlans = [
           includedInEnterprise: true),
       PlanFeature(text: 'AI-powered insights', includedInEnterprise: true),
       PlanFeature(
-          text: 'Priority phone & email support',
-          includedInEnterprise: true),
+          text: 'Priority phone & email support', includedInEnterprise: true),
       PlanFeature(text: '7-day free trial', includedInEnterprise: true),
     ],
   ),
@@ -288,76 +287,81 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            _buildAmbientField(),
-            ListView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 28),
-                Text(
-                  'Choose your plan',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: DesignColors.darkTextPrimary,
-                        fontWeight: FontWeight.w800,
-                        height: 1.05,
-                      ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  widget.companyName == null || widget.companyName!.isEmpty
-                      ? 'Start with a 7-day free trial. No subscription charges until your trial ends.'
-                      : '${widget.companyName} is ready. Pick a plan to start your 7-day free trial.',
-                  style: const TextStyle(
-                    color: DesignColors.darkTextSecondary,
-                    fontSize: 15,
-                    height: 1.45,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
+      ),
+      child: Scaffold(
+        backgroundColor: DesignColors.darkBg,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              _buildAmbientField(),
+              ListView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 28),
+                  Text(
+                    'Choose your plan',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: DesignColors.darkTextPrimary,
+                          fontWeight: FontWeight.w800,
+                          height: 1.05,
+                        ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                // Plan cards
-                for (final plan in kAvailablePlans) ...[
-                  _buildPlanCard(plan),
-                  const SizedBox(height: 14),
-                ],
-                const SizedBox(height: 8),
-                _buildSetupFeeNotice(),
-                const SizedBox(height: 22),
-                if (_error != null) ...[
-                  _buildErrorCard(_error!),
-                  const SizedBox(height: 16),
-                ],
-                GradientButton(
-                  label: _isSubmitting
-                      ? 'Starting your free trial…'
-                      : 'Start 7-Day Free Trial',
-                  icon: Icons.rocket_launch_rounded,
-                  onPressed: _selectedPlanId != null && !_isSubmitting
-                      ? _startFreeTrial
-                      : null,
-                  height: 58,
-                  borderRadius: 16,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'A one-time KSh 35,000 setup fee applies before your free trial begins. Cancel anytime during the trial.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: DesignColors.darkTextTertiary,
-                    fontSize: 12,
-                    height: 1.4,
+                  const SizedBox(height: 10),
+                  Text(
+                    widget.companyName == null || widget.companyName!.isEmpty
+                        ? 'Start with a 7-day free trial. No subscription charges until your trial ends.'
+                        : '${widget.companyName} is ready. Pick a plan to start your 7-day free trial.',
+                    style: const TextStyle(
+                      color: DesignColors.darkTextSecondary,
+                      fontSize: 15,
+                      height: 1.45,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 36),
-                _buildComparisonSection(),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ],
+                  const SizedBox(height: 24),
+                  // Plan cards
+                  for (final plan in kAvailablePlans) ...[
+                    _buildPlanCard(plan),
+                    const SizedBox(height: 14),
+                  ],
+                  const SizedBox(height: 8),
+                  _buildSetupFeeNotice(),
+                  const SizedBox(height: 22),
+                  if (_error != null) ...[
+                    _buildErrorCard(_error!),
+                    const SizedBox(height: 16),
+                  ],
+                  GradientButton(
+                    label: _isSubmitting
+                        ? 'Starting your free trial…'
+                        : 'Start 7-Day Free Trial',
+                    icon: Icons.rocket_launch_rounded,
+                    onPressed: _selectedPlanId != null && !_isSubmitting
+                        ? _startFreeTrial
+                        : null,
+                    height: 58,
+                    borderRadius: 16,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'A one-time KSh 35,000 setup fee applies before your free trial begins. Cancel anytime during the trial.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: DesignColors.darkTextTertiary,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+                  _buildComparisonSection(),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -467,11 +471,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: DesignColors.accent.withValues(alpha: 0.15),
+                                color:
+                                    DesignColors.accent.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(999),
                                 border: Border.all(
-                                  color:
-                                      DesignColors.accent.withValues(alpha: 0.4),
+                                  color: DesignColors.accent
+                                      .withValues(alpha: 0.4),
                                 ),
                               ),
                               child: const Text(
@@ -732,7 +737,8 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: DesignColors.darkBorder.withValues(alpha: 0.5)),
+          bottom:
+              BorderSide(color: DesignColors.darkBorder.withValues(alpha: 0.5)),
         ),
       ),
       child: Row(

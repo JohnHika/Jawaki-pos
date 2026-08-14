@@ -67,126 +67,131 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      appBar: AppBar(
-        backgroundColor: DesignColors.darkSurface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: DesignColors.darkTextPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Accept Invitation',
-          style: TextStyle(
-            color: DesignColors.darkTextPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        elevation: 0,
-        scrolledUnderElevation: 1,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              const Icon(Icons.mail_lock_rounded,
-                  color: DesignColors.brand, size: 40),
-              const SizedBox(height: 12),
-              const Text(
-                'Enter your invitation code',
-                style: TextStyle(
-                  color: DesignColors.darkTextPrimary,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
+      child: Scaffold(
+        backgroundColor: DesignColors.darkBg,
+        appBar: AppBar(
+          backgroundColor: DesignColors.darkSurface,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded,
+                color: DesignColors.darkTextPrimary),
+            onPressed: () => context.pop(),
+          ),
+          title: const Text(
+            'Accept Invitation',
+            style: TextStyle(
+              color: DesignColors.darkTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          elevation: 0,
+          scrolledUnderElevation: 1,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                const Icon(Icons.mail_lock_rounded,
+                    color: DesignColors.brand, size: 40),
+                const SizedBox(height: 12),
+                const Text(
+                  'Enter your invitation code',
+                  style: TextStyle(
+                    color: DesignColors.darkTextPrimary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'A verification code was sent to your email. '
-                'Enter it below to accept the invitation and join your team.',
-                style: TextStyle(
-                  color: DesignColors.darkTextSecondary,
-                  height: 1.4,
+                const SizedBox(height: 6),
+                const Text(
+                  'A verification code was sent to your email. '
+                  'Enter it below to accept the invitation and join your team.',
+                  style: TextStyle(
+                    color: DesignColors.darkTextSecondary,
+                    height: 1.4,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // OTP / Code field
-              TextFormField(
-                controller: _codeController,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter the code from your email';
-                  }
-                  if (value.trim().length < 4) {
-                    return 'The code must be at least 4 characters';
-                  }
-                  return null;
-                },
-                keyboardType: TextInputType.text,
-                textCapitalization: TextCapitalization.none,
-                autocorrect: false,
-                style: const TextStyle(
-                  color: DesignColors.darkTextPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 4,
-                ),
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  labelText: 'Verification code',
-                  labelStyle:
-                      const TextStyle(color: DesignColors.darkTextSecondary),
-                  hintText: '000000',
-                  hintStyle: TextStyle(
-                    color: DesignColors.darkTextTertiary.withValues(alpha: 0.5),
+                // OTP / Code field
+                TextFormField(
+                  controller: _codeController,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter the code from your email';
+                    }
+                    if (value.trim().length < 4) {
+                      return 'The code must be at least 4 characters';
+                    }
+                    return null;
+                  },
+                  keyboardType: TextInputType.text,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  style: const TextStyle(
+                    color: DesignColors.darkTextPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 4,
                   ),
-                  prefixIcon: const Icon(Icons.pin_outlined,
-                      color: DesignColors.darkTextSecondary),
-                  filled: true,
-                  fillColor: DesignColors.darkSurfaceElevated,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.accent, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: DesignColors.error),
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    labelText: 'Verification code',
+                    labelStyle:
+                        const TextStyle(color: DesignColors.darkTextSecondary),
+                    hintText: '000000',
+                    hintStyle: TextStyle(
+                      color:
+                          DesignColors.darkTextTertiary.withValues(alpha: 0.5),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 4,
+                    ),
+                    prefixIcon: const Icon(Icons.pin_outlined,
+                        color: DesignColors.darkTextSecondary),
+                    filled: true,
+                    fillColor: DesignColors.darkSurfaceElevated,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: DesignColors.darkBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: DesignColors.darkBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                          color: DesignColors.accent, width: 2),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: DesignColors.error),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 28),
+                const SizedBox(height: 28),
 
-              // Submit button
-              GradientButton(
-                label: 'Accept invitation',
-                icon: Icons.check_circle_outline_rounded,
-                isLoading: _isSubmitting,
-                onPressed: _isSubmitting ? null : _submit,
-                height: 54,
-                borderRadius: 14,
-              ),
-            ],
+                // Submit button
+                GradientButton(
+                  label: 'Accept invitation',
+                  icon: Icons.check_circle_outline_rounded,
+                  isLoading: _isSubmitting,
+                  onPressed: _isSubmitting ? null : _submit,
+                  height: 54,
+                  borderRadius: 14,
+                ),
+              ],
+            ),
           ),
         ),
       ),

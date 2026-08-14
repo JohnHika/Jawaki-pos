@@ -122,90 +122,96 @@ class _SubscriptionSettingsScreenState
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
-          return AlertDialog(
-            backgroundColor: DesignColors.darkSurfaceElevated,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: const BorderSide(color: DesignColors.darkBorder),
+          return Theme(
+            data: Theme.of(dialogContext).copyWith(
+              splashFactory: InkRipple.splashFactory,
             ),
-            title: const Text(
-              'Change Plan',
-              style: TextStyle(
-                color: DesignColors.darkTextPrimary,
-                fontWeight: FontWeight.w800,
+            child: AlertDialog(
+              backgroundColor: DesignColors.darkSurfaceElevated,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: DesignColors.darkBorder),
               ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Select a new plan. Changes take effect immediately.',
-                  style: TextStyle(
-                    color: DesignColors.darkTextSecondary,
-                    fontSize: 13,
+              title: const Text(
+                'Change Plan',
+                style: TextStyle(
+                  color: DesignColors.darkTextPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Select a new plan. Changes take effect immediately.',
+                    style: TextStyle(
+                      color: DesignColors.darkTextSecondary,
+                      fontSize: 13,
+                    ),
                   ),
+                  const SizedBox(height: 16),
+                  // CORE plan option
+                  _PlanOptionTile(
+                    name: 'CORE',
+                    price: 'KES 3,200/mo',
+                    isSelected: selectedPlanId == 'core',
+                    isCurrent: currentPlanId == 'core',
+                    onTap: () => setDialogState(() => selectedPlanId = 'core'),
+                  ),
+                  const SizedBox(height: 8),
+                  // ENTERPRISE plan option
+                  _PlanOptionTile(
+                    name: 'ENTERPRISE',
+                    price: 'KES 5,000/mo',
+                    isSelected: selectedPlanId == 'enterprise',
+                    isCurrent: currentPlanId == 'enterprise',
+                    onTap: () =>
+                        setDialogState(() => selectedPlanId = 'enterprise'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
-                const SizedBox(height: 16),
-                // CORE plan option
-                _PlanOptionTile(
-                  name: 'CORE',
-                  price: 'KES 3,200/mo',
-                  isSelected: selectedPlanId == 'core',
-                  isCurrent: currentPlanId == 'core',
-                  onTap: () => setDialogState(() => selectedPlanId = 'core'),
-                ),
-                const SizedBox(height: 8),
-                // ENTERPRISE plan option
-                _PlanOptionTile(
-                  name: 'ENTERPRISE',
-                  price: 'KES 5,000/mo',
-                  isSelected: selectedPlanId == 'enterprise',
-                  isCurrent: currentPlanId == 'enterprise',
-                  onTap: () =>
-                      setDialogState(() => selectedPlanId = 'enterprise'),
+                GradientButton(
+                  label:
+                      'Change to ${selectedPlanId == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
+                  expanded: false,
+                  height: 42,
+                  borderRadius: 12,
+                  onPressed: () async {
+                    final target = selectedPlanId ?? currentPlanId;
+                    if (target == currentPlanId) {
+                      Navigator.pop(dialogContext);
+                      return;
+                    }
+                    setState(() => _isChangingPlan = true);
+                    try {
+                      await _apiClient.changeSubscriptionPlan(planId: target);
+                      if (!dialogContext.mounted) return;
+                      Navigator.pop(dialogContext);
+                      if (!mounted) return;
+                      await _loadPlan();
+                      if (!mounted) return;
+                      if (!context.mounted) return;
+                      showGlassSnackBar(
+                        context,
+                        'Plan changed to ${target == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
+                        icon: Icons.check_circle_rounded,
+                        color: DesignColors.success,
+                      );
+                    } catch (e) {
+                      if (!dialogContext.mounted) return;
+                      Navigator.pop(dialogContext);
+                    } finally {
+                      if (mounted) setState(() => _isChangingPlan = false);
+                    }
+                  },
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              GradientButton(
-                label: 'Change to ${selectedPlanId == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
-                expanded: false,
-                height: 42,
-                borderRadius: 12,
-                onPressed: () async {
-                  final target = selectedPlanId ?? currentPlanId;
-                  if (target == currentPlanId) {
-                    Navigator.pop(dialogContext);
-                    return;
-                  }
-                  setState(() => _isChangingPlan = true);
-                  try {
-                    await _apiClient.changeSubscriptionPlan(planId: target);
-                    if (!dialogContext.mounted) return;
-                    Navigator.pop(dialogContext);
-                    if (!mounted) return;
-                    await _loadPlan();
-                    if (!mounted) return;
-                    if (!context.mounted) return;
-                    showGlassSnackBar(
-                      context,
-                      'Plan changed to ${target == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
-                      icon: Icons.check_circle_rounded,
-                      color: DesignColors.success,
-                    );
-                  } catch (e) {
-                    if (!dialogContext.mounted) return;
-                    Navigator.pop(dialogContext);
-                  } finally {
-                    if (mounted) setState(() => _isChangingPlan = false);
-                  }
-                },
-              ),
-            ],
           );
         },
       ),
@@ -238,71 +244,74 @@ class _SubscriptionSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      appBar: AppBar(
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
+      ),
+      child: Scaffold(
         backgroundColor: DesignColors.darkBg,
-        title: const Text(
-          'Subscription',
-          style: TextStyle(
-            color: DesignColors.darkTextPrimary,
-            fontWeight: FontWeight.w800,
+        appBar: AppBar(
+          backgroundColor: DesignColors.darkBg,
+          title: const Text(
+            'Subscription',
+            style: TextStyle(
+              color: DesignColors.darkTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded,
+                color: DesignColors.darkTextPrimary),
+            onPressed: () => context.pop(),
           ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: DesignColors.darkTextPrimary),
-          onPressed: () => context.pop(),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          // ── Current Plan Card ──
-          _buildCurrentPlanCard(),
-          const SizedBox(height: 20),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            // ── Current Plan Card ──
+            _buildCurrentPlanCard(),
+            const SizedBox(height: 20),
 
-          // ── Change Plan Button ──
-          if (!_isLoadingPlan && _plan != null) ...[
-            GradientButton(
-              label: _isChangingPlan
-                  ? 'Changing plan…'
-                  : 'Change Plan',
-              icon: Icons.swap_horiz_rounded,
-              onPressed: _isChangingPlan ? null : _showChangePlanDialog,
-              height: 52,
-              borderRadius: 16,
-            ),
-            const SizedBox(height: 24),
-          ],
-
-          // ── Error ──
-          if (_error != null) ...[
-            _buildErrorCard(_error!),
-            const SizedBox(height: 16),
-          ],
-
-          // ── What's included in your plan ──
-          if (!_isLoadingPlan && _plan != null) ...[
-            _buildFeatureBreakdownCard(),
-            const SizedBox(height: 24),
-          ],
-
-          // ── Invoice History ──
-          const SettingsGroupLabel('Invoice History'),
-          const SizedBox(height: 8),
-          if (_isLoadingInvoices)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(),
+            // ── Change Plan Button ──
+            if (!_isLoadingPlan && _plan != null) ...[
+              GradientButton(
+                label: _isChangingPlan ? 'Changing plan…' : 'Change Plan',
+                icon: Icons.swap_horiz_rounded,
+                onPressed: _isChangingPlan ? null : _showChangePlanDialog,
+                height: 52,
+                borderRadius: 16,
               ),
-            )
-          else if (_invoices.isEmpty)
-            _buildEmptyInvoices()
-          else
-            ..._invoices.map((inv) => _buildInvoiceRow(inv)),
-        ],
+              const SizedBox(height: 24),
+            ],
+
+            // ── Error ──
+            if (_error != null) ...[
+              _buildErrorCard(_error!),
+              const SizedBox(height: 16),
+            ],
+
+            // ── What's included in your plan ──
+            if (!_isLoadingPlan && _plan != null) ...[
+              _buildFeatureBreakdownCard(),
+              const SizedBox(height: 24),
+            ],
+
+            // ── Invoice History ──
+            const SettingsGroupLabel('Invoice History'),
+            const SizedBox(height: 8),
+            if (_isLoadingInvoices)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_invoices.isEmpty)
+              _buildEmptyInvoices()
+            else
+              ..._invoices.map((inv) => _buildInvoiceRow(inv)),
+          ],
+        ),
       ),
     );
   }
@@ -449,7 +458,8 @@ class _SubscriptionSettingsScreenState
               const Spacer(),
               // Setup fee badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: DesignColors.accent.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -523,7 +533,8 @@ class _SubscriptionSettingsScreenState
     final amount = invoice['amount'] as num? ?? 0;
     final currency = invoice['currency'] as String? ?? 'KES';
     final status = invoice['status'] as String? ?? '';
-    final date = invoice['date'] as String? ?? invoice['createdAt'] as String? ?? '';
+    final date =
+        invoice['date'] as String? ?? invoice['createdAt'] as String? ?? '';
     final description = invoice['description'] as String? ?? 'Subscription';
 
     return Container(

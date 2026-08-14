@@ -490,104 +490,104 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final briefAsync = ref.watch(_aiDailyBriefProvider);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border(
-          left: const BorderSide(color: DesignColors.accent, width: 3),
-          top: BorderSide(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorder),
-          right: BorderSide(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorder),
-          bottom: BorderSide(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorder),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final cardBorder =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              AxonAiIcon(
-                tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'AI BRIEF',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                  color: isDark
-                      ? DesignColors.darkTextTertiary
-                      : DesignColors.textTertiary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          briefAsync.when(
-            data: (brief) {
-              // A real AI-generated brief was returned — show it as-is
-              // instead of the templated fallback snippets.
-              if (brief != null && brief.trim().isNotEmpty) {
-                // Real markdown rendering (bold, tables, lists) — the AI's
-                // reply can include a markdown table of restock priorities,
-                // which a plain Text widget would show as literal
-                // "**bold**" and "| pipe | text |" instead of formatting.
-                return GptMarkdown(
-                  brief.trim(),
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    height: 1.45,
-                    color: isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary,
-                  ),
-                );
-              }
-              return _buildBriefSnippets(
-                  _fallbackBriefSnippets(summary), isDark);
-            },
-            loading: () => Row(
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+              border: Border.all(color: cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 13,
-                  height: 13,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.8,
-                    color: isDark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
-                  ),
+                Row(
+                  children: [
+                    AxonAiIcon(
+                      tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'AI BRIEF',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'Thinking about today\'s numbers...',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    color: isDark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
+                const SizedBox(height: 12),
+                briefAsync.when(
+                  data: (brief) {
+                    // A real AI-generated brief was returned — show it as-is
+                    // instead of the templated fallback snippets.
+                    if (brief != null && brief.trim().isNotEmpty) {
+                      // Real markdown rendering (bold, tables, lists) — the AI's
+                      // reply can include a markdown table of restock priorities,
+                      // which a plain Text widget would show as literal
+                      // "**bold**" and "| pipe | text |" instead of formatting.
+                      return GptMarkdown(
+                        brief.trim(),
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          height: 1.45,
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary,
+                        ),
+                      );
+                    }
+                    return _buildBriefSnippets(
+                        _fallbackBriefSnippets(summary), isDark);
+                  },
+                  loading: () => Row(
+                    children: [
+                      SizedBox(
+                        width: 13,
+                        height: 13,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.8,
+                          color: isDark
+                              ? DesignColors.darkTextTertiary
+                              : DesignColors.textTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Thinking about today\'s numbers...',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          color: isDark
+                              ? DesignColors.darkTextTertiary
+                              : DesignColors.textTertiary,
+                        ),
+                      ),
+                    ],
                   ),
+                  // Offline / AI unreachable — degrade to the templated snippets
+                  // instead of showing an error where a business insight was
+                  // expected.
+                  error: (_, __) => _buildBriefSnippets(
+                      _fallbackBriefSnippets(summary), isDark),
                 ),
               ],
             ),
-            // Offline / AI unreachable — degrade to the templated snippets
-            // instead of showing an error where a business insight was
-            // expected.
-            error: (_, __) =>
-                _buildBriefSnippets(_fallbackBriefSnippets(summary), isDark),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(width: 3, color: DesignColors.accent),
           ),
         ],
       ),
@@ -641,86 +641,87 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }) {
     final profit = revenue - cost;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border(
-          left: const BorderSide(color: DesignColors.success, width: 3),
-          top: BorderSide(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorder),
-          right: BorderSide(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorder),
-          bottom: BorderSide(
-              color: isDark
-                  ? DesignColors.darkBorder
-                  : DesignColors.surfaceBorder),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final cardBorder =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              Text(
-                "TODAY'S COST & PROFIT",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                  color: isDark
-                      ? DesignColors.darkTextTertiary
-                      : DesignColors.textTertiary,
-                ),
-              ),
-              const Spacer(),
-              InkWell(
-                onTap: isLoading
-                    ? null
-                    : () => _openProfitAdjustment(context, ref, revenue, cost),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+              border: Border.all(color: cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Icon(Icons.tune_rounded,
-                        size: 14, color: DesignColors.accent),
-                    SizedBox(width: 4),
-                    Text('ADJUST',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                          color: DesignColors.accent,
-                        )),
+                    Text(
+                      "TODAY'S COST & PROFIT",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
+                      ),
+                    ),
+                    const Spacer(),
+                    InkWell(
+                      onTap: isLoading
+                          ? null
+                          : () => _openProfitAdjustment(
+                              context, ref, revenue, cost),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.tune_rounded,
+                              size: 14, color: DesignColors.accent),
+                          SizedBox(width: 4),
+                          Text('ADJUST',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                                color: DesignColors.accent,
+                              )),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _costMetric(
+                        'Cost of Goods',
+                        isLoading ? '—' : 'KES ${cost.toStringAsFixed(0)}',
+                        isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
+                      ),
+                    ),
+                    Expanded(
+                      child: _costMetric(
+                        'Profit',
+                        isLoading ? '—' : 'KES ${profit.toStringAsFixed(0)}',
+                        DesignColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _costMetric(
-                  'Cost of Goods',
-                  isLoading ? '—' : 'KES ${cost.toStringAsFixed(0)}',
-                  isDark
-                      ? DesignColors.darkTextPrimary
-                      : DesignColors.textPrimary,
-                ),
-              ),
-              Expanded(
-                child: _costMetric(
-                  'Profit',
-                  isLoading ? '—' : 'KES ${profit.toStringAsFixed(0)}',
-                  DesignColors.success,
-                ),
-              ),
-            ],
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(width: 3, color: DesignColors.success),
           ),
         ],
       ),

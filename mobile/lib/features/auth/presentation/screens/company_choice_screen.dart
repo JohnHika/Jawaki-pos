@@ -122,108 +122,113 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
     final size = MediaQuery.sizeOf(context);
     final isCompact = size.height < 760;
 
-    return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _orbitController,
-                  builder: (context, child) => CustomPaint(
-                    key: const ValueKey('entry-motion-field'),
-                    painter: _MotionFieldPainter(
-                      progress: _orbitController.value,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
+      ),
+      child: Scaffold(
+        backgroundColor: DesignColors.darkBg,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _orbitController,
+                    builder: (context, child) => CustomPaint(
+                      key: const ValueKey('entry-motion-field'),
+                      painter: _MotionFieldPainter(
+                        progress: _orbitController.value,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                24,
-                isCompact ? 18 : 28,
-                24,
-                isCompact ? 24 : 34,
-              ),
-              child: FadeTransition(
-                opacity: _entryAnimation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.035),
-                    end: Offset.zero,
-                  ).animate(_entryAnimation),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTopBar(),
-                      SizedBox(height: isCompact ? 26 : 38),
-                      _buildHero(isCompact),
-                      SizedBox(height: isCompact ? 24 : 32),
-                      _buildActionCard(
-                        index: '01',
-                        icon: Icons.add_business_rounded,
-                        title: 'Create your workspace',
-                        subtitle:
-                            'Set up your business and make your first sale.',
-                        detail: 'Owner setup · about 2 minutes',
-                        isPrimary: true,
-                        onTap: () => context.go('/company-setup'),
-                      ),
-                      const SizedBox(height: 14),
-                      _buildActionCard(
-                        index: '02',
-                        icon: Icons.login_rounded,
-                        title: 'Join an existing business',
-                        subtitle:
-                            'Use your company code to connect this device.',
-                        detail: 'Staff access · ready when you are',
-                        isPrimary: false,
-                        onTap: () => context.push('/login'),
-                      ),
-                      const SizedBox(height: 26),
-                      Center(
-                        child: AnimatedSwitcher(
-                          duration: DesignAnimation.fast,
-                          child: _showBackendLink
-                              ? TextButton.icon(
-                                  key: const ValueKey('backend-link'),
-                                  onPressed: _showServerUrlDialog,
-                                  style: TextButton.styleFrom(
-                                    foregroundColor:
-                                        DesignColors.darkTextTertiary,
-                                  ),
-                                  icon:
-                                      const Icon(Icons.tune_rounded, size: 16),
-                                  label: const Text(
-                                    'Connect to a different backend',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                )
-                              : const SizedBox(
-                                  key: ValueKey('backend-link-hidden'),
-                                  height: 28,
-                                ),
+              SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  isCompact ? 18 : 28,
+                  24,
+                  isCompact ? 24 : 34,
+                ),
+                child: FadeTransition(
+                  opacity: _entryAnimation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.035),
+                      end: Offset.zero,
+                    ).animate(_entryAnimation),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTopBar(),
+                        SizedBox(height: isCompact ? 26 : 38),
+                        _buildHero(isCompact),
+                        SizedBox(height: isCompact ? 24 : 32),
+                        _buildActionCard(
+                          index: '01',
+                          icon: Icons.add_business_rounded,
+                          title: 'Create your workspace',
+                          subtitle:
+                              'Set up your business and make your first sale.',
+                          detail: 'Owner setup · about 2 minutes',
+                          isPrimary: true,
+                          onTap: () => context.go('/company-setup'),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Center(
-                        child: Text(
-                          'A calm start for busy counters.',
-                          style: TextStyle(
-                            color: DesignColors.darkTextTertiary,
-                            fontSize: 12,
-                            letterSpacing: 0.2,
+                        const SizedBox(height: 14),
+                        _buildActionCard(
+                          index: '02',
+                          icon: Icons.login_rounded,
+                          title: 'Join an existing business',
+                          subtitle:
+                              'Use your company code to connect this device.',
+                          detail: 'Staff access · ready when you are',
+                          isPrimary: false,
+                          onTap: () => context.push('/login'),
+                        ),
+                        const SizedBox(height: 26),
+                        Center(
+                          child: AnimatedSwitcher(
+                            duration: DesignAnimation.fast,
+                            child: _showBackendLink
+                                ? TextButton.icon(
+                                    key: const ValueKey('backend-link'),
+                                    onPressed: _showServerUrlDialog,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor:
+                                          DesignColors.darkTextTertiary,
+                                    ),
+                                    icon: const Icon(Icons.tune_rounded,
+                                        size: 16),
+                                    label: const Text(
+                                      'Connect to a different backend',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  )
+                                : const SizedBox(
+                                    key: ValueKey('backend-link-hidden'),
+                                    height: 28,
+                                  ),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        const Center(
+                          child: Text(
+                            'A calm start for busy counters.',
+                            style: TextStyle(
+                              color: DesignColors.darkTextTertiary,
+                              fontSize: 12,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

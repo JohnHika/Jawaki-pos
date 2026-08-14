@@ -1656,12 +1656,12 @@ class AppDatabase extends _$AppDatabase {
   ) async {
     final result = await customSelect(
       'SELECT '
-      'COUNT(*) as transaction_count, '
-      'SUM(total) as total_amount, '
-      'AVG(total) as avg_payment, '
-      'SUM(CASE WHEN payment_method = \'cash\' THEN 1 ELSE 0 END) as cash_count, '
-      'SUM(CASE WHEN payment_method LIKE \'%card%\' OR payment_method LIKE \'%credit%\' THEN 1 ELSE 0 END) as card_count, '
-      'SUM(CASE WHEN payment_method LIKE \'%mpesa%\' OR payment_method LIKE \'%pesapal%\' OR payment_method LIKE \'%touristtap%\' THEN 1 ELSE 0 END) as digital_count '
+      'COALESCE(COUNT(*), 0) as transaction_count, '
+      'COALESCE(SUM(total), 0.0) as total_amount, '
+      'COALESCE(AVG(total), 0.0) as avg_payment, '
+      'COALESCE(SUM(CASE WHEN payment_method = \'cash\' THEN 1 ELSE 0 END), 0) as cash_count, '
+      'COALESCE(SUM(CASE WHEN payment_method LIKE \'%card%\' OR payment_method LIKE \'%credit%\' THEN 1 ELSE 0 END), 0) as card_count, '
+      'COALESCE(SUM(CASE WHEN payment_method LIKE \'%mpesa%\' OR payment_method LIKE \'%pesapal%\' OR payment_method LIKE \'%touristtap%\' THEN 1 ELSE 0 END), 0) as digital_count '
       'FROM pending_sales '
       'WHERE created_at >= ? AND created_at <= ?',
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],

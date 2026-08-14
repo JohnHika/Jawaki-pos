@@ -67,7 +67,7 @@ class _PaymentAnalyticsScreenState
 
         case 2: // This Month
           final startOfMonth = DateTime(now.year, now.month, 1);
-          final endOfMonth = DateTime(now.year, now.month + 1, 0);
+          final endOfMonth = DateTime(now.year, now.month + 1, 1);
 
           _paymentSummary =
               await database.getPaymentSummary(startOfMonth, endOfMonth);

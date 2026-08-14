@@ -108,24 +108,29 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
     final successNotice = _visibleSuccessNotice;
     if (optionalUpdate == null && successNotice == null) return widget.child;
 
-    return Stack(
-      children: [
-        widget.child,
-        if (optionalUpdate != null)
-          Positioned.fill(
-            child: UpdateAvailableCard(
-              update: optionalUpdate,
-              onDismiss: () => setState(() => _visibleOptionalUpdate = null),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
+      ),
+      child: Stack(
+        children: [
+          widget.child,
+          if (optionalUpdate != null)
+            Positioned.fill(
+              child: UpdateAvailableCard(
+                update: optionalUpdate,
+                onDismiss: () => setState(() => _visibleOptionalUpdate = null),
+              ),
             ),
-          ),
-        if (successNotice != null)
-          Positioned.fill(
-            child: UpdateSuccessScreen(
-              update: successNotice,
-              onDismiss: () => setState(() => _visibleSuccessNotice = null),
+          if (successNotice != null)
+            Positioned.fill(
+              child: UpdateSuccessScreen(
+                update: successNotice,
+                onDismiss: () => setState(() => _visibleSuccessNotice = null),
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

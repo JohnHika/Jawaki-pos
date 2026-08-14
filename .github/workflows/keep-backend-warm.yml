@@ -18,7 +18,23 @@ jobs:
     steps:
       - name: Ping backend health endpoint
         run: |
-          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "https://arche-axon-pos-api.onrender.com/health")
+          set +e
+          status=$(curl -sS -o /dev/null -w "%{http_code}" \
+            --connect-timeout 15 \
+            --max-time 60 \
+            --retry 2 \
+            --retry-delay 5 \
+            --retry-max-time 90 \
+            "https://arche-axon-pos-api.onrender.com/health")
+          curl_exit=$?
+          set -e
+
+          if [ "$curl_exit" -ne 0 ]; then
+            echo "Health check request failed with curl exit code $curl_exit (HTTP ${status:-000})"
+            echo "::warning::Backend health check could not complete; the service may be cold-starting or temporarily unavailable."
+            exit 0
+          fi
+
           echo "Health check returned HTTP $status"
           if [ "$status" != "200" ]; then
             echo "::warning::Backend health check did not return 200 (got $status) — may still be cold-starting."

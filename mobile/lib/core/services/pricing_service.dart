@@ -43,19 +43,6 @@ class UnitPriceInfo {
 }
 
 class PricingService {
-  /// Get unit price info from product data
-  static UnitPriceInfo getUnitPriceInfo(Map<String, dynamic> product) {
-    final unit = product['unit'] as String? ?? 'piece';
-    final basePrice = (product['basePrice'] as num?)?.toDouble() ?? 0;
-    final price = (product['price'] as num?)?.toDouble() ?? basePrice;
-
-    return UnitPriceInfo(
-      unit: unit,
-      price: price,
-      unitTypeLabel: unit[0].toUpperCase() + unit.substring(1),
-    );
-  }
-
   /// Get all pricing tiers for a product — the base unit plus any number
   /// of bulk-selling tiers (dozen, carton, pallet, ...) the shop owner has
   /// configured. No cap: however many tiers exist in `pricingTiers` are
@@ -153,12 +140,12 @@ class PriceAdjustment {
   }) : timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
-    'itemId': itemId,
-    'originalPrice': originalPrice,
-    'adjustedPrice': adjustedPrice,
-    'reason': reason,
-    'timestamp': timestamp.toIso8601String(),
-  };
+        'itemId': itemId,
+        'originalPrice': originalPrice,
+        'adjustedPrice': adjustedPrice,
+        'reason': reason,
+        'timestamp': timestamp.toIso8601String(),
+      };
 
   factory PriceAdjustment.fromJson(Map<String, dynamic> json) =>
       PriceAdjustment(

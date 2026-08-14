@@ -85,6 +85,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
               onRefresh: _loadData,
               child: PageContainer(
                 withScroll: true,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

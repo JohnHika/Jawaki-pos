@@ -21,6 +21,7 @@ import 'core/services/feature_announcement_service.dart';
 import 'core/widgets/forced_update_gate.dart';
 import 'core/widgets/optional_update_prompt_host.dart';
 import 'core/widgets/feature_announcement_host.dart';
+import 'core/widgets/tap_tracker.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -60,8 +61,7 @@ void main() async {
     debugPrint('[main] Screen orientation locked to portrait');
 
     debugPrint('[main] Initializing dependency injection...');
-    await configureDependencies()
-        .timeout(const Duration(seconds: 30));
+    await configureDependencies().timeout(const Duration(seconds: 30));
     debugPrint('[main] Dependency injection initialized successfully');
 
     debugPrint('[main] Initializing connectivity service...');
@@ -87,13 +87,15 @@ void main() async {
     debugPrint('[main] Initializing notifications (non-blocking)...');
     try {
       final notificationService = getIt<NotificationService>();
-      await notificationService.initialize()
+      await notificationService
+          .initialize()
           .timeout(const Duration(seconds: 15));
       // Re-register the token on every cold start if the user already
       // granted permission previously — FCM tokens can rotate, and this
       // keeps the backend's copy fresh without asking again.
       if (await notificationService.hasPermission()) {
-        await notificationService.registerToken()
+        await notificationService
+            .registerToken()
             .timeout(const Duration(seconds: 10));
       }
       debugPrint('[main] Notifications initialized successfully');
@@ -109,7 +111,8 @@ void main() async {
       try {
         if (await getIt<PrintQueueService>().isDesignatedPrinter()) {
           getIt<PrintQueueService>().startDraining();
-          debugPrint('[main] This device is the designated printer — draining queue');
+          debugPrint(
+              '[main] This device is the designated printer — draining queue');
         }
       } catch (e) {
         debugPrint('[main] Print queue check failed (non-critical): $e');
@@ -188,43 +191,46 @@ class _POSAppState extends ConsumerState<POSApp> {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
 
-    return MaterialApp.router(
-      title: 'Axon POS',
-      debugShowCheckedModeBanner: false,
-      showPerformanceOverlay: false,
-      checkerboardRasterCacheImages: false,
-      checkerboardOffscreenLayers: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode,
-      routerConfig: router,
-      builder: (context, child) {
-        final updateService = getIt<UpdateCheckService>();
-        final featureService = getIt<FeatureAnnouncementService>();
-        return AnimatedBuilder(
-          animation: updateService,
-          builder: (context, _) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.noScaling),
-            child: FeatureAnnouncementHost(
-              service: featureService,
-              child: OptionalUpdatePromptHost(
-                updateService: updateService,
-                child: Stack(
-                  children: [
-                    child!,
-                    if (updateService.isForceUpdateRequired ||
-                        updateService.isPostLoginUpdateRequired)
-                      Positioned.fill(
-                        child: ForcedUpdateGate(updateService: updateService),
-                      ),
-                  ],
+    return TapTracker(
+      router: router,
+      child: MaterialApp.router(
+        title: 'Axon POS',
+        debugShowCheckedModeBanner: false,
+        showPerformanceOverlay: false,
+        checkerboardRasterCacheImages: false,
+        checkerboardOffscreenLayers: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: themeMode,
+        routerConfig: router,
+        builder: (context, child) {
+          final updateService = getIt<UpdateCheckService>();
+          final featureService = getIt<FeatureAnnouncementService>();
+          return AnimatedBuilder(
+            animation: updateService,
+            builder: (context, _) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.noScaling),
+              child: FeatureAnnouncementHost(
+                service: featureService,
+                child: OptionalUpdatePromptHost(
+                  updateService: updateService,
+                  child: Stack(
+                    children: [
+                      child!,
+                      if (updateService.isForceUpdateRequired ||
+                          updateService.isPostLoginUpdateRequired)
+                        Positioned.fill(
+                          child: ForcedUpdateGate(updateService: updateService),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

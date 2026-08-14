@@ -222,26 +222,27 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ],
       ),
       body: PageContainer(
+        padding: EdgeInsets.zero,
         child: DefaultTabController(
           length: 3,
           child: Column(
             children: [
-              // Metrics Row
+              // Compact overview keeps the stock work area visible above the fold.
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                 child: Row(
                   children: [
                     Expanded(
-                      child: MetricCard(
+                      child: _InventoryMiniStat(
                         title: 'Total Items',
                         value: _isLoading ? '...' : '$_totalItems',
                         icon: Icons.inventory_2_rounded,
                         color: DesignColors.brand,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: MetricCard(
+                      child: _InventoryMiniStat(
                         title: 'Low Stock',
                         value: _isLoading ? '...' : '$_lowStockCount',
                         icon: Icons.warning_amber_rounded,
@@ -249,9 +250,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         trend: _lowStockCount > 0 ? 'Alerts' : null,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: MetricCard(
+                      child: _InventoryMiniStat(
                         title: 'Total Value',
                         value:
                             _isLoading ? '...' : _formatCurrency(_totalValue),
@@ -262,9 +263,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
+                height: 44,
                 decoration: BoxDecoration(
                   color: isDark
                       ? DesignColors.darkSurfaceElevated
@@ -845,18 +847,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Text(sku,
-                          style: TextStyle(fontSize: 11, color: tertiaryColor)),
-                      if (sku.isNotEmpty) ...[
-                        Text(' · ',
-                            style:
-                                TextStyle(color: tertiaryColor, fontSize: 11)),
-                      ],
-                      Text(category,
-                          style: TextStyle(fontSize: 11, color: tertiaryColor)),
-                    ],
+                  Text(
+                    sku.isEmpty ? category : '$sku · $category',
+                    style: TextStyle(fontSize: 11, color: tertiaryColor),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   if (packagingSummary != null) ...[
                     const SizedBox(height: 2),
@@ -865,6 +860,25 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       style: TextStyle(fontSize: 11, color: tertiaryColor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (permissions.canManageStock) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: SizedBox(
+                        height: 32,
+                        child: GradientButton(
+                          label: 'Request',
+                          icon: Icons.add_shopping_cart_rounded,
+                          onPressed: () => context.push(
+                            '/inventory/request-stock?productId=$productId',
+                          ),
+                          height: 32,
+                          expanded: false,
+                          borderRadius: 8,
+                        ),
+                      ),
                     ),
                   ],
                 ],
@@ -889,22 +903,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
               ),
             ),
-            if (permissions.canManageStock) ...[
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 32,
-                child: GradientButton(
-                  label: 'Request',
-                  icon: Icons.add_shopping_cart_rounded,
-                  onPressed: () => context.push(
-                    '/inventory/request-stock?productId=$productId',
-                  ),
-                  height: 32,
-                  expanded: false,
-                  borderRadius: 8,
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -1150,5 +1148,89 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         }),
       );
     });
+  }
+}
+
+class _InventoryMiniStat extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final String? trend;
+
+  const _InventoryMiniStat({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.trend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(icon, size: 17, color: color),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary,
+                    ),
+                  ),
+                ),
+                Text(
+                  trend ?? title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: trend == null
+                        ? (isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary)
+                        : color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

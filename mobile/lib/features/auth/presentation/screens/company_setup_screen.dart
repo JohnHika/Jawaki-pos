@@ -256,46 +256,57 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       'First counter',
       'Verify ownership',
     ];
-    return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _Header(
-                step: _currentStep,
-                label: labels[_currentStep],
-                onBack: _goBack,
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 250),
-                        child: KeyedSubtree(
-                          key: ValueKey(_currentStep),
-                          child: _buildStep(),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashFactory: InkRipple.splashFactory,
+      ),
+      child: Scaffold(
+        backgroundColor: DesignColors.darkBg,
+        body: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                _Header(
+                  step: _currentStep,
+                  label: labels[_currentStep],
+                  onBack: _goBack,
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          child: KeyedSubtree(
+                            key: ValueKey(_currentStep),
+                            child: _buildStep(),
+                          ),
                         ),
-                      ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 20),
-                        _ErrorPanel(
-                            message: _errorMessage!,
-                            onDismiss: () {
-                              setState(() => _errorMessage = null);
-                            }),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 20),
+                          _ErrorPanel(
+                              message: _errorMessage!,
+                              onDismiss: () {
+                                setState(() => _errorMessage = null);
+                              }),
+                        ],
                       ],
-                      const SizedBox(height: 24),
-                      _buildFooter(),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+                // Pinned outside the scroll view so it stays reachable at a
+                // fixed position when the keyboard opens/closes or the form
+                // content scrolls — previously lived inside the scrollable
+                // column and could drift out of the tappable viewport.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  child: _buildFooter(),
+                ),
+              ],
+            ),
           ),
         ),
       ),

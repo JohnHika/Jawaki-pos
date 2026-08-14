@@ -273,8 +273,7 @@ class ProductCardShimmer extends StatelessWidget {
             flex: 3,
             child: Container(
               decoration: const BoxDecoration(
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(14)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
                 color: Colors.transparent,
               ),
               child: const ShimmerWidget(
@@ -621,77 +620,84 @@ class MetricCard extends StatelessWidget {
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 16, 16, 16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border(
-          left: BorderSide(color: color, width: 3),
-          top: BorderSide(color: border, width: 1),
-          right: BorderSide(color: border, width: 1),
-          bottom: BorderSide(color: border, width: 1),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 16),
-              const Spacer(),
-              if (trend != null)
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 16, 16, 16),
+            decoration: BoxDecoration(
+              color: surface,
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      trendValue != null && trendValue! >= 0
-                          ? Icons.arrow_upward_rounded
-                          : Icons.arrow_downward_rounded,
-                      color: trendColor,
-                      size: 12,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      trend!,
-                      style: DesignType.numeric(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: trendColor,
+                    Icon(icon, color: color, size: 16),
+                    const Spacer(),
+                    if (trend != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            trendValue != null && trendValue! >= 0
+                                ? Icons.arrow_upward_rounded
+                                : Icons.arrow_downward_rounded,
+                            color: trendColor,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            trend!,
+                            style: DesignType.numeric(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: trendColor,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
                   ],
                 ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: DesignType.numeric(
-                fontSize: 21,
-                fontWeight: FontWeight.w700,
-                color: isDark
-                    ? DesignColors.darkTextPrimary
-                    : DesignColors.textPrimary,
-                letterSpacing: -0.4,
-              ),
-              maxLines: 1,
+                const SizedBox(height: 12),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: DesignType.numeric(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary,
+                      letterSpacing: -0.4,
+                    ),
+                    maxLines: 1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10.5,
-              color: isDark
-                  ? DesignColors.darkTextTertiary
-                  : DesignColors.textTertiary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-            ),
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(width: 3, color: color),
           ),
         ],
       ),
@@ -1930,12 +1936,16 @@ class GlassBottomSheet {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
+      // Keep the sheet header below the Android status bar. The explicit
+      // SafeArea below still handles the bottom gesture/navigation inset.
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => AnimatedPadding(
         duration: DesignAnimation.fast,
         curve: DesignAnimation.smooth,
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: SafeArea(
+          top: false,
           child: Container(
             height: MediaQuery.sizeOf(ctx).height *
                 maxSize.clamp(initialSize.clamp(0.45, 0.98), 0.98),

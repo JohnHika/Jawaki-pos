@@ -201,40 +201,65 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               color: DesignColors.success.withValues(alpha: 0.08),
-              child: Text(
-                cart.customerName!,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: DesignColors.success,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person_outline_rounded,
+                      size: 15, color: DesignColors.success),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      cart.customerName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: DesignColors.success,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Text('Customer selected',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: DesignColors.success,
+                          fontWeight: FontWeight.w600)),
+                ],
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 5),
             child: Row(
               children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: DesignColors.brand.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: const Icon(Icons.point_of_sale_rounded,
+                      size: 17, color: DesignColors.brand),
+                ),
+                const SizedBox(width: 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'POS Terminal',
+                        _showFavorites ? 'Favorites' : 'Sell',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 15,
                           fontWeight: FontWeight.w800,
                           color: isDark
                               ? DesignColors.darkTextPrimary
                               : DesignColors.textPrimary,
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         _showFavorites
-                            ? 'Favorite products only'
-                            : 'Sales, cart, and checkout operations',
+                            ? 'Saved products'
+                            : 'Choose products to start a sale',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 10,
                           color: isDark
                               ? DesignColors.darkTextSecondary
                               : DesignColors.textSecondary,
@@ -246,7 +271,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 if (cart.itemCount > 0)
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: DesignColors.success.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
