@@ -92,7 +92,7 @@ jobs:
           choco install innosetup --no-progress --limit-output
           $env:APP_VERSION = '1.1.0'
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows\installer.iss
-          Copy-Item build\windows\installer\AxonPOSDesktopSetup.exe "$env:RUNNER_TEMP/${{ matrix.artifact }}-setup.exe"
+          Copy-Item build\windows\installer\AxonPOSDesktopSetup.exe "$env:RUNNER_TEMP/${{ matrix.artifact }}.exe"
 
       - name: Package macOS app
         if: matrix.platform == 'macos'
