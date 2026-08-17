@@ -124,10 +124,10 @@ jobs:
       - name: Publish GitHub desktop release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: desktop-v1.0.0-${{ github.run_number }}
+          RELEASE_TAG: desktop-v1.1.0-${{ github.run_number }}
         run: |
           gh release create "$RELEASE_TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Axon POS Desktop $RELEASE_TAG" \
-            --notes "Fresh desktop application for Windows, macOS, and Linux. Built from the independent desktop project in desktop/."
+            --notes "Axon POS Desktop 1.1: live sign-in, live catalog, customers, inventory, reports, product images, and cash sales. Built from the independent desktop project in desktop/."
