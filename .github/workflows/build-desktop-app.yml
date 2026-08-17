@@ -88,7 +88,11 @@ jobs:
         if: matrix.platform == 'windows'
         working-directory: desktop
         shell: pwsh
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "$env:RUNNER_TEMP/${{ matrix.artifact }}.zip"
+        run: |
+          choco install innosetup --no-progress --limit-output
+          $env:APP_VERSION = '1.1.0'
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows\installer.iss
+          Copy-Item build\windows\installer\AxonPOSDesktopSetup.exe "$env:RUNNER_TEMP/${{ matrix.artifact }}-setup.exe"
 
       - name: Package macOS app
         if: matrix.platform == 'macos'

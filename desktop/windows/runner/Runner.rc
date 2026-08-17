@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.archeaxon" "\0"
-            VALUE "FileDescription", "desktop" "\0"
+            VALUE "CompanyName", "Axon POS" "\0"
+            VALUE "FileDescription", "Axon POS Desktop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "desktop" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.archeaxon. All rights reserved." "\0"
-            VALUE "OriginalFilename", "desktop.exe" "\0"
-            VALUE "ProductName", "desktop" "\0"
+            VALUE "InternalName", "AxonPOS" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Axon POS. All rights reserved." "\0"
+            VALUE "OriginalFilename", "AxonPOS.exe" "\0"
+            VALUE "ProductName", "Axon POS" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
