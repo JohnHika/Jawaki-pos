@@ -53,6 +53,7 @@ describe("JengaPaymentService payment verification", () => {
     const service = new JengaPaymentService(
       { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService,
       prisma,
+      { settleByCheckoutId: jest.fn().mockResolvedValue(null) } as any,
     );
     await expect(service.status("ABC123")).rejects.toBeInstanceOf(
       ServiceUnavailableException,
@@ -63,6 +64,7 @@ describe("JengaPaymentService payment verification", () => {
     const service = new JengaPaymentService(
       { get: (key: string) => configured[key] } as unknown as ConfigService,
       prisma,
+      { settleByCheckoutId: jest.fn().mockResolvedValue(null) } as any,
     );
     await service.handleCallback({
       code: 3,
@@ -81,6 +83,7 @@ describe("JengaPaymentService payment verification", () => {
     const service = new JengaPaymentService(
       { get: (key: string) => configured[key] } as unknown as ConfigService,
       prisma,
+      { settleByCheckoutId: jest.fn().mockResolvedValue(null) } as any,
     );
     await service.handleCallback({
       code: 5,
@@ -107,6 +110,7 @@ describe("JengaPaymentService payment verification", () => {
     const service = new JengaPaymentService(
       { get: (key: string) => configured[key] } as unknown as ConfigService,
       prisma,
+      { settleByCheckoutId: jest.fn().mockResolvedValue(null) } as any,
     );
     // Reference-allocation lookups find no collision.
     prisma.mpesaTransaction.findUnique.mockResolvedValue(null);
@@ -127,6 +131,7 @@ describe("JengaPaymentService payment verification", () => {
     const service = new JengaPaymentService(
       { get: (key: string) => configured[key] } as ConfigService,
       prisma,
+      { settleByCheckoutId: jest.fn().mockResolvedValue(null) } as any,
     );
     (axios.post as jest.Mock).mockResolvedValue({
       data: { accessToken: "token", expiresIn: 3600 },

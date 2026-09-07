@@ -33,6 +33,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { SubscriptionGuard } from '../billing/subscription.guard';
 
 @ApiTags('sales')
 @Controller({ path: 'sales', version: '1' })
@@ -42,6 +43,7 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
   @Post()
+  @UseGuards(SubscriptionGuard)
   @ApiOperation({ summary: 'Create a new sale' })
   @ApiResponse({ status: 201, description: 'Sale created', type: SaleResponseDto })
   async createSale(@Request() req: any, @Body() dto: CreateSaleDto) {
@@ -118,8 +120,10 @@ export class SalesController {
   @Post('bulk')
   // Bulk sync can flood the ledger/receipt sequence, so it requires the
   // dedicated bulk_create capability rather than the any-cashier sales
-  // create. Mirrors the bulk/void route below.
-  @UseGuards(PermissionsGuard)
+  // create. Mirrors the bulk/void route below. SubscriptionGuard blocks
+  // offline-queue flushes when the tenant is PAST_DUE beyond grace (GETs
+  // stay open, so historical data is never blocked).
+  @UseGuards(SubscriptionGuard, PermissionsGuard)
   @RequirePermissions('sales.bulk_create')
   @ApiOperation({ summary: 'Bulk create sales (e.g., offline sync)' })
   @ApiResponse({ status: 201, description: 'Sales created', type: [SaleResponseDto] })

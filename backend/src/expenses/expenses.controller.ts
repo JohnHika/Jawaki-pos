@@ -27,6 +27,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { SubscriptionGuard } from '../billing/subscription.guard';
 
 @ApiTags('expenses')
 @Controller({ path: 'expenses', version: '1' })
@@ -36,6 +37,7 @@ export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Post()
+  @UseGuards(SubscriptionGuard)
   @ApiOperation({ summary: 'Create a new expense' })
   @ApiResponse({ status: 201, description: 'Expense created', type: ExpenseResponseDto })
   async createExpense(

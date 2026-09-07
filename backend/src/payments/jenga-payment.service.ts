@@ -10,6 +10,7 @@ import axios, { AxiosError } from "axios";
 import { createSign, randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { SubscriptionRenewalSettler } from "../billing/subscription-renewal-settler.service";
 import { InitiateMpesaDto } from "./dto/initiate-mpesa.dto";
 
 type JengaCallback = {
@@ -34,6 +35,7 @@ export class JengaPaymentService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly renewalSettler: SubscriptionRenewalSettler,
   ) {}
 
   isConfigured(): boolean {
@@ -221,6 +223,28 @@ export class JengaPaymentService {
             }
           : {},
       });
+      // Subscription renewal auto-charge: the reference the billing cron
+      // pushed always starts with AXONSUB-. Once the authenticated status
+      // query confirms completion, settle the renewal here (invoice PAID +
+      // tenant period activated, atomically via the Prisma-only settler —
+      // this avoids a RecurringBillingService <-> JengaPaymentService
+      // circular dependency). Idempotent: settleByCheckoutId returns null
+      // for an already-PAID invoice, and accountReference is not an AXONSUB
+      // reference for ordinary POS sale payments.
+      if (
+        completed &&
+        (transaction.accountReference ?? "").startsWith("AXONSUB-")
+      ) {
+        try {
+          await this.renewalSettler.settleByCheckoutId(reference);
+        } catch (settleError) {
+          // Never fail the status query because settlement hiccuped; the
+          // next status poll (or callback nudge) retries it idempotently.
+          this.logger.error(
+            `AXONSUB settlement failed for ${reference}: ${this.safeError(settleError)}`,
+          );
+        }
+      }
       return this.statusResponse(updated);
     } catch (error) {
       this.logger.warn(

@@ -35,6 +35,10 @@ model Tenant {
   setupFeePaidAt      DateTime?
   maxBranches         Int      @default(1)
   maxUsers            Int      @default(3)
+  // Recurring billing: whether the renewal cron should auto-push an STK
+  // charge each period, and which phone to push it to (the client's).
+  autoRenewEnabled    Boolean  @default(true)
+  billingPhone        String?
   settings     Json     @default("{}")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -49,6 +53,8 @@ model Tenant {
   onboarding         TenantOnboarding?
   staffInvitations   TenantStaffInvitation[]
   subscriptionInvoices SubscriptionInvoice[]
+  paymentClaims        SubscriptionPaymentClaim[]
+  subscriptionCardToken SubscriptionCardToken?
 
   @@map("tenants")
 }
@@ -69,12 +75,73 @@ model SubscriptionInvoice {
   periodEnd    DateTime?
   paidAt       DateTime?
   createdAt    DateTime  @default(now())
+  // Recurring-billing linkage: which renewal cycle produced this invoice
+  // and which checkout reference the auto-charge STK push used.
+  renewalSequence Int    @default(1)
+  mpesaCheckoutId  String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  claims SubscriptionPaymentClaim[]
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, periodStart])
+  @@index([status])
   @@map("subscription_invoices")
+}
+
+/// A client-submitted M-Pesa confirmation code awaiting owner confirmation
+/// (manual paybill fallback for recurring billing).
+model SubscriptionPaymentClaim {
+  id            String    @id @default(uuid())
+  tenantId      String
+  invoiceId     String
+  mpesaCode     String    @unique
+  amount        Decimal   @db.Decimal(12, 2)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  submittedById String?
+  createdAt     DateTime  @default(now())
+  decidedAt     DateTime?
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice   SubscriptionInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("subscription_payment_claims")
+}
+
+/// Pesapal recurring card subscription (auto-renew). One mapping per tenant:
+/// Pesapal tokenizes the card on their side — we never store raw card data,
+/// only the identifiers needed to match IPN callbacks and stop renewals.
+model SubscriptionCardToken {
+  id                   String    @id @default(uuid())
+  tenantId             String    @unique
+  pesapalCorrelationId String
+  orderTrackingId      String    @unique
+  status               String    @default("PENDING") // PENDING | ACTIVE | CANCELLED
+  billingCycle         String    @default("MONTHLY") // MONTHLY | YEARLY
+  plan                 String    @default("CORE")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  cancelledAt          DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("subscription_card_tokens")
+}
+
+/// Jawaki platform staff (NOT merchant tenant users). Separate auth family:
+/// platform-admin login issues a JWT with type='platform' that only the
+/// PlatformAdminGuard accepts. Seeded from PLATFORM_ADMIN_EMAIL /
+/// PLATFORM_ADMIN_PASSWORD env vars when the table is empty.
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("Platform Owner")
+  createdAt    DateTime @default(now())
+
+  @@map("platform_admins")
 }
 
 model Branch {

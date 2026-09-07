@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { SubscriptionGuard } from '../billing/subscription.guard';
 
 @ApiTags('suppliers')
 @Controller({ path: 'suppliers', version: '1' })
@@ -46,7 +47,7 @@ export class SuppliersController {
   }
 
   @Post('invoices')
-  @UseGuards(PermissionsGuard)
+  @UseGuards(SubscriptionGuard, PermissionsGuard)
   @RequirePermissions('suppliers.invoices_create')
   @ApiOperation({ summary: 'Record a supplier invoice (restock purchase)' })
   @ApiResponse({ status: 201, description: 'Invoice recorded, stock updated' })
