@@ -116,6 +116,11 @@ export class SalesController {
   // ==================== BULK SALES ENDPOINTS ====================
 
   @Post('bulk')
+  // Bulk sync can flood the ledger/receipt sequence, so it requires the
+  // dedicated bulk_create capability rather than the any-cashier sales
+  // create. Mirrors the bulk/void route below.
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.bulk_create')
   @ApiOperation({ summary: 'Bulk create sales (e.g., offline sync)' })
   @ApiResponse({ status: 201, description: 'Sales created', type: [SaleResponseDto] })
   async bulkCreateSales(@Request() req: any, @Body() dto: BulkCreateSalesDto) {

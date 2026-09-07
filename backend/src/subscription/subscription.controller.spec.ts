@@ -22,7 +22,10 @@ describe('SubscriptionController (e2e)', () => {
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate: (context: any) => {
-          context.switchToHttp().getRequest().user = { tenantId: 'tenant-1' };
+          context.switchToHttp().getRequest().user = {
+            tenantId: 'tenant-1',
+            role: 'ADMIN',
+          };
           return true;
         },
       })
@@ -87,6 +90,38 @@ describe('SubscriptionController (e2e)', () => {
         maxUsers: 50,
       });
       expect(subscriptionService.changePlan).toHaveBeenCalledWith(expect.anything(), 'ENTERPRISE');
+    });
+
+    it('rejects a non-ADMIN user with 403', async () => {
+      // Rebuild the app with a cashier-role user to exercise RolesGuard.
+      await app.close();
+      const moduleFixture = await Test.createTestingModule({
+        imports: [SubscriptionModule],
+      })
+        .overrideProvider(SubscriptionService)
+        .useValue(subscriptionService)
+        .overrideGuard(JwtAuthGuard)
+        .useValue({
+          canActivate: (context: any) => {
+            context.switchToHttp().getRequest().user = {
+              tenantId: 'tenant-1',
+              role: 'CASHIER',
+            };
+            return true;
+          },
+        })
+        .compile();
+
+      app = moduleFixture.createNestApplication();
+      app.enableVersioning({ type: 0 /* URI */, defaultVersion: '1', prefix: 'api/v' });
+      await app.init();
+
+      await request(app.getHttpServer())
+        .post('/api/v1/subscription/change-plan')
+        .set('Authorization', 'Bearer fake-jwt')
+        .send({ plan: 'ENTERPRISE' })
+        .expect(403);
+      expect(subscriptionService.changePlan).not.toHaveBeenCalled();
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
@@ -344,37 +345,87 @@ export class ExpensesService {
       throw new NotFoundException('Expense not found');
     }
 
-    if (expense.status !== ExpenseStatus.APPROVED) {
-      throw new BadRequestException('Only approved expenses can be marked as paid');
-    }
-
-    const updated = await this.prisma.expense.update({
-      where: { id: expenseId },
-      data: {
-        status: ExpenseStatus.PAID,
-      },
-      include: {
-        branch: { select: { name: true } },
-        createdBy: { select: { firstName: true, lastName: true } },
-      },
-    });
-
     // Only cash-ish payment methods actually move physical cash out of the
     // till; M-Pesa/bank transfer expenses don't affect "available cash."
     const method = (expense.paymentMethod || '').toLowerCase();
-    if (method === 'cash' || method === '') {
-      await this.cashFlowService.recordEntry({
-        branchId: expense.branchId,
-        type: CashEntryType.EXPENSE_OUT,
-        amount: -Number(expense.amount),
-        referenceType: 'expense',
-        referenceId: expense.id,
-        note: expense.description,
-        createdById: userId,
-      });
+    const movesCash = method === 'cash' || method === '';
+
+    if (expense.status !== ExpenseStatus.APPROVED) {
+      // Idempotent retry: a retried markAsPaid (e.g. the client timed out
+      // after the server committed) must succeed instead of 400-ing.
+      // Returning the paid expense keeps the response shape identical to a
+      // first-time success.
+      if (expense.status === ExpenseStatus.PAID) {
+        if (movesCash) {
+          const existingEntry = await this.prisma.cashLedgerEntry.findFirst({
+            where: { referenceType: 'expense', referenceId: expense.id },
+          });
+          if (!existingEntry) {
+            // PAID but the ledger entry never landed (legacy rows written
+            // before the entry became transactional, or a crash between the
+            // two old non-atomic writes): backfill it so the till reflects
+            // the payout, then return as usual.
+            await this.recordExpenseCashOut(expense, userId);
+          }
+        }
+        return this.formatExpense(expense);
+      }
+      throw new BadRequestException('Only approved expenses can be marked as paid');
     }
 
+    const updated = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Claim the row with a conditional update before reading it: only one
+      // concurrent markAsPaid can flip APPROVED -> PAID, so the payout is
+      // logged exactly once even under simultaneous retries.
+      const claimed = await tx.expense.updateMany({
+        where: { id: expenseId, status: ExpenseStatus.APPROVED },
+        data: { status: ExpenseStatus.PAID },
+      });
+      if (claimed.count !== 1) {
+        // Lost the race (or the expense was rejected meanwhile) — surface a
+        // 400 like the pre-check above instead of silently succeeding.
+        throw new BadRequestException('Only approved expenses can be marked as paid');
+      }
+
+      // The cash outflow rides the same tx as the status flip: a crash can
+      // no longer mark the expense paid while losing its cash outflow (or
+      // vice versa).
+      if (movesCash) {
+        await this.recordExpenseCashOut(expense, userId, tx);
+      }
+
+      return tx.expense.findUnique({
+        where: { id: expenseId },
+        include: {
+          branch: { select: { name: true } },
+          createdBy: { select: { firstName: true, lastName: true } },
+        },
+      });
+    });
+
     return this.formatExpense(updated);
+  }
+
+  /**
+   * Appends the EXPENSE_OUT ledger entry for a cash-paid expense. When `tx`
+   * is provided the entry joins the caller's transaction; standalone calls
+   * (the PAID-but-missing-entry backfill) let CashFlowService open its own.
+   */
+  private recordExpenseCashOut(
+    expense: { branchId: string; amount: any; id: string; description: string | null },
+    userId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return this.cashFlowService.recordEntry({
+      tx,
+      branchId: expense.branchId,
+      type: CashEntryType.EXPENSE_OUT,
+      amount: -Number(expense.amount),
+      referenceType: 'expense',
+      referenceId: expense.id,
+      note: expense.description,
+      createdById: userId,
+    });
   }
 
   async deleteExpense(expenseId: string, userId: string, tenantId: string) {

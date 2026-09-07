@@ -42,9 +42,12 @@ export class PaymentsController {
     return this.jenga.status(id);
   }
 
-  // Public by design: Jenga cannot present an employee JWT. The service
-  // matches the stored reference/phone/amount then performs an authenticated
-  // server-to-server status query before marking a payment completed.
+  // Public by design: Jenga cannot present an employee JWT. The body is
+  // treated as a trigger only — no status change is ever taken from it.
+  // The service matches the stored reference/phone/amount, then performs an
+  // authenticated server-to-server status query before marking a payment
+  // completed. TODO(security): verify the callback signature once Jenga
+  // callback credentials are available (see JengaPaymentService.handleCallback).
   @Post("mpesa/callback")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Equity/Jenga payment notification webhook" })

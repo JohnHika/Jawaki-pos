@@ -10,7 +10,7 @@ import {
   SupplierInvoiceStatus,
   CashFundingSource,
 } from './dto/suppliers.dto';
-import { StockMovementType } from '@prisma/client';
+import { Prisma, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
@@ -187,7 +187,7 @@ export class SuppliersService {
       dueAmount <= 0 ? SupplierInvoiceStatus.PAID : paidAmount > 0 ? SupplierInvoiceStatus.PARTIAL : SupplierInvoiceStatus.OPEN;
     const fundingSource = dto.fundingSource ?? CashFundingSource.CASH_TILL;
 
-    const invoice = await this.prisma.$transaction(async (tx) => {
+    const invoice = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const supplier = await tx.supplier.upsert({
         where: { tenantId_name: { tenantId, name: dto.supplierName } },
         create: { tenantId, name: dto.supplierName, phone: dto.supplierPhone },
@@ -275,22 +275,26 @@ export class SuppliersService {
             createdById: userId,
           },
         });
+
+        // Cash-till funding pays out of the drawer, so the RESTOCK_OUT entry
+        // lands on the same tx as the invoice: a crash can't commit the
+        // invoice+payment while losing the cash outflow (or vice versa).
+        if (fundingSource === CashFundingSource.CASH_TILL) {
+          await this.cashFlowService.recordEntry({
+            tx,
+            branchId: dto.branchId,
+            type: CashEntryType.RESTOCK_OUT,
+            amount: -paidAmount,
+            referenceType: 'supplier_invoice',
+            referenceId: newInvoice.id,
+            note: `Restock from ${dto.supplierName}`,
+            createdById: userId,
+          });
+        }
       }
 
       return newInvoice;
     });
-
-    if (paidAmount > 0 && fundingSource === CashFundingSource.CASH_TILL) {
-      await this.cashFlowService.recordEntry({
-        branchId: dto.branchId,
-        type: CashEntryType.RESTOCK_OUT,
-        amount: -paidAmount,
-        referenceType: 'supplier_invoice',
-        referenceId: invoice.id,
-        note: `Restock from ${dto.supplierName}`,
-        createdById: userId,
-      });
-    }
 
     await this.auditService.record({
       userId,
@@ -331,7 +335,7 @@ export class SuppliersService {
     const newStatus =
       newDueAmount <= 0 ? SupplierInvoiceStatus.PAID : SupplierInvoiceStatus.PARTIAL;
 
-    const payment = await this.prisma.$transaction(async (tx) => {
+    const payment = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.supplierPayment.create({
         data: {
           supplierId: invoice.supplierId,
@@ -347,22 +351,27 @@ export class SuppliersService {
         data: { paidAmount: newPaidAmount, dueAmount: newDueAmount, status: newStatus },
       });
 
+      const fundingSource = dto.fundingSource ?? CashFundingSource.CASH_TILL;
+      // Later payments on a credit invoice move cash when funded from the
+      // till; the entry rides the same tx as the balance update so a crash
+      // can't record the payment while losing the cash outflow.
+      if (fundingSource === CashFundingSource.CASH_TILL) {
+        await this.cashFlowService.recordEntry({
+          tx,
+          branchId: invoice.branchId,
+          type: CashEntryType.RESTOCK_OUT,
+          amount: -dto.amount,
+          referenceType: 'supplier_payment',
+          referenceId: created.id,
+          note: dto.notes,
+          createdById: userId,
+        });
+      }
+
       return created;
     });
 
     const fundingSource = dto.fundingSource ?? CashFundingSource.CASH_TILL;
-    if (fundingSource === CashFundingSource.CASH_TILL) {
-      await this.cashFlowService.recordEntry({
-        branchId: invoice.branchId,
-        type: CashEntryType.RESTOCK_OUT,
-        amount: -dto.amount,
-        referenceType: 'supplier_payment',
-        referenceId: payment.id,
-        note: dto.notes,
-        createdById: userId,
-      });
-    }
-
     await this.auditService.record({
       userId,
       action: 'CREATE',

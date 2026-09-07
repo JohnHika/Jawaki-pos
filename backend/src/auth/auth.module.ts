@@ -11,6 +11,7 @@ import { AuditModule } from '../audit/audit.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { IdentityModule } from '../identity/identity.module';
 import { WorkspaceModule } from '../workspace/workspace.module';
+import { ThrottlerProvidersModule } from '../common/throttler/throttler-providers.module';
 
 @Module({
   imports: [
@@ -29,6 +30,9 @@ import { WorkspaceModule } from '../workspace/workspace.module';
     PermissionsModule,
     IdentityModule,
     WorkspaceModule,
+    // Re-exports the throttler options/storage so ThrottlerGuard on the
+    // controller's login routes can resolve its dependencies.
+    ThrottlerProvidersModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, RolesGuard, PermissionsGuard],

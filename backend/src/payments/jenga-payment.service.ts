@@ -152,6 +152,14 @@ export class JengaPaymentService {
       return { result: "accepted" };
     }
 
+    // The callback endpoint is unauthenticated, so the body is treated as a
+    // trigger only — never as a source of state changes. The stored status
+    // (and everything derived from it) is updated exclusively through the
+    // authenticated server-to-server status query below.
+    // TODO(security): verify the callback signature (X-Jenga-Signature /
+    // HMAC over the raw body) once Jenga callback credentials are available;
+    // until then the request is still rate-limited and can only nudge a
+    // status query for a reference that already exists.
     const amountMatches =
       body.requestAmount !== undefined &&
       new Prisma.Decimal(String(body.requestAmount)).equals(transaction.amount);
@@ -160,18 +168,11 @@ export class JengaPaymentService {
       body.currency === "KES" &&
       this.normalizePhone(body.mobileNumber ?? "") === transaction.phoneNumber;
     const code = Number(body.code);
-    let status = transaction.status;
-    if ([1, 5, 6, 7].includes(code))
-      status = code === 5 || code === 6 ? "cancelled" : "failed";
-    else if (identityMatches && code === 3) status = "processing";
 
     await this.prisma.mpesaTransaction.update({
       where: { checkoutRequestId: reference },
       data: {
-        status,
-        resultCode: Number.isFinite(code) ? code : undefined,
         resultDesc: body.message,
-        mpesaReceiptNumber: body.telcoReference,
         callbackPayload: body as Prisma.InputJsonValue,
       },
     });
@@ -290,11 +291,11 @@ export class JengaPaymentService {
   }
 
   private async uniqueReference(): Promise<string> {
+    // 32 hex chars = 128 bits of entropy. The checkout reference gates the
+    // authenticated status-query path (an attacker needs it to poll state),
+    // so it must not be guessable by enumerating a short code space.
     for (let attempt = 0; attempt < 10; attempt++) {
-      const reference = randomBytes(4)
-        .toString("hex")
-        .slice(0, 6)
-        .toUpperCase();
+      const reference = randomBytes(16).toString("hex");
       if (
         !(await this.prisma.mpesaTransaction.findUnique({
           where: { checkoutRequestId: reference },

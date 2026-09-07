@@ -14,7 +14,7 @@ import {
   CreateRefundDto,
   SalesQueryDto,
 } from './dto/sales.dto';
-import { SaleStatus, PaymentMethod, PaymentStatus, StockMovementType } from '@prisma/client';
+import { PaymentMethod, PaymentStatus, Prisma, SaleStatus, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
@@ -41,7 +41,10 @@ export class SalesService {
         where: { offlineId: dto.offlineId },
       });
       if (existing) {
-        // Return existing sale (idempotent)
+        // Return existing sale (idempotent). The original create already
+        // logged its cash-ledger entry inside its own transaction, so no
+        // entry is appended here — re-appending on every retry would
+        // double-count the same sale's cash in the till.
         return this.getSale(existing.id, tenantId);
       }
     }
@@ -151,7 +154,7 @@ export class SalesService {
     const receiptNumber = await this.generateReceiptNumber(dto.branchId);
 
     // Create sale with transaction
-    const sale = await this.prisma.$transaction(async (tx) => {
+    const sale = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Stock validation and movement arithmetic must happen after the same
       // row locks used by receiving. Pre-transaction reads can become stale
       // while waiting behind another sale or receipt and can drive stock
@@ -372,43 +375,48 @@ export class SalesService {
         }
       }
 
-      return { ...newSale, payments: tenderPayments };
-    });
-
-    // Cash-flow ledger only ever tracks physical cash movements — sales paid
-    // by M-Pesa/card/credit don't put cash in the till, so they're excluded
-    // here. ALL_REVENUE mode reads straight from Sale.totalAmount instead of
-    // this ledger for that reason (see CashFlowService.getAvailableCash).
-    if (sale.paymentMethod === PaymentMethod.CASH && Number(sale.paidAmount) > 0) {
-      await this.cashFlowService.recordEntry({
-        branchId: sale.branchId,
-        type: CashEntryType.SALE_CASH_IN,
-        amount: Number(sale.paidAmount) - Number(sale.changeAmount),
-        referenceType: 'sale',
-        referenceId: sale.id,
-        createdById: userId,
-      });
-    } else if (sale.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
-      // Only the cash tender(s) put physical money in the till. Change is
-      // handed back in cash regardless of which tender it's notionally
-      // "from," so it comes out of the cash portion specifically — not
-      // proportionally across all tenders, which would misstate how much
-      // cash actually changed hands.
-      const cashTendered = dto.tenders
-        .filter((t) => t.method === PaymentMethod.CASH)
-        .reduce((sum, t) => sum + t.amount, 0);
-      const netCashIn = cashTendered - Number(sale.changeAmount);
-      if (netCashIn > 0) {
+      // Cash-flow ledger only ever tracks physical cash movements — sales
+      // paid by M-Pesa/card/credit don't put cash in the till, so they're
+      // excluded here. ALL_REVENUE mode reads straight from Sale.totalAmount
+      // instead of this ledger for that reason (see
+      // CashFlowService.getAvailableCash). Written on the same tx as the
+      // sale itself: a crash can no longer commit the sale while losing its
+      // cash entry (or vice versa).
+      if (dto.paymentMethod === PaymentMethod.CASH && Number(paidAmount) > 0) {
         await this.cashFlowService.recordEntry({
-          branchId: sale.branchId,
+          tx,
+          branchId: dto.branchId,
           type: CashEntryType.SALE_CASH_IN,
-          amount: netCashIn,
+          amount: Number(paidAmount) - Math.max(0, changeAmount),
           referenceType: 'sale',
-          referenceId: sale.id,
+          referenceId: newSale.id,
           createdById: userId,
         });
+      } else if (dto.paymentMethod === PaymentMethod.SPLIT && dto.tenders) {
+        // Only the cash tender(s) put physical money in the till. Change is
+        // handed back in cash regardless of which tender it's notionally
+        // "from," so it comes out of the cash portion specifically — not
+        // proportionally across all tenders, which would misstate how much
+        // cash actually changed hands.
+        const cashTendered = dto.tenders
+          .filter((t) => t.method === PaymentMethod.CASH)
+          .reduce((sum, t) => sum + t.amount, 0);
+        const netCashIn = cashTendered - Math.max(0, changeAmount);
+        if (netCashIn > 0) {
+          await this.cashFlowService.recordEntry({
+            tx,
+            branchId: dto.branchId,
+            type: CashEntryType.SALE_CASH_IN,
+            amount: netCashIn,
+            referenceType: 'sale',
+            referenceId: newSale.id,
+            createdById: userId,
+          });
+        }
       }
-    }
+
+      return { ...newSale, payments: tenderPayments };
+    });
 
     return this.formatSale(sale);
   }
@@ -525,7 +533,7 @@ export class SalesService {
     }
 
     // Void sale and restore stock
-    const voided = await this.prisma.$transaction(async (tx) => {
+    const voided = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.$queryRaw`
         SELECT id FROM sales WHERE id = ${saleId} FOR UPDATE
       `;
@@ -586,22 +594,25 @@ export class SalesService {
         }
       }
 
+      // Reverse the cash that was originally logged in, so a voided cash sale
+      // doesn't keep inflating "available cash to restock." Same tx as the
+      // status flip: a crash can't leave a voided sale with its cash still
+      // counted in the till (or an un-voided sale with cash removed).
+      if (sale.paymentMethod === PaymentMethod.CASH && Number(sale.paidAmount) > 0) {
+        await this.cashFlowService.recordEntry({
+          tx,
+          branchId: sale.branchId,
+          type: CashEntryType.SALE_CASH_IN,
+          amount: -(Number(sale.paidAmount) - Number(sale.changeAmount)),
+          referenceType: 'sale',
+          referenceId: sale.id,
+          note: `Voided: ${reason}`,
+          createdById: userId,
+        });
+      }
+
       return voidedSale;
     });
-
-    // Reverse the cash that was originally logged in, so a voided cash sale
-    // doesn't keep inflating "available cash to restock."
-    if (sale.paymentMethod === PaymentMethod.CASH && Number(sale.paidAmount) > 0) {
-      await this.cashFlowService.recordEntry({
-        branchId: sale.branchId,
-        type: CashEntryType.SALE_CASH_IN,
-        amount: -(Number(sale.paidAmount) - Number(sale.changeAmount)),
-        referenceType: 'sale',
-        referenceId: sale.id,
-        note: `Voided: ${reason}`,
-        createdById: userId,
-      });
-    }
 
     return voided;
   }

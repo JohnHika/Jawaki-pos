@@ -15,6 +15,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService, StaffRegistrationActor } from './auth.service';
 import {
   LoginDto,
@@ -45,6 +46,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiResponse({ status: 200, description: 'Login successful', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  // Brute-force throttle: 10 attempts/min per source IP, tracked by the
+  // ThrottlerGuard below (not globally registered in this app, so each
+  // guarded route must opt in explicitly).
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
   }
@@ -100,6 +106,13 @@ export class AuthController {
   @ApiOperation({ summary: 'Quick login with PIN (for POS terminals)' })
   @ApiResponse({ status: 200, description: 'Login successful', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid PIN' })
+  // Brute-force throttle: PINs are short (4-6 digits), so guesses are cheap
+  // unless attempts are capped hard. 5 attempts/min per source IP. PIN
+  // login never presents a JWT, so this is the only velocity control on the
+  // route — see ThrottlerProvidersModule for why the guard must be applied
+  // here explicitly.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   async loginWithPin(@Body() pinLoginDto: PinLoginDto): Promise<AuthResponseDto> {
     return this.authService.loginWithPin(pinLoginDto);
   }
@@ -109,6 +122,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Quick login with PIN (legacy path alias)' })
   @ApiResponse({ status: 200, description: 'Login successful', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid PIN' })
+  // Same throttle as /login/pin — this is the same handler on a legacy path.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   async loginWithPinLegacy(@Body() pinLoginDto: PinLoginDto): Promise<AuthResponseDto> {
     return this.authService.loginWithPin(pinLoginDto);
   }

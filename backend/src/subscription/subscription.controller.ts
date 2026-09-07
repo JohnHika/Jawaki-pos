@@ -7,7 +7,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { LegacyUserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { SubscriptionService } from './subscription.service';
 
 @ApiTags('subscription')
@@ -24,7 +27,14 @@ export class SubscriptionController {
   }
 
   @Post('change-plan')
-  @UseGuards(JwtAuthGuard)
+  // Plan changes are a tenant-ownership decision (billing commitment), not a
+  // staff capability: switching the plan changes limits (branches/users) and
+  // pricing for the whole company. There is no `subscription.manage` key in
+  // the seeded Permission catalog, so this follows the legacy-role pattern
+  // (user.role from the JWT) instead of PermissionsGuard — only ADMIN may
+  // change the plan.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(LegacyUserRole.ADMIN)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Change the subscription plan (TRIAL/CORE/ENTERPRISE)' })
   changePlan(@Req() req: any, @Body('plan') plan: string) {
