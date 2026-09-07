@@ -9,23 +9,30 @@ name: Keep Backend Warm
 
 on:
   schedule:
+    # Two offsets hedge GitHub Actions' documented schedule drift (runs can
+    # land minutes late): one every 10 min from :00, one offset by 4 min.
     - cron: '*/10 * * * *'
+    - cron: '4-59/10 * * * *'
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping backend health endpoint
+      - name: Ping backend DB-touching health endpoint
         run: |
           set +e
+          # Ping /health/db, not bare /health: /health never reaches
+          # Postgres, so Neon's free compute suspends after 5 idle minutes
+          # and the first user pays the wake penalty on their first query.
+          # /health/db runs SELECT 1, keeping BOTH Render and Neon warm.
           status=$(curl -sS -o /dev/null -w "%{http_code}" \
             --connect-timeout 15 \
             --max-time 60 \
             --retry 2 \
             --retry-delay 5 \
             --retry-max-time 90 \
-            "https://arche-axon-pos-api.onrender.com/health")
+            "https://arche-axon-pos-api.onrender.com/health/db")
           curl_exit=$?
           set -e
 

@@ -28,6 +28,7 @@
     "@hcengineering/attachment": "^0.7.423",
     "@hcengineering/chunter": "^0.7.423",
     "@hcengineering/core": "^0.7.423",
+    "compression": "^1.8.1",
     "@hcengineering/tracker": "^0.7.423",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",

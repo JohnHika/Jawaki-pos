@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
+import * as compression from 'compression';
 import * as express from 'express';
 import { ValidationPipe, VersioningType, NotFoundException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -26,6 +27,24 @@ async function bootstrap() {
     }),
   );
   app.use(express.urlencoded({ extended: true }));
+
+  // Gzip all responses. The catalog/sales list payloads the mobile app
+  // renders are 57KB–565KB raw; compression cuts ~80-85% of the bytes
+  // over mobile networks, which dominates perceived screen-load time.
+  app.use(
+    compression({
+      filter: (req, res) => {
+        // Belt-and-braces: webhook endpoints must never be transformed
+        // (rawBody HMAC verification uses the exact bytes sent). In
+        // practice providers don't send Accept-Encoding: gzip anyway.
+        if (req.path?.includes('/webhook') || req.path?.includes('/callback')) {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+      threshold: 1024,
+    }),
+  );
 
   // Serve static files
   app.useStaticAssets(join(__dirname, '..', 'public'));

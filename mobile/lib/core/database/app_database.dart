@@ -1,5 +1,5 @@
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import '../services/storage_service.dart';
 
 import 'secure_database.dart';
@@ -23,6 +23,8 @@ class Categories extends Table {
 }
 
 // Products table
+@TableIndex(name: 'idx_products_category_active', columns: {#categoryId, #isActive})
+@TableIndex(name: 'idx_products_name', columns: {#name})
 class Products extends Table {
   TextColumn get id => text()();
   TextColumn get sku => text()();
@@ -42,12 +44,15 @@ class Products extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+
+  // Catalog grid filters/lookups: category browse + active filter, name search.
 }
 
 // Bulk-selling tiers beyond a product's base unit (e.g. dozen, carton,
 // pallet) — any number per product, each with a real price and how many
 // base units it represents. Replaces the old fixed secondary/tertiary
 // columns, which capped every product at exactly 2 extra tiers.
+@TableIndex(name: 'idx_pricing_tiers_product', columns: {#productId})
 class ProductPricingTiers extends Table {
   TextColumn get id => text()();
   TextColumn get productId => text()();
@@ -74,6 +79,7 @@ class BranchPrices extends Table {
 }
 
 // Local stock cache
+@TableIndex(name: 'idx_local_stock_product_branch', columns: {#productId, #branchId})
 class LocalStock extends Table {
   TextColumn get id => text()();
   TextColumn get productId => text()();
@@ -267,7 +273,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor, this._storage);
 
   @override
-  int get schemaVersion => 12; // v12: preserve fractional authoritative stock
+  int get schemaVersion => 13; // v13: performance indexes (products/tiers/stock)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -375,6 +381,39 @@ class AppDatabase extends _$AppDatabase {
               FROM local_stock_before_v12
             ''');
             await customStatement('DROP TABLE local_stock_before_v12');
+          }
+          if (from < 13) {
+            // v13: performance indexes. The @TableIndex annotations only
+            // apply on createAll() (new installs), so existing databases
+            // add the same indexes explicitly here. Catalog reads run
+            // per-product tier/stock lookups and category/name filters on
+            // every render — without these they full-scan the local tables.
+            // Each CREATE INDEX is guarded: pre-v13 databases may lack any
+            // of these tables (e.g. product_pricing_tiers only exists from
+            // v9, products may be absent if catalog sync never ran).
+            Future<void> safeCreateIndex(String name, String sql) async {
+              try {
+                await customStatement(sql);
+              } catch (e) {
+                debugPrint('[DB] skip index $name: $e');
+              }
+            }
+            await safeCreateIndex(
+              'idx_products_category_active',
+              'CREATE INDEX IF NOT EXISTS idx_products_category_active ON products (category_id, is_active)',
+            );
+            await safeCreateIndex(
+              'idx_products_name',
+              'CREATE INDEX IF NOT EXISTS idx_products_name ON products (name)',
+            );
+            await safeCreateIndex(
+              'idx_pricing_tiers_product',
+              'CREATE INDEX IF NOT EXISTS idx_pricing_tiers_product ON product_pricing_tiers (product_id)',
+            );
+            await safeCreateIndex(
+              'idx_local_stock_product_branch',
+              'CREATE INDEX IF NOT EXISTS idx_local_stock_product_branch ON local_stock (product_id, branch_id)',
+            );
           }
         },
       );

@@ -6049,6 +6049,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FavoriteProductsTable favoriteProducts =
       $FavoriteProductsTable(this);
   late final $RecentSearchesTable recentSearches = $RecentSearchesTable(this);
+  late final Index idxProductsCategoryActive = Index(
+      'idx_products_category_active',
+      'CREATE INDEX idx_products_category_active ON products (category_id, is_active)');
+  late final Index idxProductsName = Index(
+      'idx_products_name', 'CREATE INDEX idx_products_name ON products (name)');
+  late final Index idxPricingTiersProduct = Index('idx_pricing_tiers_product',
+      'CREATE INDEX idx_pricing_tiers_product ON product_pricing_tiers (product_id)');
+  late final Index idxLocalStockProductBranch = Index(
+      'idx_local_stock_product_branch',
+      'CREATE INDEX idx_local_stock_product_branch ON local_stock (product_id, branch_id)');
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6065,7 +6075,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         pendingSaleItems,
         syncQueue,
         favoriteProducts,
-        recentSearches
+        recentSearches,
+        idxProductsCategoryActive,
+        idxProductsName,
+        idxPricingTiersProduct,
+        idxLocalStockProductBranch
       ];
 }
 
