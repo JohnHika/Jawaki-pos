@@ -21,8 +21,10 @@ export class CashReconciliationService {
    * matters most in RUNNING_BALANCE mode where an uncorrected shortfall
    * would otherwise silently overstate available cash forever.
    */
-  async createReconciliation(userId: string, branchId: string, dto: CreateReconciliationDto) {
-    const branch = await this.prisma.branch.findUnique({ where: { id: branchId } });
+  async createReconciliation(userId: string, tenantId: string, branchId: string, dto: CreateReconciliationDto) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+    });
     if (!branch) throw new NotFoundException('Branch not found');
 
     const { mode, availableCash } = await this.cashFlowService.getAvailableCash(branchId);
@@ -77,8 +79,10 @@ export class CashReconciliationService {
     return this.formatReconciliation(reconciliation);
   }
 
-  async getReconciliations(branchId: string, query: ReconciliationQueryDto) {
-    const branch = await this.prisma.branch.findUnique({ where: { id: branchId } });
+  async getReconciliations(tenantId: string, branchId: string, query: ReconciliationQueryDto) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+    });
     if (!branch) throw new NotFoundException('Branch not found');
 
     const { page = 1, limit = 20 } = query;

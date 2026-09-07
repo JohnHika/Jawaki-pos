@@ -22,18 +22,22 @@ export class CashReconciliationController {
   async createReconciliation(
     @Param('branchId', ParseUUIDPipe) branchId: string,
     @CurrentUser('id') userId: string,
+    @CurrentUser('tenantId') tenantId: string,
     @Body() dto: CreateReconciliationDto,
   ) {
-    return this.reconciliationService.createReconciliation(userId, branchId, dto);
+    return this.reconciliationService.createReconciliation(userId, tenantId, branchId, dto);
   }
 
   @Get(':branchId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('cash_reconciliation.read')
   @ApiOperation({ summary: 'Get reconciliation history for a branch' })
   @ApiResponse({ status: 200, description: 'Paginated reconciliation history' })
   async getReconciliations(
     @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
     @Query() query: ReconciliationQueryDto,
   ) {
-    return this.reconciliationService.getReconciliations(branchId, query);
+    return this.reconciliationService.getReconciliations(tenantId, branchId, query);
   }
 }

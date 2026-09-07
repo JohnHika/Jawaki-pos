@@ -9,40 +9,75 @@ import {
   HttpCode,
   HttpStatus,
   UnauthorizedException,
+  NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { AiBillingService } from './ai-billing.service';
+import { PrismaService } from '../common/prisma/prisma.service';
 import {
   SubscribeDto,
   VerifySmsDto,
   InitializePaystackPaymentDto,
 } from './dto/subscribe.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('api/v1/ai-billing')
 export class AiBillingController {
   constructor(
     private readonly billingService: AiBillingService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * Asserts the caller's tenant actually owns the branch before any
+   * subscription read/write. Without this, any JWT holder from tenant A
+   * could read payment history (M-Pesa codes included) or activate
+   * subscriptions for tenant B by supplying an arbitrary branchId.
+   */
+  private async assertBranchInTenant(tenantId: string, branchId: string) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Branch not found');
+  }
 
   /** Get subscription status */
   @Get('status/:branchId')
-  async getStatus(@Param('branchId') branchId: string) {
+  @UseGuards(JwtAuthGuard)
+  async getStatus(
+    @Param('branchId') branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
+    await this.assertBranchInTenant(tenantId, branchId);
     return this.billingService.getStatus(branchId);
   }
 
   /** Check if branch can use AI */
   @Get('can-use/:branchId')
-  async canUseAi(@Param('branchId') branchId: string) {
+  @UseGuards(JwtAuthGuard)
+  async canUseAi(
+    @Param('branchId') branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
+    await this.assertBranchInTenant(tenantId, branchId);
     const canUse = await this.billingService.canUseAi(branchId);
     return { canUse };
   }
 
   /** Submit M-Pesa code (manual entry) */
   @Post('submit-payment')
-  async submitPayment(@Body() dto: SubscribeDto) {
+  @UseGuards(JwtAuthGuard)
+  async submitPayment(
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() dto: SubscribeDto,
+  ) {
+    await this.assertBranchInTenant(tenantId, dto.branchId);
     return this.billingService.submitPayment(
       dto.branchId,
       dto.mpesaCode,
@@ -53,7 +88,12 @@ export class AiBillingController {
 
   /** Auto-verify from SMS content */
   @Post('verify-sms')
-  async verifyFromSms(@Body() dto: VerifySmsDto) {
+  @UseGuards(JwtAuthGuard)
+  async verifyFromSms(
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() dto: VerifySmsDto,
+  ) {
+    await this.assertBranchInTenant(tenantId, dto.branchId);
     return this.billingService.verifyFromSms(
       dto.branchId,
       dto.mpesaCode,
@@ -64,7 +104,12 @@ export class AiBillingController {
 
   /** Start a Paystack card checkout for a subscription */
   @Post('paystack/initialize')
-  async initializePaystackPayment(@Body() dto: InitializePaystackPaymentDto) {
+  @UseGuards(JwtAuthGuard)
+  async initializePaystackPayment(
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() dto: InitializePaystackPaymentDto,
+  ) {
+    await this.assertBranchInTenant(tenantId, dto.branchId);
     return this.billingService.initializePaystackPayment(dto.branchId, dto.email);
   }
 

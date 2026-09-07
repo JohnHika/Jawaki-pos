@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards, Request, NotFoundException } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
@@ -328,9 +328,23 @@ export class AiController {
   // branch subscribed); the mobile app falls back to a live /ai/chat call
   // in that case.
   @Get('daily-brief')
-  @UseGuards(AiAccessGuard)
+  @UseGuards(JwtAuthGuard, AiAccessGuard)
   @HttpCode(HttpStatus.OK)
-  async getDailyBrief(@Query('branchId') branchId: string) {
+  async getDailyBrief(
+    @Query('branchId') branchId: string,
+    @Request() req: any,
+  ) {
+    // Tenant-scope the brief read: without this, anyone who knows (or
+    // enumerates) a subscribed branchId reads that shop's business brief.
+    const tenantId = req.user?.tenantId as string | undefined;
+    if (tenantId && branchId) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: { id: true },
+      });
+      if (!branch) throw new NotFoundException('Branch not found');
+    }
+
     const today = new Date();
     const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 

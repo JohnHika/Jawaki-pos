@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { CashFlowService } from './cash-flow.service';
 import { UpdateCashSettingsDto, CashLedgerQueryDto, AvailableCashResponseDto } from './dto/cash-flow.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('cash-flow')
 @Controller({ path: 'cash-flow', version: '1' })
@@ -14,8 +15,11 @@ export class CashFlowController {
   @Get('settings/:branchId')
   @ApiOperation({ summary: 'Get branch cash flow mode' })
   @ApiResponse({ status: 200, description: 'Current cash flow settings' })
-  async getSettings(@Param('branchId', ParseUUIDPipe) branchId: string) {
-    return this.cashFlowService.getSettings(branchId);
+  async getSettings(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
+    return this.cashFlowService.getSettings(tenantId, branchId);
   }
 
   @Put('settings/:branchId')
@@ -23,16 +27,23 @@ export class CashFlowController {
   @ApiResponse({ status: 200, description: 'Updated cash flow settings' })
   async updateSettings(
     @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
     @Body() dto: UpdateCashSettingsDto,
   ) {
-    return this.cashFlowService.updateSettings(branchId, dto.mode);
+    return this.cashFlowService.updateSettings(tenantId, branchId, dto.mode);
   }
 
   @Get('available/:branchId')
   @ApiOperation({ summary: 'Get cash available to restock for a branch' })
   @ApiResponse({ status: 200, description: 'Available cash breakdown', type: AvailableCashResponseDto })
-  async getAvailable(@Param('branchId', ParseUUIDPipe) branchId: string) {
-    return this.cashFlowService.getAvailableCash(branchId);
+  async getAvailable(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
+  ) {
+    // Tenant scope enforced via settings lookup before any ledger data is read.
+    return this.cashFlowService.getSettings(tenantId, branchId).then(async () =>
+      this.cashFlowService.getAvailableCash(branchId),
+    );
   }
 
   @Get('ledger/:branchId')
@@ -40,8 +51,9 @@ export class CashFlowController {
   @ApiResponse({ status: 200, description: 'Paginated ledger entries' })
   async getLedger(
     @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser('tenantId') tenantId: string,
     @Query() query: CashLedgerQueryDto,
   ) {
-    return this.cashFlowService.getLedger(branchId, query);
+    return this.cashFlowService.getLedger(tenantId, branchId, query);
   }
 }

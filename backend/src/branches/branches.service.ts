@@ -392,6 +392,18 @@ export class BranchesService {
     });
 
     if (existing) {
+      // Device takeover guard: the existing registration may belong to
+      // another tenant's branch. Verify ownership via the device's current
+      // branch before repointing it — otherwise a caller could steal
+      // another shop's device identity (sync history, printer-holder
+      // designation, offline claims) just by knowing its UUID.
+      const existingBranch = await this.prisma.branch.findUnique({
+        where: { id: existing.branchId },
+        select: { tenantId: true },
+      });
+      if (existingBranch?.tenantId !== tenantId) {
+        throw new ConflictException('Device is registered to a different organization');
+      }
       // Update existing device
       return this.prisma.device.update({
         where: { id: existing.id },
@@ -434,7 +446,7 @@ export class BranchesService {
     });
   }
 
-  async getDevice(deviceId: string) {
+  async getDevice(deviceId: string, tenantId: string) {
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
       include: {
@@ -450,6 +462,13 @@ export class BranchesService {
     });
 
     if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    // Cross-tenant guard: match the ownership check used by
+    // updateDevice/deactivateDevice so device details can't be probed
+    // across tenants.
+    if (device.branch.tenantId !== tenantId) {
       throw new NotFoundException('Device not found');
     }
 

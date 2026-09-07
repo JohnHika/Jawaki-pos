@@ -47,6 +47,7 @@ export class DailyCloseService {
     // expected-vs-counted figures we snapshot into the close.
     const reconciliation = await this.reconciliationService.createReconciliation(
       userId,
+      tenantId,
       branchId,
       { countedCash: dto.countedCash, notes: dto.notes },
     );

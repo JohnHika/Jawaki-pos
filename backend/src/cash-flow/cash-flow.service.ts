@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { CashFlowMode, CashEntryType } from './dto/cash-flow.dto';
@@ -12,6 +13,14 @@ interface RecordLedgerEntryParams {
   referenceId?: string;
   note?: string;
   createdById?: string;
+  /**
+   * When provided, the ledger read + write run on this transaction client
+   * instead of standalone — lets callers (sales, expenses, suppliers,
+   * reconciliation) append the cash entry atomically with the business
+   * write that produced it, so a crash can never leave one without the
+   * other.
+   */
+  tx?: Prisma.TransactionClient;
 }
 
 @Injectable()
@@ -23,40 +32,56 @@ export class CashFlowService {
    * for RUNNING_BALANCE mode, but we snapshot it on every write (cheap,
    * always consistent) so switching a branch into that mode later doesn't
    * require a backfill.
+   *
+   * The last-balance read and the insert run inside one transaction with a
+   * per-branch advisory lock, so two concurrent entries can't both compute
+   * the same previous balance (read-modify-write race) — the second waits
+   * and reads the first's balanceAfter.
    */
   async recordEntry(params: RecordLedgerEntryParams) {
-    const last = await this.prisma.cashLedgerEntry.findFirst({
-      where: { branchId: params.branchId },
-      orderBy: { createdAt: 'desc' },
-    });
-    const previousBalance = last ? Number(last.balanceAfter) : 0;
-    const balanceAfter = previousBalance + params.amount;
+    const run = async (tx: Prisma.TransactionClient) => {
+      // Serialize ledger appends per branch: concurrent recordEntry calls
+      // otherwise race between findFirst(last) and create, double-counting
+      // the same previousBalance and corrupting the running balance.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.branchId}))`;
 
-    return this.prisma.cashLedgerEntry.create({
-      data: {
-        branchId: params.branchId,
-        type: params.type,
-        amount: params.amount,
-        balanceAfter,
-        referenceType: params.referenceType,
-        referenceId: params.referenceId,
-        note: params.note,
-        createdById: params.createdById,
-      },
-    });
+      const last = await tx.cashLedgerEntry.findFirst({
+        where: { branchId: params.branchId },
+        orderBy: { createdAt: 'desc' },
+      });
+      const previousBalance = last ? Number(last.balanceAfter) : 0;
+      const balanceAfter = previousBalance + params.amount;
+
+      return tx.cashLedgerEntry.create({
+        data: {
+          branchId: params.branchId,
+          type: params.type,
+          amount: params.amount,
+          balanceAfter,
+          referenceType: params.referenceType,
+          referenceId: params.referenceId,
+          note: params.note,
+          createdById: params.createdById,
+        },
+      });
+    };
+
+    if (params.tx) {
+      // Caller owns the transaction (e.g. inside the sale's $transaction).
+      return run(params.tx);
+    }
+    return this.prisma.$transaction(run);
   }
 
-  async getSettings(branchId: string) {
-    const branch = await this.prisma.branch.findUnique({ where: { id: branchId } });
-    if (!branch) throw new NotFoundException('Branch not found');
+  async getSettings(tenantId: string, branchId: string) {
+    await this.getBranchForTenant(tenantId, branchId);
 
     const settings = await this.prisma.branchCashSettings.findUnique({ where: { branchId } });
     return { branchId, mode: settings?.mode ?? CashFlowMode.CASH_ONLY };
   }
 
-  async updateSettings(branchId: string, mode: CashFlowMode) {
-    const branch = await this.prisma.branch.findUnique({ where: { id: branchId } });
-    if (!branch) throw new NotFoundException('Branch not found');
+  async updateSettings(tenantId: string, branchId: string, mode: CashFlowMode) {
+    await this.getBranchForTenant(tenantId, branchId);
 
     const settings = await this.prisma.branchCashSettings.upsert({
       where: { branchId },
@@ -81,7 +106,8 @@ export class CashFlowService {
    *   across days rather than resetting at midnight.
    */
   async getAvailableCash(branchId: string) {
-    const { mode } = await this.getSettings(branchId);
+    const settings = await this.prisma.branchCashSettings.findUnique({ where: { branchId } });
+    const mode = settings?.mode ?? CashFlowMode.CASH_ONLY;
 
     const branch = await this.prisma.branch.findUnique({
       where: { id: branchId },
@@ -159,7 +185,9 @@ export class CashFlowService {
     };
   }
 
-  async getLedger(branchId: string, query: CashLedgerQueryDto) {
+  async getLedger(tenantId: string, branchId: string, query: CashLedgerQueryDto) {
+    await this.getBranchForTenant(tenantId, branchId);
+
     const { page = 1, limit = 50 } = query;
     const skip = (page - 1) * limit;
 
@@ -189,6 +217,20 @@ export class CashFlowService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Tenant-scope check for any branch-scoped read/write: the branch must
+   * exist AND belong to the caller's tenant. Without this, any JWT holder
+   * from tenant A could read or mutate tenant B's cash data by guessing a
+   * branch UUID.
+   */
+  private async getBranchForTenant(tenantId: string, branchId: string) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, tenantId },
+    });
+    if (!branch) throw new NotFoundException('Branch not found');
+    return branch;
   }
 
   private async sumToday(branchId: string, type: CashEntryType, start: Date, end: Date): Promise<number> {

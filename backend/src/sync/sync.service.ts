@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { SalesService } from '../sales/sales.service';
@@ -809,8 +809,11 @@ export class SyncService {
         return { serverId: newCustomer.id };
 
       case SyncEventType.CUSTOMER_UPDATED:
-        await this.prisma.customer.update({
-          where: { id: payload.id },
+        // Tenant-scoped: a device must only be able to update customers
+        // that belong to its own tenant, never one from another tenant
+        // whose id it happens to know.
+        const updatedCustomer = await this.prisma.customer.updateMany({
+          where: { id: payload.id, tenantId },
           data: {
             name: payload.name,
             phone: payload.phone ?? undefined,
@@ -818,6 +821,9 @@ export class SyncService {
             address: payload.address ?? undefined,
           },
         });
+        if (updatedCustomer.count === 0) {
+          throw new NotFoundException(`Customer ${payload.id} not found for this tenant`);
+        }
         return { serverId: payload.id };
 
       default:

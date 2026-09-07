@@ -172,8 +172,8 @@ export class BranchesController {
   @Get('devices/:deviceId')
   @ApiOperation({ summary: 'Get device by ID' })
   @ApiResponse({ status: 200, description: 'Device details', type: DeviceResponseDto })
-  async getDevice(@Param('deviceId') deviceId: string) {
-    return this.branchesService.getDevice(deviceId);
+  async getDevice(@Param('deviceId') deviceId: string, @Request() req: any) {
+    return this.branchesService.getDevice(deviceId, req.user.tenantId);
   }
 
   @Get(':branchId/devices/outdated')
