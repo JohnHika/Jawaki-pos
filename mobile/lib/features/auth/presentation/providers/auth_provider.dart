@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../../../billing/presentation/providers/entitlement_provider.dart';
 
 // Auth state
 class AuthState {
@@ -265,6 +266,19 @@ class AuthController extends StateNotifier<AuthState> {
         }
       } catch (_) {
         // Non-fatal — next cold start or explicit toggle will retry.
+      }
+    });
+    // Prefetch the billing entitlement (task 7): fetches the live snapshot
+    // and caches the signed offline token in SharedPreferences right after
+    // login, so an offline session can still resolve its status. The
+    // home-shell banner host separately reads entitlementProvider when it
+    // mounts; both paths share the same cache. Fire-and-forget — never
+    // delays login or blocks the UI.
+    Future.microtask(() async {
+      try {
+        await refreshEntitlement();
+      } catch (_) {
+        // Non-fatal — the banner host simply shows nothing this session.
       }
     });
   }

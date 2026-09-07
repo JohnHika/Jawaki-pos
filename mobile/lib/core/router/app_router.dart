@@ -17,6 +17,7 @@ import '../../features/team/presentation/screens/accept_invite_screen.dart';
 import '../../features/team/presentation/screens/set_password_after_invite_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/home/presentation/screens/staff_tour_screen.dart';
+import '../../features/billing/presentation/screens/subscription_billing_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
 import '../../features/sales/presentation/screens/pos_screen.dart';
@@ -428,6 +429,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings/subscription',
             name: 'subscription-settings',
             builder: (context, state) => const SubscriptionSettingsScreen(),
+          ),
+
+          // Subscription & Billing Screen (Settings → Subscription & Billing)
+          GoRoute(
+            path: '/billing',
+            name: 'billing',
+            builder: (context, state) => const SubscriptionBillingScreen(),
           ),
 
           // User Guide (Help & Support)

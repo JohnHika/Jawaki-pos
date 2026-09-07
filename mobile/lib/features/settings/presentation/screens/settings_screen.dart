@@ -276,6 +276,12 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/settings/subscription'),
               ),
               SettingsRow(
+                icon: Icons.receipt_long_rounded,
+                title: 'Subscription & Billing',
+                subtitle: 'Pay with M-Pesa, auto-renew & billing history',
+                onTap: () => context.push('/billing'),
+              ),
+              SettingsRow(
                 icon: Icons.people_rounded,
                 title: 'User Management',
                 subtitle: 'Manage staff, roles & permissions',

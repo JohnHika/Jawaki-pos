@@ -19,7 +19,13 @@ import '../services/notification_service.dart';
 import '../services/receipt_vision_service.dart';
 import '../services/feature_announcement_service.dart';
 import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
+import '../../features/billing/domain/entitlement_service.dart';
 import '../../features/team/data/services/invitation_cache_service.dart';
+
+// Re-exported for callers that resolve the entitlement service from DI
+// without importing the feature layer directly.
+export '../../features/billing/domain/entitlement_service.dart'
+    show EntitlementService;
 
 final getIt = GetIt.instance;
 const _defaultApiUrl = 'https://arche-axon-pos-api.onrender.com/api/v1';
@@ -164,6 +170,13 @@ Future<void> configureDependencies() async {
     debugPrint('[DI] Registering AiBillingService...');
     getIt.registerSingleton<AiBillingService>(AiBillingService());
     debugPrint('[DI] AiBillingService registered');
+
+    // ============================================
+    // STEP 10b: Entitlement Service (offline signed billing cache)
+    // ============================================
+    debugPrint('[DI] Registering EntitlementService...');
+    getIt.registerSingleton<EntitlementService>(EntitlementService());
+    debugPrint('[DI] EntitlementService registered');
 
     // ============================================
     // STEP 10: Receipt Printer Service (Bluetooth ESC/POS)

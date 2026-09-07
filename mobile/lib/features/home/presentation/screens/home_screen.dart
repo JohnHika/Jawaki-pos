@@ -8,6 +8,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../billing/presentation/widgets/subscription_entitlement_host.dart';
 import 'home_nav_keys.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -291,8 +292,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
             },
           ),
-          // Expanded chart is now the primary content
-          Expanded(child: widget.child),
+          // Subscription restricted-mode / expiry reminder banner (watches
+          // the entitlement provider; passive, never blocks navigation).
+          SubscriptionEntitlementHost(child: widget.child),
         ],
       ),
       bottomNavigationBar: Container(

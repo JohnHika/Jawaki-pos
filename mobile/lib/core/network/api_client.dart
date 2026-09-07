@@ -1278,6 +1278,83 @@ class ApiClient {
     return response.data as List<dynamic>;
   }
 
+  // ── Billing (recurring subscription billing) ───────────────────────
+
+  /// Owner-level billing settings: auto-renew toggle, billing phone, and
+  /// the manual-paybill fallback details.
+  /// GET /api/v1/billing/settings
+  Future<Map<String, dynamic>> getBillingSettings() async {
+    final response = await _dio.get('/billing/settings');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// ADMIN: update auto-renew and/or the STK-pushed billing phone.
+  /// PUT /api/v1/billing/settings
+  Future<Map<String, dynamic>> updateBillingSettings({
+    bool? autoRenewEnabled,
+    String? billingPhone,
+  }) async {
+    final response = await _dio.put('/billing/settings', data: {
+      if (autoRenewEnabled != null) 'autoRenewEnabled': autoRenewEnabled,
+      if (billingPhone != null) 'billingPhone': billingPhone,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Manual-paybill fallback: submit the M-Pesa confirmation code typed by
+  /// the client after paying the AXON paybill from their own M-Pesa menu.
+  /// Creates a PENDING claim — an admin must confirm before it activates.
+  /// POST /api/v1/billing/submit-payment
+  Future<Map<String, dynamic>> submitSubscriptionPayment({
+    required String mpesaCode,
+    double? amount,
+  }) async {
+    final response = await _dio.post('/billing/submit-payment', data: {
+      'mpesaCode': mpesaCode,
+      if (amount != null) 'amount': amount,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// ADMIN: confirm or reject a manual payment claim.
+  /// POST /api/v1/billing/claims/:id/confirm
+  Future<Map<String, dynamic>> confirmPaymentClaim(
+    String claimId,
+    bool approve,
+  ) async {
+    final response = await _dio
+        .post('/billing/claims/$claimId/confirm', data: {'approve': approve});
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Subscription invoice history for the current tenant.
+  /// GET /api/v1/billing/invoices
+  Future<List<dynamic>> getBillingInvoices() async {
+    final response = await _dio.get('/billing/invoices');
+    return response.data as List<dynamic>;
+  }
+
+  /// Signed, tenant-wide subscription entitlement snapshot (plan, status,
+  /// paidUntil, daysRemaining, graceUntil, features, restrictedMode).
+  /// GET /api/v1/billing/entitlement
+  Future<Map<String, dynamic>> getBillingEntitlement() async {
+    final response = await _dio.get('/billing/entitlement');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Signed offline token: base64url(payload).base64url(hmac-sha256).
+  /// Cached by EntitlementService so the app can resolve its own status
+  /// (ACTIVE / GRACE / RESTRICTED) with no network at all.
+  /// GET /api/v1/billing/entitlement/offline
+  Future<String> getBillingEntitlementOffline() async {
+    final response = await _dio.get('/billing/entitlement/offline');
+    final data = response.data;
+    if (data is Map<String, dynamic>) {
+      return (data['token'] ?? data['entitlement'])?.toString() ?? '';
+    }
+    return data?.toString() ?? '';
+  }
+
   // ── Bug Report ────────────────────────────────────────────────────
 
   /// Submit a bug report that creates a Huly issue.
