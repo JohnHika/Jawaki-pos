@@ -10,6 +10,7 @@ import '../di/injection.dart';
 import '../network/api_client.dart';
 import 'connectivity_service.dart';
 import 'server/middleware.dart';
+import 'server/auth_token.dart';
 import 'server/routes/auth_routes.dart';
 import 'server/routes/catalog_routes.dart';
 import 'server/routes/sales_routes.dart';
@@ -95,6 +96,14 @@ class LocalServerService {
     _port = port;
 
     try {
+      // Wire the per-device token signing secret BEFORE any route can mint
+      // or verify a token: the secret is generated once (Random.secure) and
+      // persisted in secure storage, never compiled into the binary.
+      final storage = getIt<StorageService>();
+      final serverSecret = await storage.ensureServerTokenSecret();
+      AuthToken.initSecret(serverSecret);
+      AuthToken.secretProvider = () => serverSecret;
+
       // Build the router with all routes
       final appRouter = Router();
 

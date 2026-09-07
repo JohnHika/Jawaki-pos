@@ -137,6 +137,26 @@ class StorageService implements LifecycleLockStorage {
     await _secureStorage!.delete(key: keyRefreshToken);
   }
 
+  // ===== Phone-server token signing secret =====
+
+  static const String keyServerTokenSecret = 'phone_server_token_secret_v1';
+
+  /// Reads the per-device HMAC secret used to sign local phone-server
+  /// tokens, generating and persisting one on first use. A secret baked
+  /// into the binary would let anyone holding the APK forge valid tokens
+  /// for any user/role against any phone on the LAN.
+  Future<String> ensureServerTokenSecret() async {
+    _checkInitialized();
+    var secret = await _secureStorage!.read(key: keyServerTokenSecret);
+    if (secret == null || secret.isEmpty) {
+      final random = Random.secure();
+      final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+      secret = base64Url.encode(bytes);
+      await _secureStorage!.write(key: keyServerTokenSecret, value: secret);
+    }
+    return secret;
+  }
+
   // Shared Preferences Methods (for non-sensitive data)
 
   Future<void> saveUser(Map<String, dynamic> user) async {

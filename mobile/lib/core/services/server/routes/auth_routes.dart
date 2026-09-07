@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:shelf/shelf.dart' as shelf;
@@ -56,6 +58,20 @@ class AuthRoutes {
     final passwordHash = user['passwordHash'] as String;
     if (!_verifyPassword(password, passwordHash)) {
       return _error(401, 'Invalid credentials');
+    }
+
+    // Transparent upgrade: if this row still uses the legacy unsalted
+    // SHA-256 format, re-hash it with salted PBKDF2 now that we've
+    // confirmed the caller knows the real password.
+    if (!passwordHash.startsWith('pbkdf2\$')) {
+      try {
+        final upgraded = _hashPassword(password);
+        await _db.customStatement(
+          'UPDATE server_users SET password_hash = ${Sql.str(upgraded)}, updated_at = ${Sql.str(DateTime.now().toIso8601String())} WHERE id = ${Sql.str(user['id'] as String)}',
+        );
+      } catch (_) {
+        // Non-fatal: legacy verification still works next time.
+      }
     }
 
     return _generateAuthResponse(user);
@@ -266,9 +282,88 @@ class AuthRoutes {
     );
   }
 
+  /// Verifies a password against the stored `password_hash`.
+  ///
+  /// Accepts both hash formats for migration:
+  /// - `pbkdf2$<iter>$<saltB64>$<hashB64>` — salted PBKDF2-HMAC-SHA256
+  ///   (current, see [_hashPassword]),
+  /// - bare SHA-256 hex — legacy rows, still matched so existing devices
+  ///   keep working.
+  ///
+  /// A plain unsalted SHA-256 cracks instantly via rainbow tables if the
+  /// SQLCipher database is ever extracted.
   bool _verifyPassword(String plainText, String hash) {
+    if (hash.startsWith('pbkdf2\$')) {
+      final parts = hash.split('\$'); // pbkdf2, iter, saltB64, hashB64
+      if (parts.length != 4) return false;
+      final iterations = int.tryParse(parts[1]) ?? 0;
+      if (iterations < 1) return false;
+      final salt = base64Url.decode(parts[2]);
+      final derived = _pbkdf2Sha256(utf8.encode(plainText), salt, iterations, 32);
+      return _constantTimeEquals(base64Url.encode(derived), parts[3]);
+    }
+    // Legacy unsalted SHA-256.
     final inputHash = sha256.convert(utf8.encode(plainText)).toString();
     return inputHash == hash;
+  }
+
+  /// Produces a salted PBKDF2-HMAC-SHA256 password hash:
+  /// `pbkdf2$<iterations>$<saltB64>$<hashB64>` (100k iterations).
+  String _hashPassword(String plainText) {
+    final salt = Uint8List.fromList(
+      List<int>.generate(16, (_) => _secureRandom.nextInt(256)),
+    );
+    const iterations = 100000;
+    final derived = _pbkdf2Sha256(utf8.encode(plainText), salt, iterations, 32);
+    return 'pbkdf2\$$iterations\$${base64Url.encode(salt)}\$${base64Url.encode(derived)}';
+  }
+
+  /// Minimal PBKDF2-HMAC-SHA256 (RFC 2898) built on package:crypto, so no
+  /// extra dependency is needed. [dkLen] is the derived-key length in bytes.
+  static Uint8List _pbkdf2Sha256(
+    List<int> password,
+    List<int> salt,
+    int iterations,
+    int dkLen,
+  ) {
+    final hmac = Hmac(sha256, password);
+    final blockCount = (dkLen + 31) ~/ 32; // ceil(dkLen / hLen)
+    final out = BytesBuilder();
+
+    for (var block = 1; block <= blockCount; block++) {
+      // U1 = PRF(password, salt || INT_32_BE(block))
+      final msg = BytesBuilder()
+        ..add(salt)
+        ..add([
+          (block >>> 24) & 0xff,
+          (block >>> 16) & 0xff,
+          (block >>> 8) & 0xff,
+          block & 0xff,
+        ]);
+      var u = hmac.convert(msg.toBytes()).bytes;
+      final t = Uint8List.fromList(u);
+      // U2..Uc
+      for (var i = 1; i < iterations; i++) {
+        u = hmac.convert(u).bytes;
+        for (var j = 0; j < t.length; j++) {
+          t[j] ^= u[j];
+        }
+      }
+      out.add(t);
+    }
+
+    return Uint8List.fromList(out.toBytes()).sublist(0, dkLen);
+  }
+
+  static final Random _secureRandom = Random.secure();
+
+  static bool _constantTimeEquals(String a, String b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return diff == 0;
   }
 
   /// Verifies a PIN against the `salt:hash` scheme the backend computes

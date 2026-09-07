@@ -474,7 +474,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
   }) async {
     final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
-    final tax = subtotal * 0.16;
+    // Same tax computation the cart uses (AuthService.taxRatePercent, an
+    // admin-configured rate, default 0). The previous hardcoded 16% recorded
+    // tax the business never charged on offline sales: receipts printed a
+    // wrong tax line and subtotal + tax ≠ total.
+    final tax = subtotal * (_authService.taxRatePercent / 100);
 
     // Create pending sale in local database
     await _database.createPendingSale(

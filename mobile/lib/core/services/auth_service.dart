@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:axon_pos/core/di/injection.dart' as di;
 import 'storage_service.dart';
 import 'lifecycle_lock_controller.dart';
+import '../../features/team/data/services/invitation_cache_service.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
 
@@ -354,6 +356,16 @@ class AuthService implements LifecycleLockAuth {
     } catch (_) {
       // Non-fatal: the next login's sync will still overwrite stale rows
       // once it succeeds.
+    }
+
+    // Wipe the staff-invitation cache: it holds other people's names and
+    // emails in plaintext, and the next login on this device may belong to
+    // a different org entirely.
+    try {
+      await di.getIt<InvitationCacheService>().invalidateAll();
+    } catch (_) {
+      // Non-fatal: the cache is tenant-keyed too, so a stale entry would
+      // never be shown to a different tenant anyway.
     }
 
     _accessToken = null;

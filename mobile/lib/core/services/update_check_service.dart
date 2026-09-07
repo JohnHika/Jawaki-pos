@@ -16,8 +16,12 @@ import '../network/api_client.dart';
 import '../widgets/update_available_dialog.dart';
 import 'update_version_utils.dart';
 
-// GitHub Packages configuration
-const String _githubPackagesTokenEnv = 'GITHUB_TOKEN';
+// GitHub Packages configuration.
+// The token must be injected at build time via --dart-define; the literal
+// string 'GITHUB_TOKEN' was previously sent as the Authorization header
+// itself (always invalid → GitHub 401 → fallback update source dead).
+const String _githubPackagesTokenEnv =
+    String.fromEnvironment('GITHUB_TOKEN', defaultValue: '');
 const String _githubPackagesReleaseApi =
     'https://api.github.com/repos/JohnHika/Jawaki-pos/releases';
 
