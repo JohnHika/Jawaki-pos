@@ -81,16 +81,35 @@ class StorageService implements LifecycleLockStorage {
     return await _secureStorage!.read(key: keyRefreshToken);
   }
 
-  /// Sets (or replaces) the on-device quick-unlock PIN. Stores a salted
-  /// SHA-256 hash, never the raw digits — a PIN only has 10,000 possible
-  /// values, so a per-device random salt is what stops the stored value
-  /// from being trivially reversed via a precomputed table.
+  // ===== Quick-unlock PIN =====
+
+  /// Key-stretching for the stored quick-unlock PIN: a 4-digit PIN has only
+  /// 10,000 possible values, so a single SHA-256 round (the legacy v1
+  /// format) is far too cheap to brute force offline. v2 chains the digest
+  /// this many times — sha256(prevDigest:salt:pin) — multiplying each
+  /// guess's cost on-device while staying fast enough (tens of ms) for a
+  /// single unlock attempt.
+  static const int _pinHashRounds = 10000;
+  static const String _pinHashV2Prefix = 'v2:';
+  static const int _pinHashMaxRounds = 1000000; // reject absurd stored values
+
+  /// Sets (or replaces) the on-device quick-unlock PIN. Stores a
+  /// self-describing `v2:<rounds>:<salt>:<hash>` stretched digest, never
+  /// the raw digits — the per-device random salt stops precomputed-table
+  /// reversal and the digest chain makes brute-forcing the stored value
+  /// expensive on-device.
   Future<void> setLocalPin(String pin) async {
     _checkInitialized();
     final salt = _generateSalt();
-    final hash = _hashPin(pin, salt);
+    final hash = _hashPin(pin, salt, _pinHashRounds);
+    await _secureStorage!.write(
+      key: keyPinHash,
+      value: '$_pinHashV2Prefix$_pinHashRounds:$salt:$hash',
+    );
+    // The v2 hash carries its own salt; this legacy key is kept in sync so
+    // the v1 verification path (which reads it) stays coherent for entries
+    // that have not been upgraded yet.
     await _secureStorage!.write(key: keyPinSalt, value: salt);
-    await _secureStorage!.write(key: keyPinHash, value: hash);
   }
 
   Future<bool> hasLocalPinSet() async {
@@ -100,14 +119,48 @@ class StorageService implements LifecycleLockStorage {
   }
 
   /// Verifies a PIN entirely on-device — no network call, matching how
-  /// biometric unlock already works — by re-hashing the input with the
-  /// stored salt and comparing against the stored hash.
+  /// biometric unlock already works. Accepts both the stretched
+  /// `v2:<rounds>:<salt>:<hash>` format and the legacy single-round
+  /// salt+hash pair written by older releases; a legacy match is
+  /// transparently re-stored in v2 (the plain PIN is in hand at that
+  /// moment) so existing installs converge on the stretched hash without a
+  /// forced PIN reset.
   Future<bool> verifyLocalPin(String pin) async {
     _checkInitialized();
-    final salt = await _secureStorage!.read(key: keyPinSalt);
     final storedHash = await _secureStorage!.read(key: keyPinHash);
-    if (salt == null || storedHash == null) return false;
-    return _hashPin(pin, salt) == storedHash;
+    if (storedHash == null || storedHash.isEmpty) return false;
+
+    if (storedHash.startsWith(_pinHashV2Prefix)) {
+      final parts = storedHash.split(':');
+      if (parts.length != 4) return false;
+      final rounds = int.tryParse(parts[1]);
+      final salt = parts[2];
+      final expected = parts[3];
+      if (rounds == null ||
+          rounds < 1 ||
+          rounds > _pinHashMaxRounds ||
+          salt.isEmpty ||
+          expected.isEmpty) {
+        return false;
+      }
+      return _constantTimeEquals(_hashPin(pin, salt, rounds), expected);
+    }
+
+    // Legacy v1: single-round sha256('<salt>:<pin>') with the salt stored
+    // separately. Must keep verifying so pre-upgrade installs keep their
+    // quick-unlock PIN working (rounds == 1 reproduces that hash exactly).
+    final salt = await _secureStorage!.read(key: keyPinSalt);
+    if (salt == null || salt.isEmpty) return false;
+    if (_constantTimeEquals(_hashPin(pin, salt, 1), storedHash)) {
+      try {
+        await setLocalPin(pin);
+      } catch (_) {
+        // Upgrade is best-effort; the legacy hash stays valid either way
+        // and the next successful unlock retries the upgrade.
+      }
+      return true;
+    }
+    return false;
   }
 
   Future<void> clearLocalPin() async {
@@ -116,15 +169,65 @@ class StorageService implements LifecycleLockStorage {
     await _secureStorage!.delete(key: keyPinSalt);
   }
 
+  // Quick-unlock throttle state (see AuthService.unlockWithPin): the failed
+  // attempt counter and backoff deadline live in SharedPreferences —
+  // resetting them requires uninstalling the app, which also wipes the PIN
+  // hash, so the backoff cannot be cleared without losing quick-unlock.
+  static const String keyPinUnlockFailures = 'pin_unlock_failed_attempts';
+  static const String keyPinUnlockLockoutUntilMs =
+      'pin_unlock_lockout_until_ms';
+
+  int getPinUnlockFailureCount() => _prefs?.getInt(keyPinUnlockFailures) ?? 0;
+
+  Future<void> setPinUnlockFailureCount(int count) async {
+    _checkInitialized();
+    await _prefs!.setInt(keyPinUnlockFailures, count);
+  }
+
+  DateTime? getPinUnlockLockoutUntil() {
+    final ms = _prefs?.getInt(keyPinUnlockLockoutUntilMs);
+    if (ms == null || ms <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  Future<void> setPinUnlockLockoutUntil(DateTime? until) async {
+    _checkInitialized();
+    if (until == null) {
+      await _prefs!.remove(keyPinUnlockLockoutUntilMs);
+    } else {
+      await _prefs!.setInt(
+        keyPinUnlockLockoutUntilMs,
+        until.millisecondsSinceEpoch,
+      );
+    }
+  }
+
   String _generateSalt() {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     return base64Url.encode(bytes);
   }
 
-  String _hashPin(String pin, String salt) {
-    final digest = sha256.convert(utf8.encode('$salt:$pin'));
+  /// PBKDF2-style key stretching: chains `sha256(previousDigest:salt:pin)`
+  /// [rounds] times. rounds == 1 reproduces the legacy single-round hash
+  /// exactly, which is what keeps old stored PINs verifiable.
+  String _hashPin(String pin, String salt, int rounds) {
+    var digest = sha256.convert(utf8.encode('$salt:$pin'));
+    for (var i = 1; i < rounds; i++) {
+      digest = sha256.convert(utf8.encode('${digest.toString()}:$salt:$pin'));
+    }
     return digest.toString();
+  }
+
+  /// Full-length, position-independent comparison so verification time
+  /// never hints at how much of the stored hash an input matched.
+  bool _constantTimeEquals(String a, String b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return diff == 0;
   }
 
   // Deliberately does not delete keyPinHash/keyPinSalt — this is called

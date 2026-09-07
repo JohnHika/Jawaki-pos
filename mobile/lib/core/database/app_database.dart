@@ -724,6 +724,7 @@ class AppDatabase extends _$AppDatabase {
         errorMessage: Value(errorMessage),
         retryCount: Value(newRetryCount),
         lastAttemptAt: Value(DateTime.now()),
+        nextRetryAt: Value(DateTime.now().add(delay)),
       ),
     );
   }

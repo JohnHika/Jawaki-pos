@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:uuid/uuid.dart';
 
 import '../database/app_database.dart';
@@ -237,22 +238,28 @@ class SyncService {
     int maxRetries = 5,
   }) async {
     final itemId = _uuid.v4();
-    final sequenceNumber = await _database.getNextSyncSequenceNumber();
 
-    await _database.addToSyncQueue(SyncQueueCompanion(
-      id: Value(itemId),
-      entityTable: Value(tableName),
-      recordId: Value(recordId),
-      action: Value(action.name),
-      eventType: Value(eventType.wireName),
-      payload: Value(jsonEncode(data)),
-      deviceId: Value(deviceId),
-      userId: Value(userId),
-      sequenceNumber: Value(sequenceNumber),
-      createdAt: Value(DateTime.now()),
-      retryCount: const Value(0),
-      maxRetries: Value(maxRetries),
-    ));
+    // Read the sequence number and insert in one transaction so concurrent
+    // queueSyncItem calls can't read the same MAX(sequence_number) and
+    // collide on the next number (drift serializes transactions).
+    await _database.transaction(() async {
+      final sequenceNumber = await _database.getNextSyncSequenceNumber();
+
+      await _database.addToSyncQueue(SyncQueueCompanion(
+        id: Value(itemId),
+        entityTable: Value(tableName),
+        recordId: Value(recordId),
+        action: Value(action.name),
+        eventType: Value(eventType.wireName),
+        payload: Value(jsonEncode(data)),
+        deviceId: Value(deviceId),
+        userId: Value(userId),
+        sequenceNumber: Value(sequenceNumber),
+        createdAt: Value(DateTime.now()),
+        retryCount: const Value(0),
+        maxRetries: Value(maxRetries),
+      ));
+    });
 
     // Try to sync immediately if online
     if (_connectivity.isOnline) {
@@ -338,6 +345,11 @@ class SyncService {
     _statusController.add(SyncStatus.syncing);
 
     try {
+      // Recovery sweep: re-enqueue unsynced sales that lost their queue
+      // row (app died between the sale insert and queueSyncItem, or a
+      // terminally-failed item got aged out by cleanupSyncQueue). Without
+      // this the sale row sits isSynced=0 forever.
+      await _recoverOrphanedUnsyncedSales();
       final result = await BackgroundSyncService.processPendingQueue(
         database: _database,
         apiClient: _apiClient,
@@ -352,6 +364,91 @@ class SyncService {
       _statusController.add(SyncStatus.error);
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  /// Re-enqueues unsynced sales that have no live sync_queue entry.
+  ///
+  /// A sale becomes orphaned when the app dies after the pending_sales row
+  /// is written but before queueSyncItem runs, or when its queue item goes
+  /// terminally failed and cleanupSyncQueue ages it out. Either way the
+  /// sale row sits isSynced=0 with nothing driving it to the server. This
+  /// sweep runs at the top of every sync cycle: any unsynced sale whose
+  /// recordId has no pending/conflict queue row gets a fresh queue item so
+  /// the normal push loop retries it. Existing live rows (pending with
+  /// retries left, or conflict awaiting resolution) are left untouched.
+  Future<void> _recoverOrphanedUnsyncedSales() async {
+    try {
+      final unsyncedSales = await _database.getUnsyncedSales();
+      if (unsyncedSales.isEmpty) return;
+
+      // Live = still pending or awaiting conflict resolution. Synced /
+      // failed / resolved rows no longer drive the push loop, so an
+      // unsynced sale behind only those is orphaned.
+      final liveQueueItems = await (_database.select(_database.syncQueue)
+            ..where((q) => q.status.isIn(['pending', 'conflict'])))
+          .get();
+      final liveRecordIds = liveQueueItems.map((q) => q.recordId).toSet();
+
+      var reenqueued = 0;
+      for (final sale in unsyncedSales) {
+        if (liveRecordIds.contains(sale.id)) continue;
+
+        final sequenceNumber = await _database.getNextSyncSequenceNumber();
+        await _database.addToSyncQueue(SyncQueueCompanion(
+          id: Value(_uuid.v4()),
+          entityTable: const Value('sales'),
+          recordId: Value(sale.id),
+          action: const Value('create'),
+          eventType: const Value('SALE_CREATED'),
+          payload: Value(jsonEncode({
+            'offlineId': sale.id,
+            'receiptNumber': sale.receiptNumber,
+            'branchId': sale.branchId,
+            'subtotal': sale.subtotal,
+            'discountAmount': sale.discount,
+            'taxAmount': sale.tax,
+            'totalAmount': sale.total,
+            'paymentMethod': sale.paymentMethod,
+            'paymentReference': sale.paymentReference,
+            'customerId': sale.customerId,
+            'cashierId': sale.cashierId,
+            'userId': sale.cashierId,
+            'status': sale.status,
+            'createdAt': sale.createdAt.toIso8601String(),
+            'notes': sale.notes,
+            'items': (await _database.getSaleItems(sale.id))
+                .map((item) => {
+                      'productId': item.productId,
+                      'productName': item.productName,
+                      'sku': item.sku,
+                      'quantity': item.quantity,
+                      'unitPrice': item.unitPrice,
+                      'discount': item.discount,
+                      'total': item.total,
+                      'unit': item.unit,
+                      'quantityPerUnit': item.quantityPerUnit,
+                    })
+                .toList(),
+          })),
+          deviceId: Value(
+            _storage.getDeviceId() ?? 'recovered-${DateTime.now().millisecondsSinceEpoch}',
+          ),
+          userId: Value(sale.cashierId),
+          sequenceNumber: Value(sequenceNumber),
+          createdAt: Value(DateTime.now()),
+          retryCount: const Value(0),
+          maxRetries: const Value(5),
+        ));
+        reenqueued++;
+      }
+
+      if (reenqueued > 0) {
+        debugPrint('[SyncService] Recovered $reenqueued orphaned unsynced sale(s)');
+      }
+    } catch (e) {
+      // Recovery is best-effort — never let it break the normal sync cycle.
+      debugPrint('[SyncService] Orphaned-sale recovery failed: $e');
     }
   }
 
@@ -372,6 +469,7 @@ class SyncService {
     try {
       final localData = await _database.getAllLocalSupplierData();
 
+      var failures = 0;
       for (final supplier in localData) {
         // Each supplier migrates independently — one supplier's data quirk
         // (e.g. a payment total that doesn't reconcile cleanly) shouldn't
@@ -379,11 +477,17 @@ class SyncService {
         try {
           await _migrateOneLocalSupplier(supplier, branchId);
         } catch (_) {
+          failures++;
           continue;
         }
       }
 
-      await _storage.setSupplierDataMigrated(true);
+      // Only mark migrated when every supplier succeeded — otherwise leave
+      // the flag unset so the next online run retries the failed suppliers
+      // (invoices carry offlineId, so retries won't duplicate server-side).
+      if (failures == 0) {
+        await _storage.setSupplierDataMigrated(true);
+      }
     } catch (e) {
       // Leave the flag unset so the next time the device comes online it
       // retries — a partial migration is safer than silently giving up.

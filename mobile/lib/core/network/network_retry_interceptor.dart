@@ -42,9 +42,11 @@ class NetworkRetryInterceptor extends Interceptor {
     final status = error.response?.statusCode;
 
     // True connection-level failures (request never reached the server).
+    // receiveTimeout is deliberately excluded: it means the request WAS
+    // delivered and we just never saw the response, so retrying a mutating
+    // request could execute it twice.
     final neverReachedServer =
         error.type == DioExceptionType.connectionTimeout ||
-            error.type == DioExceptionType.receiveTimeout ||
             error.type == DioExceptionType.connectionError ||
             error.type == DioExceptionType.sendTimeout;
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:drift/drift.dart' show Value;
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart' show Router;
 import '../../../database/app_database.dart';
@@ -34,28 +35,51 @@ class SyncRoutes {
     for (final event in events) {
       try {
         final eventId = event['eventId'] as String? ?? _uuid();
+        final deviceId = event['deviceId'] as String? ?? '';
         final eventType = event['eventType'] as String? ?? '';
         final payload = event['payload'] as Map<String, dynamic>? ?? {};
-        // Process based on event type
-        switch (eventType) {
-          case 'SALE_CREATED':
-            _processSaleCreated(payload);
-            break;
-          case 'SALE_VOIDED':
-            _processSaleVoided(payload);
-            break;
-          case 'STOCK_ADJUSTED':
-            _processStockAdjusted(payload);
-            break;
-          default:
-            break;
+
+        // Dedupe retried events: a client retrying the same eventId must
+        // not re-run side effects (e.g. STOCK_ADJUSTED would decrement
+        // stock twice and corrupt it). Check-before-process, then insert
+        // into the ledger after processing succeeds — so a processing
+        // failure leaves the event un-recorded and a client retry can
+        // still land it.
+        await _ensureProcessedEventsTable();
+        final alreadyProcessed = await _db
+            .customSelect(
+              'SELECT event_id FROM server_processed_events WHERE event_id = ${Sql.str(eventId)}',
+            )
+            .get();
+        final isDuplicate = alreadyProcessed.isNotEmpty;
+        if (!isDuplicate) {
+          // Process based on event type
+          switch (eventType) {
+            case 'SALE_CREATED':
+              await _processSaleCreated(payload);
+              break;
+            case 'SALE_VOIDED':
+              await _processSaleVoided(payload);
+              break;
+            case 'STOCK_ADJUSTED':
+              await _processStockAdjusted(payload);
+              break;
+            default:
+              break;
+          }
+          await _db.customStatement(
+            'INSERT OR IGNORE INTO server_processed_events (event_id, processed_at) '
+            'VALUES (${Sql.vals([eventId, DateTime.now().toIso8601String()])})',
+          );
         }
 
         results.add({
           'success': true,
           'eventId': eventId,
+          'deviceId': deviceId,
           'serverId': 'srv-$eventId',
           'serverTimestamp': DateTime.now().toIso8601String(),
+          'duplicate': isDuplicate,
         });
       } catch (e) {
         results.add({
@@ -124,6 +148,11 @@ class SyncRoutes {
   }
 
   /// POST /api/v1/sync/conflicts/resolve
+  ///
+  /// Phone-server mode has no authoritative conflict resolution — the
+  /// "server" is just another phone. Return 501 instead of a fake
+  /// success so clients keep their conflict state instead of silently
+  /// dropping it.
   Future<shelf.Response> _handleConflicts(shelf.Request request) async {
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
@@ -131,19 +160,11 @@ class SyncRoutes {
     final conflicts =
         (body['conflicts'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
             [];
-    final results = <Map<String, dynamic>>[];
 
-    for (final conflict in conflicts) {
-      results.add({
-        'eventId': conflict['eventId'],
-        'success': true,
-        'resolution': conflict['resolution'] ?? 'SERVER_WINS',
-      });
-    }
-
-    return shelf.Response.ok(
-      jsonEncode(results),
-      headers: {'content-type': 'application/json'},
+    return _error(
+      501,
+      'conflict resolution not supported in phone-server mode '
+      '(${conflicts.length} conflict(s) rejected)',
     );
   }
 
@@ -191,16 +212,79 @@ class SyncRoutes {
 
   // ─── Event processors ───
 
-  void _processSaleCreated(Map<String, dynamic> payload) async {
-    // Sales should already be in the local DB (PendingSales)
-    // This handles sync from client phones that went offline
-    final saleId = payload['id'] as String?;
-    if (saleId != null) {
+  Future<void> _processSaleCreated(Map<String, dynamic> payload) async {
+    // The pushing client usually already stored the sale locally, but a
+    // client can push a sale this server phone never received (e.g. its
+    // own queue drained the event while the sale row write never landed,
+    // or the sale was created on the client after its last pull). Insert
+    // it from the payload if missing so success:true never means a
+    // silently lost sale.
+    final saleId = payload['offlineId']?.toString() ??
+        payload['id']?.toString() ??
+        payload['saleId']?.toString();
+    if (saleId == null) return;
+
+    final existing = await _db.getPendingSaleById(saleId);
+    if (existing != null) {
       await _db.markSaleAsSynced(saleId);
+      return;
+    }
+
+    final createdAt = _parseTimestamp(payload['createdAt']) ?? DateTime.now();
+    final items = payload['items'] as List<dynamic>? ?? [];
+
+    await _db.into(_db.pendingSales).insert(
+          PendingSalesCompanion(
+            id: Value(saleId),
+            receiptNumber: Value(payload['receiptNumber']?.toString() ?? ''),
+            subtotal: Value(_parseNumber(payload['subtotal']) ?? 0),
+            discount: Value(_parseNumber(payload['discountAmount']) ?? 0),
+            tax: Value(_parseNumber(payload['taxAmount']) ?? 0),
+            total: Value(
+                _parseNumber(payload['totalAmount'] ?? payload['paidAmount']) ??
+                    0),
+            paymentMethod:
+                Value(payload['paymentMethod']?.toString() ?? 'CASH'),
+            paymentReference: Value(payload['paymentReference']?.toString()),
+            customerId: Value(payload['customerId']?.toString()),
+            cashierId: Value(
+                payload['cashierId']?.toString() ??
+                    payload['userId']?.toString() ??
+                    ''),
+            branchId: Value(payload['branchId']?.toString() ?? ''),
+            notes: Value(payload['notes']?.toString()),
+            status: Value(payload['status']?.toString() ?? 'COMPLETED'),
+            createdAt: Value(createdAt),
+            isSynced: const Value(true),
+            syncedAt: Value(createdAt),
+          ),
+        );
+
+    for (final item in items.whereType<Map>()) {
+      await _db.into(_db.pendingSaleItems).insert(
+            PendingSaleItemsCompanion.insert(
+              saleId: saleId,
+              productId: item['productId']?.toString() ?? '',
+              productName: item['productName']?.toString() ?? '',
+              sku: item['sku']?.toString() ??
+                  (item['product'] is Map
+                      ? (item['product'] as Map)['sku']?.toString() ?? ''
+                      : ''),
+              quantity: _parseNumber(item['quantity'])?.round() ?? 0,
+              unitPrice: _parseNumber(item['unitPrice']) ?? 0,
+              discount: Value(_parseNumber(item['discount']) ?? 0),
+              total: _parseNumber(
+                    item['total'] ?? item['totalAmount'],
+                  ) ??
+                  0,
+              unit: Value(item['unit']?.toString()),
+              quantityPerUnit: Value(_parseNumber(item['quantityPerUnit'])),
+            ),
+          );
     }
   }
 
-  void _processSaleVoided(Map<String, dynamic> payload) async {
+  Future<void> _processSaleVoided(Map<String, dynamic> payload) async {
     final saleId = payload['id'] as String?;
     if (saleId != null) {
       await _db.customStatement(
@@ -209,7 +293,7 @@ class SyncRoutes {
     }
   }
 
-  void _processStockAdjusted(Map<String, dynamic> payload) async {
+  Future<void> _processStockAdjusted(Map<String, dynamic> payload) async {
     final productId = payload['productId'] as String?;
     final branchId = payload['branchId'] as String?;
     final quantity = (payload['quantity'] as num?)?.toInt();
@@ -219,6 +303,33 @@ class SyncRoutes {
   }
 
   String _uuid() => 'sync-${DateTime.now().microsecondsSinceEpoch}';
+
+  DateTime? _parseTimestamp(dynamic value) {
+    if (value is DateTime) return value;
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        value < 100000000000 ? value * 1000 : value,
+      );
+    }
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  double? _parseNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return value == null ? null : double.tryParse(value.toString());
+  }
+
+  /// Idempotent CREATE TABLE for the event-dedupe ledger, following the
+  /// same `_ensure*Table` pattern as the other phone-server route files.
+  Future<void> _ensureProcessedEventsTable() async {
+    await _db.customStatement(
+      'CREATE TABLE IF NOT EXISTS server_processed_events ('
+      '  event_id TEXT PRIMARY KEY NOT NULL, '
+      '  processed_at TEXT NOT NULL'
+      ')',
+    );
+  }
 
   shelf.Response _error(int statusCode, String message) {
     return shelf.Response(

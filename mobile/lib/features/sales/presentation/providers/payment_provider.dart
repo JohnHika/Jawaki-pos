@@ -186,12 +186,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       state = state.copyWith(currentTransactionId: checkoutRequestId);
 
       // Poll for payment status
-      final paymentSuccessful = await _pollMpesaStatus(checkoutRequestId);
+      final pollError = await _pollMpesaStatus(checkoutRequestId);
 
-      if (!paymentSuccessful) {
+      if (pollError != null) {
         state = state.copyWith(
           isProcessing: false,
-          error: 'M-Pesa payment failed or was cancelled',
+          error: pollError,
         );
         return null;
       }
@@ -650,7 +650,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     );
   }
 
-  Future<bool> _pollMpesaStatus(String checkoutRequestId) async {
+  /// Returns null when the payment completed, otherwise an error message
+  /// describing why the sale was not created.
+  Future<String?> _pollMpesaStatus(String checkoutRequestId) async {
     const maxAttempts = 30;
     const pollInterval = Duration(seconds: 2);
 
@@ -664,10 +666,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
             (status['status'] as String? ?? '').toUpperCase();
 
         if (normalizedStatus == 'COMPLETED') {
-          return true;
+          return null;
         } else if (normalizedStatus == 'FAILED' ||
             normalizedStatus == 'CANCELLED') {
-          return false;
+          return 'M-Pesa payment failed or was cancelled';
         }
         // Continue polling if still pending
       } catch (e) {
@@ -675,7 +677,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
     }
 
-    return false;
+    // Poll exhaustion is NOT a confirmed failure: the STK push may still
+    // complete on the customer's phone. Report it as pending so the cashier
+    // verifies before retrying — retrying now could double-charge.
+    return 'M-Pesa payment is still pending. Verify the payment with the '
+        'customer before retrying to avoid double-charging.';
   }
 }
 

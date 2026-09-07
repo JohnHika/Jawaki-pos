@@ -187,6 +187,9 @@ class AuthController extends StateNotifier<AuthState> {
   /// Local, offline PIN unlock for an already-locked session — tries this
   /// first from the PIN screen; only falls back to the network-dependent
   /// [loginWithPin] if this device has no local PIN configured yet.
+  /// Surfaces the attempt throttle's "try again in Ns" message (set by
+  /// AuthService.unlockWithPin) instead of the generic incorrect-PIN text
+  /// when a lockout is active.
   Future<bool> unlockWithPin(String pin) async {
     state = state.copyWith(isLoading: true, error: null);
 
@@ -204,7 +207,8 @@ class AuthController extends StateNotifier<AuthState> {
 
     state = state.copyWith(
       isLoading: false,
-      error: 'Incorrect PIN. Try again.',
+      error:
+          _authService.pinThrottleMessage ?? 'Incorrect PIN. Try again.',
     );
     return false;
   }

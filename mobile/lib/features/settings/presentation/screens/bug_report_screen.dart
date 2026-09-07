@@ -34,6 +34,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
   Future<void> _pickScreenshot() async {
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1920);
+    if (!mounted) return;
     if (image != null) {
       setState(() => _screenshot = File(image.path));
     }

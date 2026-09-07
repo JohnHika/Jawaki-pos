@@ -36,6 +36,20 @@ class AuthService implements LifecycleLockAuth {
   String? _accessToken;
   DateTime? _backgroundedAt;
 
+  // ── Quick-unlock PIN throttle ──
+  // Exponential backoff after consecutive wrong quick-unlock PINs, so a
+  // thief holding the phone can't machine-gun the 10k-value PIN space.
+  // The counter is mirrored in memory and persisted via StorageService
+  // (SharedPreferences) so an app restart can't rewind it; the larger of
+  // the two wins when registering the next failure.
+  static const int _pinThrottleThreshold = 5;
+  static const int _pinThrottleBaseSeconds = 30;
+  static const int _pinThrottleMaxSeconds = 15 * 60;
+  // 30 << 5 = 960s already exceeds the 15-minute cap, so the shift never
+  // needs a wider exponent (and stays well clear of int overflow).
+  static const int _pinThrottleMaxExponent = 5;
+  int _pinUnlockFailures = 0;
+
   AuthService({
     required StorageService storage,
     required ApiClient apiClient,
@@ -300,17 +314,98 @@ class AuthService implements LifecycleLockAuth {
   /// This is what actually re-enters an app that's merely locked (session
   /// still present in storage), so it works offline exactly like biometric
   /// unlock does, instead of re-authenticating against the server.
+  ///
+  /// Consecutive failures trigger an exponential-backoff lockout
+  /// (persisted, so restarting the app does not reset it): after
+  /// [_pinThrottleThreshold] failures each further attempt must wait
+  /// 30s doubling per failure, capped at 15 minutes. The counter resets
+  /// on success. The bool return type is unchanged for callers; a
+  /// throttled-out attempt simply returns false after surfacing the
+  /// remaining wait in [AuthState.error] via [pinThrottleMessage].
   Future<bool> unlockWithPin(String pin) async {
+    _pinThrottleMessage = null;
+    final throttleError = _pinThrottleRemaining();
+    if (throttleError != null) {
+      _pinThrottleMessage = throttleError;
+      return false;
+    }
+
     final validPin = await _storage.verifyLocalPin(pin);
-    if (!validPin) return false;
+    if (!validPin) {
+      await _registerPinFailure();
+      _pinThrottleMessage = _pinThrottleRemaining() ?? _defaultPinError;
+      return false;
+    }
 
     _accessToken = await _storage.getAccessToken();
     _currentUser = _storage.getUser();
     if (_currentUser == null || _accessToken == null) return false;
 
+    await _resetPinThrottle();
     await _storage.setAuthLocked(false);
     _updateStatus(AuthStatus.authenticated);
     return true;
+  }
+
+  static const String _defaultPinError = 'Incorrect PIN. Try again.';
+  String? _pinThrottleMessage;
+
+  /// The throttle/incorrect-PIN message produced by the most recent
+  /// [unlockWithPin] attempt (null after a success or when never run).
+  /// The PIN screen reads this to show "wait Ns" errors without any
+  /// signature change to [unlockWithPin].
+  String? get pinThrottleMessage => _pinThrottleMessage;
+
+  /// Returns the active lockout message, or null when attempts are
+  /// allowed. Also enforces (and clears) an expired persisted deadline.
+  String? _pinThrottleRemaining() {
+    final until = _storage.getPinUnlockLockoutUntil();
+    if (until == null) return null;
+    final remaining = until.difference(DateTime.now());
+    if (remaining.isNegative) {
+      // Backoff served; allow the next attempt (counter persists so a
+      // further failure escalates from where it left off).
+      return null;
+    }
+    final seconds = remaining.inSeconds + (remaining.inMilliseconds > 0 ? 1 : 0);
+    final plural = seconds == 1 ? '' : 's';
+    return 'Too many incorrect PIN attempts. '
+        'Try again in $seconds second$plural.';
+  }
+
+  /// Increments the consecutive-failure count (in memory and persisted,
+  /// taking the larger of the two so a restart can't rewind it) and, once
+  /// the threshold is crossed, schedules the exponential backoff deadline.
+  Future<void> _registerPinFailure() async {
+    final persisted = _storage.getPinUnlockFailureCount();
+    _pinUnlockFailures = (_pinUnlockFailures > persisted
+            ? _pinUnlockFailures
+            : persisted) +
+        1;
+    await _storage.setPinUnlockFailureCount(_pinUnlockFailures);
+
+    final overBy = _pinUnlockFailures - _pinThrottleThreshold;
+    if (overBy < 0) return; // under threshold: no wait imposed yet
+
+    final exponent = overBy > _pinThrottleMaxExponent
+        ? _pinThrottleMaxExponent
+        : overBy;
+    final seconds = (_pinThrottleBaseSeconds << exponent).clamp(
+      _pinThrottleBaseSeconds,
+      _pinThrottleMaxSeconds,
+    );
+    await _storage.setPinUnlockLockoutUntil(
+      DateTime.now().add(Duration(seconds: seconds)),
+    );
+  }
+
+  /// Clears both the counter and any backoff deadline after a successful
+  /// unlock (or a PIN reset) so throttle state never outlives success.
+  Future<void> _resetPinThrottle() async {
+    _pinUnlockFailures = 0;
+    _pinThrottleMessage = null;
+    await _storage.setPinUnlockFailureCount(0);
+    await _storage.setPinUnlockLockoutUntil(null);
   }
 
   Future<void> refreshTokens() async {
