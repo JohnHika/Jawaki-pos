@@ -1232,19 +1232,25 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: DesignColors.darkBorder),
               ),
-              child: SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _autoRenew,
-                activeThumbColor: DesignColors.accent,
-                title: const Text(
-                  'Auto-renew subscription',
-                  style: TextStyle(
-                    color: DesignColors.darkTextPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+              // Material wrapper so the tile paints its ink/background on
+              // this Material instead of one hidden behind the decorated
+              // Container (fixes the ListTile-in-DecoratedBox assertion).
+              child: Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _autoRenew,
+                  activeThumbColor: DesignColors.accent,
+                  title: const Text(
+                    'Auto-renew subscription',
+                    style: TextStyle(
+                      color: DesignColors.darkTextPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
                   ),
+                  onChanged: (v) => setState(() => _autoRenew = v),
                 ),
-                onChanged: (v) => setState(() => _autoRenew = v),
               ),
             ),
             const SizedBox(height: 14),
