@@ -388,9 +388,15 @@ class AppDatabase extends _$AppDatabase {
             // add the same indexes explicitly here. Catalog reads run
             // per-product tier/stock lookups and category/name filters on
             // every render — without these they full-scan the local tables.
-            // Each CREATE INDEX is guarded: pre-v13 databases may lack any
-            // of these tables (e.g. product_pricing_tiers only exists from
-            // v9, products may be absent if catalog sync never ran).
+            //
+            // NEVER let this block fail the upgrade: indexes are a pure
+            // optimization, and a thrown error here aborts onUpgrade, which
+            // fails database open, which leaves the app with an empty
+            // catalog (the exact "POS shows no products" symptom). Each
+            // CREATE INDEX is wrapped and guarded against both pre-v13
+            // tables that may not exist (e.g. product_pricing_tiers only
+            // exists from v9, products may be absent if catalog sync never
+            // ran) and duplicate-index races.
             Future<void> safeCreateIndex(String name, String sql) async {
               try {
                 await customStatement(sql);
