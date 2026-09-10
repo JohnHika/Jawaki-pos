@@ -8,6 +8,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       splashFactory: InkRipple.splashFactory,
+      pageTransitionsTheme: DesignTransitions.pageTransitionsTheme,
       brightness: Brightness.light,
       fontFamily: DesignType.body.fontFamily,
       colorScheme: const ColorScheme.light(
@@ -310,6 +311,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       splashFactory: InkRipple.splashFactory,
+      pageTransitionsTheme: DesignTransitions.pageTransitionsTheme,
       brightness: Brightness.dark,
       fontFamily: DesignType.body.fontFamily,
       textTheme: DesignType.textTheme

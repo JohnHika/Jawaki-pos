@@ -58,6 +58,7 @@ import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../di/injection.dart';
 import '../auth/app_roles.dart';
+import '../theme/design_system.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authService = getIt<AuthService>();
@@ -313,8 +314,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: ':productId',
                 name: 'product-detail',
-                builder: (context, state) => ProductDetailScreen(
-                  productId: state.pathParameters['productId']!,
+                pageBuilder: (context, state) =>
+                    PageTransition.slideInPage(
+                  ProductDetailScreen(
+                    productId: state.pathParameters['productId']!,
+                  ),
+                  key: state.pageKey,
                 ),
               ),
             ],
@@ -410,8 +415,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: ':customerId',
                 name: 'customer-profile',
-                builder: (context, state) => CustomerProfileScreen(
-                  customerId: state.pathParameters['customerId']!,
+                pageBuilder: (context, state) =>
+                    PageTransition.slideInPage(
+                  CustomerProfileScreen(
+                    customerId: state.pathParameters['customerId']!,
+                  ),
+                  key: state.pageKey,
                 ),
               ),
             ],

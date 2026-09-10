@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../widgets/motion.dart';
 
 /// ═══════════════════════════════════════════════════════════════
 /// AXON POS DESIGN SYSTEM — v2
@@ -164,9 +168,56 @@ class DesignAnimation {
   static const Curve smooth = Curves.easeOutCubic;
   static const Curve bounce = Curves.elasticOut;
 
+  // ── Interaction & entrance micro-motion ─────────────────────────
+  // Press-in scale feedback: short and snappy so it reads as physical
+  // weight, not as an "animation" (see GradientButton / GlassCard).
+  static const Duration pressScale = Duration(milliseconds: 120);
+  static const double pressScaleAmount = 0.96;
+
+  // Stagger interval between consecutive first-mount list entrances
+  // (see StaggeredItem in core/widgets/motion.dart).
+  static const Duration staggerInterval = Duration(milliseconds: 40);
+
   static const Cubic standardCurve = Cubic(0.4, 0.0, 0.2, 1.0);
   static const Cubic decelerateCurve = Cubic(0.0, 0.0, 0.2, 1.0);
   static const Cubic accelerateCurve = Cubic(0.4, 0.0, 1.0, 1.0);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NAVIGATION TRANSITIONS
+//  The app-wide page transition is the Material 3 Expressive
+//  "fade forwards" motion (new page fades in and slides up while the
+//  previous page recedes), tuned to [DesignAnimation.fast] (250ms) —
+//  snappier than the SDK default 450ms so POS taps feel instant.
+//  Installed via ThemeData.pageTransitionsTheme (see app_theme.dart).
+// ═══════════════════════════════════════════════════════════════
+
+/// [FadeForwardsPageTransitionsBuilder] with the app's 250ms pacing.
+/// The SDK builder hardcodes a 450ms duration; the theme duration API is
+/// designed to be overridden by subclasses (reverse duration follows
+/// [transitionDuration] on the base class automatically).
+class _FastFadeForwardsPageTransitionsBuilder
+    extends FadeForwardsPageTransitionsBuilder {
+  const _FastFadeForwardsPageTransitionsBuilder();
+
+  @override
+  Duration get transitionDuration => DesignAnimation.fast;
+}
+
+class DesignTransitions {
+  /// Page-level transition for every MaterialPageRoute/GoRoute push.
+  /// Assign to `ThemeData.pageTransitionsTheme` in both light+dark.
+  static const PageTransitionsTheme pageTransitionsTheme =
+      PageTransitionsTheme(
+    builders: <TargetPlatform, PageTransitionsBuilder>{
+      TargetPlatform.android: _FastFadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: _FastFadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.macOS: _FastFadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.windows: _FastFadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.linux: _FastFadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.fuchsia: _FastFadeForwardsPageTransitionsBuilder(),
+    },
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -212,10 +263,28 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
-    )..repeat();
+    );
     _animation = Tween<double>(begin: -2.0, end: 2.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduced-motion gate: the shimmer is an infinite loop, so it must
+    // STOP entirely when the OS "remove animations" setting is on — the
+    // placeholder remains as a static highlight (opacity-level motion
+    // only, no sweeping gradient). didChangeDependencies re-evaluates
+    // when MediaQuery changes, so toggling the setting live also works.
+    if (reducedMotion(context)) {
+      if (_controller.isAnimating) {
+        _controller.stop();
+        _controller.reset();
+      }
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -305,6 +374,56 @@ class ProductCardShimmer extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  PRESSABLE CARD — shared press-scale wrapper for tappable cards
+//  Wraps a card in a GestureDetector so the surface scales to
+//  [DesignAnimation.pressScaleAmount] on press-in and springs back on
+//  release. Used by GlassCard (and reusable by other card shells); the
+//  card's own tap handling is unchanged.
+// ═══════════════════════════════════════════════════════════════
+class PressableCard extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+
+  const PressableCard({
+    super.key,
+    required this.child,
+    this.onTap,
+  });
+
+  @override
+  State<PressableCard> createState() => _PressableCardState();
+}
+
+class _PressableCardState extends State<PressableCard> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale =
+        (widget.onTap != null && _pressed && !reducedMotion(context))
+            ? DesignAnimation.pressScaleAmount
+            : 1.0;
+
+    return GestureDetector(
+      onTapDown: widget.onTap != null ? (_) => _setPressed(true) : null,
+      onTapUp: widget.onTap != null ? (_) => _setPressed(false) : null,
+      onTapCancel: widget.onTap != null ? () => _setPressed(false) : null,
+      child: AnimatedScale(
+        duration: DesignAnimation.pressScale,
+        curve: DesignAnimation.defaultCurve,
+        scale: scale,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  PREMIUM GLASSMORPHISM CARD
 // ═══════════════════════════════════════════════════════════════
 class GlassCard extends StatelessWidget {
@@ -369,13 +488,16 @@ class GlassCard extends StatelessWidget {
     );
 
     if (onTap != null) {
-      return Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: InkWell(
-          onTap: onTap,
+      return PressableCard(
+        onTap: onTap,
+        child: Material(
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(borderRadius),
-          child: card,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(borderRadius),
+            child: card,
+          ),
         ),
       );
     }
@@ -428,92 +550,91 @@ class GradientButton extends StatefulWidget {
   State<GradientButton> createState() => _GradientButtonState();
 }
 
-class _GradientButtonState extends State<GradientButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
+class _GradientButtonState extends State<GradientButton> {
   bool _isPressed = false;
 
   @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    );
-    if (widget.isLoading) _pulseController.repeat();
-  }
-
-  @override
-  void didUpdateWidget(GradientButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isLoading && !_pulseController.isAnimating) {
-      _pulseController.repeat();
-    } else if (!widget.isLoading && _pulseController.isAnimating) {
-      _pulseController.stop();
-      _pulseController.reset();
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final reduced = reducedMotion(context);
     final fill = widget.gradient?.first ?? DesignColors.accent;
     final textColor = widget.textColor ??
         (fill.computeLuminance() > 0.5 ? Colors.black : Colors.white);
 
-    final btn = AnimatedContainer(
-      duration: DesignAnimation.fast,
-      height: widget.height,
-      width: widget.expanded ? double.infinity : null,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(widget.borderRadius),
-        color: _isPressed ? _darken(fill, 0.12) : fill,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTapDown: widget.onPressed != null && !widget.isLoading
-              ? (_) => setState(() => _isPressed = true)
-              : null,
-          onTapUp: widget.onPressed != null && !widget.isLoading
-              ? (_) => setState(() => _isPressed = false)
-              : null,
-          onTapCancel: () => setState(() => _isPressed = false),
-          onTap: widget.isLoading ? null : widget.onPressed,
+    // Press-scale: the whole surface compresses to 0.96 on press-in and
+    // springs back on release/cancel. 120ms keeps it feeling physical
+    // rather than animated; skipped entirely under reduced motion.
+    final btn = AnimatedScale(
+      duration: DesignAnimation.pressScale,
+      curve: DesignAnimation.defaultCurve,
+      scale: (_isPressed && !reduced)
+          ? DesignAnimation.pressScaleAmount
+          : 1.0,
+      child: AnimatedContainer(
+        duration: DesignAnimation.fast,
+        height: widget.height,
+        width: widget.expanded ? double.infinity : null,
+        decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(widget.borderRadius),
-          child: Center(
-            child: widget.isLoading
-                ? _LoadingDots(color: textColor)
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.icon != null) ...[
-                        Icon(widget.icon, color: textColor, size: 20),
-                        const SizedBox(width: 10),
-                      ],
-                      Text(
-                        widget.label,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.1,
+          color: _isPressed ? _darken(fill, 0.12) : fill,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTapDown: widget.onPressed != null && !widget.isLoading
+                ? (_) => setState(() => _isPressed = true)
+                : null,
+            onTapUp: widget.onPressed != null && !widget.isLoading
+                ? (_) => setState(() => _isPressed = false)
+                : null,
+            onTapCancel: () => setState(() => _isPressed = false),
+            onTap: widget.isLoading ? null : widget.onPressed,
+            borderRadius: BorderRadius.circular(widget.borderRadius),
+            child: Center(
+              child: widget.isLoading
+                  ? _LoadingDots(color: textColor)
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.icon != null) ...[
+                          Icon(widget.icon, color: textColor, size: 20),
+                          const SizedBox(width: 10),
+                        ],
+                        Text(
+                          widget.label,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+            ),
           ),
         ),
       ),
     );
 
-    return btn;
+    // Loading pulse: a soft looping breathe while [isLoading] is true.
+    // Reduced-motion gate: when "remove animations" is on the loop never
+    // starts — the button shows its final (fully opaque) state and the
+    // loading state is communicated by the dots/label alone.
+    if (!widget.isLoading || reduced) return btn;
+
+    return btn.animateEntrance(
+      context,
+      effects: () => [
+        const FadeEffect(
+          begin: 0.6,
+          end: 1.0,
+          duration: DesignAnimation.slow,
+          curve: Curves.easeInOut,
+        ),
+      ],
+      onPlay: (controller) => controller.repeat(reverse: true),
+    );
   }
 
   Color _darken(Color color, double amount) {
@@ -933,6 +1054,47 @@ class PageTransition extends StatelessWidget {
     required this.child,
     this.forward = true,
   });
+
+  /// Slide-fade motion of [slideIn] expressed as a GoRouter
+  /// [CustomTransitionPage], so ShellRoute subroute pushes (detail
+  /// screens) get the same reveal without leaving the router's page
+  /// model. Usage in app_router.dart:
+  ///
+  /// ```dart
+  /// pageBuilder: (context, state) => PageTransition.slideInPage(
+  ///   ProductDetailScreen(productId: id),
+  ///   key: state.pageKey,
+  /// ),
+  /// ```
+  static CustomTransitionPage<T> slideInPage<T extends Object?>(
+    Widget page, {
+    LocalKey? key,
+  }) {
+    return CustomTransitionPage<T>(
+      key: key,
+      child: page,
+      transitionDuration: const Duration(milliseconds: 300),
+      reverseTransitionDuration: const Duration(milliseconds: 300),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(0.03, 0.0);
+        const end = Offset.zero;
+        const curve = Curves.easeOutCubic;
+
+        var tween =
+            Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var fadeTween =
+            Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: curve));
+
+        return SlideTransition(
+          position: animation.drive(tween),
+          child: FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   static Route<dynamic> slideIn(Widget page) {
     return PageRouteBuilder(
