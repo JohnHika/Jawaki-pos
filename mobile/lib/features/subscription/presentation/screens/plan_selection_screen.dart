@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Represents a subscription plan option.
 class SubscriptionPlan {
@@ -322,10 +323,14 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  // Plan cards
-                  for (final plan in kAvailablePlans) ...[
-                    _buildPlanCard(plan),
-                    const SizedBox(height: 14),
+                  // Plan cards — first-mount stagger (see StaggeredItem)
+                  for (final (i, plan) in kAvailablePlans.indexed) ...[
+                    StaggeredItem(
+                      itemKey: 'plan-${plan.id}',
+                      index: i,
+                      child: _buildPlanCard(plan, i),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg - 2),
                   ],
                   const SizedBox(height: 8),
                   _buildSetupFeeNotice(),
@@ -415,13 +420,19 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     );
   }
 
-  Widget _buildPlanCard(SubscriptionPlan plan) {
+  Widget _buildPlanCard(SubscriptionPlan plan, int index) {
     final isSelected = _selectedPlanId == plan.id;
 
-    return GestureDetector(
-      onTap: () => setState(() => _selectedPlanId = plan.id),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+    return Semantics(
+      selected: isSelected,
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => setState(() => _selectedPlanId = plan.id),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl + 4),
+          child: AnimatedContainer(
+            duration: DesignAnimation.fast,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: isSelected
@@ -566,9 +577,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     Expanded(
                       child: Text(
                         feature.text,
-                        style: const TextStyle(
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(
                           color: DesignColors.darkTextSecondary,
-                          fontSize: 13,
                           height: 1.3,
                         ),
                       ),
@@ -579,6 +590,8 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }

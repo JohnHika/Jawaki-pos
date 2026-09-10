@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 
@@ -119,36 +120,59 @@ class _AnalyticsDashboardScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // First-mount entrance: each section fades/rises in
+                    // once, staggered (see StaggeredItem); stable keys keep
+                    // pull-to-refresh and period switches from replaying.
+
                     // Date Period Selector
                     _buildPeriodSelector(isDark),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Summary Cards with MetricCard
-                    _buildSummaryCards(),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'analytics-summary',
+                      child: _buildSummaryCards(),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Main Sales Chart
-                    _buildSalesTrendChart(isDark),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'analytics-trend',
+                      index: 1,
+                      child: _buildSalesTrendChart(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Top Products & Payment Methods Row
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 2, child: _buildTopProducts(isDark)),
-                        const SizedBox(width: 16),
-                        Expanded(child: _buildPaymentMethods(isDark)),
-                      ],
+                    StaggeredItem(
+                      itemKey: 'analytics-top-payments',
+                      index: 2,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 2, child: _buildTopProducts(isDark)),
+                          const SizedBox(width: DesignSpacing.lg),
+                          Expanded(child: _buildPaymentMethods(isDark)),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Category Breakdown
-                    _buildCategoryBreakdown(isDark),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'analytics-category',
+                      index: 3,
+                      child: _buildCategoryBreakdown(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Hourly Distribution
-                    _buildHourlyDistribution(isDark),
-                    const SizedBox(height: 16),
+                    StaggeredItem(
+                      itemKey: 'analytics-hourly',
+                      index: 4,
+                      child: _buildHourlyDistribution(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
                   ],
                 ),
               ),
@@ -164,12 +188,12 @@ class _AnalyticsDashboardScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm, vertical: DesignSpacing.sm - 2),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
           border: Border.all(color: border),
         ),
         child: Row(
@@ -180,28 +204,40 @@ class _AnalyticsDashboardScreenState
             final isSelected = _selectedPeriod == index;
 
             return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _selectedPeriod = index);
-                  _loadAnalyticsData();
-                },
-                child: AnimatedContainer(
-                  duration: DesignAnimation.fast,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? DesignColors.accent.withValues(alpha: 0.15)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    period,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? DesignColors.accent : secondaryColor,
+              // Material+InkWell so the segment paints a ripple; the
+              // constraint keeps it at the 44px minimum touch target.
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    setState(() => _selectedPeriod = index);
+                    _loadAnalyticsData();
+                  },
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  child: AnimatedContainer(
+                    duration: DesignAnimation.fast,
+                    constraints: const BoxConstraints(
+                        minHeight: DesignSpacing.xl + 24),
+                    alignment: Alignment.center,
+                    padding:
+                        const EdgeInsets.symmetric(vertical: DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? DesignColors.accent.withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    child: Text(
+                      period,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 13,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                        color:
+                            isSelected ? DesignColors.accent : secondaryColor,
+                      ),
                     ),
                   ),
                 ),
@@ -220,7 +256,7 @@ class _AnalyticsDashboardScreenState
     final itemsSold = _summary['itemsSold'] ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs - 2),
       child: Column(
         children: [
           Row(
@@ -233,7 +269,7 @@ class _AnalyticsDashboardScreenState
                   color: DesignColors.success,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Transactions',
@@ -244,7 +280,7 @@ class _AnalyticsDashboardScreenState
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: DesignSpacing.md),
           Row(
             children: [
               Expanded(
@@ -255,7 +291,7 @@ class _AnalyticsDashboardScreenState
                   color: DesignColors.accent,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Items Sold',
@@ -281,10 +317,10 @@ class _AnalyticsDashboardScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -294,10 +330,10 @@ class _AnalyticsDashboardScreenState
             children: [
               const Icon(Icons.bar_chart_rounded,
                   color: DesignColors.brand, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Sales Trend',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -305,7 +341,7 @@ class _AnalyticsDashboardScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 250,
             child: LineChart(
@@ -360,11 +396,11 @@ class _AnalyticsDashboardScreenState
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';
                           return Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               time,
                               style:
-                                  TextStyle(color: tertiaryColor, fontSize: 11),
+                                  Theme.of(context).textTheme.bodyMedium?.copyWith(color: tertiaryColor, fontSize: 11),
                             ),
                           );
                         }
@@ -417,10 +453,10 @@ class _AnalyticsDashboardScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -430,10 +466,10 @@ class _AnalyticsDashboardScreenState
             children: [
               const Icon(Icons.star_rounded,
                   color: DesignColors.info, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Top Products',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -441,7 +477,7 @@ class _AnalyticsDashboardScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           if (_topProducts.isEmpty)
             const EmptyState(
               icon: Icons.shopping_bag_rounded,
@@ -454,7 +490,7 @@ class _AnalyticsDashboardScreenState
               final revenue = (product['totalRevenue'] ?? 0).toDouble();
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                 child: Row(
                   children: [
                     Container(
@@ -470,7 +506,7 @@ class _AnalyticsDashboardScreenState
                                     : (isDark
                                         ? DesignColors.darkSurfaceElevated
                                         : DesignColors.surfaceSubtle),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
                         border: Border.all(
                           color: (index == 0
                                   ? Colors.amber
@@ -486,7 +522,7 @@ class _AnalyticsDashboardScreenState
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: index == 0
                                 ? Colors.amber[700]
                                 : index == 1
@@ -500,14 +536,14 @@ class _AnalyticsDashboardScreenState
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: DesignSpacing.md + 2),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: titleColor,
@@ -515,11 +551,11 @@ class _AnalyticsDashboardScreenState
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalQty']} units sold',
                             style:
-                                TextStyle(fontSize: 12, color: secondaryColor),
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -529,16 +565,16 @@ class _AnalyticsDashboardScreenState
                       children: [
                         Text(
                           'KSh ${revenue.toStringAsFixed(0)}',
-                          style: const TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: DesignColors.success,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: DesignSpacing.xs),
                         Text(
                           '${(revenue / (_summary['totalRevenue'] ?? 1) * 100).toStringAsFixed(1)}%',
-                          style: TextStyle(fontSize: 11, color: secondaryColor),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 11, color: secondaryColor),
                         ),
                       ],
                     ),
@@ -561,10 +597,10 @@ class _AnalyticsDashboardScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -574,10 +610,10 @@ class _AnalyticsDashboardScreenState
             children: [
               const Icon(Icons.payment_rounded,
                   color: DesignColors.info, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Payments',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -585,7 +621,7 @@ class _AnalyticsDashboardScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           if (_salesByPayment.isEmpty)
             const EmptyState(
               icon: Icons.payment_rounded,
@@ -605,7 +641,7 @@ class _AnalyticsDashboardScreenState
               final percent = (total / percentage * 100).toStringAsFixed(1);
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.md + 2),
                 child: Row(
                   children: [
                     Container(
@@ -613,7 +649,7 @@ class _AnalyticsDashboardScreenState
                       height: 44,
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: color.withValues(alpha: 0.3),
                           width: 1,
@@ -627,24 +663,24 @@ class _AnalyticsDashboardScreenState
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: DesignSpacing.md + 2),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             _formatPaymentMethod(method),
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: titleColor,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '$count transactions',
                             style:
-                                TextStyle(fontSize: 12, color: secondaryColor),
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -654,16 +690,16 @@ class _AnalyticsDashboardScreenState
                       children: [
                         Text(
                           'KSh ${total.toStringAsFixed(0)}',
-                          style: TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: titleColor,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: DesignSpacing.xs),
                         Text(
                           '$percent%',
-                          style: TextStyle(fontSize: 11, color: secondaryColor),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 11, color: secondaryColor),
                         ),
                       ],
                     ),
@@ -684,10 +720,10 @@ class _AnalyticsDashboardScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -697,10 +733,10 @@ class _AnalyticsDashboardScreenState
             children: [
               const Icon(Icons.category_rounded,
                   color: DesignColors.info, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Sales by Category',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -708,7 +744,7 @@ class _AnalyticsDashboardScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           if (_salesByCategory.isEmpty)
             const EmptyState(
               icon: Icons.category_rounded,
@@ -726,7 +762,7 @@ class _AnalyticsDashboardScreenState
               final share = grandTotal > 0 ? total / grandTotal : 0.0;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -740,23 +776,23 @@ class _AnalyticsDashboardScreenState
                             shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: DesignSpacing.sm),
                         Expanded(
                           child: Text(
                             catName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 13, color: titleColor),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13, color: titleColor),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: DesignSpacing.md),
                         Flexible(
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
                             child: Text(
                               'KSh ${total.toStringAsFixed(0)}',
-                              style: TextStyle(
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: titleColor,
@@ -766,9 +802,9 @@ class _AnalyticsDashboardScreenState
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: DesignSpacing.sm - 2),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm - 2),
                       child: LinearProgressIndicator(
                         value: share,
                         valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -795,10 +831,10 @@ class _AnalyticsDashboardScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -808,10 +844,10 @@ class _AnalyticsDashboardScreenState
             children: [
               const Icon(Icons.access_time_rounded,
                   color: DesignColors.accent, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Hourly Sales Distribution',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -819,7 +855,7 @@ class _AnalyticsDashboardScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           if (_hourlySales.isEmpty)
             const EmptyState(
               icon: Icons.access_time_rounded,
@@ -843,7 +879,7 @@ class _AnalyticsDashboardScreenState
                   barTouchData: BarTouchData(
                     enabled: true,
                     touchTooltipData: BarTouchTooltipData(
-                      tooltipPadding: const EdgeInsets.all(12),
+                      tooltipPadding: const EdgeInsets.all(DesignSpacing.md),
                       tooltipMargin: 8,
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
                         return BarTooltipItem(
@@ -872,10 +908,10 @@ class _AnalyticsDashboardScreenState
                                 ? '${hour > 12 ? hour - 12 : 12} PM'
                                 : '$hour AM';
                             return Padding(
-                              padding: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.only(top: DesignSpacing.sm),
                               child: Text(
                                 time,
-                                style: TextStyle(
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: tertiaryColor, fontSize: 11),
                               ),
                             );

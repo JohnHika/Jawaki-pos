@@ -145,11 +145,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
-        padding:
-            EdgeInsets.only(bottom: bottomPadding > 0 ? bottomPadding + 8 : 16),
+        padding: EdgeInsets.only(
+          bottom: bottomPadding > 0
+              ? bottomPadding + DesignSpacing.sm
+              : DesignSpacing.lg,
+        ),
         decoration: BoxDecoration(
           color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(DesignSpacing.radiusXxl)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
@@ -163,33 +167,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // splashes may be invisible" assertion on Flutter 3.44+.
         child: Material(
           color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(DesignSpacing.radiusXxl)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                margin: const EdgeInsets.only(top: 12),
+                margin: const EdgeInsets.only(top: DesignSpacing.md),
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
                     color: isDark
                         ? DesignColors.darkTextTertiary
                         : DesignColors.textTertiary,
-                    borderRadius: BorderRadius.circular(2)),
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusSm - 6)),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.xl),
                 child: Row(children: [
                   Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(DesignSpacing.sm),
                       decoration: BoxDecoration(
                         gradient: DesignGradients.brand,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg - 6),
                       ),
                       child: const Icon(Icons.apps_rounded,
                           color: Colors.white, size: 20)),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: DesignSpacing.lg - 4),
                   Text('More Options',
                       style: TextStyle(
                           fontSize: 17,
@@ -199,7 +207,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               : DesignColors.textPrimary)),
                 ]),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               ...moreItems.asMap().entries.map((entry) {
                 final item = entry.value;
                 return KeyedSubtree(
@@ -214,14 +222,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // sheet Container's BoxDecoration alone triggers the
                     // "background color or ink splashes may be invisible"
                     // assertion on newer Flutter versions.
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.xl, vertical: 2),
+                    // Keep every row at the 44px+ touch minimum.
+                    minTileHeight: 48,
                     leading: Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
                           color: DesignColors.brandSubtle,
-                          borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(
+                              DesignSpacing.radiusLg - 6)),
                       child:
                           Icon(item.icon, color: DesignColors.brand, size: 20),
                     ),
@@ -275,7 +286,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               return Container(
                 width: double.infinity,
                 padding: EdgeInsets.only(
-                    top: MediaQuery.of(context).padding.top, bottom: 8),
+                    top: MediaQuery.of(context).padding.top,
+                    bottom: DesignSpacing.sm),
                 decoration: BoxDecoration(
                   color: DesignColors.warning.withValues(alpha: 0.12),
                   border: Border(
@@ -289,13 +301,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       height: 6,
                       decoration: const BoxDecoration(
                           color: DesignColors.warning, shape: BoxShape.circle)),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: DesignSpacing.sm - 2),
                   const Text('Offline Mode',
                       style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: DesignColors.warning)),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: DesignSpacing.sm),
                   Text('Sales will sync',
                       style: TextStyle(
                           fontSize: 10,

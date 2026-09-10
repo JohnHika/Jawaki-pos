@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 class CompanyActivationScreen extends ConsumerStatefulWidget {
   const CompanyActivationScreen({super.key, this.companyName});
@@ -153,38 +154,61 @@ class _CompanyActivationScreenState
               color: DesignColors.brand,
               onRefresh: _loadStatus,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                padding: const EdgeInsets.fromLTRB(DesignSpacing.xxl,
+                    DesignSpacing.xl, DesignSpacing.xxl, DesignSpacing.xxxl),
                 children: [
-                  _buildHeader(),
-                  const SizedBox(height: 32),
-                  Text(
-                    'Activate your workspace',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: DesignColors.darkTextPrimary,
-                          fontWeight: FontWeight.w800,
-                          height: 1.05,
-                        ),
+                  // First-mount entrance choreography (see StaggeredItem).
+                  // All delayed items sit above the fold so their timers are
+                  // flushed by the first settle in widget tests.
+                  StaggeredItem(
+                    itemKey: 'activation-header',
+                    child: _buildHeader(),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    companyName == null || companyName.isEmpty
-                        ? 'Your company is created. One payment unlocks the Axon POS workspace.'
-                        : '$companyName is created. Complete activation before using Axon POS.',
-                    style: const TextStyle(
-                      color: DesignColors.darkTextSecondary,
-                      fontSize: 16,
-                      height: 1.45,
+                  const SizedBox(height: DesignSpacing.xxxl - 4),
+                  StaggeredItem(
+                    itemKey: 'activation-title',
+                    index: 1,
+                    child: Text(
+                      'Activate your workspace',
+                      style:
+                          Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                color: DesignColors.darkTextPrimary,
+                                fontWeight: FontWeight.w800,
+                                height: 1.05,
+                              ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  _buildPriceCard(),
-                  const SizedBox(height: 16),
-                  _buildIncludesCard(),
+                  const SizedBox(height: DesignSpacing.md),
+                  StaggeredItem(
+                    itemKey: 'activation-subtitle',
+                    index: 2,
+                    child: Text(
+                      companyName == null || companyName.isEmpty
+                          ? 'Your company is created. One payment unlocks the Axon POS workspace.'
+                          : '$companyName is created. Complete activation before using Axon POS.',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: DesignColors.darkTextSecondary,
+                            height: 1.45,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: DesignSpacing.xl + 4),
+                  StaggeredItem(
+                    itemKey: 'activation-price',
+                    index: 3,
+                    child: _buildPriceCard(),
+                  ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  StaggeredItem(
+                    itemKey: 'activation-includes',
+                    index: 4,
+                    child: _buildIncludesCard(),
+                  ),
                   if (_error != null) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: DesignSpacing.lg),
                     _buildErrorCard(_error!),
                   ],
-                  const SizedBox(height: 24),
+                  const SizedBox(height: DesignSpacing.xl + 4),
                   if (_isLoading)
                     const Center(child: CircularProgressIndicator())
                   else ...[
@@ -231,14 +255,13 @@ class _CompanyActivationScreenState
                     ],
                   ],
                   const SizedBox(height: 20),
-                  const Text(
+                  Text(
                     'Secure checkout powered by Paystack. Axon will only unlock the workspace after the payment is verified by the server.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: DesignColors.darkTextTertiary,
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: DesignColors.darkTextTertiary,
+                          height: 1.4,
+                        ),
                   ),
                 ],
               ),
@@ -268,27 +291,26 @@ class _CompanyActivationScreenState
           ),
         ),
         const SizedBox(width: 14),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'AXON / ACTIVATION',
-                style: TextStyle(
-                  color: DesignColors.darkTextPrimary,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.6,
-                ),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: DesignColors.darkTextPrimary,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.6,
+                    ),
               ),
-              SizedBox(height: 3),
+              const SizedBox(height: 3),
               Text(
                 'STEP 4 · PAYMENT REQUIRED',
-                style: TextStyle(
-                  color: DesignColors.accent,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.1,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: DesignColors.accent,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.1,
+                    ),
               ),
             ],
           ),
@@ -312,34 +334,36 @@ class _CompanyActivationScreenState
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: DesignColors.brand.withValues(alpha: 0.55)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.workspace_premium_rounded,
+          const Icon(Icons.workspace_premium_rounded,
               color: DesignColors.brand, size: 38),
-          SizedBox(width: 16),
+          const SizedBox(width: DesignSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Axon workspace activation',
-                  style: TextStyle(
-                    color: DesignColors.darkTextPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: DesignColors.darkTextPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: DesignSpacing.xs),
                 Text(
                   'One-time setup payment',
-                  style: TextStyle(color: DesignColors.darkTextSecondary),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: DesignColors.darkTextSecondary),
                 ),
               ],
             ),
           ),
           Text(
             'KSh 50,000',
-            style: TextStyle(
+            style: DesignType.numeric(
               color: DesignColors.darkTextPrimary,
               fontWeight: FontWeight.w900,
               fontSize: 18,
@@ -375,7 +399,8 @@ class _CompanyActivationScreenState
                         color: DesignColors.darkTextPrimary,
                         fontWeight: FontWeight.w700)),
                 subtitle: Text(item.$2,
-                    style: const TextStyle(color: DesignColors.darkTextSecondary)),
+                    style:
+                        const TextStyle(color: DesignColors.darkTextSecondary)),
               ),
             )
             .toList(),
@@ -415,9 +440,9 @@ class _CompanyActivationScreenState
       height: MediaQuery.sizeOf(context).width * 1.1,
       child: IgnorePointer(
         child: TweenAnimationBuilder<double>(
-          duration: const Duration(milliseconds: 1200),
+          duration: DesignAnimation.slower,
           tween: Tween(begin: 0.86, end: 1.0),
-          curve: Curves.easeOutCubic,
+          curve: DesignAnimation.smooth,
           builder: (context, scale, child) =>
               Transform.scale(scale: scale, child: child),
           child: DecoratedBox(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Landing screen shown when a branch tries to use the AI assistant
 /// without an active subscription. There is no free trial — this screen
@@ -29,17 +29,21 @@ class AiTrialScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
+                StaggeredItem(
+                  itemKey: 'trial-mark',
+                  index: 0,
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: DesignColors.brand.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.auto_awesome,
+                        size: 48, color: DesignColors.brand),
                   ),
-                  child: const Icon(Icons.auto_awesome,
-                      size: 48, color: DesignColors.brand),
-                ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
-                const SizedBox(height: 24),
+                ),
+                const SizedBox(height: DesignSpacing.xxl),
 
                 const Text(
                   'Axon AI Assistant',
@@ -50,7 +54,7 @@ class AiTrialScreen extends StatelessWidget {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
 
                 const Text(
                   'Get instant insights, product recommendations, and business analytics powered by AI.',
@@ -60,8 +64,8 @@ class AiTrialScreen extends StatelessWidget {
                     height: 1.5,
                   ),
                   textAlign: TextAlign.center,
-                ).animate().fadeIn(delay: 200.ms),
-                const SizedBox(height: 32),
+                ),
+                const SizedBox(height: DesignSpacing.xxxl),
 
                 const _FeatureTile(
                   icon: Icons.analytics_outlined,
@@ -78,52 +82,55 @@ class AiTrialScreen extends StatelessWidget {
                   title: 'Business Tips',
                   subtitle: 'AI-powered advice for your store',
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: DesignSpacing.xxxl),
 
-                GlassCard(
-                  padding: const EdgeInsets.all(20),
-                  borderRadius: 16,
-                  borderColor: DesignColors.brand.withValues(alpha: 0.3),
-                  tint: DesignColors.brand.withValues(alpha: 0.05),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.workspace_premium,
-                              color: DesignColors.brand, size: 24),
-                          const SizedBox(width: 8),
-                          Text(
-                            'KES ${AiBillingService.subscriptionPrice.toStringAsFixed(0)}/month',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: DesignColors.brand,
+                StaggeredItem(
+                  itemKey: 'trial-pricing',
+                  index: 1,
+                  child: GlassCard(
+                    padding: const EdgeInsets.all(DesignSpacing.xl),
+                    borderRadius: DesignSpacing.radiusLg,
+                    borderColor: DesignColors.brand.withValues(alpha: 0.3),
+                    tint: DesignColors.brand.withValues(alpha: 0.05),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.workspace_premium,
+                                color: DesignColors.brand, size: 24),
+                            const SizedBox(width: DesignSpacing.sm),
+                            Text(
+                              'KES ${AiBillingService.subscriptionPrice.toStringAsFixed(0)}/month',
+                              style: DesignType.numeric(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: DesignColors.brand,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Subscribe with a card for automatic monthly renewal, or pay via M-Pesa.',
-                        style: TextStyle(
-                          color: DesignColors.textSecondary,
-                          fontSize: 13,
+                          ],
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      GradientButton(
-                        label: 'Subscribe Now',
-                        icon: Icons.workspace_premium,
-                        onPressed: onSubscribe,
-                        height: 48,
-                        borderRadius: 12,
-                      ),
-                    ],
+                        const SizedBox(height: DesignSpacing.sm),
+                        const Text(
+                          'Subscribe with a card for automatic monthly renewal, or pay via M-Pesa.',
+                          style: TextStyle(
+                            color: DesignColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: DesignSpacing.lg),
+                        GradientButton(
+                          label: 'Subscribe Now',
+                          icon: Icons.workspace_premium,
+                          onPressed: onSubscribe,
+                          height: DesignSpacing.xl + 28,
+                          borderRadius: DesignSpacing.radiusMd,
+                        ),
+                      ],
+                    ),
                   ),
-                ).animate().slideY(
-                    begin: 0.3, duration: 500.ms, curve: Curves.easeOut),
+                ),
               ],
             ),
           ),
@@ -147,7 +154,7 @@ class _FeatureTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.md),
       child: Row(
         children: [
           Container(
@@ -155,11 +162,11 @@ class _FeatureTile extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               color: DesignColors.brand.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
             child: Icon(icon, color: DesignColors.brand, size: 22),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,6 +184,6 @@ class _FeatureTile extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 400.ms).slideX(begin: -0.2);
+    );
   }
 }

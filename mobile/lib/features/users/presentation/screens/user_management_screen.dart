@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/user_management_provider.dart';
 
@@ -81,13 +82,19 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(
+                    DesignSpacing.lg,
+                    DesignSpacing.md,
+                    DesignSpacing.lg,
+                    DesignSpacing.xs,
+                  ),
                   child: Container(
                     decoration: BoxDecoration(
                       color: isDark
                           ? DesignColors.darkSurfaceElevated
                           : DesignColors.surfaceBorder.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                     ),
                     child: TextField(
                       onChanged: (v) => setState(() => _query = v),
@@ -95,7 +102,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                         hintText: 'Search users...',
                         prefixIcon: Icon(Icons.search_rounded, size: 20),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.lg,
+                          vertical: DesignSpacing.md,
+                        ),
                       ),
                     ),
                   ),
@@ -107,10 +117,22 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                           title: 'No users found',
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          padding: const EdgeInsets.fromLTRB(
+                            DesignSpacing.lg,
+                            DesignSpacing.sm,
+                            DesignSpacing.lg,
+                            DesignSpacing.xxl,
+                          ),
                           itemCount: filtered.length,
-                          itemBuilder: (context, index) =>
-                              _UserCard(user: filtered[index]),
+                          // First-mount entrance: each user card fades/rises
+                          // in once, staggered (see StaggeredItem). Keys are
+                          // stable per user, so search re-renders and
+                          // refreshes never replay the choreography.
+                          itemBuilder: (context, index) => StaggeredItem(
+                            itemKey: 'users-${filtered[index]['id']}',
+                            index: index,
+                            child: _UserCard(user: filtered[index]),
+                          ),
                         ),
                 ),
               ],
@@ -136,7 +158,7 @@ class _UserCard extends StatelessWidget {
         .toList();
 
     return GroupedCard(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.md + 2),
       children: [
         SettingsRow(
           icon: Icons.person_rounded,
@@ -147,7 +169,7 @@ class _UserCard extends StatelessWidget {
             children: [
               if (!isActive)
                 const Padding(
-                  padding: EdgeInsets.only(right: 6),
+                  padding: EdgeInsets.only(right: DesignSpacing.sm - 2),
                   child: StatusBadge(label: 'Inactive', color: DesignColors.error),
                 ),
               const Icon(Icons.chevron_right_rounded, size: 20),
@@ -157,10 +179,15 @@ class _UserCard extends StatelessWidget {
         ),
         if (roles.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            padding: const EdgeInsets.fromLTRB(
+              14,
+              0,
+              14,
+              DesignSpacing.md,
+            ),
             child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: DesignSpacing.sm - 2,
+              runSpacing: DesignSpacing.sm - 2,
               children: roles
                   .map((r) => StatusBadge(label: r, color: DesignColors.accent))
                   .toList(),

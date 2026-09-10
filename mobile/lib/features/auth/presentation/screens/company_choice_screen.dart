@@ -7,6 +7,7 @@ import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/motion.dart';
 
 /// First-launch screen: choose between registering a new company
 /// or signing in to one that already exists on this backend.
@@ -28,18 +29,33 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
   void initState() {
     super.initState();
     _entryController = AnimationController(
-      duration: const Duration(milliseconds: 900),
+      duration: DesignAnimation.slow,
       vsync: this,
     );
     _entryAnimation = CurvedAnimation(
       parent: _entryController,
       curve: DesignAnimation.smooth,
     );
+    // The orbit field is a decorative infinite loop — it must stop when
+    // the OS "remove animations" setting is on (reducedMotion gate below).
     _orbitController = AnimationController(
-      duration: const Duration(milliseconds: 14000),
+      duration: DesignAnimation.slowest * 14,
       vsync: this,
-    )..repeat();
+    );
     _entryController.forward();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      if (_orbitController.isAnimating) {
+        _orbitController.stop();
+        _orbitController.reset();
+      }
+    } else if (!_orbitController.isAnimating) {
+      _orbitController.repeat();
+    }
   }
 
   @override
@@ -54,64 +70,93 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
     final apiClient = getIt<ApiClient>();
     final current = storage.getServerBaseUrl() ?? '';
     final controller = TextEditingController(text: current);
+    var isSaving = false;
 
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: DesignColors.darkSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
-          'Connect to a backend',
-          style: TextStyle(color: DesignColors.darkTextPrimary, fontSize: 17),
-        ),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.url,
-          autocorrect: false,
-          style: const TextStyle(color: DesignColors.darkTextPrimary),
-          decoration: InputDecoration(
-            hintText: 'https://your-backend.com/api/v1',
-            hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
-            labelText: 'Backend API URL',
-            labelStyle: const TextStyle(color: DesignColors.darkTextSecondary),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: DesignColors.darkBorder),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: DesignColors.darkSurface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusXl)),
+          title: Text(
+            'Connect to a backend',
+            style: Theme.of(ctx)
+                .textTheme
+                .titleMedium
+                ?.copyWith(color: DesignColors.darkTextPrimary),
+          ),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: Theme.of(ctx)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: DesignColors.darkTextPrimary),
+            decoration: InputDecoration(
+              hintText: 'https://your-backend.com/api/v1',
+              hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
+              labelText: 'Backend API URL',
+              labelStyle:
+                  const TextStyle(color: DesignColors.darkTextSecondary),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
+                borderSide: const BorderSide(color: DesignColors.darkBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
+                borderSide: const BorderSide(color: DesignColors.brand),
+              ),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: DesignColors.brand),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
             ),
-          ),
+            FilledButton(
+              style:
+                  FilledButton.styleFrom(backgroundColor: DesignColors.brand),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final url = controller.text.trim();
+                      setDialogState(() => isSaving = true);
+                      try {
+                        if (url.isNotEmpty) {
+                          await storage.setServerBaseUrl(url);
+                          apiClient.setBaseUrl(url);
+                        }
+                        if (ctx.mounted) Navigator.of(ctx).pop();
+                        if (mounted) {
+                          showGlassSnackBar(
+                            context,
+                            url.isEmpty
+                                ? 'Using the default Axon backend'
+                                : 'Backend URL saved',
+                            icon: Icons.check_circle_rounded,
+                            color: DesignColors.success,
+                          );
+                        }
+                      } finally {
+                        setDialogState(() => isSaving = false);
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: DesignColors.brand),
-            onPressed: () async {
-              final url = controller.text.trim();
-              if (url.isNotEmpty) {
-                await storage.setServerBaseUrl(url);
-                apiClient.setBaseUrl(url);
-              }
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              if (mounted) {
-                showGlassSnackBar(
-                  context,
-                  url.isEmpty
-                      ? 'Using the default Axon backend'
-                      : 'Backend URL saved',
-                  icon: Icons.check_circle_rounded,
-                  color: DesignColors.success,
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
     controller.dispose();
@@ -200,9 +245,11 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                                     ),
                                     icon: const Icon(Icons.tune_rounded,
                                         size: 16),
-                                    label: const Text(
+                                    label: Text(
                                       'Connect to a different backend',
-                                      style: TextStyle(fontSize: 12),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium,
                                     ),
                                   )
                                 : const SizedBox(
@@ -211,15 +258,17 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                                   ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        const Center(
+                        const SizedBox(height: DesignSpacing.sm),
+                        Center(
                           child: Text(
                             'A calm start for busy counters.',
-                            style: TextStyle(
-                              color: DesignColors.darkTextTertiary,
-                              fontSize: 12,
-                              letterSpacing: 0.2,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(
+                                  color: DesignColors.darkTextTertiary,
+                                  letterSpacing: 0.2,
+                                ),
                           ),
                         ),
                       ],
@@ -277,64 +326,69 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
     return Center(
       child: Column(
         children: [
-          GestureDetector(
-            onLongPress: () => setState(() => _showBackendLink = true),
-            child: AnimatedBuilder(
-              animation: _orbitController,
-              builder: (context, child) {
-                final angle =
-                    math.sin(_orbitController.value * math.pi * 2) * 0.025;
-                return Transform.rotate(angle: angle, child: child);
-              },
-              child: Container(
-                width: isCompact ? 102 : 122,
-                height: isCompact ? 102 : 122,
-                padding: const EdgeInsets.all(21),
-                decoration: BoxDecoration(
-                  color: DesignColors.darkSurface.withValues(alpha: 0.92),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: DesignColors.brand.withValues(alpha: 0.55),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: DesignColors.brand.withValues(alpha: 0.18),
-                      blurRadius: 34,
-                      spreadRadius: 3,
+          Semantics(
+            label: 'Long-press to reveal advanced backend options',
+            child: GestureDetector(
+              onLongPress: () => setState(() => _showBackendLink = true),
+              child: AnimatedBuilder(
+                animation: _orbitController,
+                builder: (context, child) {
+                  final angle =
+                      math.sin(_orbitController.value * math.pi * 2) * 0.025;
+                  return Transform.rotate(angle: angle, child: child);
+                },
+                child: Container(
+                  width: isCompact ? 102 : 122,
+                  height: isCompact ? 102 : 122,
+                  padding: const EdgeInsets.all(21),
+                  decoration: BoxDecoration(
+                    color: DesignColors.darkSurface.withValues(alpha: 0.92),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: DesignColors.brand.withValues(alpha: 0.55),
+                      width: 1.5,
                     ),
-                  ],
-                ),
-                child: SvgPicture.asset(
-                  'assets/images/axon_logo_mark.svg',
-                  semanticsLabel: 'Axon POS',
+                    boxShadow: [
+                      BoxShadow(
+                        color: DesignColors.brand.withValues(alpha: 0.18),
+                        blurRadius: 34,
+                        spreadRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: SvgPicture.asset(
+                    'assets/images/axon_logo_mark.svg',
+                    semanticsLabel: 'Axon POS',
+                  ),
                 ),
               ),
             ),
           ),
-          SizedBox(height: isCompact ? 24 : 30),
+          SizedBox(
+              height: isCompact ? DesignSpacing.xl : DesignSpacing.xxl + 6),
           Text(
             'Your business,\nin motion.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: (isCompact
+                    ? Theme.of(context).textTheme.headlineMedium
+                    : Theme.of(context).textTheme.headlineLarge)
+                ?.copyWith(
               color: DesignColors.darkTextPrimary,
-              fontSize: isCompact ? 30 : 34,
               height: 1.04,
               fontWeight: FontWeight.w800,
               letterSpacing: -1.5,
             ),
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: DesignSpacing.lg - 1),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 320),
             child: Text(
               'Connect your counter, your team, and every sale in one calm operating system.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: DesignColors.darkTextSecondary,
-                fontSize: isCompact ? 13 : 13.5,
-                height: 1.5,
-              ),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: DesignColors.darkTextSecondary,
+                    height: 1.5,
+                  ),
             ),
           ),
         ],
@@ -409,33 +463,30 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                     const SizedBox(height: 4),
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: DesignColors.darkTextPrimary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: DesignColors.darkTextPrimary,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                          ),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: DesignColors.darkTextSecondary,
-                        fontSize: 12.5,
-                        height: 1.35,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: DesignColors.darkTextSecondary,
+                            height: 1.35,
+                          ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       detail,
-                      style: TextStyle(
-                        color: isPrimary
-                            ? DesignColors.accentLight
-                            : DesignColors.darkTextTertiary,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: isPrimary
+                                ? DesignColors.accentLight
+                                : DesignColors.darkTextTertiary,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                          ),
                     ),
                   ],
                 ),

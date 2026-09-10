@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../data/services/invitation_cache_service.dart';
 
 /// Displays all staff invitations with their status (PENDING / ACCEPTED /
@@ -125,11 +126,23 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
       onRefresh: () => _load(showCacheFirst: false),
       color: DesignColors.accent,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg,
+          DesignSpacing.sm,
+          DesignSpacing.lg,
+          DesignSpacing.xxl,
+        ),
         itemCount: _invitations.length,
-        itemBuilder: (context, index) => _InvitationCard(
-          invitation: _invitations[index],
-          isDark: isDark,
+        // First-mount entrance: each card fades/rises in once, staggered
+        // (see StaggeredItem). Keys are stable per invitation, so
+        // pull-to-refresh never replays the choreography.
+        itemBuilder: (context, index) => StaggeredItem(
+          itemKey: 'invitations-${_invitations[index]['id'] ?? index}',
+          index: index,
+          child: _InvitationCard(
+            invitation: _invitations[index],
+            isDark: isDark,
+          ),
         ),
       ),
     );
@@ -138,13 +151,13 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
   Widget _loadFailure(bool isDark, Color textPrimary, Color textSecondary) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(DesignSpacing.xxl + DesignSpacing.sm),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.cloud_off_outlined,
                 color: DesignColors.warning, size: 48),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
             Text(
               'Could not load invitations',
               style: TextStyle(
@@ -153,19 +166,19 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             Text(
               'Please check your connection and try again.',
               textAlign: TextAlign.center,
               style: TextStyle(color: textSecondary),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
             GradientButton(
               label: 'Retry',
               icon: Icons.refresh_rounded,
               onPressed: () => _load(showCacheFirst: false),
               height: 48,
-              borderRadius: 12,
+              borderRadius: DesignSpacing.radiusMd,
             ),
           ],
         ),
@@ -176,13 +189,13 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
   Widget _emptyState(bool isDark, Color textPrimary, Color textSecondary) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(DesignSpacing.xxl + DesignSpacing.sm),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.mail_outline_rounded,
                 color: textSecondary, size: 48),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
             Text(
               'No invitations sent yet',
               style: TextStyle(
@@ -191,19 +204,19 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             Text(
               'Invite staff members to join your company.',
               textAlign: TextAlign.center,
               style: TextStyle(color: textSecondary),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
             GradientButton(
               label: 'Invite Staff',
               icon: Icons.person_add_alt_1_rounded,
               onPressed: () => _goToInviteStaff(),
               height: 48,
-              borderRadius: 12,
+              borderRadius: DesignSpacing.radiusMd,
             ),
           ],
         ),
@@ -261,10 +274,10 @@ class _InvitationCard extends StatelessWidget {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.md + 2),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg - 2),
         border: Border.all(color: border),
       ),
       child: Padding(
@@ -301,13 +314,16 @@ class _InvitationCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: DesignSpacing.sm),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.lg - 6,
+                    vertical: DesignSpacing.xs,
+                  ),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusSm),
                     border: Border.all(
                         color: statusColor.withValues(alpha: 0.3)),
                   ),
@@ -315,7 +331,7 @@ class _InvitationCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(statusIcon, size: 14, color: statusColor),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: DesignSpacing.xs),
                       Text(
                         statusLabel,
                         style: TextStyle(
@@ -329,28 +345,28 @@ class _InvitationCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.lg - 6),
             // Details grid
             _detailRow(Icons.badge_outlined, 'Role', roleName, textSecondary,
                 textPrimary),
-            const SizedBox(height: 6),
+            const SizedBox(height: DesignSpacing.sm - 2),
             _detailRow(Icons.store_outlined, 'Branch', branchName, textSecondary,
                 textPrimary),
-            const SizedBox(height: 6),
+            const SizedBox(height: DesignSpacing.sm - 2),
             _detailRow(Icons.person_outline, 'Invited by', createdByName,
                 textSecondary, textPrimary),
             if (createdAt.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: DesignSpacing.sm - 2),
               _detailRow(Icons.calendar_today_outlined, 'Sent',
                   _formatDate(createdAt), textSecondary, textPrimary),
             ],
             if (acceptedAt != null && acceptedAt.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: DesignSpacing.sm - 2),
               _detailRow(Icons.check_circle_outline, 'Accepted',
                   _formatDate(acceptedAt), textSecondary, textPrimary),
             ],
             if (expiresAt.isNotEmpty && status == 'PENDING') ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: DesignSpacing.sm - 2),
               _detailRow(Icons.schedule_outlined, 'Expires',
                   _formatDate(expiresAt), textSecondary, textPrimary),
             ],
@@ -365,7 +381,7 @@ class _InvitationCard extends StatelessWidget {
     return Row(
       children: [
         Icon(icon, size: 14, color: textSecondary),
-        const SizedBox(width: 8),
+        const SizedBox(width: DesignSpacing.sm),
         Text(
           '$label: ',
           style: TextStyle(

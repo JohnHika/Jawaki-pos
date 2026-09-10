@@ -43,15 +43,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: Container(
-          margin: const EdgeInsets.only(left: 4),
+          margin: const EdgeInsets.only(left: DesignSpacing.xs),
           child: IconButton(
             icon: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
                 color: isDark
                     ? DesignColors.darkSurfaceElevated
                     : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child: const Icon(Icons.arrow_back_rounded, size: 20),
             ),
@@ -62,7 +62,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           'Payment',
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            fontSize: 20,
+            fontSize: DesignSpacing.xl,
             letterSpacing: -0.5,
             color: isDark
                 ? DesignColors.darkTextPrimary
@@ -77,14 +77,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ),
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(DesignSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Order Total Card
             GlassCard(
-              padding: const EdgeInsets.all(20),
-              borderRadius: 20,
+              padding: const EdgeInsets.all(DesignSpacing.xl),
+              borderRadius: DesignSpacing.radiusXl,
               blur: 8,
               tint: DesignColors.accent.withValues(alpha: 0.08),
               borderColor: DesignColors.accent.withValues(alpha: 0.15),
@@ -96,11 +96,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       color: isDark
                           ? DesignColors.darkTextSecondary
                           : DesignColors.textSecondary,
-                      fontSize: 14,
+                      fontSize: DesignType.chatBody,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: DesignSpacing.sm),
                   Text(
                     'KES ${cart.total.toStringAsFixed(2)}',
                     style: DesignType.numeric(
@@ -111,24 +111,26 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: DesignSpacing.xs),
                   Text(
                     '${cart.itemCount} items',
                     style: TextStyle(
                       color: isDark
                           ? DesignColors.darkTextSecondary
                           : DesignColors.textSecondary,
-                      fontSize: 14,
+                      fontSize: DesignType.chatBody,
                     ),
                   ),
                   if (cart.customerName != null) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: DesignSpacing.md - 2),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
+                          horizontal: DesignSpacing.md + 2,
+                          vertical: DesignSpacing.sm - 2),
                       decoration: BoxDecoration(
                         color: DesignColors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                             color: DesignColors.accent.withValues(alpha: 0.25)),
                       ),
@@ -137,12 +139,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         children: [
                           const Icon(Icons.person_rounded,
                               size: 15, color: DesignColors.accent),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: DesignSpacing.sm - 2),
                           Text(
                             cart.customerName!,
                             style: const TextStyle(
                                 color: DesignColors.accent,
-                                fontSize: 13,
+                                fontSize: DesignType.chatBody - 1,
                                 fontWeight: FontWeight.w600),
                           ),
                         ],
@@ -152,14 +154,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: DesignSpacing.xxl),
 
             // Select Payment Method
             const SectionHeader(
               title: 'Payment Method',
               subtitle: 'Choose how to pay',
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
 
             // Cash
             _PaymentMethodTile(
@@ -170,7 +172,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               isSelected: _selectedMethod == PaymentMethod.cash,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.cash),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.md - 2),
 
             // M-Pesa
             _PaymentMethodTile(
@@ -182,7 +184,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               onTap: () =>
                   setState(() => _selectedMethod = PaymentMethod.mpesa),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.md - 2),
 
             // Manual
             _PaymentMethodTile(
@@ -194,7 +196,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               onTap: () =>
                   setState(() => _selectedMethod = PaymentMethod.manual),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.md - 2),
 
             // Debt (sell now, customer pays later)
             _PaymentMethodTile(
@@ -205,7 +207,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               isSelected: _selectedMethod == PaymentMethod.debt,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.debt),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.md - 2),
 
             // Split
             _PaymentMethodTile(
@@ -220,9 +222,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
             // Phone number input for M-Pesa
             if (_selectedMethod == PaymentMethod.mpesa) ...[
-              const SizedBox(height: 24),
+              const SizedBox(height: DesignSpacing.xxl),
               const LabelDivider(label: 'M-PESA DETAILS'),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               TextFormField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
@@ -232,7 +234,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   prefixIcon: const Icon(Icons.phone_rounded, size: 20),
                   prefixText: '+254 ',
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
@@ -245,12 +247,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
             // Error message
             if (paymentState.error != null) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(DesignSpacing.md),
                 decoration: BoxDecoration(
                   color: DesignColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusMd),
                   border: Border.all(
                       color: DesignColors.error.withValues(alpha: 0.2)),
                 ),
@@ -258,25 +261,27 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   children: [
                     const Icon(Icons.error_outline_rounded,
                         color: DesignColors.error, size: 20),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: DesignSpacing.sm),
                     Expanded(
                       child: Text(
                         paymentState.error!,
                         style: const TextStyle(
-                            color: DesignColors.error, fontSize: 13),
+                            color: DesignColors.error,
+                            fontSize: DesignType.chatBody - 1),
                       ),
                     ),
                   ],
                 ),
               ),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: DesignSpacing.xxl),
           ],
         ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
+              DesignSpacing.lg, DesignSpacing.lg),
           child: GradientButton(
             label: _getButtonText(),
             icon: Icons.payment_rounded,
@@ -285,7 +290,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 : _processPayment,
             isLoading: paymentState.isProcessing,
             height: 56,
-            borderRadius: 16,
+            borderRadius: DesignSpacing.radiusLg,
           ),
         ),
       ),
@@ -451,7 +456,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
-                20, 4, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+                DesignSpacing.xl,
+                DesignSpacing.xs,
+                DesignSpacing.xl,
+                DesignSpacing.xl + MediaQuery.of(ctx).viewInsets.bottom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,18 +469,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         .textTheme
                         .titleLarge
                         ?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
+                const SizedBox(height: DesignSpacing.xs),
                 Text('Total due: KES ${total.toStringAsFixed(2)}',
                     style: TextStyle(
                         color: isDark
                             ? DesignColors.darkTextSecondary
                             : DesignColors.textSecondary)),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
                 ...rows.asMap().entries.map((entry) {
                   final index = entry.key;
                   final row = entry.value;
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding:
+                        const EdgeInsets.only(bottom: DesignSpacing.md - 2),
                     child: Row(
                       children: [
                         Expanded(
@@ -491,7 +500,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                                 () => row.method = v ?? row.method),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: DesignSpacing.md - 2),
                         Expanded(
                           flex: 3,
                           child: TextField(
@@ -504,8 +513,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           ),
                         ),
                         if (rows.length > 1)
+                          // 48px min hit target (default IconButton constraints)
+                          // with a Material ripple - the raw icon was a sub-44
+                          // tap target for a destructive action.
                           IconButton(
                             tooltip: 'Remove',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                                minWidth: 48, minHeight: 48),
                             onPressed: () =>
                                 setSheetState(() => rows.removeAt(index)),
                             icon: const Icon(
@@ -523,15 +538,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add another tender'),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: DesignSpacing.sm),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(DesignSpacing.md),
                   decoration: BoxDecoration(
                     color: (remaining > 0.01
                             ? DesignColors.warning
                             : DesignColors.success)
                         .withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: Text(
                     remaining > 0.01
@@ -546,7 +562,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
@@ -605,8 +621,8 @@ class _PaymentMethodTile extends StatelessWidget {
 
     return GlassCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(14),
-      borderRadius: 14,
+      padding: const EdgeInsets.all(DesignSpacing.md + 2),
+      borderRadius: DesignSpacing.radiusMd + 2,
       blur: isSelected ? 12 : 4,
       tint: isSelected
           ? color.withValues(alpha: 0.08)
@@ -626,16 +642,16 @@ class _PaymentMethodTile extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: DesignSpacing.xxl + 24,
+            height: DesignSpacing.xxl + 24,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               border: Border.all(color: color.withValues(alpha: 0.2)),
             ),
             child: Icon(icon, color: color, size: 22),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: DesignSpacing.md + 2),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,7 +659,7 @@ class _PaymentMethodTile extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: DesignType.chatBody + 2,
                     fontWeight: FontWeight.w600,
                     color: isSelected
                         ? color
@@ -652,11 +668,11 @@ class _PaymentMethodTile extends StatelessWidget {
                             : DesignColors.textPrimary),
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: DesignSpacing.xs - 2),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: DesignType.chatBody - 1,
                     color: isDark
                         ? DesignColors.darkTextSecondary
                         : DesignColors.textSecondary,

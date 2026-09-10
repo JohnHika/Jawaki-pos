@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Receipts List Screen - Shows all sales/receipts from the local database
 class ReceiptsListScreen extends ConsumerStatefulWidget {
@@ -162,10 +163,21 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                                   '${_sales.length} receipt${_sales.length != 1 ? 's' : ''} ${_rangeLabel.toLowerCase()}',
                               icon: Icons.receipt_long_rounded,
                             ),
-                            const SizedBox(height: 8),
-                            ..._sales
-                                .map((sale) => _buildReceiptCard(sale, isDark)),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: DesignSpacing.sm),
+                            // First-mount entrance stagger with stable
+                            // per-sale keys - pull-to-refresh never replays
+                            // the choreography.
+                            ..._sales.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final sale = entry.value;
+                              return StaggeredItem(
+                                key: ValueKey('receipt-${sale.id}'),
+                                itemKey: 'receipt-${sale.id}',
+                                index: index,
+                                child: _buildReceiptCard(sale, isDark),
+                              );
+                            }),
+                            const SizedBox(height: DesignSpacing.xxl),
                           ],
                         ),
                       ),
@@ -243,11 +255,11 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
     final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.md - 2),
       child: GlassCard(
         onTap: () => context.go('/receipt/${sale.id}'),
-        padding: const EdgeInsets.all(14),
-        borderRadius: 14,
+        padding: const EdgeInsets.all(DesignSpacing.md + 2),
+        borderRadius: DesignSpacing.radiusMd + 2,
         blur: 10,
         tint: Colors.transparent,
         borderColor: border,
@@ -255,14 +267,14 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
           children: [
             // Leading icon
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(DesignSpacing.md - 2),
               decoration: BoxDecoration(
                 color: methodColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               ),
               child: Icon(methodIcon, color: methodColor, size: 22),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: DesignSpacing.md),
 
             // Middle content
             Expanded(
@@ -274,16 +286,16 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                       Text(
                         '#$receiptNumber',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: DesignType.chatBody,
                           fontWeight: FontWeight.w700,
                           color: titleColor,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: DesignSpacing.sm),
                       PaymentChip(method: _capitalize(sale.paymentMethod)),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: DesignSpacing.xs),
                   Row(
                     children: [
                       Icon(
@@ -291,11 +303,11 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                         size: 13,
                         color: tertiaryColor,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: DesignSpacing.xs),
                       Text(
                         _formatDateTime(sale.createdAt),
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: DesignType.chatSecondary,
                           color: tertiaryColor,
                         ),
                       ),
@@ -312,12 +324,12 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                 Text(
                   _formatCurrency(sale.total),
                   style: DesignType.numeric(
-                    fontSize: 15,
+                    fontSize: DesignType.chatBody + 1,
                     fontWeight: FontWeight.w800,
                     color: titleColor,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: DesignSpacing.xs - 2),
                 Icon(
                   Icons.chevron_right_rounded,
                   color: tertiaryColor,

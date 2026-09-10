@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 class BugReportScreen extends StatefulWidget {
   const BugReportScreen({super.key});
@@ -91,7 +92,10 @@ class _BugReportScreenState extends State<BugReportScreen> {
         ),
         elevation: 0,
       ),
-      body: _result != null ? _buildResult(isDark) : _buildForm(isDark),
+      body: SafeArea(
+        top: false,
+        child: _result != null ? _buildResult(isDark) : _buildForm(isDark),
+      ),
     );
   }
 
@@ -102,8 +106,8 @@ class _BugReportScreenState extends State<BugReportScreen> {
     final error = _result?['error'] as String?;
 
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(DesignSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -112,7 +116,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
               color: success ? DesignColors.success : DesignColors.error,
               size: 64,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
             Text(
               success ? 'Bug Report Submitted' : 'Submission Failed',
               style: TextStyle(
@@ -121,7 +125,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
                 color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: DesignSpacing.md),
             Text(
               success
                   ? 'Your report has been logged as $hulyIssueId. We\'ll review it shortly.'
@@ -134,18 +138,25 @@ class _BugReportScreenState extends State<BugReportScreen> {
               ),
             ),
             if (success && hulyUrl != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               TextButton(
-                onPressed: () => {/* TODO: open URL */},
+                onPressed: () {/* TODO: open URL */},
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, DesignSpacing.xl + 24),
+                ),
                 child: const Text('View in Huly', style: TextStyle(color: DesignColors.accent)),
               ),
             ],
-            const SizedBox(height: 24),
-            GradientButton(
-              label: success ? 'Done' : 'Try Again',
-              onPressed: () => success ? context.pop() : setState(() => _result = null),
-              height: 48,
-              borderRadius: 12,
+            const SizedBox(height: DesignSpacing.xxl),
+            StaggeredItem(
+              itemKey: 'bug-result-action',
+              index: 0,
+              child: GradientButton(
+                label: success ? 'Done' : 'Try Again',
+                onPressed: () => success ? context.pop() : setState(() => _result = null),
+                height: DesignSpacing.xl + 28,
+                borderRadius: DesignSpacing.radiusMd,
+              ),
             ),
           ],
         ),
@@ -155,7 +166,13 @@ class _BugReportScreenState extends State<BugReportScreen> {
 
   Widget _buildForm(bool isDark) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      // Keyboard-safe: lift the form above the keyboard as fields focus.
+      padding: EdgeInsets.fromLTRB(
+        DesignSpacing.lg,
+        DesignSpacing.lg,
+        DesignSpacing.lg,
+        DesignSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+      ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -168,7 +185,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
               style: TextStyle(color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter a title' : null,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
 
             // Severity
             Text(
@@ -179,9 +196,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
                 color: isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             _buildSeveritySelector(),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
 
             // Description
             TextFormField(
@@ -191,7 +208,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
               style: TextStyle(color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Please describe the issue' : null,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
 
             // Screenshot
             Row(
@@ -203,11 +220,12 @@ class _BugReportScreenState extends State<BugReportScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: DesignColors.accent,
                     side: const BorderSide(color: DesignColors.accent),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignSpacing.radiusMd)),
+                    minimumSize: const Size(64, DesignSpacing.xl + 24),
                   ),
                 ),
                 if (_screenshot != null) ...[
-                  const SizedBox(width: 12),
+                  const SizedBox(width: DesignSpacing.md),
                   Expanded(
                     child: Text(
                       _screenshot!.path.split('/').last,
@@ -218,22 +236,32 @@ class _BugReportScreenState extends State<BugReportScreen> {
                       ),
                     ),
                   ),
+                  // >=44px tap target for removing the attached screenshot.
                   IconButton(
+                    tooltip: 'Remove screenshot',
+                    constraints: const BoxConstraints(
+                        minWidth: DesignSpacing.xl + 24,
+                        minHeight: DesignSpacing.xl + 24),
+                    padding: EdgeInsets.zero,
                     icon: const Icon(Icons.close_rounded, size: 18, color: DesignColors.error),
                     onPressed: () => setState(() => _screenshot = null),
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: DesignSpacing.xxl),
 
             // Submit
-            GradientButton(
-              label: _isSubmitting ? 'Submitting…' : 'Submit Bug Report',
-              icon: _isSubmitting ? null : Icons.bug_report_rounded,
-              onPressed: _isSubmitting ? null : _submit,
-              height: 52,
-              borderRadius: 14,
+            StaggeredItem(
+              itemKey: 'bug-submit',
+              index: 0,
+              child: GradientButton(
+                label: _isSubmitting ? 'Submitting…' : 'Submit Bug Report',
+                icon: _isSubmitting ? null : Icons.bug_report_rounded,
+                onPressed: _isSubmitting ? null : _submit,
+                height: DesignSpacing.xxl + 28,
+                borderRadius: DesignSpacing.radiusLg,
+              ),
             ),
           ],
         ),
@@ -256,27 +284,36 @@ class _BugReportScreenState extends State<BugReportScreen> {
         return Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: GestureDetector(
-              onTap: () => setState(() => _severity = s['key'] as String),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? (s['color'] as Color).withValues(alpha: 0.15)
-                      : (isDark ? DesignColors.darkSurfaceElevated : Colors.grey.shade100),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: selected ? s['color'] as Color : (isDark ? DesignColors.darkBorder : Colors.grey.shade300),
-                    width: selected ? 1.5 : 1,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => setState(() => _severity = s['key'] as String),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                child: Container(
+                  // >=44px tap target.
+                  constraints: const BoxConstraints(
+                    minHeight: DesignSpacing.xl + 24,
                   ),
-                ),
-                child: Text(
-                  s['label'] as String,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? s['color'] as Color : (isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(vertical: DesignSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? (s['color'] as Color).withValues(alpha: 0.15)
+                        : (isDark ? DesignColors.darkSurfaceElevated : Colors.grey.shade100),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    border: Border.all(
+                      color: selected ? s['color'] as Color : (isDark ? DesignColors.darkBorder : Colors.grey.shade300),
+                      width: selected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    s['label'] as String,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? s['color'] as Color : (isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
+                    ),
                   ),
                 ),
               ),
@@ -297,18 +334,18 @@ class _BugReportScreenState extends State<BugReportScreen> {
       filled: true,
       fillColor: isDark ? DesignColors.darkSurfaceElevated : Colors.grey.shade50,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : Colors.grey.shade300),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : Colors.grey.shade300),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: const BorderSide(color: DesignColors.accent, width: 1.5),
       ),
-      contentPadding: const EdgeInsets.all(14),
+      contentPadding: const EdgeInsets.all(DesignSpacing.lg - DesignSpacing.xs),
     );
   }
 }

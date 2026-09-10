@@ -7,6 +7,7 @@ import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/motion.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 
 class _WorkspaceIdentity {
@@ -48,8 +49,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _pin = '';
   static const int _pinLength = 4;
 
-  late AnimationController _fadeAnimation;
-  late Animation<double> _fadeAnimationValue;
   late AnimationController _pulseController;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -166,24 +165,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     _checkBiometric();
     _loadAppVersion();
 
-    _fadeAnimation = AnimationController(
-      duration: DesignAnimation.normal,
-      vsync: this,
-    );
-
-    _fadeAnimationValue = CurvedAnimation(
-      parent: _fadeAnimation,
-      curve: DesignAnimation.defaultCurve,
-    );
-
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
+      duration: DesignAnimation.slower,
+    );
 
     _shakeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: DesignAnimation.slow,
     );
 
     _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
@@ -191,14 +180,29 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     );
 
     _scaleController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: DesignAnimation.fast,
       vsync: this,
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
       CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
     );
 
-    _fadeAnimation.forward();
+    _pulseController.repeat(reverse: true);
+  }
+
+  // The logo pulse is an infinite loop: only run it when the OS
+  // "remove animations" setting is off (see core/widgets/motion.dart).
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      if (_pulseController.isAnimating) {
+        _pulseController.stop();
+        _pulseController.reset();
+      }
+    } else if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
   }
 
   _WorkspaceIdentity _loadWorkspaceIdentity() {
@@ -280,7 +284,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
 
   @override
   void dispose() {
-    _fadeAnimation.dispose();
     _pulseController.dispose();
     _shakeController.dispose();
     _scaleController.dispose();
@@ -316,37 +319,45 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 // Header bar (compact)
                 Row(
                   children: [
-                    GestureDetector(
-                      onTap: _useEmailInstead,
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.1),
+                    Semantics(
+                      label: 'Use email instead',
+                      button: true,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _useEmailInstead,
+                          customBorder: const CircleBorder(),
+                          child: SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Icon(Icons.arrow_back_rounded,
+                                color: Colors.white.withValues(alpha: 0.7),
+                                size: DesignSpacing.lg + 2),
+                          ),
                         ),
-                        child: Icon(Icons.arrow_back_rounded,
-                            color: Colors.white.withValues(alpha: 0.7),
-                            size: 18),
                       ),
                     ),
                     const Spacer(),
                   ],
                 ),
 
-                SizedBox(height: isSmallScreen ? 8 : 24),
+                SizedBox(height: isSmallScreen ? DesignSpacing.sm : DesignSpacing.xl),
 
-                // Logo
-                FadeTransition(
-                  opacity: _fadeAnimationValue,
+                // Logo — first-mount stagger (see StaggeredItem)
+                StaggeredItem(
+                  itemKey: 'pin-logo',
                   child: _buildLogoSection(isSmallScreen),
                 ),
 
-                SizedBox(height: isSmallScreen ? 12 : 28),
+                SizedBox(
+                    height: isSmallScreen
+                        ? DesignSpacing.md
+                        : DesignSpacing.xxl + 4),
 
                 // PIN dots
-                FadeTransition(
-                  opacity: _fadeAnimationValue,
+                StaggeredItem(
+                  itemKey: 'pin-dots',
+                  index: 1,
                   child: _buildPinDotsSection(isSmallScreen),
                 ),
 
@@ -373,16 +384,19 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 SizedBox(height: isSmallScreen ? 8 : 20),
 
                 // Number pad
-                FadeTransition(
-                  opacity: _fadeAnimationValue,
+                StaggeredItem(
+                  itemKey: 'pin-numpad',
+                  index: 2,
                   child: _buildNumberPad(isSmallScreen, buttonSize),
                 ),
 
-                SizedBox(height: isSmallScreen ? 8 : 16),
+                SizedBox(
+                    height: isSmallScreen ? DesignSpacing.sm : DesignSpacing.lg),
 
                 // Bottom links
-                FadeTransition(
-                  opacity: _fadeAnimationValue,
+                StaggeredItem(
+                  itemKey: 'pin-options',
+                  index: 3,
                   child: _buildBottomOptions(authState),
                 ),
               ],
@@ -567,7 +581,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 right: index == _pinLength - 1 ? 0 : dotGap,
               ),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: DesignAnimation.fast,
                 curve: Curves.easeOut,
                 width: dotSize,
                 height: dotSize,
@@ -725,36 +739,44 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final isLoading = ref.watch(authControllerProvider).isLoading;
     final fontSize = isSmallScreen ? 22.0 : 26.0;
 
-    return GestureDetector(
-      onTap: isLoading ? null : () => _onNumberPressed(digit),
-      onTapDown: isLoading ? null : (_) => _scaleController.forward(),
-      onTapUp: isLoading ? null : (_) => _scaleController.reverse(),
-      onTapCancel: () => _scaleController.reverse(),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.08),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.15),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+    return Semantics(
+      label: 'PIN digit $digit',
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isLoading ? null : () => _onNumberPressed(digit),
+          onTapDown: isLoading ? null : (_) => _scaleController.forward(),
+          onTapUp: isLoading ? null : (_) => _scaleController.reverse(),
+          onTapCancel: () => _scaleController.reverse(),
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.08),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: DesignSpacing.sm,
+                  offset: const Offset(0, DesignSpacing.xs),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            digit,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+            child: Center(
+              child: Text(
+                digit,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ),
@@ -769,24 +791,31 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }) {
     final isLoading = ref.watch(authControllerProvider).isLoading;
 
-    return GestureDetector(
-      onTap: isLoading ? null : onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.05),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-        child: Center(
-          child: Icon(
-            icon,
-            color: Colors.white.withValues(alpha: 0.6),
-            size: size * 0.35,
+    return Semantics(
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isLoading ? null : onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.05),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.1),
+                width: 1,
+              ),
+            ),
+            child: Center(
+              child: Icon(
+                icon,
+                color: Colors.white.withValues(alpha: 0.6),
+                size: size * 0.35,
+              ),
+            ),
           ),
         ),
       ),
@@ -797,43 +826,60 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     return Column(
       children: [
         if (_biometricAvailable) ...[
-          GestureDetector(
-            onTap: authState.isLoading ? null : _handleBiometricLogin,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.16),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.fingerprint_rounded,
-                    color: Colors.white.withValues(alpha: 0.82),
-                    size: 20,
+          Semantics(
+            button: true,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: authState.isLoading ? null : _handleBiometricLogin,
+                borderRadius:
+                    BorderRadius.circular(DesignSpacing.radiusFull),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.lg - 2,
+                    vertical: DesignSpacing.sm + 2,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Use biometric unlock',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.86),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusFull),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16),
                     ),
                   ),
-                ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.fingerprint_rounded,
+                        color: Colors.white.withValues(alpha: 0.82),
+                        size: DesignSpacing.xl,
+                      ),
+                      const SizedBox(width: DesignSpacing.sm),
+                      Text(
+                        'Use biometric unlock',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.86),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
           const SizedBox(height: DesignSpacing.md),
         ],
-        // Back to email login
-        GestureDetector(
-          onTap: _useEmailInstead,
+        // Back to email login — TextButton so the target is 48px and
+        // the tap gets standard Material feedback (was a bare text tap).
+        TextButton(
+          style: TextButton.styleFrom(
+            minimumSize: const Size(64, 48),
+          ),
+          onPressed: _useEmailInstead,
           child: Text(
             'Use email instead',
             style: TextStyle(

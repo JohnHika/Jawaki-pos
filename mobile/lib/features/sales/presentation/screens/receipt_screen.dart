@@ -38,15 +38,15 @@ class ReceiptScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         leading: Container(
-          margin: const EdgeInsets.only(left: 4),
+          margin: const EdgeInsets.only(left: DesignSpacing.xs),
           child: IconButton(
             icon: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
                 color: isDark
                     ? DesignColors.darkSurfaceElevated
                     : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child: const Icon(Icons.close_rounded, size: 20),
             ),
@@ -57,7 +57,7 @@ class ReceiptScreen extends ConsumerWidget {
           'Receipt',
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            fontSize: 20,
+            fontSize: DesignSpacing.xl,
             letterSpacing: -0.5,
             color: isDark
                 ? DesignColors.darkTextPrimary
@@ -71,10 +71,10 @@ class ReceiptScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
                 color: DesignColors.accent.withValues(alpha:0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child:
                   const Icon(Icons.share_outlined, size: 20, color: DesignColors.accent),
@@ -111,10 +111,10 @@ class ReceiptScreen extends ConsumerWidget {
           ),
           IconButton(
             icon: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
                 color: DesignColors.accent.withValues(alpha:0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child: const Icon(Icons.print_outlined,
                   size: 20, color: DesignColors.accent),
@@ -124,17 +124,17 @@ class ReceiptScreen extends ConsumerWidget {
           ),
           IconButton(
             icon: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
                 color: DesignColors.error.withValues(alpha:0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child: const Icon(Icons.block_rounded,
                   size: 20, color: DesignColors.error),
             ),
             onPressed: () => _voidSale(context, ref),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: DesignSpacing.xs),
         ],
       ),
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
@@ -155,13 +155,14 @@ class ReceiptScreen extends ConsumerWidget {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
+              DesignSpacing.lg, DesignSpacing.lg),
           child: GradientButton(
             label: 'New Sale',
             icon: Icons.add_shopping_cart_rounded,
             onPressed: () => context.go('/'),
             height: 56,
-            borderRadius: 16,
+            borderRadius: DesignSpacing.radiusLg,
           ),
         ),
       ),
@@ -188,7 +189,8 @@ class ReceiptScreen extends ConsumerWidget {
     const inkColor = Color(0xFF1A1A1A);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      padding: const EdgeInsets.symmetric(
+          vertical: DesignSpacing.xl, horizontal: DesignSpacing.lg),
       child: Center(
         child: Column(
           children: [
@@ -205,7 +207,7 @@ class ReceiptScreen extends ConsumerWidget {
                     : DesignColors.textTertiary,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.md - 2),
             Container(
               // ~58mm of paper: a fixed narrow column. The monospace font at
               // this size fits 32 chars, matching the printer's line width.
@@ -234,12 +236,12 @@ class ReceiptScreen extends ConsumerWidget {
                     Center(
                       child: Image.network(
                         logoUrl,
-                        height: 48,
+                        height: DesignSpacing.xxl + 24,
                         fit: BoxFit.contain,
                         errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: DesignSpacing.md - 2),
                   ],
                   Text(
                     lines,

@@ -14,6 +14,7 @@ import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
@@ -182,7 +183,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             children: [
               // Greeting header
               Padding(
-                padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+                padding: const EdgeInsets.only(
+                  left: DesignSpacing.md,
+                  right: DesignSpacing.md,
+                  bottom: DesignSpacing.sm,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -198,7 +203,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             : DesignColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: DesignSpacing.xs - 2),
                     Text(
                       identity.companyName,
                       style: const TextStyle(
@@ -207,7 +212,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         color: DesignColors.accent,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: DesignSpacing.xs),
                     Text(
                       _dateFmt.format(DateTime.now()),
                       style: TextStyle(
@@ -220,7 +225,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
 
               // Staff invite nudge — persistent across sessions until
               // at least one staff invitation is accepted.
@@ -231,9 +236,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 data: (summary) => Column(
                   children: [
                     _buildSummaryGrid(context, summary),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: DesignSpacing.md),
                     _buildAiBrief(context, ref, summary),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: DesignSpacing.md),
                     _buildCostAndProfitCard(context, ref, summary),
                   ],
                 ),
@@ -244,7 +249,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   'itemsSold': 0,
                 }),
                 error: (e, _) => Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(DesignSpacing.xl),
                   child: EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load summary',
@@ -256,7 +261,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
 
               // Recent Sales Section
               SectionHeader(
@@ -291,87 +296,93 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   return Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: divider),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusXl),
                     ),
                     child: Column(
                       children:
                           sales.take(10).toList().asMap().entries.map((entry) {
                         final isLast = entry.key == sales.take(10).length - 1;
                         final sale = entry.value;
-                        return InkWell(
-                          onTap: () => context.push('/receipt/${sale.id}'),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
-                            ),
-                            decoration: BoxDecoration(
-                              border: isLast
-                                  ? null
-                                  : Border(bottom: BorderSide(color: divider)),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 38,
-                                  height: 38,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: DesignColors.accent
-                                        .withValues(alpha: 0.10),
-                                    shape: BoxShape.circle,
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => context.push('/receipt/${sale.id}'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13,
+                              ),
+                              decoration: BoxDecoration(
+                                border: isLast
+                                    ? null
+                                    : Border(
+                                        bottom: BorderSide(color: divider)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: DesignColors.accent
+                                          .withValues(alpha: 0.10),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.receipt_long_rounded,
+                                      size: 18,
+                                      color: DesignColors.accent,
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    Icons.receipt_long_rounded,
-                                    size: 18,
-                                    color: DesignColors.accent,
+                                  const SizedBox(width: DesignSpacing.md),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          sale.receiptNumber,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13.5,
+                                            color: isDark
+                                                ? DesignColors.darkTextPrimary
+                                                : DesignColors.textPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(
+                                            height: DesignSpacing.xs - 1),
+                                        Text(
+                                          '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            color: isDark
+                                                ? DesignColors.darkTextTertiary
+                                                : DesignColors.textTertiary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        sale.receiptNumber,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13.5,
+                                  Flexible(
+                                    child: FittedBox(
+                                      alignment: Alignment.centerRight,
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        _currencyFmt.format(sale.total),
+                                        style: DesignType.numeric(
+                                          fontSize: 15,
                                           color: isDark
                                               ? DesignColors.darkTextPrimary
                                               : DesignColors.textPrimary,
                                         ),
                                       ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: isDark
-                                              ? DesignColors.darkTextTertiary
-                                              : DesignColors.textTertiary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Flexible(
-                                  child: FittedBox(
-                                    alignment: Alignment.centerRight,
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      _currencyFmt.format(sale.total),
-                                      style: DesignType.numeric(
-                                        fontSize: 15,
-                                        color: isDark
-                                            ? DesignColors.darkTextPrimary
-                                            : DesignColors.textPrimary,
-                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -380,11 +391,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   );
                 },
                 loading: () => const Padding(
-                  padding: EdgeInsets.all(20),
+                  padding: EdgeInsets.all(DesignSpacing.xl),
                   child: Center(child: CircularProgressIndicator()),
                 ),
                 error: (e, _) => Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(DesignSpacing.xl),
                   child: EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Couldn\'t load recent sales',
@@ -395,7 +406,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
             ],
           ),
         ),
@@ -407,50 +418,66 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         // Calculate card width to fit 2 per row with proper spacing
-        final cardWidth = (constraints.maxWidth - 12) / 2;
+        final cardWidth = (constraints.maxWidth - DesignSpacing.md) / 2;
 
         return Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: DesignSpacing.md,
+          runSpacing: DesignSpacing.md,
           children: [
             // Today's Revenue
             SizedBox(
               width: cardWidth,
-              child: MetricCard(
-                title: "Today's Revenue",
-                value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
-                icon: Icons.trending_up_rounded,
-                color: DesignColors.success,
+              child: StaggeredItem(
+                itemKey: 'dash-metric-revenue',
+                index: 0,
+                child: MetricCard(
+                  title: "Today's Revenue",
+                  value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
+                  icon: Icons.trending_up_rounded,
+                  color: DesignColors.success,
+                ),
               ),
             ),
             // Transactions
             SizedBox(
               width: cardWidth,
-              child: MetricCard(
-                title: 'Transactions',
-                value: '${summary['transactionCount'] ?? 0}',
-                icon: Icons.receipt_long_rounded,
-                color: DesignColors.brand,
+              child: StaggeredItem(
+                itemKey: 'dash-metric-transactions',
+                index: 1,
+                child: MetricCard(
+                  title: 'Transactions',
+                  value: '${summary['transactionCount'] ?? 0}',
+                  icon: Icons.receipt_long_rounded,
+                  color: DesignColors.brand,
+                ),
               ),
             ),
             // Avg. Ticket
             SizedBox(
               width: cardWidth,
-              child: MetricCard(
-                title: 'Avg. Ticket',
-                value: _currencyFmt.format(summary['avgTicket'] ?? 0),
-                icon: Icons.shopping_cart_rounded,
-                color: DesignColors.info,
+              child: StaggeredItem(
+                itemKey: 'dash-metric-avg-ticket',
+                index: 2,
+                child: MetricCard(
+                  title: 'Avg. Ticket',
+                  value: _currencyFmt.format(summary['avgTicket'] ?? 0),
+                  icon: Icons.shopping_cart_rounded,
+                  color: DesignColors.info,
+                ),
               ),
             ),
             // Items Sold
             SizedBox(
               width: cardWidth,
-              child: MetricCard(
-                title: 'Items Sold',
-                value: '${summary['itemsSold'] ?? 0}',
-                icon: Icons.inventory_2_rounded,
-                color: DesignColors.accent,
+              child: StaggeredItem(
+                itemKey: 'dash-metric-items-sold',
+                index: 3,
+                child: MetricCard(
+                  title: 'Items Sold',
+                  value: '${summary['itemsSold'] ?? 0}',
+                  icon: Icons.inventory_2_rounded,
+                  color: DesignColors.accent,
+                ),
               ),
             ),
           ],
@@ -497,7 +524,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       child: Stack(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(DesignSpacing.lg),
             decoration: BoxDecoration(
               color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
               border: Border.all(color: cardBorder),
@@ -511,7 +538,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
                       size: 18,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: DesignSpacing.sm),
                     Text(
                       'AI BRIEF',
                       style: TextStyle(
@@ -525,7 +552,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
                 briefAsync.when(
                   data: (brief) {
                     // A real AI-generated brief was returned — show it as-is
@@ -561,7 +588,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               : DesignColors.textTertiary,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: DesignSpacing.sm),
                       Text(
                         'Thinking about today\'s numbers...',
                         style: TextStyle(
@@ -600,7 +627,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       children: snippets
           .map(
             (snippet) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
               child: Text(
                 snippet,
                 style: TextStyle(
@@ -648,7 +675,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       child: Stack(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(DesignSpacing.lg),
             decoration: BoxDecoration(
               color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
               border: Border.all(color: cardBorder),
@@ -670,30 +697,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       ),
                     ),
                     const Spacer(),
-                    InkWell(
-                      onTap: isLoading
-                          ? null
-                          : () => _openProfitAdjustment(
-                              context, ref, revenue, cost),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.tune_rounded,
-                              size: 14, color: DesignColors.accent),
-                          SizedBox(width: 4),
-                          Text('ADJUST',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
-                                color: DesignColors.accent,
-                              )),
-                        ],
+                    // Material+InkWell: real pressed/ripple state on the
+                    // ADJUST control, with a >=44px hit target (the bare
+                    // InkWell around a 14px icon row was far below it).
+                    // Ink paints on this transparent Material, not the card.
+                    Material(
+                      color: Colors.transparent,
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusFull),
+                      child: InkWell(
+                        onTap: isLoading
+                            ? null
+                            : () => _openProfitAdjustment(
+                                context, ref, revenue, cost),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusFull),
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: DesignSpacing.huge,
+                            minHeight: DesignSpacing.huge,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.sm + DesignSpacing.xs,
+                          ),
+                          alignment: Alignment.center,
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.tune_rounded,
+                                  size: 14, color: DesignColors.accent),
+                              SizedBox(width: DesignSpacing.xs),
+                              Text('ADJUST',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                    color: DesignColors.accent,
+                                  )),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: DesignSpacing.md + 2),
                 Row(
                   children: [
                     Expanded(
@@ -744,7 +792,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 : DesignColors.textTertiary,
           ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: DesignSpacing.xs - 1),
         Text(
           value,
           style: DesignType.numeric(fontSize: 17, color: color),

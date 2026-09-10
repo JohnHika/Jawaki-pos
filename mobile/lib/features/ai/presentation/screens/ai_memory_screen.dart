@@ -5,6 +5,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 const _memoryTypes = ['fact', 'preference', 'customer', 'policy'];
 const _memoryTypeLabels = {
@@ -178,10 +179,16 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
       itemCount: _memories.length,
       itemBuilder: (context, index) {
         final memory = _memories[index];
-        return _MemoryCard(
-          memory: memory,
-          isDark: isDark,
-          onDelete: () => _deleteMemory(memory['id'] as String),
+        // First-mount entrance only: stable key per memory so pull-to-
+        // refresh never replays the choreography.
+        return StaggeredItem(
+          itemKey: 'memory-${memory['id']}',
+          index: index,
+          child: _MemoryCard(
+            memory: memory,
+            isDark: isDark,
+            onDelete: () => _deleteMemory(memory['id'] as String),
+          ),
         );
       },
     );
@@ -212,11 +219,11 @@ class _MemoryCard extends StatelessWidget {
     final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
+      padding: const EdgeInsets.all(DesignSpacing.lg - 2),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg - 2),
         border: Border.all(color: border),
       ),
       child: Row(
@@ -229,10 +236,12 @@ class _MemoryCard extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.sm, vertical: 3),
                       decoration: BoxDecoration(
                         color: DesignColors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusSm - 2),
                       ),
                       child: Text(
                         _memoryTypeLabels[type] ?? type,
@@ -246,7 +255,7 @@ class _MemoryCard extends StatelessWidget {
                   ],
                 ),
                 if (title.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: DesignSpacing.sm),
                   Text(
                     title,
                     style: TextStyle(
@@ -256,22 +265,28 @@ class _MemoryCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                const SizedBox(height: 4),
+                const SizedBox(height: DesignSpacing.xs),
                 Text(
                   content,
-                  style: TextStyle(fontSize: 13, color: bodyColor, height: 1.4),
+                  style: TextStyle(
+                      fontSize: 13, color: bodyColor, height: 1.4),
                 ),
               ],
             ),
           ),
+          // >=44px tap target for delete.
           IconButton(
+            tooltip: 'Remove',
+            constraints: const BoxConstraints(
+                minWidth: DesignSpacing.xl + 24,
+                minHeight: DesignSpacing.xl + 24),
+            padding: EdgeInsets.zero,
             icon: Icon(Icons.delete_outline_rounded,
                 size: 20,
                 color: isDark
                     ? DesignColors.darkTextTertiary
                     : DesignColors.textTertiary),
             onPressed: onDelete,
-            tooltip: 'Remove',
           ),
         ],
       ),
@@ -334,92 +349,111 @@ class _AddMemorySheetState extends State<_AddMemorySheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Container(
+        // Keyboard-safe: cap the sheet height and scroll the form instead of
+        // overflowing when the keyboard is up.
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         decoration: BoxDecoration(
           color: isDark ? DesignColors.darkSurface : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(DesignSpacing.radiusXl)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Text(
-              'Add a memory',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: _memoryTypes.map((type) {
-                final selected = _type == type;
-                return ChoiceChip(
-                  label: Text(_memoryTypeLabels[type] ?? type),
-                  selected: selected,
-                  onSelected: (_) => setState(() => _type = type),
-                  selectedColor: DesignColors.accent.withValues(alpha: 0.15),
-                  labelStyle: TextStyle(
-                    color: selected ? DesignColors.accent : null,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        child: SingleChildScrollView(
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: DesignSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _titleController,
-              maxLength: 60,
-              decoration: const InputDecoration(
-                labelText: 'Short title (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _contentController,
-              maxLines: 4,
-              maxLength: 2000,
-              decoration: const InputDecoration(
-                labelText: 'What should the AI remember?',
-                hintText: 'e.g. "We give a 5% discount to customers who buy 3+ crates"',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _saving ? null : _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: DesignColors.accent,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Save'),
-              ),
+                Text(
+                  'Add a memory',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.lg),
+                Wrap(
+                  spacing: DesignSpacing.sm,
+                  runSpacing: DesignSpacing.sm,
+                  children: _memoryTypes.map((type) {
+                    final selected = _type == type;
+                    // Full-height (>=44px) tap target + ink ripple.
+                    return ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minHeight: DesignSpacing.xl + 24,
+                      ),
+                      child: ChoiceChip(
+                        label: Text(_memoryTypeLabels[type] ?? type),
+                        selected: selected,
+                        onSelected: (_) => setState(() => _type = type),
+                        selectedColor: DesignColors.accent.withValues(alpha: 0.15),
+                        labelStyle: TextStyle(
+                          color: selected ? DesignColors.accent : null,
+                          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                TextField(
+                  controller: _titleController,
+                  maxLength: 60,
+                  decoration: const InputDecoration(
+                    labelText: 'Short title (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.sm),
+                TextField(
+                  controller: _contentController,
+                  maxLines: 4,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                    labelText: 'What should the AI remember?',
+                    hintText: 'e.g. "We give a 5% discount to customers who buy 3+ crates"',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                // >=44px tap target.
+                SizedBox(
+                  width: double.infinity,
+                  height: DesignSpacing.xl + 24,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DesignColors.accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: DesignSpacing.lg - 2),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

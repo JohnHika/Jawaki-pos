@@ -5,6 +5,7 @@ import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Stock Requests List Screen - For managers to view and approve stock requests
 class StockRequestsListScreen extends ConsumerStatefulWidget {
@@ -177,9 +178,16 @@ class _StockRequestsListScreenState
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         itemCount: _requests.length,
+        // First-mount entrance: each card fades/rises in once, staggered.
+        // Keys are stable per request so pull-to-refresh never replays it.
         itemBuilder: (context, index) {
           final request = _requests[index];
-          return _buildRequestCard(request);
+          final id = request['id'] as String?;
+          return StaggeredItem(
+            itemKey: 'stock-req-${id ?? index}',
+            index: index,
+            child: _buildRequestCard(request),
+          );
         },
       ),
     );
@@ -365,7 +373,7 @@ class _StockRequestsListScreenState
 
             // Action Buttons for Pending Requests
             if (requestStatus == 'PENDING') ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: DesignSpacing.lg + 2),
               Row(
                 children: [
                   Expanded(
@@ -377,21 +385,24 @@ class _StockRequestsListScreenState
                         foregroundColor: DesignColors.error,
                         side: const BorderSide(color: DesignColors.error),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
+                        // >=44px tap target.
+                        minimumSize: const Size(64, DesignSpacing.xl + 24),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: DesignSpacing.md),
                   Expanded(
                     child: GradientButton(
                       label: 'Approve',
                       icon: Icons.check_rounded,
                       onPressed: () => _approveRequest(id),
                       gradient: const [DesignColors.success],
-                      height: 44,
-                      borderRadius: 12,
+                      height: DesignSpacing.xl + 24,
+                      borderRadius: DesignSpacing.radiusMd,
                     ),
                   ),
                 ],
@@ -400,7 +411,7 @@ class _StockRequestsListScreenState
 
             // Mark as Fulfilled button for Approved Requests
             if (requestStatus == 'APPROVED') ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: DesignSpacing.lg + 2),
               SizedBox(
                 width: double.infinity,
                 child: GradientButton(
@@ -408,8 +419,8 @@ class _StockRequestsListScreenState
                   icon: Icons.done_all_rounded,
                   onPressed: () => _fulfillRequest(id),
                   gradient: const [DesignColors.info],
-                  height: 44,
-                  borderRadius: 12,
+                  height: DesignSpacing.xl + 24,
+                  borderRadius: DesignSpacing.radiusMd,
                 ),
               ),
             ],
@@ -562,17 +573,34 @@ class _StockRequestsListScreenState
                     ),
                   ),
                 ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(sheetContext),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
+                Builder(builder: (closeContext) {
+                  final closeColor =
+                      Theme.of(closeContext).brightness == Brightness.dark
+                          ? DesignColors.darkTextPrimary
+                          : DesignColors.textPrimary;
+                  return Container(
+                    // >=44px tap target with ink ripple for closing the sheet.
+                    width: DesignSpacing.xl + 24,
+                    height: DesignSpacing.xl + 24,
                     decoration: BoxDecoration(
                       color: panelFill,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                     ),
-                    child: Icon(Icons.close, size: 18, color: titleColor),
-                  ),
-                ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        onTap: () => Navigator.pop(sheetContext),
+                        child: Center(
+                          child: Icon(Icons.close,
+                              size: 18, color: closeColor),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
             const SizedBox(height: 20),

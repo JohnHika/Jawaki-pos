@@ -140,7 +140,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 ),
             ],
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: DesignSpacing.xs),
         ],
       ),
       body: Column(
@@ -154,8 +154,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               if (isOffline) {
                 return Container(
                   width: double.infinity,
-                  padding: EdgeInsets.only(
-                      top: MediaQuery.of(context).padding.top, bottom: 6),
+                  // Sits below the AppBar, which already consumes the top
+                  // system inset - re-adding the status-bar padding here
+                  // double-padded the banner, so no manual top inset (and no
+                  // SafeArea) is needed.
+                  padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
                   decoration: BoxDecoration(
                     color: DesignColors.warning.withValues(alpha: 0.12),
                     border: Border(
@@ -167,8 +170,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: 6,
-                        height: 6,
+                        width: DesignSpacing.xs,
+                        height: DesignSpacing.xs,
                         decoration: BoxDecoration(
                           color: DesignColors.warning,
                           shape: BoxShape.circle,
@@ -176,15 +179,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             BoxShadow(
                                 color:
                                     DesignColors.warning.withValues(alpha: 0.6),
-                                blurRadius: 4)
+                                blurRadius: DesignSpacing.xs)
                           ],
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: DesignSpacing.sm - 2),
                       const Text(
                         'Offline Mode — sales will sync when reconnected',
                         style: TextStyle(
-                            fontSize: 11,
+                            fontSize: DesignType.chatMeta,
                             fontWeight: FontWeight.w600,
                             color: DesignColors.warning),
                       ),
@@ -199,20 +202,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           if (cart.customerName != null)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: DesignSpacing.lg, vertical: DesignSpacing.sm - 2),
               color: DesignColors.success.withValues(alpha: 0.08),
               child: Row(
                 children: [
                   const Icon(Icons.person_outline_rounded,
                       size: 15, color: DesignColors.success),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: DesignSpacing.sm - 2),
                   Expanded(
                     child: Text(
                       cart.customerName!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: DesignType.chatMeta,
                         color: DesignColors.success,
                         fontWeight: FontWeight.w700,
                       ),
@@ -227,19 +231,20 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 5),
+            padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
+                DesignSpacing.lg, DesignSpacing.sm - 3),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(7),
+                  padding: const EdgeInsets.all(DesignSpacing.sm - 1),
                   decoration: BoxDecoration(
                     color: DesignColors.brand.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(9),
+                    borderRadius: BorderRadius.circular(DesignSpacing.sm + 1),
                   ),
                   child: const Icon(Icons.point_of_sale_rounded,
                       size: 17, color: DesignColors.brand),
                 ),
-                const SizedBox(width: 9),
+                const SizedBox(width: DesignSpacing.sm + 1),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,7 +252,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       Text(
                         _showFavorites ? 'Favorites' : 'Sell',
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: DesignType.chatBody + 1,
                           fontWeight: FontWeight.w800,
                           color: isDark
                               ? DesignColors.darkTextPrimary
@@ -270,11 +275,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 ),
                 if (cart.itemCount > 0)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.md - 2,
+                        vertical: DesignSpacing.sm - 3),
                     decoration: BoxDecoration(
                       color: DesignColors.success.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusFull),
                       border: Border.all(
                           color: DesignColors.success.withValues(alpha: 0.24)),
                     ),
@@ -283,11 +290,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       children: [
                         const Icon(Icons.shopping_bag_rounded,
                             size: 14, color: DesignColors.success),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: DesignSpacing.sm - 2),
                         Text(
                           '${cart.itemCount} Cart',
                           style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: DesignType.chatMeta,
                             fontWeight: FontWeight.w700,
                             color: DesignColors.success,
                           ),
@@ -341,17 +348,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(8),
+          // App-bar action: 40px box + 8px outer vertical hit slop through the
+          // standard 8px toolbar padding keeps the effective target at the
+          // 48px Material tap-target size (sub-44 raw box was the violation).
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          padding: const EdgeInsets.all(DesignSpacing.sm),
           decoration: BoxDecoration(
             color: active
                 ? DesignColors.error.withValues(alpha: 0.1)
                 : DesignColors.accent.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
           ),
           child: Icon(icon,
               color: active ? DesignColors.error : secondaryColor, size: 20),
@@ -379,23 +390,25 @@ class _POSScreenState extends ConsumerState<POSScreen> {
             : DesignColors.textSecondary;
         return Padding(
           padding: EdgeInsets.fromLTRB(
-            20,
+            DesignSpacing.xl,
             0,
-            20,
-            20 + MediaQuery.of(ctx).padding.bottom,
+            DesignSpacing.xl,
+            DesignSpacing.xl + MediaQuery.of(ctx).padding.bottom,
           ),
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: DesignSpacing.sm),
                 const Text('Customer',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
+                    style: TextStyle(
+                        fontSize: DesignSpacing.xl, fontWeight: FontWeight.w700)),
+                const SizedBox(height: DesignSpacing.xs),
                 Text('Set or search for a customer',
-                    style: TextStyle(fontSize: 13, color: secondaryColor)),
-                const SizedBox(height: 14),
+                    style: TextStyle(
+                        fontSize: DesignType.chatBody - 1,
+                        color: secondaryColor)),
+                const SizedBox(height: DesignSpacing.md + 2),
                 TextField(
                   controller: nameCtrl,
                   autofocus: true,
@@ -405,12 +418,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       prefixIcon:
                           const Icon(Icons.person_outline_rounded, size: 20),
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
                           borderSide: BorderSide.none),
                       filled: true),
                   onChanged: (_) => setSheet(() {}),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: DesignSpacing.md - 2),
                 TextField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
@@ -418,7 +432,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       labelText: 'Phone',
                       prefixIcon: const Icon(Icons.phone_outlined, size: 20),
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
                           borderSide: BorderSide.none),
                       filled: true),
                   onChanged: (_) => setSheet(() {}),
@@ -455,7 +470,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       );
                     },
                   ),
-                const SizedBox(height: 14),
+                const SizedBox(height: DesignSpacing.md + 2),
                 Row(children: [
                   Expanded(
                       child: OutlinedButton(
@@ -466,7 +481,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             Navigator.pop(context);
                           },
                           child: const Text('Remove'))),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: DesignSpacing.md - 2),
                   Expanded(
                       flex: 2,
                       child: GradientButton(
@@ -527,23 +542,27 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         return Padding(
           padding: EdgeInsets.fromLTRB(
-              20, 8, 20, 16 + MediaQuery.of(ctx).padding.bottom),
+              DesignSpacing.xl,
+              DesignSpacing.sm,
+              DesignSpacing.xl,
+              DesignSpacing.lg + MediaQuery.of(ctx).padding.bottom),
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
                   Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(DesignSpacing.sm),
                       decoration: BoxDecoration(
                           color: DesignColors.warning.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10)),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.md - 2)),
                       child: const Icon(Icons.pause_circle_filled_rounded,
                           color: DesignColors.warning, size: 22)),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: DesignSpacing.md - 2),
                   Text('Parked (${parked.length})',
                       style: TextStyle(
-                          fontSize: 18,
+                          fontSize: DesignSpacing.md + 6,
                           fontWeight: FontWeight.w700,
                           color: isDark
                               ? DesignColors.darkTextPrimary
@@ -551,7 +570,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 ]),
                 if (parked.isEmpty)
                   Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: DesignSpacing.xxl + 16),
                       child: Center(
                           child: Text('No parked sales',
                               style: TextStyle(
@@ -562,15 +582,16 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   ...parked.map((s) {
                     final elapsed = DateTime.now().difference(s.parkedAt);
                     return Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: DesignSpacing.sm),
                         child: ListCard(
                           leading: Container(
-                              width: 40,
-                              height: 40,
+                              width: DesignSpacing.md + 28,
+                              height: DesignSpacing.md + 28,
                               decoration: BoxDecoration(
                                   color: DesignColors.warning
                                       .withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.md - 2)),
                               child: Center(
                                   child: Text('${s.cart.itemCount}',
                                       style: const TextStyle(

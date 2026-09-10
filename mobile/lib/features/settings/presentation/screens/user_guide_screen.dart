@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 class _GuideStep {
   const _GuideStep(this.text);
@@ -83,53 +84,61 @@ class UserGuideScreen extends StatelessWidget {
         child: ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           itemCount: _topics.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, __) => const SizedBox(height: DesignSpacing.md),
           itemBuilder: (context, index) {
             final topic = _topics[index];
-            return Container(
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
-              child: Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  initiallyExpanded: index == 0,
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: DesignColors.brand.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(topic.icon, color: DesignColors.brand, size: 20),
-                  ),
-                  title: Text(
-                    topic.title,
-                    style: TextStyle(fontWeight: FontWeight.w700, color: titleColor),
-                  ),
-                  iconColor: secondaryColor,
-                  collapsedIconColor: secondaryColor,
-                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  children: [
-                    for (final step in topic.steps)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 2),
-                              child: Icon(Icons.check_circle_rounded,
-                                  size: 16, color: DesignColors.success),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                step.text,
-                                style: TextStyle(color: secondaryColor, fontSize: 14, height: 1.4),
-                              ),
-                            ),
-                          ],
-                        ),
+            return StaggeredItem(
+              itemKey: 'guide-${topic.title}',
+              index: index,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: surface,
+                  border: Border.all(color: border),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                ),
+                child: Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    initiallyExpanded: index == 0,
+                    leading: Container(
+                      padding: const EdgeInsets.all(DesignSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: DesignColors.brand.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
-                  ],
+                      child: Icon(topic.icon, color: DesignColors.brand, size: 20),
+                    ),
+                    title: Text(
+                      topic.title,
+                      style: TextStyle(fontWeight: FontWeight.w700, color: titleColor),
+                    ),
+                    iconColor: secondaryColor,
+                    collapsedIconColor: secondaryColor,
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    children: [
+                      for (final step in topic.steps)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(Icons.check_circle_rounded,
+                                    size: 16, color: DesignColors.success),
+                              ),
+                              const SizedBox(width: DesignSpacing.sm + 2),
+                              Expanded(
+                                child: Text(
+                                  step.text,
+                                  style: TextStyle(color: secondaryColor, fontSize: 14, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             );

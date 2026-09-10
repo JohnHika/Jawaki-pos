@@ -5,6 +5,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Full-screen form shown right after a staff invitation is accepted.
 /// The new user must set a password and a PIN before they can use the app.
@@ -104,46 +105,63 @@ class _SetPasswordAfterInviteScreenState
         elevation: 0,
         scrolledUnderElevation: 1,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              const Icon(Icons.lock_outline_rounded,
-                  color: DesignColors.brand, size: 40),
-              const SizedBox(height: 12),
-              const Text(
-                'Create your password and PIN',
-                style: TextStyle(
-                  color: DesignColors.darkTextPrimary,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          // Keyboard-safe: lift the form above the keyboard.
+          padding: EdgeInsets.fromLTRB(
+            DesignSpacing.xl,
+            DesignSpacing.sm,
+            DesignSpacing.xl,
+            DesignSpacing.xxxl + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                const StaggeredItem(
+                  itemKey: 'setup-header',
+                  index: 0,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.lock_outline_rounded,
+                          color: DesignColors.brand, size: 40),
+                      SizedBox(height: DesignSpacing.md),
+                      Text(
+                        'Create your password and PIN',
+                        style: TextStyle(
+                          color: DesignColors.darkTextPrimary,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: DesignSpacing.sm + 2),
+                      Text(
+                        'Your invitation has been accepted. Set a password and a '
+                        '4-digit PIN to secure your account and enable quick sign-in.',
+                        style: TextStyle(
+                          color: DesignColors.darkTextSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Your invitation has been accepted. Set a password and a '
-                '4-digit PIN to secure your account and enable quick sign-in.',
-                style: TextStyle(
-                  color: DesignColors.darkTextSecondary,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: DesignSpacing.xxl),
 
-              // ── Password section ──
-              const Text(
-                'Password',
-                style: TextStyle(
-                  color: DesignColors.darkTextSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                // ── Password section ──
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    color: DesignColors.darkTextSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
+                const SizedBox(height: DesignSpacing.sm + 2),
               TextFormField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
@@ -197,7 +215,7 @@ class _SetPasswordAfterInviteScreenState
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: DesignSpacing.lg + 2),
 
               TextFormField(
                 controller: _confirmPasswordController,
@@ -252,7 +270,7 @@ class _SetPasswordAfterInviteScreenState
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: DesignSpacing.xxl),
 
               // ── PIN section ──
               const Text(
@@ -263,7 +281,7 @@ class _SetPasswordAfterInviteScreenState
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: DesignSpacing.sm + 2),
               TextFormField(
                 controller: _pinController,
                 obscureText: _obscurePin,
@@ -329,7 +347,7 @@ class _SetPasswordAfterInviteScreenState
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: DesignSpacing.lg + 2),
 
               TextFormField(
                 controller: _confirmPinController,
@@ -393,21 +411,26 @@ class _SetPasswordAfterInviteScreenState
                   ),
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: DesignSpacing.xxl + DesignSpacing.xs),
 
               // Submit button
-              GradientButton(
-                label: 'Complete setup',
-                icon: Icons.check_circle_outline_rounded,
-                isLoading: _isSubmitting,
-                onPressed: _isSubmitting ? null : _submit,
-                height: 54,
-                borderRadius: 14,
+              StaggeredItem(
+                itemKey: 'setup-submit',
+                index: 1,
+                child: GradientButton(
+                  label: 'Complete setup',
+                  icon: Icons.check_circle_outline_rounded,
+                  isLoading: _isSubmitting,
+                  onPressed: _isSubmitting ? null : _submit,
+                  height: DesignSpacing.xxl + 30,
+                  borderRadius: DesignSpacing.radiusLg,
+                ),
               ),
             ],
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

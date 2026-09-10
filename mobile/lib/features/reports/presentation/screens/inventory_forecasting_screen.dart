@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 
@@ -126,25 +127,48 @@ class _InventoryForecastingScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // First-mount entrance: each section fades/rises in
+                    // once, staggered (see StaggeredItem); stable keys keep
+                    // pull-to-refresh from replaying them.
+
                     // Forecast Summary
-                    _buildForecastSummary(),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'forecast-summary',
+                      child: _buildForecastSummary(),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Demand Forecast Chart
-                    _buildDemandForecastChart(isDark),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'forecast-chart',
+                      index: 1,
+                      child: _buildDemandForecastChart(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Low Stock Alerts
-                    _buildLowStockAlerts(isDark),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'forecast-low-stock',
+                      index: 2,
+                      child: _buildLowStockAlerts(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Fast Moving Items
-                    _buildFastMovingItems(isDark),
-                    const SizedBox(height: 24),
+                    StaggeredItem(
+                      itemKey: 'forecast-fast-moving',
+                      index: 3,
+                      child: _buildFastMovingItems(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Slow Moving Items
-                    _buildSlowMovingItems(isDark),
-                    const SizedBox(height: 16),
+                    StaggeredItem(
+                      itemKey: 'forecast-slow-moving',
+                      index: 4,
+                      child: _buildSlowMovingItems(isDark),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
                   ],
                 ),
               ),
@@ -162,7 +186,7 @@ class _InventoryForecastingScreenState
         .round();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs - 2),
       child: Row(
         children: [
           Expanded(
@@ -193,7 +217,7 @@ class _InventoryForecastingScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,10 +225,10 @@ class _InventoryForecastingScreenState
           Row(
             children: [
               const Icon(Icons.trending_up_rounded, color: DesignColors.brand, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Last 7 Days — Units Sold',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -212,7 +236,7 @@ class _InventoryForecastingScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 280,
             child: LineChart(
@@ -264,10 +288,10 @@ class _InventoryForecastingScreenState
                         final index = value.toInt();
                         if (index >= 0 && index < _forecastData.length) {
                           return Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               _forecastData[index]['day'] ?? '',
-                              style: TextStyle(color: tertiaryColor, fontSize: 12),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tertiaryColor, fontSize: 12),
                             ),
                           );
                         }
@@ -280,10 +304,10 @@ class _InventoryForecastingScreenState
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
                         return Padding(
-                          padding: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
                             '${value.toInt()}',
-                            style: TextStyle(color: tertiaryColor, fontSize: 11),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tertiaryColor, fontSize: 11),
                           ),
                         );
                       },
@@ -322,7 +346,7 @@ class _InventoryForecastingScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,13 +354,13 @@ class _InventoryForecastingScreenState
           Row(
             children: [
               const Icon(Icons.warning_amber_rounded, color: DesignColors.warning, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Expanded(
                 child: Row(
                   children: [
                     Text(
                       'Low Stock Alerts',
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: titleColor,
@@ -353,7 +377,7 @@ class _InventoryForecastingScreenState
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           if (_lowStockItems.isEmpty)
             const EmptyState(
               icon: Icons.check_circle_outline_rounded,
@@ -368,7 +392,7 @@ class _InventoryForecastingScreenState
               final isOut = quantity == 0;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                 child: Row(
                   children: [
                     Container(
@@ -378,7 +402,7 @@ class _InventoryForecastingScreenState
                         color: isOut
                             ? DesignColors.error.withValues(alpha: 0.15)
                             : DesignColors.warning.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: (isOut
                                   ? DesignColors.error
@@ -398,14 +422,14 @@ class _InventoryForecastingScreenState
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: DesignSpacing.md + 2),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             name,
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: titleColor,
@@ -413,14 +437,14 @@ class _InventoryForecastingScreenState
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
-                          Text(sku, style: TextStyle(fontSize: 12, color: secondaryColor)),
+                          const SizedBox(height: DesignSpacing.xs),
+                          Text(sku, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor)),
                         ],
                       ),
                     ),
                     Text(
                       isOut ? 'Out of Stock' : '$quantity left',
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color:
@@ -433,7 +457,7 @@ class _InventoryForecastingScreenState
             }),
           if (_lowStockItems.length > 4)
             Padding(
-              padding: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.only(top: DesignSpacing.md),
               child: Center(
                 child: TextButton(
                   onPressed: () => context.push('/inventory'),
@@ -461,7 +485,7 @@ class _InventoryForecastingScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -469,10 +493,10 @@ class _InventoryForecastingScreenState
           Row(
             children: [
               const Icon(Icons.trending_up_rounded, color: DesignColors.success, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Fast Moving Items',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -480,7 +504,7 @@ class _InventoryForecastingScreenState
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           if (_fastMovingItems.isEmpty)
             const EmptyState(
               icon: Icons.trending_up_rounded,
@@ -493,7 +517,7 @@ class _InventoryForecastingScreenState
               final qty = product['totalQty'] ?? 0;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                 child: Row(
                   children: [
                     Container(
@@ -505,12 +529,12 @@ class _InventoryForecastingScreenState
                             : (isDark
                                 ? DesignColors.darkSurfaceElevated
                                 : DesignColors.surfaceSubtle),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
                       ),
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: index == 0
                                 ? Colors.amber[700]
                                 : secondaryColor,
@@ -520,14 +544,14 @@ class _InventoryForecastingScreenState
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: DesignSpacing.md + 2),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: titleColor,
@@ -535,10 +559,10 @@ class _InventoryForecastingScreenState
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalRevenue']?.toStringAsFixed(0) ?? 0} revenue',
-                            style: TextStyle(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -565,7 +589,7 @@ class _InventoryForecastingScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,10 +597,10 @@ class _InventoryForecastingScreenState
           Row(
             children: [
               const Icon(Icons.trending_down_rounded, color: DesignColors.accent, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Slow Moving Items',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -584,7 +608,7 @@ class _InventoryForecastingScreenState
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           if (_slowMovingItems.isEmpty)
             const EmptyState(
               icon: Icons.trending_down_rounded,
@@ -598,7 +622,7 @@ class _InventoryForecastingScreenState
               final qty = product['totalQty'] ?? 0;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                 child: Row(
                   children: [
                     Container(
@@ -608,12 +632,12 @@ class _InventoryForecastingScreenState
                         color: isDark
                             ? DesignColors.darkSurfaceElevated
                             : DesignColors.surfaceSubtle,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
                       ),
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: secondaryColor,
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
@@ -621,14 +645,14 @@ class _InventoryForecastingScreenState
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: DesignSpacing.md + 2),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: titleColor,
@@ -636,10 +660,10 @@ class _InventoryForecastingScreenState
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalRevenue']?.toStringAsFixed(0) ?? 0} revenue',
-                            style: TextStyle(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),

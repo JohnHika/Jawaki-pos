@@ -3,6 +3,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Per-branch operating hours editor. The user controls, for each day of the
 /// week, whether the shop is open, its open/close times, and an optional
@@ -186,55 +187,79 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                Text(
-                  'Set when this branch is open. The assistant uses these hours '
-                  'to know your trading window each day.',
-                  style: TextStyle(color: secondary, fontSize: 13, height: 1.4),
+                StaggeredItem(
+                  itemKey: 'hours-intro',
+                  index: 0,
+                  child: Text(
+                    'Set when this branch is open. The assistant uses these hours '
+                    'to know your trading window each day.',
+                    style: TextStyle(color: secondary, fontSize: 13, height: 1.4),
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
                 const SettingsGroupLabel('Week starts on'),
-                GroupedCard(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _dayKeys.map((key) {
-                          final selected = _weekStartDay == key;
-                          return ChoiceChip(
-                            label: Text(_dayLabels[key]!.substring(0, 3)),
-                            selected: selected,
-                            onSelected: (_) => setState(() => _weekStartDay = key),
-                            selectedColor:
-                                DesignColors.accent.withValues(alpha: 0.2),
-                            labelStyle: TextStyle(
-                              color: selected
-                                  ? DesignColors.accent
-                                  : (isDark
-                                      ? DesignColors.darkTextPrimary
-                                      : DesignColors.textPrimary),
-                              fontWeight:
-                                  selected ? FontWeight.w700 : FontWeight.w500,
-                            ),
-                          );
-                        }).toList(),
+                StaggeredItem(
+                  itemKey: 'hours-weekstart',
+                  index: 1,
+                  child: GroupedCard(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(DesignSpacing.md),
+                        child: Wrap(
+                          spacing: DesignSpacing.sm,
+                          runSpacing: DesignSpacing.sm,
+                          children: _dayKeys.map((key) {
+                            final selected = _weekStartDay == key;
+                            // Full-height (>=44px) tap target + ink ripple.
+                            return ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minHeight: DesignSpacing.xl + 24,
+                              ),
+                              child: ChoiceChip(
+                                label: Text(_dayLabels[key]!.substring(0, 3)),
+                                selected: selected,
+                                onSelected: (_) =>
+                                    setState(() => _weekStartDay = key),
+                                selectedColor:
+                                    DesignColors.accent.withValues(alpha: 0.2),
+                                labelStyle: TextStyle(
+                                  color: selected
+                                      ? DesignColors.accent
+                                      : (isDark
+                                          ? DesignColors.darkTextPrimary
+                                          : DesignColors.textPrimary),
+                                  fontWeight:
+                                      selected ? FontWeight.w700 : FontWeight.w500,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
                 const SettingsGroupLabel('Daily hours'),
-                GroupedCard(
-                  children: [
-                    for (final key in _dayKeys) _buildDayRow(key, isDark, secondary),
-                  ],
+                StaggeredItem(
+                  itemKey: 'hours-days',
+                  index: 2,
+                  child: GroupedCard(
+                    children: [
+                      for (final key in _dayKeys)
+                        _buildDayRow(key, isDark, secondary),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-                SettingsPrimaryButton(
-                  label: 'Save hours',
-                  isLoading: _saving,
-                  onPressed: _save,
+                const SizedBox(height: DesignSpacing.xxl),
+                StaggeredItem(
+                  itemKey: 'hours-save',
+                  index: 3,
+                  child: SettingsPrimaryButton(
+                    label: 'Save hours',
+                    isLoading: _saving,
+                    onPressed: _save,
+                  ),
                 ),
               ],
             ),
@@ -247,7 +272,8 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -267,42 +293,66 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                 day.closed ? 'Closed' : 'Open',
                 style: TextStyle(color: secondary, fontSize: 12),
               ),
-              const SizedBox(width: 8),
-              Switch(
-                value: !day.closed,
-                activeThumbColor: DesignColors.accent,
-                onChanged: (open) => setState(() => day.closed = !open),
+              const SizedBox(width: DesignSpacing.sm),
+              // Compact visual switch; the surrounding row is the >=44px
+              // tap target.
+              SizedBox(
+                height: DesignSpacing.xl + 24,
+                child: Switch(
+                  value: !day.closed,
+                  activeThumbColor: DesignColors.accent,
+                  onChanged: (open) => setState(() => day.closed = !open),
+                ),
               ),
             ],
           ),
           if (!day.closed) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: DesignSpacing.xs),
             Row(
               children: [
-                _timeChip('Opens', day.open, () => _pickTime(day.open, (v) => setState(() => day.open = v)), isDark),
-                const SizedBox(width: 8),
-                _timeChip('Closes', day.close, () => _pickTime(day.close, (v) => setState(() => day.close = v)), isDark),
+                _timeChip('Opens', day.open,
+                    () => _pickTime(day.open, (v) => setState(() => day.open = v)), isDark),
+                const SizedBox(width: DesignSpacing.sm),
+                _timeChip('Closes', day.close,
+                    () => _pickTime(day.close, (v) => setState(() => day.close = v)), isDark),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: DesignSpacing.xs),
             Row(
               children: [
-                Checkbox(
-                  value: day.hasBreak,
-                  activeColor: DesignColors.accent,
-                  onChanged: (v) => setState(() => day.hasBreak = v ?? false),
+                // Full-height row is the tap target for the small checkbox.
+                SizedBox(
+                  height: DesignSpacing.xl + 24,
+                  child: InkWell(
+                    onTap: () => setState(() => day.hasBreak = !day.hasBreak),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: day.hasBreak,
+                          activeColor: DesignColors.accent,
+                          onChanged: (v) =>
+                              setState(() => day.hasBreak = v ?? false),
+                        ),
+                        Text('Midday break',
+                            style:
+                                TextStyle(color: secondary, fontSize: 13)),
+                      ],
+                    ),
+                  ),
                 ),
-                Text('Midday break', style: TextStyle(color: secondary, fontSize: 13)),
               ],
             ),
             if (day.hasBreak)
               Padding(
-                padding: const EdgeInsets.only(left: 8, bottom: 4),
+                padding: const EdgeInsets.only(
+                    left: DesignSpacing.sm, bottom: DesignSpacing.xs),
                 child: Row(
                   children: [
-                    _timeChip('Break from', day.breakStart, () => _pickTime(day.breakStart, (v) => setState(() => day.breakStart = v)), isDark),
-                    const SizedBox(width: 8),
-                    _timeChip('to', day.breakEnd, () => _pickTime(day.breakEnd, (v) => setState(() => day.breakEnd = v)), isDark),
+                    _timeChip('Break from', day.breakStart,
+                        () => _pickTime(day.breakStart, (v) => setState(() => day.breakStart = v)), isDark),
+                    const SizedBox(width: DesignSpacing.sm),
+                    _timeChip('to', day.breakEnd,
+                        () => _pickTime(day.breakEnd, (v) => setState(() => day.breakEnd = v)), isDark),
                   ],
                 ),
               ),
@@ -319,29 +369,39 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(color: secondary, fontSize: 11)),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: DesignType.numeric(
-                  color: textColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+      // >=44px tall tap target with ink ripple.
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+          child: Container(
+            constraints: const BoxConstraints(
+              minHeight: DesignSpacing.xl + 24,
+            ),
+            padding: const EdgeInsets.symmetric(
+                horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: TextStyle(color: secondary, fontSize: 11)),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: DesignType.numeric(
+                    color: textColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

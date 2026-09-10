@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// A full-screen staff invitation form that loads available roles and branches
 /// on init, then lets the owner fill in email, name, and pick a role + branch
@@ -164,13 +165,13 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
   Widget _loadFailure() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(DesignSpacing.xxl + DesignSpacing.sm),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.cloud_off_outlined,
                 color: DesignColors.warning, size: 48),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
             const Text(
               'Could not load roles and branches',
               style: TextStyle(
@@ -179,19 +180,19 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             const Text(
               'Please check your connection and try again.',
               textAlign: TextAlign.center,
               style: TextStyle(color: DesignColors.darkTextSecondary),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
             GradientButton(
               label: 'Retry',
               icon: Icons.refresh_rounded,
               onPressed: _loadData,
               height: 48,
-              borderRadius: 12,
+              borderRadius: DesignSpacing.radiusMd,
             ),
           ],
         ),
@@ -202,13 +203,13 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
   Widget _emptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(DesignSpacing.xxl + DesignSpacing.sm),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.info_outline_rounded,
                 color: DesignColors.warning, size: 48),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
             const Text(
               'Setup required',
               style: TextStyle(
@@ -217,19 +218,19 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             const Text(
               'Add at least one role and one active branch before inviting staff.',
               textAlign: TextAlign.center,
               style: TextStyle(color: DesignColors.darkTextSecondary),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
             GradientButton(
               label: 'Go Back',
               icon: Icons.arrow_back_rounded,
               onPressed: () => context.pop(),
               height: 48,
-              borderRadius: 12,
+              borderRadius: DesignSpacing.radiusMd,
             ),
           ],
         ),
@@ -238,89 +239,131 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
   }
 
   Widget _buildForm() {
+    // Keyboard-safe: the Scaffold (resizeToAvoidBottomInset) already shrinks
+    // the body for the keyboard; the bottom SafeArea inset keeps the submit
+    // button clear of the gesture bar when no keyboard is up.
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      padding: EdgeInsets.fromLTRB(
+        DesignSpacing.xl,
+        DesignSpacing.sm,
+        DesignSpacing.xl,
+        MediaQuery.viewInsetsOf(context).bottom + DesignSpacing.xxl,
+      ),
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            const Icon(Icons.person_add_alt_1_rounded,
-                color: DesignColors.brand, size: 40),
-            const SizedBox(height: 12),
-            const Text(
-              'Invite a team member',
-              style: TextStyle(
-                color: DesignColors.darkTextPrimary,
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
+            // Header — first-mount entrance: each field block fades/rises in
+            // once, staggered (see StaggeredItem). Keys are stable, so
+            // validation re-renders never replay the choreography.
+            const StaggeredItem(
+              itemKey: 'invite-header',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.person_add_alt_1_rounded,
+                      color: DesignColors.brand, size: 40),
+                  SizedBox(height: DesignSpacing.md),
+                  Text(
+                    'Invite a team member',
+                    style: TextStyle(
+                      color: DesignColors.darkTextPrimary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: DesignSpacing.sm - 2),
+                  Text(
+                    'Their email will receive a time-limited verification code to accept the invitation.',
+                    style: TextStyle(
+                      color: DesignColors.darkTextSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Their email will receive a time-limited verification code to accept the invitation.',
-              style: TextStyle(
-                color: DesignColors.darkTextSecondary,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: DesignSpacing.xl),
 
             // First name
-            _buildField(
-              controller: _firstNameController,
-              label: 'First name',
-              icon: Icons.person_outline_rounded,
-              validator: _required,
+            StaggeredItem(
+              itemKey: 'invite-first-name',
+              index: 1,
+              child: _buildField(
+                controller: _firstNameController,
+                label: 'First name',
+                icon: Icons.person_outline_rounded,
+                validator: _required,
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
             // Last name
-            _buildField(
-              controller: _lastNameController,
-              label: 'Last name',
-              icon: Icons.person_outline_rounded,
-              validator: _required,
+            StaggeredItem(
+              itemKey: 'invite-last-name',
+              index: 2,
+              child: _buildField(
+                controller: _lastNameController,
+                label: 'Last name',
+                icon: Icons.person_outline_rounded,
+                validator: _required,
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
             // Email
-            _buildField(
-              controller: _emailController,
-              label: 'Email address',
-              icon: Icons.email_outlined,
-              keyboardType: TextInputType.emailAddress,
-              validator: _emailValidator,
+            StaggeredItem(
+              itemKey: 'invite-email',
+              index: 3,
+              child: _buildField(
+                controller: _emailController,
+                label: 'Email address',
+                icon: Icons.email_outlined,
+                keyboardType: TextInputType.emailAddress,
+                validator: _emailValidator,
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
             // Role dropdown
-            _buildDropdown(
-              label: 'Role',
-              value: _selectedRoleId,
-              items: _roles,
-              onChanged: (v) => setState(() => _selectedRoleId = v),
+            StaggeredItem(
+              itemKey: 'invite-role',
+              index: 4,
+              child: _buildDropdown(
+                label: 'Role',
+                value: _selectedRoleId,
+                items: _roles,
+                onChanged: (v) => setState(() => _selectedRoleId = v),
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: DesignSpacing.md + 2),
 
             // Branch dropdown
-            _buildDropdown(
-              label: 'Branch',
-              value: _selectedBranchId,
-              items: _branches,
-              onChanged: (v) => setState(() => _selectedBranchId = v),
+            StaggeredItem(
+              itemKey: 'invite-branch',
+              index: 5,
+              child: _buildDropdown(
+                label: 'Branch',
+                value: _selectedBranchId,
+                items: _branches,
+                onChanged: (v) => setState(() => _selectedBranchId = v),
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: DesignSpacing.xxl),
 
             // Submit button
-            GradientButton(
-              label: 'Send verified invitation',
-              icon: Icons.send_rounded,
-              isLoading: _isSubmitting,
-              onPressed: _isSubmitting ? null : _submit,
-              height: 54,
-              borderRadius: 14,
+            StaggeredItem(
+              itemKey: 'invite-submit',
+              index: 6,
+              child: GradientButton(
+                label: 'Send verified invitation',
+                icon: Icons.send_rounded,
+                isLoading: _isSubmitting,
+                onPressed: _isSubmitting ? null : _submit,
+                height: 54,
+                borderRadius: DesignSpacing.radiusLg - 2,
+              ),
             ),
           ],
         ),
@@ -347,19 +390,19 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
         filled: true,
         fillColor: DesignColors.darkSurfaceElevated,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.darkBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.darkBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.accent, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.error),
         ),
       ),
@@ -387,15 +430,15 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
         filled: true,
         fillColor: DesignColors.darkSurfaceElevated,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.darkBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.darkBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.accent, width: 2),
         ),
       ),

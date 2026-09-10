@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/format.dart';
@@ -118,11 +119,11 @@ class _PaymentAnalyticsScreenState
                   children: [
                     // Period Selector
                     _buildPeriodSelector(isDark),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     // Payment Summary Cards
                     _buildPaymentSummaryCards(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: DesignSpacing.xxl),
 
                     if (_hasNoTransactions)
                       // No point repeating the same "no data" empty state
@@ -130,27 +131,45 @@ class _PaymentAnalyticsScreenState
                       // hours all have nothing to show) — one clear message
                       // covers the whole period instead of a long scroll of
                       // near-identical placeholder cards.
-                      const Padding(
-                        padding: EdgeInsets.only(top: 12),
-                        child: EmptyState(
-                          icon: Icons.query_stats_rounded,
-                          title: 'No transactions in this period',
-                          subtitle:
-                              'Payment breakdowns, trends, and peak hours will appear here once sales come in.',
+                      const StaggeredItem(
+                        itemKey: 'pay-analytics-empty',
+                        child: Padding(
+                          padding: EdgeInsets.only(top: DesignSpacing.md),
+                          child: EmptyState(
+                            icon: Icons.query_stats_rounded,
+                            title: 'No transactions in this period',
+                            subtitle:
+                                'Payment breakdowns, trends, and peak hours will appear here once sales come in.',
+                          ),
                         ),
                       )
                     else ...[
+                      // First-mount entrance: each section fades/rises in
+                      // once, staggered (see StaggeredItem); stable keys keep
+                      // pull-to-refresh and period switches from replaying.
+
                       // Payment Method Breakdown
-                      _buildPaymentMethodBreakdown(isDark),
-                      const SizedBox(height: 24),
+                      StaggeredItem(
+                        itemKey: 'pay-analytics-breakdown',
+                        child: _buildPaymentMethodBreakdown(isDark),
+                      ),
+                      const SizedBox(height: DesignSpacing.xxl),
 
                       // Transaction Trend Chart
-                      _buildTransactionTrendChart(isDark),
-                      const SizedBox(height: 24),
+                      StaggeredItem(
+                        itemKey: 'pay-analytics-trend',
+                        index: 1,
+                        child: _buildTransactionTrendChart(isDark),
+                      ),
+                      const SizedBox(height: DesignSpacing.xxl),
 
                       // Peak Hours Analysis
-                      _buildPeakHoursAnalysis(isDark),
-                      const SizedBox(height: 16),
+                      StaggeredItem(
+                        itemKey: 'pay-analytics-peak',
+                        index: 2,
+                        child: _buildPeakHoursAnalysis(isDark),
+                      ),
+                      const SizedBox(height: DesignSpacing.lg),
                     ],
                   ],
                 ),
@@ -170,12 +189,12 @@ class _PaymentAnalyticsScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm, vertical: DesignSpacing.sm - 2),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
           border: Border.all(color: border),
         ),
         child: Row(
@@ -186,28 +205,40 @@ class _PaymentAnalyticsScreenState
             final isSelected = _selectedPeriod == index;
 
             return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _selectedPeriod = index);
-                  _loadPaymentData();
-                },
-                child: AnimatedContainer(
-                  duration: DesignAnimation.fast,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? DesignColors.accent.withValues(alpha: 0.15)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    period,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? DesignColors.accent : secondaryColor,
+              // Material+InkWell so the segment paints a ripple; the
+              // constraint keeps it at the 44px minimum touch target.
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    setState(() => _selectedPeriod = index);
+                    _loadPaymentData();
+                  },
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  child: AnimatedContainer(
+                    duration: DesignAnimation.fast,
+                    constraints: const BoxConstraints(
+                        minHeight: DesignSpacing.xl + 24),
+                    alignment: Alignment.center,
+                    padding:
+                        const EdgeInsets.symmetric(vertical: DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? DesignColors.accent.withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    child: Text(
+                      period,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 13,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                        color:
+                            isSelected ? DesignColors.accent : secondaryColor,
+                      ),
                     ),
                   ),
                 ),
@@ -225,7 +256,7 @@ class _PaymentAnalyticsScreenState
     final avgPayment = (_paymentSummary['avgPayment'] ?? 0.0).toDouble();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs - 2),
       child: Column(
         children: [
           Row(
@@ -238,7 +269,7 @@ class _PaymentAnalyticsScreenState
                   color: DesignColors.brand,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Transactions',
@@ -249,7 +280,7 @@ class _PaymentAnalyticsScreenState
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: DesignSpacing.md),
           Row(
             children: [
               Expanded(
@@ -260,7 +291,7 @@ class _PaymentAnalyticsScreenState
                   color: DesignColors.accent,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Payment Methods',
@@ -284,10 +315,10 @@ class _PaymentAnalyticsScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -297,10 +328,10 @@ class _PaymentAnalyticsScreenState
             children: [
               const Icon(Icons.payment_rounded,
                   color: DesignColors.info, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Payment Method Breakdown',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -308,7 +339,7 @@ class _PaymentAnalyticsScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           if (_paymentMethodBreakdown.isEmpty)
             const EmptyState(
               icon: Icons.payment_rounded,
@@ -328,7 +359,7 @@ class _PaymentAnalyticsScreenState
                   grandTotal > 0 ? (total as double) / grandTotal : 0.0;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.xl),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -342,23 +373,23 @@ class _PaymentAnalyticsScreenState
                             shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: DesignSpacing.sm + 2),
                         Expanded(
                           child: Text(
                             _formatPaymentMethod(method),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 14, color: titleColor),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 14, color: titleColor),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: DesignSpacing.md),
                         Flexible(
                           child: Text(
                             '$count transactions',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: titleColor,
@@ -367,12 +398,12 @@ class _PaymentAnalyticsScreenState
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: DesignSpacing.sm),
                     Row(
                       children: [
                         Expanded(
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                             child: LinearProgressIndicator(
                               value: share,
                               valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -381,10 +412,10 @@ class _PaymentAnalyticsScreenState
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: DesignSpacing.md),
                         Text(
                           formatMoney(total, symbol: 'KSh '),
-                          style: TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: color,
@@ -411,10 +442,10 @@ class _PaymentAnalyticsScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -424,10 +455,10 @@ class _PaymentAnalyticsScreenState
             children: [
               const Icon(Icons.trending_up_rounded,
                   color: DesignColors.brand, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Transaction Trends',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -435,7 +466,7 @@ class _PaymentAnalyticsScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 280,
             child: LineChart(
@@ -492,10 +523,10 @@ class _PaymentAnalyticsScreenState
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';
                           return Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               time,
-                              style: TextStyle(
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: tertiaryColor,
                                 fontSize: 11,
                               ),
@@ -511,10 +542,10 @@ class _PaymentAnalyticsScreenState
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
                         return Padding(
-                          padding: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
                             'KSh ${(value as num).toInt() ~/ 1000}k',
-                            style: TextStyle(
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: tertiaryColor,
                               fontSize: 11,
                             ),
@@ -563,10 +594,10 @@ class _PaymentAnalyticsScreenState
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -576,10 +607,10 @@ class _PaymentAnalyticsScreenState
             children: [
               const Icon(Icons.access_time_rounded,
                   color: DesignColors.accent, size: 20),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Peak Hours Analysis',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: titleColor,
@@ -587,7 +618,7 @@ class _PaymentAnalyticsScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           if (_peakHours.isEmpty)
             const EmptyState(
               icon: Icons.access_time_rounded,
@@ -607,7 +638,7 @@ class _PaymentAnalyticsScreenState
                   totalTraffic > 0 ? (count / totalTraffic * 100) : 0.0;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.md + 2),
                 child: Row(
                   children: [
                     Container(
@@ -615,7 +646,7 @@ class _PaymentAnalyticsScreenState
                       height: 48,
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: color.withValues(alpha: 0.3),
                           width: 1,
@@ -624,7 +655,7 @@ class _PaymentAnalyticsScreenState
                       child: Center(
                         child: Text(
                           '$hourNum:00',
-                          style: TextStyle(
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: color,
@@ -632,7 +663,7 @@ class _PaymentAnalyticsScreenState
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: DesignSpacing.lg),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -644,19 +675,19 @@ class _PaymentAnalyticsScreenState
                                 color: secondaryColor,
                                 size: 14,
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: DesignSpacing.xs),
                               Text(
                                 _formatHourLabel(hourNum),
                                 style:
-                                    TextStyle(fontSize: 13, color: titleColor),
+                                    Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13, color: titleColor),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '$count transactions',
                             style:
-                                TextStyle(fontSize: 12, color: secondaryColor),
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
                           ),
                         ],
                       ),
@@ -670,18 +701,18 @@ class _PaymentAnalyticsScreenState
                             fit: BoxFit.scaleDown,
                             child: Text(
                               formatMoney(total, symbol: 'KSh '),
-                              style: TextStyle(
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                                 color: color,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${trafficShare.toStringAsFixed(1)}% of traffic',
                             style:
-                                TextStyle(fontSize: 11, color: secondaryColor),
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 11, color: secondaryColor),
                           ),
                         ],
                       ),

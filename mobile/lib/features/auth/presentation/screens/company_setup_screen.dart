@@ -14,6 +14,7 @@ import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/motion.dart';
 
 String companySetupErrorMessage(Object error) {
   if (error is DioException) {
@@ -279,7 +280,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
+                          duration: DesignAnimation.fast,
                           child: KeyedSubtree(
                             key: ValueKey(_currentStep),
                             child: _buildStep(),
@@ -497,12 +498,14 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             child: const Text('Use Google instead'),
           ),
         ],
-        const SizedBox(height: 12),
-        const Text(
+        const SizedBox(height: DesignSpacing.md),
+        Text(
           'Axon does not collect or store an owner password during workspace setup.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-              color: DesignColors.darkTextTertiary, fontSize: 12, height: 1.4),
+          style: Theme.of(context)
+              .textTheme
+              .labelMedium
+              ?.copyWith(color: DesignColors.darkTextTertiary, height: 1.4),
         ),
       ],
     );
@@ -655,22 +658,28 @@ class _Header extends StatelessWidget {
                       letterSpacing: 2)),
             ),
             Text('${step + 1} / 4',
-                style: const TextStyle(
-                    color: DesignColors.accent, fontWeight: FontWeight.w800)),
+                style: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(color: DesignColors.accent)),
           ]),
           const SizedBox(height: 12),
           Row(
               children: List.generate(
                   4,
                   (index) => Expanded(
-                        child: Container(
-                          height: 4,
-                          margin: EdgeInsets.only(right: index == 3 ? 0 : 6),
+                        child: AnimatedContainer(
+                          duration: DesignAnimation.normal,
+                          curve: DesignAnimation.defaultCurve,
+                          height: DesignSpacing.xs - 1,
+                          margin: EdgeInsets.only(
+                              right: index == 3 ? 0 : DesignSpacing.sm - 2),
                           decoration: BoxDecoration(
                             color: index <= step
                                 ? DesignColors.accent
                                 : DesignColors.darkBorder,
-                            borderRadius: BorderRadius.circular(99),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusFull),
                           ),
                         ),
                       ))),
@@ -678,8 +687,10 @@ class _Header extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Text('Step ${step + 1} of 4 · $label',
-                style: const TextStyle(
-                    color: DesignColors.darkTextTertiary, fontSize: 12)),
+                style: Theme.of(context)
+                    .textTheme
+                    .labelMedium
+                    ?.copyWith(color: DesignColors.darkTextTertiary)),
           ),
         ]),
       );
@@ -693,22 +704,25 @@ class _StepContent extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title,
-            style: const TextStyle(
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // Each step's header rises/fades in on first mount (onboarding stagger)
+      StaggeredItem(
+        itemKey: 'setup-step-title-$title',
+        child: Text(title,
+            style: theme.textTheme.headlineMedium?.copyWith(
                 color: DesignColors.darkTextPrimary,
-                fontSize: 30,
                 fontWeight: FontWeight.w800)),
-        const SizedBox(height: 12),
-        Text(subtitle,
-            style: const TextStyle(
-                color: DesignColors.darkTextSecondary,
-                fontSize: 16,
-                height: 1.4)),
-        const SizedBox(height: 28),
-        ...children,
-      ]);
+      ),
+      const SizedBox(height: DesignSpacing.md),
+      Text(subtitle,
+          style: theme.textTheme.titleMedium
+              ?.copyWith(color: DesignColors.darkTextSecondary, height: 1.4)),
+      const SizedBox(height: DesignSpacing.xxxl - 4),
+      ...children,
+    ]);
+  }
 }
 
 class _VerificationCard extends StatelessWidget {
@@ -734,15 +748,14 @@ class _VerificationCard extends StatelessWidget {
           Icon(icon, color: DesignColors.accent),
           const SizedBox(height: 12),
           Text(title,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: DesignColors.darkTextPrimary,
-                  fontSize: 17,
                   fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
+          const SizedBox(height: DesignSpacing.sm - 2),
           Text(subtitle,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: DesignColors.darkTextSecondary, height: 1.4)),
-          const SizedBox(height: 18),
+          const SizedBox(height: DesignSpacing.lg + 2),
           child,
         ]),
       );

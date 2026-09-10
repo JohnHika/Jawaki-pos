@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -105,14 +104,20 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
       appBar: const BrandedAppBar(title: 'Subscribe to Axon AI', showLogo: false),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          // Keyboard-safe: keep fields above the keyboard.
+          padding: EdgeInsets.fromLTRB(
+            DesignSpacing.xl,
+            DesignSpacing.xl,
+            DesignSpacing.xl,
+            DesignSpacing.xl + MediaQuery.viewInsetsOf(context).bottom,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Price
               GlassCard(
-                padding: const EdgeInsets.all(16),
-                borderRadius: 12,
+                padding: const EdgeInsets.all(DesignSpacing.lg),
+                borderRadius: DesignSpacing.radiusMd,
                 borderColor: DesignColors.brand.withValues(alpha: 0.25),
                 tint: DesignColors.brand.withValues(alpha: 0.08),
                 child: Row(
@@ -139,7 +144,7 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                     ),
                     Text(
                       'KES ${AiBillingService.subscriptionPrice.toStringAsFixed(0)}',
-                      style: const TextStyle(
+                      style: DesignType.numeric(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: DesignColors.brand,
@@ -147,9 +152,9 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                     ),
                   ],
                 ),
-              ).animate().fadeIn(duration: 400.ms),
+              ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: DesignSpacing.xxl),
 
               // Card payment — primary path, auto-renews
               _SectionCard(
@@ -166,27 +171,27 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: DesignSpacing.lg),
                   GradientButton(
                     label: _isCardLoading ? 'Opening...' : 'Subscribe with Card',
                     icon: Icons.credit_card,
                     isLoading: _isCardLoading,
                     onPressed: _isCardLoading ? null : _payWithCard,
-                    height: 50,
-                    borderRadius: 12,
+                    height: DesignSpacing.xxl + 26,
+                    borderRadius: DesignSpacing.radiusMd,
                   ),
                 ],
-              ).animate().slideY(begin: 0.15, duration: 400.ms),
+              ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
 
               // Success / error messages
               if (_successMessage != null) ...[
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(DesignSpacing.lg),
                   decoration: BoxDecoration(
                     color: DesignColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     border: Border.all(
                         color: DesignColors.success.withValues(alpha: 0.3)),
                   ),
@@ -194,7 +199,7 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                     children: [
                       const Icon(Icons.check_circle,
                           color: DesignColors.success),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: DesignSpacing.md),
                       Expanded(
                         child: Text(
                           _successMessage!,
@@ -204,15 +209,15 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
               ],
 
               if (_error != null) ...[
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(DesignSpacing.lg),
                   decoration: BoxDecoration(
                     color: DesignColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     border: Border.all(
                         color: DesignColors.error.withValues(alpha: 0.3)),
                   ),
@@ -220,7 +225,7 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                     children: [
                       const Icon(Icons.error_outline,
                           color: DesignColors.error),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: DesignSpacing.md),
                       Expanded(
                         child: Text(
                           _error!,
@@ -230,13 +235,16 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
               ],
 
               // M-Pesa fallback, collapsed by default
               TextButton.icon(
                 onPressed: () => setState(
                     () => _showMpesaFallback = !_showMpesaFallback),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, DesignSpacing.xl + 24),
+                ),
                 icon: Icon(
                   _showMpesaFallback
                       ? Icons.expand_less_rounded
@@ -246,7 +254,7 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                 label: const Text('Prefer to pay with M-Pesa instead?'),
               ),
               if (_showMpesaFallback) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: DesignSpacing.sm),
                 _SectionCard(
                   title: 'Pay with M-Pesa',
                   subtitle:
@@ -264,15 +272,16 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                       title: 'Enter Code',
                       description: 'Enter the confirmation code from your SMS',
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: DesignSpacing.sm),
                     _CodeInputField(
                       controller: _codeController,
                       onSubmitted: _submitMpesaCode,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: DesignSpacing.lg),
+                    // >=44px tap target.
                     SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: DesignSpacing.xl + 24,
                       child: OutlinedButton(
                         onPressed:
                             _isMpesaCodeLoading ? null : _submitMpesaCode,
@@ -280,7 +289,8 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                           foregroundColor: DesignColors.brand,
                           side: const BorderSide(color: DesignColors.brand),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
                           ),
                         ),
                         child: _isMpesaCodeLoading
@@ -298,7 +308,7 @@ class _AiSubscribeScreenState extends State<AiSubscribeScreen> {
                 ),
               ],
 
-              const SizedBox(height: 24),
+              const SizedBox(height: DesignSpacing.xxl),
 
               const Text(
                 'By subscribing, you agree to our Terms of Service and Privacy Policy.',
@@ -327,8 +337,8 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassCard(
-      padding: const EdgeInsets.all(16),
-      borderRadius: 16,
+      padding: const EdgeInsets.all(DesignSpacing.lg),
+      borderRadius: DesignSpacing.radiusLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -341,7 +351,7 @@ class _SectionCard extends StatelessWidget {
             ),
           ),
           if (subtitle != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: DesignSpacing.xs),
             Text(
               subtitle!,
               style: const TextStyle(
@@ -350,7 +360,7 @@ class _SectionCard extends StatelessWidget {
                   height: 1.4),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           ...children,
         ],
       ),
@@ -374,7 +384,7 @@ class _InstructionStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.lg),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -388,7 +398,7 @@ class _InstructionStep extends StatelessWidget {
             child: Center(
               child: Text(
                 '$number',
-                style: const TextStyle(
+                style: DesignType.numeric(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                   fontSize: 14,
@@ -396,7 +406,7 @@ class _InstructionStep extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,7 +419,7 @@ class _InstructionStep extends StatelessWidget {
                     color: DesignColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: DesignSpacing.xs),
                 Text(
                   description,
                   style: const TextStyle(
@@ -419,15 +429,16 @@ class _InstructionStep extends StatelessWidget {
                   ),
                 ),
                 if (highlight != null) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: DesignSpacing.xs),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: DesignSpacing.md,
+                      vertical: DesignSpacing.sm + 2,
                     ),
                     decoration: BoxDecoration(
                       color: DesignColors.brand.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusSm),
                       border: Border.all(
                           color: DesignColors.brand.withValues(alpha: 0.3)),
                     ),
@@ -441,7 +452,7 @@ class _InstructionStep extends StatelessWidget {
                             color: DesignColors.brand,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: DesignSpacing.sm),
                         const Icon(Icons.copy,
                             size: 16, color: DesignColors.brand),
                       ],
@@ -481,19 +492,25 @@ class _CodeInputField extends StatelessWidget {
             color: DesignColors.textTertiary,
             fontSize: 13),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: border,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: border,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: const BorderSide(color: DesignColors.brand, width: 2),
         ),
         prefixIcon: const Icon(Icons.sms, color: DesignColors.textTertiary),
+        // >=44px tap target for clearing the code field.
         suffixIcon: IconButton(
+          tooltip: 'Clear code',
+          constraints: const BoxConstraints(
+              minWidth: DesignSpacing.xl + 24,
+              minHeight: DesignSpacing.xl + 24),
+          padding: EdgeInsets.zero,
           icon: const Icon(Icons.close, color: DesignColors.textTertiary),
           onPressed: () => controller.clear(),
         ),

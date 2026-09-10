@@ -10,6 +10,7 @@ import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
+import 'package:axon_pos/core/widgets/motion.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -38,9 +39,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _isFetchingCompany = false;
   Timer? _debounceTimer;
 
-  late AnimationController _fadeAnimation;
-  late Animation<double> _fadeAnimationValue;
-  late Animation<Offset> _slideAnimation;
   late AnimationController _pulseController;
 
   @override
@@ -49,30 +47,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _loadRememberedLogin();
     _checkBiometric();
 
-    _fadeAnimation = AnimationController(
-      duration: DesignAnimation.normal,
-      vsync: this,
-    );
-
-    _fadeAnimationValue = CurvedAnimation(
-      parent: _fadeAnimation,
-      curve: DesignAnimation.defaultCurve,
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.08),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _fadeAnimation,
-      curve: DesignAnimation.smooth,
-    ));
-
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2500),
-    )..repeat(reverse: true);
+      duration: DesignAnimation.slowest,
+    );
+  }
 
-    _fadeAnimation.forward();
+  // The brand pulse is an infinite loop: it must only run when the OS
+  // "remove animations" setting is off (see core/widgets/motion.dart).
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      if (_pulseController.isAnimating) {
+        _pulseController.stop();
+        _pulseController.reset();
+      }
+    } else if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
   }
 
   void _loadRememberedLogin() {
@@ -98,7 +91,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _tenantSlugController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _fadeAnimation.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -293,11 +285,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           ),
-          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-          actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          titlePadding: const EdgeInsets.fromLTRB(DesignSpacing.xxl,
+              DesignSpacing.xxl, DesignSpacing.xxl, DesignSpacing.sm),
+          contentPadding: const EdgeInsets.fromLTRB(
+              DesignSpacing.xxl, 0, DesignSpacing.xxl, DesignSpacing.sm),
+          actionsPadding: const EdgeInsets.fromLTRB(DesignSpacing.xxl,
+              DesignSpacing.sm, DesignSpacing.xxl, DesignSpacing.xl),
           title: Row(
             children: [
               Container(
@@ -310,10 +305,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 child: const Icon(
                   Icons.verified_rounded,
                   color: DesignColors.success,
-                  size: 24,
+                  size: DesignSpacing.xxl,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               const Expanded(
                 child: Text(
                   'Login Successful',
@@ -328,17 +323,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             children: [
               Text(
                 companyName,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(dialogContext).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               const Text(
                 'Save this company code. You and your staff will use it with the verified Google account or email credentials registered for this business.',
                 style: TextStyle(height: 1.4),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -347,7 +341,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
                 decoration: BoxDecoration(
                   color: DesignColors.brand.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   border: Border.all(
                     color: DesignColors.brand.withValues(alpha: 0.22),
                   ),
@@ -357,7 +351,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     Expanded(
                       child: SelectableText(
                         companyCode,
-                        style: const TextStyle(
+                        style: DesignType.numeric(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.6,
@@ -394,7 +388,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 icon: Icons.check_rounded,
                 onPressed: () => Navigator.of(dialogContext).pop(),
                 height: 48,
-                borderRadius: 12,
+                borderRadius: DesignSpacing.radiusMd,
               ),
             ),
           ],
@@ -442,14 +436,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final size = MediaQuery.of(context).size;
     final isSmallScreen = size.height < 700;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
 
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        color: isDark ? DesignColors.darkBg : const Color(0xFF1A1A2E),
+        color: DesignColors.darkBg,
         child: SafeArea(
-          minimum: const EdgeInsets.only(top: 8, bottom: 16),
+          minimum: const EdgeInsets.only(
+              top: DesignSpacing.sm, bottom: DesignSpacing.lg),
           child: Stack(
             children: [
               // Decorative 3D-ish brand image in the upper-right background.
@@ -490,10 +486,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         ? context.pop()
                         : context.go('/company-choice'),
                     child: Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(DesignSpacing.md),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.18),
                           width: 1,
@@ -512,15 +509,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: isSmallScreen ? 12 : 32,
+                    horizontal: DesignSpacing.xxl,
+                    vertical:
+                        isSmallScreen ? DesignSpacing.md : DesignSpacing.xxxl,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Logo section
-                      FadeTransition(
-                        opacity: _fadeAnimationValue,
+                      // Logo section — first-mount stagger (see StaggeredItem)
+                      StaggeredItem(
+                        itemKey: 'login-logo',
                         child: AnimatedBuilder(
                           animation: _pulseController,
                           builder: (context, child) {
@@ -553,42 +551,55 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       SizedBox(height: isSmallScreen ? 16 : 24),
 
                       // Title — dynamic based on fetched company
-                      Text(
-                        _companyName ?? 'Join your business',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 26 : 32,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
+                      StaggeredItem(
+                        itemKey: 'login-title',
+                        index: 1,
+                        child: Text(
+                          _companyName ?? 'Join your business',
+                          style: theme.textTheme.headlineLarge?.copyWith(
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _companyName == null
-                            ? 'CONNECT YOUR STAFF ACCOUNT'
-                            : 'READY FOR STAFF SIGN IN',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white.withValues(alpha: 0.7),
-                          letterSpacing: 2,
+                      const SizedBox(height: DesignSpacing.sm),
+                      StaggeredItem(
+                        itemKey: 'login-subtitle',
+                        index: 2,
+                        child: Text(
+                          _companyName == null
+                              ? 'CONNECT YOUR STAFF ACCOUNT'
+                              : 'READY FOR STAFF SIGN IN',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            letterSpacing: 2,
+                          ),
                         ),
                       ),
-                      SizedBox(height: isSmallScreen ? 24 : 32),
+                      SizedBox(
+                          height: isSmallScreen
+                              ? DesignSpacing.xxl
+                              : DesignSpacing.xxxl),
 
                       // Login card
-                      FadeTransition(
-                        opacity: _fadeAnimationValue,
-                        child: SlideTransition(
-                          position: _slideAnimation,
-                          child:
-                              _buildLoginCard(isSmallScreen, authState, isDark),
-                        ),
+                      StaggeredItem(
+                        itemKey: 'login-card',
+                        index: 3,
+                        child: _buildLoginCard(isSmallScreen, authState, isDark),
                       ),
 
                       // Bottom branding
-                      SizedBox(height: isSmallScreen ? 16 : 24),
-                      _buildBottomLinks(),
+                      SizedBox(
+                          height: isSmallScreen
+                              ? DesignSpacing.lg
+                              : DesignSpacing.xl),
+                      StaggeredItem(
+                        itemKey: 'login-footer',
+                        index: 4,
+                        child: _buildBottomLinks(),
+                      ),
                     ],
                   ),
                 ),
@@ -606,7 +617,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       constraints: const BoxConstraints(maxWidth: 400),
       decoration: BoxDecoration(
         color: isDark ? DesignColors.darkSurface : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(
           color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
           width: 1,
@@ -614,8 +625,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            blurRadius: DesignSpacing.xl,
+            offset: const Offset(0, DesignSpacing.sm),
           ),
         ],
       ),
@@ -623,7 +634,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         key: _formKey,
         child: Padding(
           padding: EdgeInsets.all(
-            isSmallScreen ? 20 : 24,
+            isSmallScreen ? DesignSpacing.xl : DesignSpacing.xxl,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,46 +647,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     color: isDark
                         ? DesignColors.darkTextPrimary
                         : DesignColors.textPrimary,
-                    size: 24,
+                    size: DesignSpacing.xxl,
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Join an existing business',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 20 : 22,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? DesignColors.darkTextPrimary
-                          : DesignColors.textPrimary,
+                  const SizedBox(width: DesignSpacing.md),
+                  Expanded(
+                    child: Text(
+                      'Join an existing business',
+                      style: (isSmallScreen
+                              ? Theme.of(context).textTheme.titleLarge
+                              : Theme.of(context).textTheme.headlineSmall)
+                          ?.copyWith(
+                        color: isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               Text(
                 'Enter the company code from your administrator, then sign in with your staff account.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? DesignColors.darkTextSecondary
-                      : DesignColors.textSecondary,
-                ),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
 
               // Quick sign-in options — placed at the top of the card so users
               // can see PIN / biometric without scrolling past the email form.
               Text(
                 'Already set up on this device?',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark
-                      ? DesignColors.darkTextSecondary
-                      : DesignColors.textSecondary,
-                ),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: DesignSpacing.sm + 2),
               Row(
                 children: [
                   Expanded(
@@ -702,9 +713,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
 
               // Company identifier comes first: Google sign-in is always
               // scoped to the business the staff member is joining.
@@ -742,7 +753,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 },
               ),
               if (_companyLookupError != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: DesignSpacing.sm),
                 Semantics(
                   liveRegion: true,
                   label: _companyLookupError!,
@@ -758,18 +769,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       Expanded(
                         child: Text(
                           _companyLookupError!,
-                          style: const TextStyle(
-                            color: DesignColors.warning,
-                            fontSize: 12,
-                            height: 1.35,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: DesignColors.warning,
+                                    height: 1.35,
+                                  ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ],
-              const SizedBox(height: 18),
+              const SizedBox(height: DesignSpacing.lg + 2),
 
               OutlinedButton.icon(
                 onPressed: authState.isLoading ? null : _handleGoogleLogin,
@@ -778,7 +789,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   side: BorderSide(
                     color: isDark
@@ -787,16 +798,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               Text(
                 'Use the Google account already registered for this business.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark
-                      ? DesignColors.darkTextSecondary
-                      : DesignColors.textSecondary,
-                ),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
               ),
               if (!_showPasswordFallback)
                 Align(
@@ -810,7 +820,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
 
               if (_showPasswordFallback) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
 
                 // Email field
                 _buildPremiumTextField(
@@ -832,7 +842,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
 
                 // Password field
                 _buildPremiumTextField(
@@ -867,69 +877,78 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
 
                 // Remember me + Forgot password
                 Row(
                   children: [
-                    // Custom remember me toggle
-                    GestureDetector(
-                      onTap: () => setState(() => _rememberMe = !_rememberMe),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _rememberMe
-                                  ? DesignColors.accent
-                                  : isDark
-                                      ? DesignColors.darkSurfaceElevated
-                                      : Colors.white,
-                              border: Border.all(
-                                color: _rememberMe
-                                    ? DesignColors.accent
-                                    : isDark
-                                        ? DesignColors.darkBorder
-                                        : DesignColors.surfaceBorder,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: _rememberMe
-                                ? const Icon(
-                                    Icons.check_rounded,
-                                    size: 16,
-                                    color: Colors.black,
-                                  )
-                                : null,
+                    // Custom remember me toggle — Semantics(checked) so the
+                    // state is announced, on a 48px InkWell so the target
+                    // clears the 44px minimum and gets ripple feedback.
+                    Semantics(
+                      toggled: _rememberMe,
+                      label: 'Stay signed in',
+                      child: InkWell(
+                        onTap: () =>
+                            setState(() => _rememberMe = !_rememberMe),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.xs,
+                            vertical: DesignSpacing.sm + 6,
                           ),
-                          const SizedBox(width: 8),
-                          Column(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const SizedBox(
-                                  height: 2), // Adjust vertical alignment
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _rememberMe
+                                      ? DesignColors.accent
+                                      : isDark
+                                          ? DesignColors.darkSurfaceElevated
+                                          : Colors.white,
+                                  border: Border.all(
+                                    color: _rememberMe
+                                        ? DesignColors.accent
+                                        : isDark
+                                            ? DesignColors.darkBorder
+                                            : DesignColors.surfaceBorder,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: _rememberMe
+                                    ? const Icon(
+                                        Icons.check_rounded,
+                                        size: 16,
+                                        color: Colors.black,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: DesignSpacing.sm),
                               Text(
                                 'Stay signed in',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isDark
-                                      ? DesignColors.darkTextSecondary
-                                      : DesignColors.textSecondary,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: isDark
+                                          ? DesignColors.darkTextSecondary
+                                          : DesignColors.textSecondary,
+                                    ),
                               ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                     const Spacer(),
                     // Forgot password link
-                    GestureDetector(
-                      onTap: () {
+                    TextButton(
+                      onPressed: () {
                         showGlassSnackBar(
                           context,
                           'Contact administrator to reset password',
@@ -937,25 +956,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           color: DesignColors.info,
                         );
                       },
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          SizedBox(height: 2), // Adjust vertical alignment
-                          Text(
-                            'Forgot Password?',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: DesignColors.brand,
-                            ),
-                          ),
-                        ],
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(64, 48),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.sm,
+                        ),
+                      ),
+                      child: Text(
+                        'Forgot Password?',
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: DesignColors.brand,
+                                ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: DesignSpacing.xl),
 
                 // Sign In button
                 GradientButton(
@@ -964,13 +982,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   onPressed: authState.isLoading ? null : _handleLogin,
                   isLoading: authState.isLoading,
                   height: 48,
-                  borderRadius: 12,
-                  gradient: isDark
-                      ? [DesignColors.brand, DesignColors.brandDark]
-                      : [DesignColors.brand, DesignColors.brandDark],
+                  borderRadius: DesignSpacing.radiusMd,
+                  gradient: const [DesignColors.brand, DesignColors.brandDark],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
               ],
 
               // Error message
@@ -979,10 +995,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   liveRegion: true,
                   label: 'Sign-in error: ${authState.error}',
                   child: Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(DesignSpacing.md),
                     decoration: BoxDecoration(
                       color: DesignColors.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       border: Border.all(
                         color: DesignColors.error.withValues(alpha: 0.3),
                       ),
@@ -994,16 +1010,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           color: DesignColors.error,
                           size: 20,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: DesignSpacing.sm),
                         Expanded(
                           child: Text(
                             authState.error!,
-                            style: const TextStyle(
-                              color: DesignColors.error,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              height: 1.35,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: DesignColors.error,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.35,
+                                ),
                           ),
                         ),
                       ],
@@ -1011,25 +1029,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
 
               // Invitation code entry point
               Align(
                 alignment: Alignment.center,
                 child: TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(64, 48),
+                  ),
                   onPressed: () => context.push('/accept-invite'),
-                  child: const Text(
+                  child: Text(
                     'Have an invitation code?',
-                    style: TextStyle(
-                      color: DesignColors.brand,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: DesignColors.brand,
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                 ),
               ),
 
-              const SizedBox(height: 8), // Reduced bottom padding for balance
+              const SizedBox(height: DesignSpacing.sm),
             ],
           ),
         ),
@@ -1081,15 +1101,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: isDark
-                ? DesignColors.darkTextSecondary
-                : DesignColors.textSecondary,
-          ),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
+              ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: DesignSpacing.sm - 2),
         TextFormField(
           controller: controller,
           obscureText: obscureText,
@@ -1099,13 +1118,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           autocorrect: autocorrect,
           onChanged: onChanged,
           onFieldSubmitted: onFieldSubmitted,
-          style: TextStyle(
-            color: isDark
-                ? DesignColors.darkTextPrimary
-                : DesignColors.textPrimary,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: isDark
+                    ? DesignColors.darkTextPrimary
+                    : DesignColors.textPrimary,
+              ),
           cursorColor: DesignColors.brand,
           decoration: InputDecoration(
             prefixIcon: Icon(
@@ -1117,26 +1134,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
             suffixIcon: suffixIcon,
             hintText: hint,
-            hintStyle: TextStyle(
-              color: isDark
-                  ? DesignColors.darkTextTertiary
-                  : DesignColors.textTertiary,
-              fontSize: 15,
-            ),
+            hintStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
+                ),
             helperText: helperText,
-            helperStyle: TextStyle(
-              color: isDark
-                  ? DesignColors.darkTextTertiary
-                  : DesignColors.textTertiary,
-              fontSize: 11,
-              height: 1.3,
-            ),
+            helperStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isDark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
+                  height: 1.3,
+                ),
             filled: true,
             fillColor: isDark
                 ? DesignColors.darkSurfaceElevated
                 : DesignColors.surfaceSubtle,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               borderSide: BorderSide(
                 color: isDark
                     ? DesignColors.darkBorder
@@ -1144,7 +1159,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               borderSide: BorderSide(
                 color: isDark
                     ? DesignColors.darkBorder
@@ -1152,28 +1167,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               borderSide: BorderSide(
                 color: DesignColors.brand.withValues(alpha: 0.6),
                 width: 1.5,
               ),
             ),
             errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               borderSide: BorderSide(
                 color: DesignColors.error.withValues(alpha: 0.5),
               ),
             ),
             focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               borderSide: BorderSide(
                 color: DesignColors.error.withValues(alpha: 0.7),
                 width: 1.5,
               ),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
+              horizontal: DesignSpacing.lg,
+              vertical: DesignSpacing.md,
             ),
           ),
           validator: validator,
@@ -1188,73 +1203,76 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     required VoidCallback onTap,
     bool isDark = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          vertical: 12,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: isDark
-              ? DesignColors.darkSurfaceElevated
-              : DesignColors.surfaceSubtle,
-          border: Border.all(
-            color:
-                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(
+            vertical: DesignSpacing.md,
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isDark
-                  ? DesignColors.darkTextSecondary
-                  : DesignColors.textSecondary,
-              size: 22,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            color: isDark
+                ? DesignColors.darkSurfaceElevated
+                : DesignColors.surfaceSubtle,
+            border: Border.all(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
             ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
                 color: isDark
                     ? DesignColors.darkTextSecondary
                     : DesignColors.textSecondary,
+                size: 22,
               ),
-            ),
-          ],
+              const SizedBox(height: DesignSpacing.sm - 2),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildBottomLinks() {
-    return const Column(
+    return Column(
       children: [
-        Icon(
+        const Icon(
           Icons.shield_outlined,
           size: 20,
           color: DesignColors.info,
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: DesignSpacing.sm),
         Text(
           'Secure business access',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: DesignColors.darkTextSecondary,
-          ),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: DesignColors.darkTextSecondary,
+              ),
         ),
-        SizedBox(height: 6),
+        const SizedBox(height: DesignSpacing.sm - 2),
         Text(
           'Point of Sale System',
-          style: TextStyle(
-            fontSize: 12,
-            color: DesignColors.darkTextTertiary,
-          ),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: DesignColors.darkTextTertiary,
+              ),
         ),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../providers/reports_provider.dart';
@@ -39,7 +40,10 @@ class ReportsScreen extends ConsumerWidget {
           children: [
             // Dashboard-style summary cards with MetricCard
             summaryAsync.when(
-              data: (summary) => _buildSummaryGrid(context, summary),
+              data: (summary) => StaggeredItem(
+                itemKey: 'reports-summary',
+                child: _buildSummaryGrid(context, summary),
+              ),
               loading: () => _buildSummaryGrid(context, {
                 'transactionCount': 0,
                 'totalRevenue': 0.0,
@@ -47,7 +51,7 @@ class ReportsScreen extends ConsumerWidget {
                 'itemsSold': 0,
               }),
               error: (e, _) => Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DesignSpacing.lg),
                 child: EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Could not load summary',
@@ -57,11 +61,15 @@ class ReportsScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
 
             // Date Range Selector
-            _DateRangeSelector(),
-            const SizedBox(height: 20),
+            StaggeredItem(
+              itemKey: 'reports-date-range',
+              index: 1,
+              child: _DateRangeSelector(),
+            ),
+            const SizedBox(height: DesignSpacing.xl),
 
             // Reports section
             const SectionHeader(
@@ -69,59 +77,94 @@ class ReportsScreen extends ConsumerWidget {
               subtitle: 'Detailed sales and operational reports',
               icon: Icons.description_rounded,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
 
-            _ReportTile(
-              icon: Icons.bar_chart_rounded,
-              title: 'Sales Report',
-              subtitle: 'View sales by period',
-              color: DesignColors.brand,
-              onTap: () => _showSalesReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-sales',
+              index: 2,
+              child:
+              _ReportTile(
+                icon: Icons.bar_chart_rounded,
+                title: 'Sales Report',
+                subtitle: 'View sales by period',
+                color: DesignColors.brand,
+                onTap: () => _showSalesReport(context, ref),
+              )
             ),
-            _ReportTile(
-              icon: Icons.pie_chart_rounded,
-              title: 'Payment Methods',
-              subtitle: 'Breakdown of payment methods used',
-              color: DesignColors.credit,
-              onTap: () => _showPaymentMethodsReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-payment-methods',
+              index: 3,
+              child:
+              _ReportTile(
+                icon: Icons.pie_chart_rounded,
+                title: 'Payment Methods',
+                subtitle: 'Breakdown of payment methods used',
+                color: DesignColors.credit,
+                onTap: () => _showPaymentMethodsReport(context, ref),
+              )
             ),
-            _ReportTile(
-              icon: Icons.person_rounded,
-              title: 'Cashier Performance',
-              subtitle: 'Sales by cashier',
-              color: DesignColors.accent,
-              onTap: () => _showCashierReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-cashier',
+              index: 4,
+              child:
+              _ReportTile(
+                icon: Icons.person_rounded,
+                title: 'Cashier Performance',
+                subtitle: 'Sales by cashier',
+                color: DesignColors.accent,
+                onTap: () => _showCashierReport(context, ref),
+              )
             ),
-            _ReportTile(
-              icon: Icons.category_rounded,
-              title: 'Category Sales',
-              subtitle: 'Sales by product category',
-              color: DesignColors.info,
-              onTap: () => _showCategorySalesReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-category',
+              index: 5,
+              child:
+              _ReportTile(
+                icon: Icons.category_rounded,
+                title: 'Category Sales',
+                subtitle: 'Sales by product category',
+                color: DesignColors.info,
+                onTap: () => _showCategorySalesReport(context, ref),
+              )
             ),
-            _ReportTile(
-              icon: Icons.star_rounded,
-              title: 'Top Products',
-              subtitle: 'Best selling products',
-              color: DesignColors.warning,
-              onTap: () => _showTopProductsReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-top-products',
+              index: 6,
+              child:
+              _ReportTile(
+                icon: Icons.star_rounded,
+                title: 'Top Products',
+                subtitle: 'Best selling products',
+                color: DesignColors.warning,
+                onTap: () => _showTopProductsReport(context, ref),
+              )
             ),
-            _ReportTile(
-              icon: Icons.warehouse_rounded,
-              title: 'Inventory Report',
-              subtitle: 'Stock levels and movements',
-              color: DesignColors.success,
-              onTap: () => _showInventoryReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-inventory',
+              index: 7,
+              child:
+              _ReportTile(
+                icon: Icons.warehouse_rounded,
+                title: 'Inventory Report',
+                subtitle: 'Stock levels and movements',
+                color: DesignColors.success,
+                onTap: () => _showInventoryReport(context, ref),
+              )
             ),
-            _ReportTile(
-              icon: Icons.people_rounded,
-              title: 'Customer Report',
-              subtitle: 'Customer purchases and loyalty',
-              color: DesignColors.brandLight,
-              onTap: () => _showCustomerReport(context, ref),
+            StaggeredItem(
+              itemKey: 'reports-tile-customer',
+              index: 8,
+              child:
+              _ReportTile(
+                icon: Icons.people_rounded,
+                title: 'Customer Report',
+                subtitle: 'Customer purchases and loyalty',
+                color: DesignColors.brandLight,
+                onTap: () => _showCustomerReport(context, ref),
+              )
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: DesignSpacing.xl),
 
             // Analytics section
             const SectionHeader(
@@ -129,33 +172,48 @@ class ReportsScreen extends ConsumerWidget {
               subtitle: 'Advanced analytics and forecasting',
               icon: Icons.analytics_rounded,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
 
-            _GlassCardTile(
-              icon: Icons.bar_chart_rounded,
-              title: 'Analytics Dashboard',
-              subtitle:
-                  'Comprehensive sales analytics with multiple chart types',
-              color: DesignColors.brand,
-              onTap: () => context.push('/reports/analytics'),
+            StaggeredItem(
+              itemKey: 'reports-analytics-dashboard',
+              index: 9,
+              child:
+              _GlassCardTile(
+                icon: Icons.bar_chart_rounded,
+                title: 'Analytics Dashboard',
+                subtitle:
+                    'Comprehensive sales analytics with multiple chart types',
+                color: DesignColors.brand,
+                onTap: () => context.push('/reports/analytics'),
+              )
             ),
-            _GlassCardTile(
-              icon: Icons.trending_up_rounded,
-              title: 'Inventory Forecast',
-              subtitle: 'Predictive inventory analytics and demand forecasting',
-              color: DesignColors.credit,
-              onTap: () => context.push('/reports/inventory-forecast'),
+            StaggeredItem(
+              itemKey: 'reports-inventory-forecast',
+              index: 10,
+              child:
+              _GlassCardTile(
+                icon: Icons.trending_up_rounded,
+                title: 'Inventory Forecast',
+                subtitle: 'Predictive inventory analytics and demand forecasting',
+                color: DesignColors.credit,
+                onTap: () => context.push('/reports/inventory-forecast'),
+              )
             ),
-            _GlassCardTile(
-              icon: Icons.payments_rounded,
-              title: 'Payment Analytics',
-              subtitle:
-                  'Detailed payment method analysis and transaction trends',
-              color: DesignColors.accent,
-              onTap: () => context.push('/payment-analytics'),
+            StaggeredItem(
+              itemKey: 'reports-payment-analytics',
+              index: 11,
+              child:
+              _GlassCardTile(
+                icon: Icons.payments_rounded,
+                title: 'Payment Analytics',
+                subtitle:
+                    'Detailed payment method analysis and transaction trends',
+                color: DesignColors.accent,
+                onTap: () => context.push('/payment-analytics'),
+              )
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: DesignSpacing.xxl),
           ],
         ),
       ),
@@ -164,7 +222,7 @@ class ReportsScreen extends ConsumerWidget {
 
   Widget _buildSummaryGrid(BuildContext context, Map<String, dynamic> s) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Column(
         children: [
           Row(
@@ -177,7 +235,7 @@ class ReportsScreen extends ConsumerWidget {
                   color: DesignColors.success,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Transactions',
@@ -188,7 +246,7 @@ class ReportsScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: DesignSpacing.md),
           Row(
             children: [
               Expanded(
@@ -199,7 +257,7 @@ class ReportsScreen extends ConsumerWidget {
                   color: DesignColors.info,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Items Sold',
@@ -226,7 +284,7 @@ class ReportsScreen extends ConsumerWidget {
         final salesAsync = ref.watch(salesListProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -235,7 +293,7 @@ class ReportsScreen extends ConsumerWidget {
                 child:
                     StatusBadge(label: range.label, color: DesignColors.brand),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               // Report navigation tabs
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -243,19 +301,19 @@ class ReportsScreen extends ConsumerWidget {
                   children: [
                     _buildReportNavTab(context, 'Sales', true,
                         () => _showSalesReport(context, ref)),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: DesignSpacing.xs),
                     _buildReportNavTab(context, 'Customers', false,
                         () => _showCustomerReport(context, ref)),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: DesignSpacing.xs),
                     _buildReportNavTab(context, 'Payments', false,
                         () => _showPaymentMethodsReport(context, ref)),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: DesignSpacing.xs),
                     _buildReportNavTab(context, 'Cashier', false,
                         () => _showCashierReport(context, ref)),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: salesAsync.when(
                   data: (sales) {
@@ -274,8 +332,8 @@ class ReportsScreen extends ConsumerWidget {
                     return Column(
                       children: [
                         GlassCard(
-                          padding: const EdgeInsets.all(12),
-                          borderRadius: 12,
+                          padding: const EdgeInsets.all(DesignSpacing.md),
+                          borderRadius: DesignSpacing.radiusMd,
                           blur: 8,
                           tint: DesignColors.success.withValues(alpha: 0.1),
                           borderColor:
@@ -294,13 +352,16 @@ class ReportsScreen extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: DesignSpacing.md),
                         Expanded(
                           child: ListView.builder(
                             itemCount: sales.length,
+                            // First-mount entrance: the initial batch of rows
+                            // fades/rises in once, staggered; stable keys keep
+                            // scroll rebuilds from replaying the entrance.
                             itemBuilder: (ctx, i) {
                               final sale = sales[i];
-                              return ListCard(
+                              final saleRow = ListCard(
                                 leading: CircleAvatar(
                                   backgroundColor:
                                       DesignColors.brand.withValues(alpha: 0.1),
@@ -314,6 +375,12 @@ class ReportsScreen extends ConsumerWidget {
                                     style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: titleColor)),
+                              );
+                              if (i >= 12) return saleRow;
+                              return StaggeredItem(
+                                itemKey: 'sales-sheet-${sale.id}',
+                                index: i,
+                                child: saleRow,
                               );
                             },
                           ),
@@ -351,7 +418,7 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(paymentMethodProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -360,7 +427,7 @@ class ReportsScreen extends ConsumerWidget {
                 child:
                     StatusBadge(label: range.label, color: DesignColors.accent),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: dataAsync.when(
                   data: (data) {
@@ -385,12 +452,12 @@ class ReportsScreen extends ConsumerWidget {
                         final color =
                             _paymentColor(d['paymentMethod'] as String);
                         return GlassCard(
-                          padding: const EdgeInsets.all(16),
-                          borderRadius: 12,
+                          padding: const EdgeInsets.all(DesignSpacing.lg),
+                          borderRadius: DesignSpacing.radiusMd,
                           blur: 8,
                           tint: color.withValues(alpha: 0.06),
                           borderColor: color.withValues(alpha: 0.15),
-                          margin: const EdgeInsets.only(bottom: 8),
+                          margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -404,7 +471,7 @@ class ReportsScreen extends ConsumerWidget {
                                             d['paymentMethod'] as String),
                                         color: color,
                                         size: 20),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: DesignSpacing.sm),
                                     Text(d['paymentMethod'] as String,
                                         style: TextStyle(
                                             fontWeight: FontWeight.w600,
@@ -416,9 +483,9 @@ class ReportsScreen extends ConsumerWidget {
                                           color: titleColor)),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: DesignSpacing.sm),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(18),
+                                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
                                 child: LinearProgressIndicator(
                                   value: pct / 100,
                                   backgroundColor: color.withValues(alpha: 0.1),
@@ -426,7 +493,7 @@ class ReportsScreen extends ConsumerWidget {
                                   minHeight: 8,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: DesignSpacing.xs),
                               Text(
                                   '${d['count']} transactions  ${pct.toStringAsFixed(1)}%',
                                   style: Theme.of(ctx).textTheme.bodySmall),
@@ -466,7 +533,7 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(cashierPerformanceProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -475,7 +542,7 @@ class ReportsScreen extends ConsumerWidget {
                 child:
                     StatusBadge(label: range.label, color: DesignColors.accent),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: dataAsync.when(
                   data: (data) {
@@ -538,7 +605,7 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(categorySalesProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -547,7 +614,7 @@ class ReportsScreen extends ConsumerWidget {
                 child:
                     StatusBadge(label: range.label, color: DesignColors.info),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: dataAsync.when(
                   data: (data) {
@@ -579,12 +646,12 @@ class ReportsScreen extends ConsumerWidget {
                         ];
                         final color = colors[i % colors.length];
                         return GlassCard(
-                          padding: const EdgeInsets.all(16),
-                          borderRadius: 12,
+                          padding: const EdgeInsets.all(DesignSpacing.lg),
+                          borderRadius: DesignSpacing.radiusMd,
                           blur: 8,
                           tint: color.withValues(alpha: 0.06),
                           borderColor: color.withValues(alpha: 0.15),
-                          margin: const EdgeInsets.only(bottom: 8),
+                          margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -603,9 +670,9 @@ class ReportsScreen extends ConsumerWidget {
                                           color: titleColor)),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: DesignSpacing.sm),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(18),
+                                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl - 2),
                                 child: LinearProgressIndicator(
                                   value: total > 0 ? revenue / total : 0,
                                   backgroundColor: color.withValues(alpha: 0.1),
@@ -613,7 +680,7 @@ class ReportsScreen extends ConsumerWidget {
                                   minHeight: 8,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: DesignSpacing.xs),
                               Text(
                                   '${d['totalQty']} items  ${pct.toStringAsFixed(1)}%',
                                   style: Theme.of(ctx).textTheme.bodySmall),
@@ -653,7 +720,7 @@ class ReportsScreen extends ConsumerWidget {
         final dataAsync = ref.watch(topProductsProvider);
         final range = ref.watch(dateRangeProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -662,7 +729,7 @@ class ReportsScreen extends ConsumerWidget {
                 child: StatusBadge(
                     label: range.label, color: DesignColors.warning),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: dataAsync.when(
                   data: (data) {
@@ -727,12 +794,12 @@ class ReportsScreen extends ConsumerWidget {
       child: Consumer(builder: (ctx, ref, _) {
         final dataAsync = ref.watch(inventoryReportProvider);
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 4),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.xs),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: dataAsync.when(
                   data: (data) {
@@ -817,11 +884,11 @@ class ReportsScreen extends ConsumerWidget {
       child: Consumer(builder: (ctx, ref, _) {
         final db = getIt<AppDatabase>();
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               // Report navigation tabs
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -829,19 +896,19 @@ class ReportsScreen extends ConsumerWidget {
                   children: [
                     _buildReportNavTab(context, 'Sales', false,
                         () => _showSalesReport(context, ref)),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: DesignSpacing.xs),
                     _buildReportNavTab(context, 'Customers', true,
                         () => _showCustomerReport(context, ref)),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: DesignSpacing.xs),
                     _buildReportNavTab(context, 'Payments', false,
                         () => _showPaymentMethodsReport(context, ref)),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: DesignSpacing.xs),
                     _buildReportNavTab(context, 'Cashier', false,
                         () => _showCashierReport(context, ref)),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Expanded(
                 child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: db.getAllCustomers(),
@@ -855,12 +922,14 @@ class ReportsScreen extends ConsumerWidget {
                     }
                     return ListView.builder(
                       itemCount: data.length,
+                      // First-mount entrance: initial batch staggered; stable
+                      // keys per customer so rebuilds never replay the motion.
                       itemBuilder: (ctx, i) {
                         final c = data[i];
                         final totalPurchases = c['totalPurchases'] as int;
                         final totalSpent = c['totalSpent'] as double;
                         final lastPurchase = c['lastPurchaseAt'] as String?;
-                        return ListCard(
+                        final customerRow = ListCard(
                           leading: CircleAvatar(
                             backgroundColor:
                                 DesignColors.accent.withValues(alpha: 0.1),
@@ -886,7 +955,7 @@ class ReportsScreen extends ConsumerWidget {
                                       .format(DateTime.parse(lastPurchase)),
                                   style: Theme.of(ctx).textTheme.bodySmall,
                                 ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: DesignSpacing.xs - 2),
                               Text(
                                 '${(totalPurchases > 0 ? totalSpent / totalPurchases : 0).toStringAsFixed(0)} avg',
                                 style: Theme.of(ctx).textTheme.bodySmall,
@@ -894,6 +963,12 @@ class ReportsScreen extends ConsumerWidget {
                             ],
                           ),
                           onTap: () => _showCustomerDetails(ctx, c),
+                        );
+                        if (i >= 12) return customerRow;
+                        return StaggeredItem(
+                          itemKey: 'customer-sheet-${c['id'] ?? i}',
+                          index: i,
+                          child: customerRow,
                         );
                       },
                     );
@@ -920,12 +995,12 @@ class ReportsScreen extends ConsumerWidget {
       initialSize: 0.5,
       maxSize: 0.7,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(DesignSpacing.xl),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             Row(
               children: [
                 CircleAvatar(
@@ -933,13 +1008,13 @@ class ReportsScreen extends ConsumerWidget {
                   backgroundColor: DesignColors.accent.withValues(alpha: 0.1),
                   child: Text(
                     (customer['name'] as String).substring(0, 1).toUpperCase(),
-                    style: const TextStyle(
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: DesignColors.accent,
                         fontWeight: FontWeight.bold,
                         fontSize: 20),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: DesignSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -954,7 +1029,7 @@ class ReportsScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: DesignSpacing.lg),
             Row(
               children: [
                 Expanded(
@@ -965,7 +1040,7 @@ class ReportsScreen extends ConsumerWidget {
                     color: DesignColors.accent,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: DesignSpacing.sm),
                 Expanded(
                   child: MetricCard(
                     title: 'Total Spent',
@@ -977,12 +1052,12 @@ class ReportsScreen extends ConsumerWidget {
               ],
             ),
             if (topProducts.isNotEmpty) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
               Text('Top Products',
                   style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               ...topProducts.map((p) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -995,7 +1070,7 @@ class ReportsScreen extends ConsumerWidget {
                     ),
                   )),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
           ],
         ),
       ),
@@ -1039,11 +1114,11 @@ class _GlassCardTile extends StatelessWidget {
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.md),
       child: GlassCard(
         onTap: onTap,
-        padding: const EdgeInsets.all(16),
-        borderRadius: 16,
+        padding: const EdgeInsets.all(DesignSpacing.lg),
+        borderRadius: DesignSpacing.radiusLg,
         blur: 12,
         tint: color.withValues(alpha: 0.08),
         borderColor: color.withValues(alpha: 0.2),
@@ -1054,27 +1129,27 @@ class _GlassCardTile extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               ),
               child: Icon(icon, color: color, size: 22),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: DesignSpacing.md + 2),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: color,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: DesignSpacing.xs),
                   Text(
                     subtitle,
-                    style: TextStyle(
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontSize: 13,
                       color: secondaryColor,
                     ),
@@ -1085,10 +1160,10 @@ class _GlassCardTile extends StatelessWidget {
               ),
             ),
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
               ),
               child: Icon(
                 Icons.chevron_right_rounded,
@@ -1122,14 +1197,14 @@ class _ReportTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: ListCard(
         leading: Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
           ),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -1148,26 +1223,26 @@ class _DateRangeSelector extends ConsumerWidget {
     final range = ref.watch(dateRangeProvider);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
       child: Row(
         children: [
           _buildPeriodChip(context, ref, 'Today', range.label == 'Today',
               () => ref.read(dateRangeProvider.notifier).setToday()),
-          const SizedBox(width: 8),
+          const SizedBox(width: DesignSpacing.sm),
           _buildPeriodChip(
               context,
               ref,
               'This Week',
               range.label == 'This Week',
               () => ref.read(dateRangeProvider.notifier).setThisWeek()),
-          const SizedBox(width: 8),
+          const SizedBox(width: DesignSpacing.sm),
           _buildPeriodChip(
               context,
               ref,
               'This Month',
               range.label == 'This Month',
               () => ref.read(dateRangeProvider.notifier).setThisMonth()),
-          const SizedBox(width: 8),
+          const SizedBox(width: DesignSpacing.sm),
           _buildPeriodChip(
             context,
             ref,
@@ -1213,32 +1288,43 @@ class _DateRangeSelector extends ConsumerWidget {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: DesignAnimation.fast,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? DesignColors.accent.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                selected ? DesignColors.accent.withValues(alpha: 0.3) : border,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          label.contains('–')
-              ? label.length > 12
-                  ? '${label.substring(0, 12)}...'
-                  : label
-              : label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? DesignColors.accent : secondaryColor,
+    // Material+InkWell so the chip paints a ripple and keeps a >=44px touch
+    // target (the vertical padding alone is too small for a11y).
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: DesignSpacing.xl + 24),
+          child: AnimatedContainer(
+            duration: DesignAnimation.fast,
+            padding: const EdgeInsets.symmetric(
+                horizontal: DesignSpacing.lg, vertical: DesignSpacing.sm + 2),
+            decoration: BoxDecoration(
+              color: selected
+                  ? DesignColors.accent.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              border: Border.all(
+                color: selected
+                    ? DesignColors.accent.withValues(alpha: 0.3)
+                    : border,
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Text(
+              label.contains('–')
+                  ? label.length > 12
+                      ? '${label.substring(0, 12)}...'
+                      : label
+                  : label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? DesignColors.accent : secondaryColor,
+              ),
+            ),
           ),
         ),
       ),
@@ -1253,29 +1339,39 @@ Widget _buildReportNavTab(
   final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
   final secondaryColor =
       isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-  return GestureDetector(
-    onTap: () {
-      Navigator.pop(context);
-      Future<void>.delayed(Duration.zero, onTap);
-    },
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isActive
-            ? DesignColors.accent.withValues(alpha: 0.1)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isActive ? DesignColors.accent : border,
-          width: isActive ? 1.5 : 1,
-        ),
-      ),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-          color: isActive ? DesignColors.accent : secondaryColor,
+  // Material+InkWell for a visible ripple; ConstrainedBox keeps the tab at
+  // the 44px minimum touch target.
+  return Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        Future<void>.delayed(Duration.zero, onTap);
+      },
+      borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: DesignSpacing.xl + 24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.md + 2, vertical: DesignSpacing.sm),
+          decoration: BoxDecoration(
+            color: isActive
+                ? DesignColors.accent.withValues(alpha: 0.1)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+            border: Border.all(
+              color: isActive ? DesignColors.accent : border,
+              width: isActive ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontSize: 13,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              color: isActive ? DesignColors.accent : secondaryColor,
+            ),
+          ),
         ),
       ),
     ),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../data/models/permission_catalog.dart';
 import '../providers/user_management_provider.dart';
 
@@ -132,7 +133,12 @@ class _UserPermissionOverrideScreenState
 
     return PageContainer(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg,
+          DesignSpacing.md,
+          DesignSpacing.lg,
+          DesignSpacing.xxl,
+        ),
         children: [
           const SectionHeader(
             title: 'Assigned Roles',
@@ -153,18 +159,24 @@ class _UserPermissionOverrideScreenState
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: DesignSpacing.sm),
           const SectionHeader(
             title: 'Permission Overrides',
             subtitle: 'Grant an extra permission, or revoke one this user would otherwise get from their roles',
             icon: Icons.tune_rounded,
           ),
-          for (final group in groups)
-            _OverrideFeatureAccordion(
-              group: group,
-              fromRoles: fromRoles,
-              stateOf: stateOf,
-              onSetState: _setOverride,
+          for (var i = 0; i < groups.length; i++)
+            StaggeredItem(
+              // Stable per feature group: opening an accordion or changing an
+              // override rebuilds the list without replaying the entrance.
+              itemKey: 'user-perms-${groups[i].feature}',
+              index: i,
+              child: _OverrideFeatureAccordion(
+                group: groups[i],
+                fromRoles: fromRoles,
+                stateOf: stateOf,
+                onSetState: _setOverride,
+              ),
             ),
         ],
       ),
@@ -191,7 +203,7 @@ class _OverrideFeatureAccordion extends StatelessWidget {
         group.permissions.where((p) => stateOf(p.key) != _PermState.inherited).length;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
@@ -201,7 +213,13 @@ class _OverrideFeatureAccordion extends StatelessWidget {
               : DesignColors.surfaceBorder,
         ),
       ),
+      // ExpansionTile's built-in InkWell spans the full header height
+      // (>=56px), so the expand target itself already meets the 44px rule.
       child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.lg,
+          vertical: DesignSpacing.xs,
+        ),
         title: Text(group.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           overriddenCount == 0 ? 'No overrides' : '$overriddenCount override${overriddenCount == 1 ? '' : 's'}',
@@ -256,12 +274,22 @@ class _OverrideRow extends StatelessWidget {
       trailing: PopupMenuButton<_PermState>(
         initialValue: state,
         onSelected: onSetState,
+        tooltip: 'Change override for $label',
         itemBuilder: (context) => const [
-          PopupMenuItem(value: _PermState.inherited, child: Text('Inherit from role')),
-          PopupMenuItem(value: _PermState.granted, child: Text('Grant (extra)')),
-          PopupMenuItem(value: _PermState.revoked, child: Text('Revoke')),
+          PopupMenuItem(value: _PermState.inherited, height: DesignSpacing.xl + 24, child: Text('Inherit from role')),
+          PopupMenuItem(value: _PermState.granted, height: DesignSpacing.xl + 24, child: Text('Grant (extra)')),
+          PopupMenuItem(value: _PermState.revoked, height: DesignSpacing.xl + 24, child: Text('Revoke')),
         ],
-        child: StatusBadge(label: label2, color: color),
+        // >=44px tap target (design-system a11y rule): the small badge glyph
+        // sits inside a 44x44 hit box; the popup itself is positioned from
+        // this box, and every menu row is 44px tall via PopupMenuItem.height.
+        child: SizedBox(
+          width: DesignSpacing.xl + 24,
+          height: DesignSpacing.xl + 24,
+          child: Center(
+            child: StatusBadge(label: label2, color: color),
+          ),
+        ),
       ),
     );
   }

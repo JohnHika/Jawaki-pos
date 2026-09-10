@@ -173,14 +173,16 @@ class _SubscriptionSettingsScreenState
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
+                  style: TextButton.styleFrom(
+                      minimumSize: const Size(64, DesignSpacing.xl + 24)),
                   child: const Text('Cancel'),
                 ),
                 GradientButton(
                   label:
                       'Change to ${selectedPlanId == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
                   expanded: false,
-                  height: 42,
-                  borderRadius: 12,
+                  height: DesignSpacing.xl + 24,
+                  borderRadius: DesignSpacing.radiusMd,
                   onPressed: () async {
                     final target = selectedPlanId ?? currentPlanId;
                     if (target == currentPlanId) {
@@ -269,40 +271,40 @@ class _SubscriptionSettingsScreenState
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
             // ── Current Plan Card ──
-            _buildCurrentPlanCard(),
-            const SizedBox(height: 20),
+             _buildCurrentPlanCard(),
+            const SizedBox(height: DesignSpacing.xl),
 
             // ── Change Plan Button ──
             if (!_isLoadingPlan && _plan != null) ...[
-              GradientButton(
-                label: _isChangingPlan ? 'Changing plan…' : 'Change Plan',
-                icon: Icons.swap_horiz_rounded,
-                onPressed: _isChangingPlan ? null : _showChangePlanDialog,
-                height: 52,
-                borderRadius: 16,
-              ),
-              const SizedBox(height: 24),
+               GradientButton(
+                  label: _isChangingPlan ? 'Changing plan…' : 'Change Plan',
+                  icon: Icons.swap_horiz_rounded,
+                  onPressed: _isChangingPlan ? null : _showChangePlanDialog,
+                  height: DesignSpacing.xxl + 28,
+                  borderRadius: DesignSpacing.radiusXl,
+                ),
+              const SizedBox(height: DesignSpacing.xxl),
             ],
 
             // ── Error ──
             if (_error != null) ...[
               _buildErrorCard(_error!),
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
             ],
 
             // ── What's included in your plan ──
             if (!_isLoadingPlan && _plan != null) ...[
-              _buildFeatureBreakdownCard(),
-              const SizedBox(height: 24),
+               _buildFeatureBreakdownCard(),
+              const SizedBox(height: DesignSpacing.xxl),
             ],
 
             // ── Invoice History ──
             const SettingsGroupLabel('Invoice History'),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             if (_isLoadingInvoices)
               const Center(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
+                  padding: EdgeInsets.all(DesignSpacing.xxl),
                   child: CircularProgressIndicator(),
                 ),
               )
@@ -800,23 +802,31 @@ class _PlanOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? DesignColors.brand.withValues(alpha: 0.12)
-              : DesignColors.darkSurface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected
-                ? DesignColors.brand.withValues(alpha: 0.5)
-                : DesignColors.darkBorder,
-            width: isSelected ? 1.5 : 1.0,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        child: Container(
+          // >=44px tap target.
+          constraints: const BoxConstraints(
+            minHeight: DesignSpacing.xl + 24,
           ),
-        ),
-        child: Row(
+          padding: const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.lg, vertical: DesignSpacing.lg),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? DesignColors.brand.withValues(alpha: 0.12)
+                : DesignColors.darkSurface,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(
+              color: isSelected
+                  ? DesignColors.brand.withValues(alpha: 0.5)
+                  : DesignColors.darkBorder,
+              width: isSelected ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
           children: [
             Expanded(
               child: Column(
@@ -880,6 +890,7 @@ class _PlanOptionTile extends StatelessWidget {
                 ),
               ),
           ],
+          ),
         ),
       ),
     );

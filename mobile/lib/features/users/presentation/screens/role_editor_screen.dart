@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/permission_catalog.dart';
 import '../providers/user_management_provider.dart';
@@ -53,26 +54,40 @@ class RoleListScreen extends ConsumerWidget {
         ),
         data: (roles) => PageContainer(
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.md,
+              DesignSpacing.lg,
+              DesignSpacing.xxl,
+            ),
             itemCount: roles.length,
+            // First-mount entrance: each role card fades/rises in once,
+            // staggered (see StaggeredItem). Keys are stable per role, so
+            // refreshes never replay the choreography.
             itemBuilder: (context, index) {
               final role = roles[index];
               final isSystem = role['isSystem'] as bool? ?? false;
               final keyCount = (role['permissionKeys'] as List<dynamic>? ?? []).length;
               final userCount = role['userCount'] as int? ?? 0;
 
-              return GroupedCard(
-                margin: const EdgeInsets.only(bottom: 10),
-                children: [
-                  SettingsRow(
-                    icon: isSystem ? Icons.verified_user_rounded : Icons.badge_outlined,
-                    title: role['name'] as String,
-                    subtitle:
-                        '$keyCount permission${keyCount == 1 ? '' : 's'} · $userCount user${userCount == 1 ? '' : 's'}${isSystem ? ' · System' : ''}',
-                    trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-                    onTap: () => context.push('/users/roles/${role['id']}'),
-                  ),
-                ],
+              return StaggeredItem(
+                itemKey: 'roles-${role['id']}',
+                index: index,
+                child: GroupedCard(
+                  margin: const EdgeInsets.only(bottom: DesignSpacing.md + 2),
+                  children: [
+                    SettingsRow(
+                      icon: isSystem
+                          ? Icons.verified_user_rounded
+                          : Icons.badge_outlined,
+                      title: role['name'] as String,
+                      subtitle:
+                          '$keyCount permission${keyCount == 1 ? '' : 's'} · $userCount user${userCount == 1 ? '' : 's'}${isSystem ? ' · System' : ''}',
+                      trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                      onTap: () => context.push('/users/roles/${role['id']}'),
+                    ),
+                  ],
+                ),
               );
             },
           ),
@@ -245,7 +260,7 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
           ? null
           : SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DesignSpacing.lg),
                 child: SettingsPrimaryButton(
                   label: _isSaving ? 'Saving...' : 'Save Role',
                   onPressed: _isSaving ? null : _save,
@@ -258,11 +273,16 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
   Widget _buildForm(List<PermissionFeatureGroup> groups) {
     return PageContainer(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg,
+          DesignSpacing.md,
+          DesignSpacing.lg,
+          100,
+        ),
         children: [
           if (_isSystem)
             const Padding(
-              padding: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.only(bottom: DesignSpacing.md),
               child: StatusBadge(
                 label: 'System role — name is locked, permissions are editable',
                 color: DesignColors.info,
@@ -298,25 +318,32 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: DesignSpacing.sm),
           SectionHeader(
             title: 'Permissions',
             subtitle: '${_selectedKeys.length} selected across ${groups.length} categories',
             icon: Icons.checklist_rounded,
           ),
-          for (final group in groups) _FeatureAccordion(
-            group: group,
-            selectedKeys: _selectedKeys,
-            onChanged: (key, checked) {
-              setState(() {
-                if (checked) {
-                  _selectedKeys.add(key);
-                } else {
-                  _selectedKeys.remove(key);
-                }
-              });
-            },
-          ),
+          for (var i = 0; i < groups.length; i++)
+            StaggeredItem(
+              // Stable per feature group: opening an accordion or toggling a
+              // checkbox rebuilds the list without replaying the entrance.
+              itemKey: 'role-editor-${groups[i].feature}',
+              index: i,
+              child: _FeatureAccordion(
+                group: groups[i],
+                selectedKeys: _selectedKeys,
+                onChanged: (key, checked) {
+                  setState(() {
+                    if (checked) {
+                      _selectedKeys.add(key);
+                    } else {
+                      _selectedKeys.remove(key);
+                    }
+                  });
+                },
+              ),
+            ),
         ],
       ),
     );
@@ -337,19 +364,24 @@ class _FeatureAccordion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedInGroup = group.permissions.where((p) => selectedKeys.contains(p.key)).length;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? DesignColors.darkBorder
-              : DesignColors.surfaceBorder,
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
         ),
       ),
+      // ExpansionTile's built-in InkWell spans the full header height
+      // (>=56px), so the expand target itself already meets the 44px rule.
       child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.lg,
+          vertical: DesignSpacing.xs,
+        ),
         title: Text(group.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('$selectedInGroup / ${group.permissions.length} selected'),
         children: [
