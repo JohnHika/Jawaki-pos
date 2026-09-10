@@ -294,7 +294,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           // Subscription restricted-mode / expiry reminder banner (watches
           // the entitlement provider; passive, never blocks navigation).
-          SubscriptionEntitlementHost(child: widget.child),
+          // The routed Scaffold/scroll views need a finite remaining height,
+          // whether the subscription host shows a banner or only the child.
+          Expanded(
+            child: SubscriptionEntitlementHost(child: widget.child),
+          ),
         ],
       ),
       bottomNavigationBar: Container(
