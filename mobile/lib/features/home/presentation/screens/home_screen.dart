@@ -158,73 +158,85 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: isDark
-                      ? DesignColors.darkTextTertiary
-                      : DesignColors.textTertiary,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(children: [
-                Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: DesignGradients.brand,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.apps_rounded,
-                        color: Colors.white, size: 20)),
-                const SizedBox(width: 10),
-                Text('More Options',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: isDark
-                            ? DesignColors.darkTextPrimary
-                            : DesignColors.textPrimary)),
-              ]),
-            ),
-            const SizedBox(height: 12),
-            ...moreItems.asMap().entries.map((entry) {
-              final item = entry.value;
-              return KeyedSubtree(
-                key: switch (item.path) {
-                  '/inventory' => HomeNavKeys.moreSheetInventory,
-                  '/reports' => HomeNavKeys.moreSheetReports,
-                  '/settings' => HomeNavKeys.moreSheetSettings,
-                  _ => null,
-                },
-                child: ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                        color: DesignColors.brandSubtle,
-                        borderRadius: BorderRadius.circular(10)),
-                    child: Icon(item.icon, color: DesignColors.brand, size: 20),
-                  ),
-                  title: Text(item.label,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.go(item.path);
+        // Material ancestor so ListTiles paint their ink on it — a bare
+        // decorated Container trips the "ListTile background color or ink
+        // splashes may be invisible" assertion on Flutter 3.44+.
+        child: Material(
+          color: isDark ? DesignColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: isDark
+                        ? DesignColors.darkTextTertiary
+                        : DesignColors.textTertiary,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(children: [
+                  Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: DesignGradients.brand,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.apps_rounded,
+                          color: Colors.white, size: 20)),
+                  const SizedBox(width: 10),
+                  Text('More Options',
+                      style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary)),
+                ]),
+              ),
+              const SizedBox(height: 12),
+              ...moreItems.asMap().entries.map((entry) {
+                final item = entry.value;
+                return KeyedSubtree(
+                  key: switch (item.path) {
+                    '/inventory' => HomeNavKeys.moreSheetInventory,
+                    '/reports' => HomeNavKeys.moreSheetReports,
+                    '/settings' => HomeNavKeys.moreSheetSettings,
+                    _ => null,
                   },
-                ),
-              );
-            }),
-          ],
+                  child: ListTile(
+                    // ListTile paints ink on its nearest Material ancestor; the
+                    // sheet Container's BoxDecoration alone triggers the
+                    // "background color or ink splashes may be invisible"
+                    // assertion on newer Flutter versions.
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                          color: DesignColors.brandSubtle,
+                          borderRadius: BorderRadius.circular(10)),
+                      child:
+                          Icon(item.icon, color: DesignColors.brand, size: 20),
+                    ),
+                    title: Text(item.label,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.go(item.path);
+                    },
+                  ),
+                );
+              }),
+            ],
+          ),
         ),
       ),
     ).then((_) {
