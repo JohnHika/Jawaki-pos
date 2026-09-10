@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/design_system.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/theme/design_system.dart';
 
 import '../providers/cart_provider.dart';
 
