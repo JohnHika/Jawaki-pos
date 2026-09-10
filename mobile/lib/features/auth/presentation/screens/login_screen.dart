@@ -481,7 +481,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     onTap: () => context.canPop()
                         ? context.pop()
                         : context.go('/company-choice'),

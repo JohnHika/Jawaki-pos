@@ -100,7 +100,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: DesignColors.brand.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
                 child: const Icon(
                   Icons.shopping_bag_outlined,
@@ -128,7 +128,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: DesignColors.surfaceBorder.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                   ),
                   child: Icon(
                     Icons.close,
@@ -176,15 +176,15 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                   ? DesignColors.darkSurfaceElevated
                   : DesignColors.surfaceBorder.withValues(alpha: 0.2),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                 borderSide: BorderSide.none,
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                 borderSide: BorderSide.none,
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                 borderSide:
                     const BorderSide(color: DesignColors.brand, width: 1.5),
               ),
@@ -274,7 +274,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                   decoration: BoxDecoration(
                                     color: DesignColors.brand
                                         .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                                   ),
                                   child: Center(
                                     child: Text(
@@ -332,7 +332,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                                       ? DesignColors.darkSurfaceElevated
                                                       : DesignColors.surfaceBorder),
                                               borderRadius:
-                                                  BorderRadius.circular(4),
+                                                  BorderRadius.circular(DesignSpacing.radiusSm),
                                             ),
                                             child: Text(
                                               product.isActive
@@ -389,7 +389,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     ),
                     side: BorderSide(
                       color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
@@ -430,7 +430,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
       ),
       backgroundColor: isDark ? DesignColors.darkSurface : Colors.white,
       clipBehavior: Clip.antiAlias,

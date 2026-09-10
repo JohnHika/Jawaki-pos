@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/design_system.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/cart_provider.dart';
@@ -56,7 +57,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
     );
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignSpacing.radiusLg)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: SingleChildScrollView(
@@ -110,7 +111,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                   labelText: 'New Price (KES)',
                   prefixIcon: const Icon(Icons.currency_exchange),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   errorText: _errorMessage,
                   errorStyle: const TextStyle(fontSize: 12),
@@ -129,7 +130,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                   labelText: 'Reason (optional)',
                   hintText: 'e.g., Promotion, Customer request, etc.',
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                 ),
               ),
@@ -143,7 +144,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
                       ),
                       child: const Text('Cancel'),
@@ -175,7 +176,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
                         backgroundColor: Theme.of(context).colorScheme.primary,
                       ),

@@ -824,9 +824,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       height: MediaQuery.sizeOf(context).width * 1.1,
       child: IgnorePointer(
         child: TweenAnimationBuilder<double>(
-          duration: const Duration(milliseconds: 1200),
+          // Ambient hero drift: automatic (not user-triggered), so a timing
+          // curve token; 1200ms is intentionally beyond normal350 because
+          // this is environmental motion, not interaction feedback.
+          duration: DesignAnimation.slower,
           tween: Tween(begin: 0.86, end: 1.0),
-          curve: Curves.easeOutCubic,
+          curve: DesignAnimation.smooth,
           builder: (context, scale, child) =>
               Transform.scale(scale: scale, child: child),
           child: DecoratedBox(

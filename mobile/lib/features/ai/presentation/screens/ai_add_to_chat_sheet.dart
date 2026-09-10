@@ -212,14 +212,14 @@ class _AttachTile extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
           color: isDark
               ? DesignColors.darkSurfaceElevated
               : DesignColors.surfaceMuted,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
         ),
         child: Column(
           children: [
@@ -269,7 +269,7 @@ class _ToggleRow extends StatelessWidget {
         color: isDark
             ? DesignColors.darkSurfaceElevated
             : DesignColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
       ),
       child: Row(
         children: [

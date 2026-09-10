@@ -194,22 +194,22 @@ class _SetPasswordAfterInviteScreenState
                   filled: true,
                   fillColor: DesignColors.darkSurfaceElevated,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.accent, width: 2),
                   ),
                   errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.error),
                   ),
@@ -249,22 +249,22 @@ class _SetPasswordAfterInviteScreenState
                   filled: true,
                   fillColor: DesignColors.darkSurfaceElevated,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.accent, width: 2),
                   ),
                   errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.error),
                   ),
@@ -326,22 +326,22 @@ class _SetPasswordAfterInviteScreenState
                   filled: true,
                   fillColor: DesignColors.darkSurfaceElevated,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.accent, width: 2),
                   ),
                   errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.error),
                   ),
@@ -390,22 +390,22 @@ class _SetPasswordAfterInviteScreenState
                   filled: true,
                   fillColor: DesignColors.darkSurfaceElevated,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.darkBorder),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.accent, width: 2),
                   ),
                   errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.error),
                   ),

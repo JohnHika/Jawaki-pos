@@ -416,13 +416,13 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(18, 18, 16, 18),
           decoration: BoxDecoration(
             color: surfaceColor,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             border: Border.all(color: borderColor, width: isPrimary ? 1.4 : 1),
           ),
           child: Row(
@@ -434,7 +434,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                   color: isPrimary
                       ? DesignColors.accent
                       : DesignColors.darkSurfaceElevated,
-                  borderRadius: BorderRadius.circular(17),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                 ),
                 child: Icon(
                   icon,

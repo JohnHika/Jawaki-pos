@@ -228,15 +228,15 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
       filled: true,
       fillColor: fill,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: const BorderSide(color: DesignColors.brand, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -271,7 +271,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: DesignColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
                 border: Border.all(
                     color: DesignColors.success.withValues(alpha: 0.2)),
               ),
@@ -358,7 +358,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                         : (isDark
                             ? DesignColors.darkSurfaceElevated
                             : DesignColors.surfaceBorder.withValues(alpha: 0.3)),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: Icon(
                     _selectedProductName != null
@@ -505,7 +505,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: DesignColors.info.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                         ),
                         child: const Icon(Icons.image_rounded,
                             size: 18, color: DesignColors.info),
@@ -553,10 +553,10 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                               height: 80,
                               decoration: BoxDecoration(
                                 border: Border.all(color: border),
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                               ),
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                                 child: _buildRequestImage(image),
                               ),
                             ),
@@ -592,7 +592,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 48),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
                       side: BorderSide(color: border),
                       foregroundColor: secondaryColor,

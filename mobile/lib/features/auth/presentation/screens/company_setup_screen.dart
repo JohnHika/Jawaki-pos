@@ -578,7 +578,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   OutlineInputBorder _inputBorder(Color color, {double width = 1}) =>
       OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           borderSide: BorderSide(color: color, width: width));
 
   String? _companyValidator(String? value) {
@@ -741,7 +741,7 @@ class _VerificationCard extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: DesignColors.darkSurfaceElevated,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           border: Border.all(color: DesignColors.darkBorder),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -774,7 +774,7 @@ class _ErrorPanel extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: DesignColors.error.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
             border:
                 Border.all(color: DesignColors.error.withValues(alpha: 0.35)),
           ),

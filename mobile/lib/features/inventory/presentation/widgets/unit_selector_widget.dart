@@ -56,7 +56,7 @@ class UnitSelectorWidget extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: DesignColors.brand.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
           border: Border.all(
             color: DesignColors.brand.withValues(alpha:0.2),
           ),
@@ -90,7 +90,7 @@ class UnitSelectorWidget extends StatelessWidget {
             color: isDark
                 ? DesignColors.darkSurfaceElevated
                 : DesignColors.surfaceBorder.withValues(alpha:0.3),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           ),
           child: Row(
             children: units.map((unit) {
@@ -102,7 +102,7 @@ class UnitSelectorWidget extends StatelessWidget {
                       const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     color: isSelected ? DesignColors.accent : null,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                   ),
                   child: GestureDetector(
                     onTap: () => onUnitChanged(unit.name),
@@ -154,7 +154,7 @@ class UnitSelectorWidget extends StatelessWidget {
           const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: DesignColors.brand.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
         border: Border.all(
           color: DesignColors.brand.withValues(alpha:0.2),
         ),
@@ -266,7 +266,7 @@ class _UnitConversionCalculatorState
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: DesignColors.brand.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 ),
                 child: const Icon(Icons.calculate_rounded,
                     size: 18, color: DesignColors.brand),
@@ -304,15 +304,15 @@ class _UnitConversionCalculatorState
                     filled: true,
                     fillColor: fieldFill,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: const BorderSide(
                           color: DesignColors.brand, width: 1.5),
                     ),
@@ -330,7 +330,7 @@ class _UnitConversionCalculatorState
                       const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: fieldFill,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
@@ -372,7 +372,7 @@ class _UnitConversionCalculatorState
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: DesignColors.brand.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                 border: Border.all(
                   color: DesignColors.brand.withValues(alpha:0.25),
                   width: 1.5,

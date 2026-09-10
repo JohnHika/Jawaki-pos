@@ -203,7 +203,7 @@ class _ProductCard extends ConsumerWidget {
                           ),
                           decoration: BoxDecoration(
                             color: DesignColors.accent,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                             boxShadow: [
                               BoxShadow(
                                 color: DesignColors.accent.withValues(
@@ -545,7 +545,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: DesignColors.accent.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                 border: Border.all(
                   color: DesignColors.accent.withValues(alpha: 0.12),
                 ),
@@ -554,7 +554,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     child: SizedBox(
                       width: 56,
                       height: 56,
@@ -674,9 +674,9 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       : (isDark
                           ? DesignColors.darkSurfaceElevated
                           : DesignColors.surfaceSubtle),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                     onTap:
                         _quantity > 1 ? () => _updateQty(_quantity - 1) : null,
                     child: SizedBox(
@@ -710,7 +710,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide: BorderSide(
                           color: isDark
                               ? DesignColors.darkBorder
@@ -718,7 +718,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide: BorderSide(
                           color: isDark
                               ? DesignColors.darkBorder
@@ -726,7 +726,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide: const BorderSide(
                           color: DesignColors.accent,
                           width: 2,
@@ -748,15 +748,15 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                 const SizedBox(width: 12),
                 Material(
                   color: DesignColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                     onTap: () => _updateQty(_quantity + 1),
                     child: Container(
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
                         color: DesignColors.accent,
                       ),
                       child: const Icon(Icons.add_rounded, color: Colors.black),
@@ -872,7 +872,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                                 color: DesignColors.accent.withValues(
                                   alpha: 0.09,
                                 ),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                                 border: Border.all(
                                   color: DesignColors.accent.withValues(
                                     alpha: 0.45,
@@ -933,7 +933,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                               ),
                             )
                           : InkWell(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                               onTap: _beginPriceEditing,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
@@ -984,7 +984,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
                       side: BorderSide(
                         color: isDark
@@ -1067,7 +1067,7 @@ class _StockBreakdown extends StatelessWidget {
         color: isDark
             ? DesignColors.darkSurfaceElevated
             : DesignColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

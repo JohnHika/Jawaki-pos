@@ -98,7 +98,7 @@ class AiChartCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -197,7 +197,7 @@ class _BarChart extends StatelessWidget {
                   toY: chart.points[i].value,
                   color: DesignColors.accent,
                   width: 18,
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 ),
               ],
             ),

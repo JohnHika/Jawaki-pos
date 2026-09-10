@@ -248,7 +248,7 @@ class _CompanyActivationScreenState
                           ),
                           minimumSize: const Size.fromHeight(52),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                           ),
                         ),
                       ),
@@ -280,7 +280,7 @@ class _CompanyActivationScreenState
           height: 48,
           decoration: BoxDecoration(
             color: DesignColors.brand.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
             border: Border.all(
               color: DesignColors.brand.withValues(alpha: 0.35),
             ),
@@ -331,7 +331,7 @@ class _CompanyActivationScreenState
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
         border: Border.all(color: DesignColors.brand.withValues(alpha: 0.55)),
       ),
       child: Row(
@@ -384,7 +384,7 @@ class _CompanyActivationScreenState
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: DesignColors.darkBorder),
       ),
       child: Column(
@@ -413,7 +413,7 @@ class _CompanyActivationScreenState
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: DesignColors.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
         border: Border.all(color: DesignColors.error.withValues(alpha: 0.4)),
       ),
       child: Row(

@@ -36,7 +36,7 @@ class CartItemTile extends ConsumerWidget {
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
           border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
@@ -49,7 +49,7 @@ class CartItemTile extends ConsumerWidget {
                 color: Theme.of(context).brightness == Brightness.dark
                     ? DesignColors.darkSurfaceElevated
                     : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
               ),
               child: Icon(
                 Icons.inventory_2_outlined,
@@ -82,7 +82,7 @@ class CartItemTile extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 InkWell(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                   onTap: () => _showPriceAdjustment(context, item),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -170,7 +170,7 @@ class CartItemTile extends ConsumerWidget {
                 ),
                 decoration: BoxDecoration(
                   color: DesignColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 ),
                 child: Text(
                   '-KES ${item.discount.toStringAsFixed(0)}',
@@ -208,7 +208,7 @@ class _QuantityControls extends ConsumerWidget {
         color: isDark
             ? DesignColors.darkSurfaceElevated
             : DesignColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -260,7 +260,7 @@ class _QuantityButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: Icon(

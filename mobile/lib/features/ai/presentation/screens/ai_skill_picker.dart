@@ -240,7 +240,7 @@ class AiSkillSuggestionList extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
           border: Border.all(color: border),
         ),
         child: Text(
@@ -255,7 +255,7 @@ class AiSkillSuggestionList extends StatelessWidget {
       constraints: const BoxConstraints(maxHeight: 260),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
         border: Border.all(color: border),
       ),
       child: ListView.separated(
