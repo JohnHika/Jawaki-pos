@@ -229,7 +229,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             children: [
               // Compact overview keeps the stock work area visible above the fold.
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                padding: const EdgeInsets.fromLTRB(
+                  DesignSpacing.lg,
+                  DesignSpacing.sm + 2,
+                  DesignSpacing.lg,
+                  0,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -265,7 +270,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ),
               const SizedBox(height: 10),
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
+                margin: const EdgeInsets.symmetric(
+                  horizontal: DesignSpacing.lg,
+                ),
                 height: 44,
                 decoration: BoxDecoration(
                   color: isDark
@@ -279,14 +286,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   indicator: const BoxDecoration(color: DesignColors.accent),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
-                  indicatorPadding: const EdgeInsets.all(4),
+                  indicatorPadding: const EdgeInsets.all(DesignSpacing.xs),
                   labelStyle: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
                   unselectedLabelStyle: const TextStyle(
                     fontWeight: FontWeight.w500,
-                    fontSize: 13,
                   ),
                   tabs: const [
                     Tab(text: 'Stock'),
@@ -340,28 +345,33 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       children: [
         // Search bar
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.lg,
+            DesignSpacing.md,
+            DesignSpacing.lg,
+            DesignSpacing.xs,
+          ),
           child: Container(
             decoration: BoxDecoration(
               color: isDark
                   ? DesignColors.darkSurfaceElevated
                   : DesignColors.surfaceBorder.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
             child: TextField(
               onChanged: (value) => setState(() => _stockSearchQuery = value),
               decoration: InputDecoration(
                 hintText: 'Search products, SKU, category...',
-                hintStyle: TextStyle(color: tertiaryColor, fontSize: 14),
+                hintStyle: TextStyle(color: tertiaryColor),
                 prefixIcon:
                     Icon(Icons.search_rounded, color: tertiaryColor, size: 20),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: DesignSpacing.lg,
+                  vertical: DesignSpacing.md,
                 ),
               ),
-              style: TextStyle(fontSize: 14, color: titleColor),
+              style: TextStyle(color: titleColor),
             ),
           ),
         ),
@@ -391,7 +401,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       : 'Products will appear here once added to inventory.',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  padding: const EdgeInsets.fromLTRB(
+                    DesignSpacing.lg,
+                    0,
+                    DesignSpacing.lg,
+                    DesignSpacing.massive + 4,
+                  ),
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
@@ -433,9 +448,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
         decoration:
             BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
@@ -450,7 +465,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   height: 42,
                   decoration: BoxDecoration(
                     color: stockColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     border: Border.all(
                       color: stockColor.withValues(alpha: 0.2),
                     ),
@@ -469,11 +484,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     children: [
                       Text(
                         name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: titleColor,
+                            ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -482,20 +496,26 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         children: [
                           Text(
                             sku,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: tertiaryColor,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall!
+                                .copyWith(
+                                  color: tertiaryColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
                           ),
                           if (sku.isNotEmpty) ...[
                             Text(' · ',
-                                style: TextStyle(
-                                    color: tertiaryColor, fontSize: 11)),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall!
+                                    .copyWith(color: tertiaryColor)),
                           ],
                           Text(category,
-                              style: TextStyle(
-                                  fontSize: 11, color: tertiaryColor)),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall!
+                                  .copyWith(color: tertiaryColor)),
                         ],
                       ),
                     ],
@@ -504,7 +524,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 // Price
                 Text(
                   _formatCurrency(price),
-                  style: const TextStyle(
+                  style: DesignType.numeric(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: DesignColors.brand,
@@ -520,12 +540,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 Flexible(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
+                      horizontal: DesignSpacing.sm + 2,
+                      vertical: DesignSpacing.xs + 1,
                     ),
                     decoration: BoxDecoration(
                       color: stockColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusSm),
                       border: Border.all(
                         color: stockColor.withValues(alpha: 0.25),
                       ),
@@ -543,22 +564,27 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 stockPresentation.primary,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: stockColor,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium!
+                                    .copyWith(
+                                      color: stockColor,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                               ),
                               if (stockPresentation.secondary != null)
                                 Text(
                                   stockPresentation.secondary!,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: stockColor.withValues(alpha: 0.8),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall!
+                                      .copyWith(
+                                        color:
+                                            stockColor.withValues(alpha: 0.8),
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                 ),
                             ],
                           ),
@@ -570,7 +596,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 if (minStock > 0) ...[
                   const SizedBox(width: 8),
                   Text('Min: $minStock',
-                      style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall!
+                          .copyWith(color: tertiaryColor)),
                 ],
                 const Spacer(),
                 // Receive button
@@ -590,7 +619,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       },
                       height: 34,
                       expanded: false,
-                      borderRadius: 8,
+                      borderRadius: DesignSpacing.radiusSm,
                     ),
                   ),
               ],
@@ -599,11 +628,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               const SizedBox(height: 7),
               Text(
                 stockPresentation.lastReceived!,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: tertiaryColor,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: tertiaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
               ),
             ],
           ],
@@ -635,7 +663,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     }).toList();
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      padding: const EdgeInsets.fromLTRB(
+        DesignSpacing.lg,
+        DesignSpacing.md,
+        DesignSpacing.lg,
+        DesignSpacing.massive + 4,
+      ),
       children: [
         SectionHeader(
           title: 'Low Stock Alerts',
@@ -664,16 +697,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             final surface =
                 isDark ? DesignColors.darkSurfaceElevated : Colors.white;
             return Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(DesignSpacing.xxl),
               decoration: BoxDecoration(
                   color: surface, border: Border.all(color: border)),
               child: Column(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(DesignSpacing.lg),
                     decoration: BoxDecoration(
                       color: DesignColors.success.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusLg),
                     ),
                     child: const Icon(
                       Icons.check_circle_outline_rounded,
@@ -684,18 +718,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   const SizedBox(height: 16),
                   Text(
                     'All Stocked Up',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: titleColor,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: titleColor,
+                        ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'No items are currently low in stock. Everything looks good!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 14, color: secondaryColor, height: 1.4),
+                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                          color: secondaryColor,
+                          height: 1.4,
+                        ),
                   ),
                 ],
               ),
@@ -748,26 +783,27 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: DesignSpacing.xs,
+            vertical: DesignSpacing.xs,
+          ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(DesignSpacing.sm - 2),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 ),
                 child: Icon(icon, color: color, size: 16),
               ),
               const SizedBox(width: 8),
               Text(
                 title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                  letterSpacing: 0.3,
-                ),
+                style: Theme.of(context).textTheme.labelLarge!.copyWith(
+                      color: color,
+                      letterSpacing: 0.3,
+                    ),
               ),
               const SizedBox(width: 8),
               StatusBadge(
@@ -804,9 +840,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(DesignSpacing.md),
         decoration: BoxDecoration(
           color: surface,
           border: Border.all(color: severityColor.withValues(alpha: 0.3)),
@@ -818,7 +854,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               height: 40,
               decoration: BoxDecoration(
                 color: severityColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 border: Border.all(
                   color: severityColor.withValues(alpha: 0.15),
                 ),
@@ -838,18 +874,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 children: [
                   Text(
                     name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: titleColor,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
+                        ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     sku.isEmpty ? category : '$sku · $category',
-                    style: TextStyle(fontSize: 11, color: tertiaryColor),
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall!
+                        .copyWith(color: tertiaryColor),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -857,7 +895,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const SizedBox(height: 2),
                     Text(
                       packagingSummary,
-                      style: TextStyle(fontSize: 11, color: tertiaryColor),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall!
+                          .copyWith(color: tertiaryColor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -876,7 +917,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           ),
                           height: 32,
                           expanded: false,
-                          borderRadius: 8,
+                          borderRadius: DesignSpacing.radiusSm,
                         ),
                       ),
                     ),
@@ -886,21 +927,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             ),
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(
+                horizontal: DesignSpacing.sm + 2,
+                vertical: DesignSpacing.xs + 1,
+              ),
               decoration: BoxDecoration(
                 color: severityColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 border: Border.all(
                   color: severityColor.withValues(alpha: 0.25),
                 ),
               ),
               child: Text(
                 quantity == 0 ? 'OUT' : '$quantity left',
-                style: TextStyle(
-                  color: severityColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                      color: severityColor,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
             ),
           ],
@@ -925,7 +968,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             .toList();
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.lg,
+            DesignSpacing.md,
+            DesignSpacing.lg,
+            DesignSpacing.massive + 4,
+          ),
           children: [
             const SectionHeader(
               title: 'Stock Transfers',
@@ -941,7 +989,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               final surface =
                   isDark ? DesignColors.darkSurfaceElevated : Colors.white;
               return Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(DesignSpacing.lg),
                 decoration: BoxDecoration(
                   color: surface,
                   border: Border.all(
@@ -1009,7 +1057,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       label: 'Transfer Stock',
                       icon: Icons.swap_horiz_rounded,
                       height: 50,
-                      borderRadius: 14,
+                      borderRadius: DesignSpacing.radiusLg,
                       onPressed: destinationBranches.isEmpty || products.isEmpty
                           ? null
                           : () => _submitStockTransfer(fromBranchId),
@@ -1018,7 +1066,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       const SizedBox(height: 12),
                       Text(
                         'Add another branch in Settings before making a transfer.',
-                        style: TextStyle(color: secondaryColor, fontSize: 13),
+                        style: Theme.of(context).textTheme.labelLarge!.copyWith(
+                              color: secondaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
                       ),
                     ],
                   ],
@@ -1043,15 +1094,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       filled: true,
       fillColor: isDark ? DesignColors.darkSurface : DesignColors.surfaceMuted,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: const BorderSide(color: DesignColors.info, width: 1.4),
       ),
     );
@@ -1110,17 +1161,25 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
       final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
       return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg,
+          DesignSpacing.md,
+          DesignSpacing.lg,
+          DesignSpacing.massive + 4,
+        ),
         children: List.generate(5, (index) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
             child: Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
               decoration: BoxDecoration(
                   color: surface, border: Border.all(color: border)),
               child: const Row(
                 children: [
-                  ShimmerWidget(width: 42, height: 42, borderRadius: 12),
+                  ShimmerWidget(
+                      width: 42,
+                      height: 42,
+                      borderRadius: DesignSpacing.radiusMd),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1129,18 +1188,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         ShimmerWidget(
                           width: 160,
                           height: 14,
-                          borderRadius: 4,
+                          borderRadius: DesignSpacing.xs,
                         ),
                         SizedBox(height: 6),
                         ShimmerWidget(
                           width: 100,
                           height: 10,
-                          borderRadius: 4,
+                          borderRadius: DesignSpacing.xs,
                         ),
                       ],
                     ),
                   ),
-                  ShimmerWidget(width: 60, height: 14, borderRadius: 4),
+                  ShimmerWidget(
+                      width: 60, height: 14, borderRadius: DesignSpacing.xs),
                 ],
               ),
             ),
@@ -1174,11 +1234,14 @@ class _InventoryMiniStat extends StatelessWidget {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     return Container(
       height: 68,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignSpacing.sm + 2,
+        vertical: DesignSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: surface,
         border: Border.all(color: border),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
       ),
       child: Row(
         children: [
@@ -1187,7 +1250,7 @@ class _InventoryMiniStat extends StatelessWidget {
             height: double.infinity,
             decoration: BoxDecoration(
               color: color,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(DesignSpacing.xs),
             ),
           ),
           const SizedBox(width: 8),
@@ -1203,7 +1266,7 @@ class _InventoryMiniStat extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     value,
-                    style: TextStyle(
+                    style: DesignType.numeric(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: isDark
@@ -1216,15 +1279,14 @@ class _InventoryMiniStat extends StatelessWidget {
                   trend ?? title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                    color: trend == null
-                        ? (isDark
-                            ? DesignColors.darkTextTertiary
-                            : DesignColors.textTertiary)
-                        : color,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: trend == null
+                            ? (isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary)
+                            : color,
+                      ),
                 ),
               ],
             ),

@@ -57,23 +57,26 @@ class SettingsScreen extends ConsumerWidget {
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
-    final hasPreferencesSection =
-        perms.canConfigureSync || perms.canConfigurePrinter ||
-            perms.canConfigureNotifications || perms.canSeeAppearance;
+    final hasPreferencesSection = perms.canConfigureSync ||
+        perms.canConfigurePrinter ||
+        perms.canConfigureNotifications ||
+        perms.canSeeAppearance;
 
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
+            DesignSpacing.lg, DesignSpacing.xxl + DesignSpacing.sm),
         children: [
           // ── Profile header ──
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(DesignSpacing.xl),
             decoration: BoxDecoration(
               color: DesignColors.accent.withValues(alpha: isDark ? 0.1 : 0.07),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
               border: Border.all(
                   color: DesignColors.accent.withValues(alpha: 0.18)),
             ),
@@ -84,7 +87,7 @@ class SettingsScreen extends ConsumerWidget {
                   height: 60,
                   decoration: BoxDecoration(
                     color: DesignColors.accent,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
                     boxShadow: [
                       BoxShadow(
                         color: DesignColors.accent.withValues(alpha: 0.35),
@@ -96,11 +99,10 @@ class SettingsScreen extends ConsumerWidget {
                   alignment: Alignment.center,
                   child: Text(
                     _initialFor(user?['name'] ?? user?['email']),
-                    style: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -110,39 +112,46 @@ class SettingsScreen extends ConsumerWidget {
                     children: [
                       Text(
                         user?['name'] ?? user?['email'] ?? 'User',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: titleColor,
-                        ),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                                fontWeight: FontWeight.w800, color: titleColor),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 3),
                       Text(
                         user?['email'] ?? '',
-                        style: TextStyle(color: secondaryColor, fontSize: 13),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: secondaryColor),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 3),
+                            horizontal: DesignSpacing.sm + 2,
+                            vertical: DesignSpacing.xs - 1),
                         decoration: BoxDecoration(
                           color: isDark ? DesignColors.darkBg : Colors.white,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusFull),
                           border: Border.all(
-                              color: DesignColors.accent.withValues(alpha: 0.3)),
+                              color:
+                                  DesignColors.accent.withValues(alpha: 0.3)),
                         ),
                         child: Text(
                           (user?['role'] ?? 'CASHIER').toString().toUpperCase(),
-                          style: const TextStyle(
-                            color: DesignColors.accent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                  color: DesignColors.accent,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.4),
                         ),
                       ),
                     ],
@@ -164,6 +173,7 @@ class SettingsScreen extends ConsumerWidget {
                     final stats = snapshot.data;
                     return SettingsRow(
                       icon: Icons.sync_rounded,
+                      iconColor: DesignColors.accent,
                       title: 'Sync Status',
                       subtitle: stats?.hasPendingSync == true
                           ? '${stats?.pendingEvents ?? 0} pending events'
@@ -206,6 +216,7 @@ class SettingsScreen extends ConsumerWidget {
           GroupedCard(children: [
             SettingsRow(
               icon: Icons.lock_rounded,
+              iconColor: DesignColors.accent,
               title: 'Change PIN',
               subtitle: 'Update your quick login PIN',
               onTap: () => _showChangePinDialog(context),
@@ -213,7 +224,8 @@ class SettingsScreen extends ConsumerWidget {
             SettingsRow(
               icon: Icons.wifi_off_rounded,
               title: 'Offline Access PIN',
-              subtitle: 'Set a PIN to log in when a phone is acting as the server without internet',
+              subtitle:
+                  'Set a PIN to log in when a phone is acting as the server without internet',
               onTap: () => _showOfflineAccessPinDialog(context),
             ),
             SettingsRow(
@@ -235,6 +247,7 @@ class SettingsScreen extends ConsumerWidget {
           GroupedCard(children: [
             SettingsRow(
               icon: Icons.help_rounded,
+              iconColor: DesignColors.accent,
               title: 'Help & Support',
               subtitle: 'Get help with the app',
               onTap: () => _showHelpSupport(context),
@@ -271,6 +284,7 @@ class SettingsScreen extends ConsumerWidget {
             GroupedCard(children: [
               SettingsRow(
                 icon: Icons.subscriptions_rounded,
+                iconColor: DesignColors.accent,
                 title: 'Subscription',
                 subtitle: 'View plan, change plan & invoices',
                 onTap: () => context.push('/settings/subscription'),
@@ -334,11 +348,10 @@ class SettingsScreen extends ConsumerWidget {
           Center(
             child: Text(
               'Axon POS',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: border,
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(fontWeight: FontWeight.w600, color: border),
             ),
           ),
         ],
@@ -420,7 +433,7 @@ class SettingsScreen extends ConsumerWidget {
                   return const SizedBox.shrink();
                 }
                 return Padding(
-                  padding: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.only(top: DesignSpacing.md),
                   child: SizedBox(
                     width: double.infinity,
                     child: SettingsPrimaryButton(
@@ -508,9 +521,8 @@ class SettingsScreen extends ConsumerWidget {
             children: [
               SettingsRow(
                 icon: Icons.light_mode_rounded,
-                iconColor: currentMode == ThemeMode.light
-                    ? DesignColors.accent
-                    : null,
+                iconColor:
+                    currentMode == ThemeMode.light ? DesignColors.accent : null,
                 title: 'Light Mode',
                 trailing: currentMode == ThemeMode.light
                     ? const Icon(Icons.check_circle_rounded,
@@ -525,9 +537,8 @@ class SettingsScreen extends ConsumerWidget {
               ),
               SettingsRow(
                 icon: Icons.dark_mode_rounded,
-                iconColor: currentMode == ThemeMode.dark
-                    ? DesignColors.accent
-                    : null,
+                iconColor:
+                    currentMode == ThemeMode.dark ? DesignColors.accent : null,
                 title: 'Dark Mode',
                 trailing: currentMode == ThemeMode.dark
                     ? const Icon(Icons.check_circle_rounded,
@@ -600,7 +611,7 @@ class SettingsScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                 ] else
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                     child: Text(
                       'This PIN unlocks the app quickly without needing a '
                       'network connection.',
@@ -633,14 +644,17 @@ class SettingsScreen extends ConsumerWidget {
                 if (error != null) ...[
                   const SizedBox(height: 8),
                   Text(error!,
-                      style: const TextStyle(
-                          color: DesignColors.error, fontSize: 12)),
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: DesignColors.error)),
                 ],
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
+                style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
                 child: const Text('Cancel'),
               ),
               SettingsPrimaryButton(
@@ -723,7 +737,7 @@ class SettingsScreen extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                   child: Text(
                     'Set a PIN so you can log in as yourself on a phone '
                     'that\'s acting as the local server, even with no '
@@ -757,14 +771,17 @@ class SettingsScreen extends ConsumerWidget {
                 if (error != null) ...[
                   const SizedBox(height: 8),
                   Text(error!,
-                      style: const TextStyle(
-                          color: DesignColors.error, fontSize: 12)),
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: DesignColors.error)),
                 ],
               ],
             ),
             actions: [
               TextButton(
                 onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
                 child: const Text('Cancel'),
               ),
               SettingsPrimaryButton(
@@ -796,7 +813,8 @@ class SettingsScreen extends ConsumerWidget {
                   } catch (e) {
                     setDialogState(() {
                       isSaving = false;
-                      error = 'Could not save. Check your connection and try again.';
+                      error =
+                          'Could not save. Check your connection and try again.';
                     });
                   }
                 },
@@ -859,10 +877,10 @@ class SettingsScreen extends ConsumerWidget {
               GroupedCard(
                 children: [
                   const SettingsRow(
-                                      icon: Icons.email_outlined,
-                                      title: 'Email Support',
-                                      subtitle: 'support@arche-axon.xyz',
-                                    ),
+                    icon: Icons.email_outlined,
+                    title: 'Email Support',
+                    subtitle: 'support@arche-axon.xyz',
+                  ),
                   SettingsRow(
                     icon: Icons.phone_outlined,
                     title: 'Phone Support',
@@ -967,15 +985,17 @@ class SettingsScreen extends ConsumerWidget {
             : DesignColors.textSecondary;
         final border =
             isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-        final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+        final surface =
+            isDark ? DesignColors.darkSurfaceElevated : Colors.white;
         // Deliberately a plain Dialog, not Flutter's AboutDialog — that
         // widget always injects a "VIEW LICENSES" button surfacing every
         // open-source package's license text, which is developer-facing
         // noise a customer has no use for and no way to hide.
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl)),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(DesignSpacing.xxl),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -985,30 +1005,37 @@ class SettingsScreen extends ConsumerWidget {
                   height: 56,
                   decoration: BoxDecoration(
                     color: DesignColors.brand,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                   ),
-                  child: const Icon(Icons.storefront, color: Colors.white, size: 30),
+                  child: const Icon(Icons.storefront,
+                      color: Colors.white, size: 30),
                 ),
                 const SizedBox(height: 16),
                 Text('Axon POS',
-                    style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800, color: titleColor)),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800, color: titleColor)),
                 const SizedBox(height: 4),
                 Text(_formatReleaseName(info.version),
-                    style: TextStyle(fontSize: 13, color: secondaryColor)),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: secondaryColor)),
                 const SizedBox(height: 16),
                 Text(
                   'A complete point-of-sale system for managing sales, inventory, and business operations.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: titleColor, fontSize: 13, height: 1.4),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: titleColor, height: 1.4),
                 ),
                 const SizedBox(height: 20),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(DesignSpacing.md),
                   decoration: BoxDecoration(
                     color: surface,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                     border: Border.all(color: border),
                   ),
                   child: Column(
@@ -1016,23 +1043,27 @@ class SettingsScreen extends ConsumerWidget {
                     children: [
                       Text('Powered by Arche Axon Intelligence',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: secondaryColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                  color: secondaryColor,
+                                  fontWeight: FontWeight.w600)),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: () => launchUrl(
                           Uri.parse('https://arche-axon.xyz'),
                           mode: LaunchMode.externalApplication,
                         ),
-                        child: const Text(
+                        child: Text(
                           'arche-axon.xyz',
-                          style: TextStyle(
-                              color: DesignColors.brand,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              decoration: TextDecoration.underline),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                  color: DesignColors.brand,
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.underline),
                         ),
                       ),
                     ],
@@ -1040,12 +1071,17 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 Text('© 2026 Arche Axon Intelligence',
-                    style: TextStyle(color: secondaryColor, fontSize: 11)),
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: secondaryColor)),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
+                    style:
+                        TextButton.styleFrom(minimumSize: const Size(64, 48)),
                     child: const Text('Close'),
                   ),
                 ),
@@ -1100,109 +1136,109 @@ class SettingsScreen extends ConsumerWidget {
         builder: (dialogContext, setDialogState) {
           final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
           return SettingsDialog(
-          title: 'Tax Rate',
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Set the VAT/sales tax percentage applied to every sale. Leave at 0 to charge no tax.',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: isDark
-                        ? DesignColors.darkTextSecondary
-                        : DesignColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Tax percentage',
-                  suffixText: '%',
-                  errorText: error,
-                  border: const OutlineInputBorder(),
+            title: 'Tax Rate',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Set the VAT/sales tax percentage applied to every sale. Leave at 0 to charge no tax.',
+                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary),
                 ),
-              ),
-              const SizedBox(height: 14),
-              GroupedCard(
-                margin: EdgeInsets.zero,
-                children: [
-                  SettingsRow(
-                    icon: Icons.receipt_rounded,
-                    title: 'Show tax on receipt',
-                    subtitle:
-                        'Print the tax amount as its own line on printed receipts',
-                    trailing: Switch(
-                      value: showOnReceipt,
-                      activeThumbColor: DesignColors.accent,
-                      onChanged: (value) =>
-                          setDialogState(() => showOnReceipt = value),
-                    ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Tax percentage',
+                    suffixText: '%',
+                    errorText: error,
+                    border: const OutlineInputBorder(),
                   ),
-                ],
+                ),
+                const SizedBox(height: 14),
+                GroupedCard(
+                  margin: EdgeInsets.zero,
+                  children: [
+                    SettingsRow(
+                      icon: Icons.receipt_rounded,
+                      title: 'Show tax on receipt',
+                      subtitle:
+                          'Print the tax amount as its own line on printed receipts',
+                      trailing: Switch(
+                        value: showOnReceipt,
+                        activeThumbColor: DesignColors.accent,
+                        onChanged: (value) =>
+                            setDialogState(() => showOnReceipt = value),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed:
+                    isSaving ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              SettingsPrimaryButton(
+                label: 'Save',
+                isLoading: isSaving,
+                onPressed: () async {
+                  final text = controller.text.trim();
+                  final rate = text.isEmpty ? 0.0 : double.tryParse(text);
+                  if (rate == null || rate < 0 || rate > 100) {
+                    setDialogState(
+                        () => error = 'Enter a number between 0 and 100');
+                    return;
+                  }
+                  setDialogState(() {
+                    isSaving = true;
+                    error = null;
+                  });
+                  try {
+                    final apiClient = getIt<ApiClient>();
+                    final authService = getIt<AuthService>();
+                    final updated = await apiClient.updateCurrentTenant(
+                      taxRatePercent: rate,
+                      showTaxOnReceipt: showOnReceipt,
+                    );
+                    await authService.updateTenantSession({
+                      'id': updated['id'],
+                      'name': updated['name'],
+                      'settings': updated['settings'],
+                    });
+                    ref
+                        .read(authControllerProvider.notifier)
+                        .refreshFromService();
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                    if (context.mounted) {
+                      showGlassSnackBar(
+                        context,
+                        rate > 0
+                            ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
+                            : 'Tax removed — sales will not be taxed',
+                        icon: Icons.check_circle_rounded,
+                        color: DesignColors.success,
+                      );
+                    }
+                  } catch (e) {
+                    setDialogState(() {
+                      isSaving = false;
+                      error = 'Could not save. Check your connection.';
+                    });
+                  }
+                },
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSaving
-                  ? null
-                  : () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            SettingsPrimaryButton(
-              label: 'Save',
-              isLoading: isSaving,
-              onPressed: () async {
-                final text = controller.text.trim();
-                final rate = text.isEmpty ? 0.0 : double.tryParse(text);
-                if (rate == null || rate < 0 || rate > 100) {
-                  setDialogState(
-                      () => error = 'Enter a number between 0 and 100');
-                  return;
-                }
-                setDialogState(() {
-                  isSaving = true;
-                  error = null;
-                });
-                try {
-                  final apiClient = getIt<ApiClient>();
-                  final authService = getIt<AuthService>();
-                  final updated = await apiClient.updateCurrentTenant(
-                    taxRatePercent: rate,
-                    showTaxOnReceipt: showOnReceipt,
-                  );
-                  await authService.updateTenantSession({
-                    'id': updated['id'],
-                    'name': updated['name'],
-                    'settings': updated['settings'],
-                  });
-                  ref.read(authControllerProvider.notifier).refreshFromService();
-                  if (dialogContext.mounted) {
-                    Navigator.of(dialogContext).pop();
-                  }
-                  if (context.mounted) {
-                    showGlassSnackBar(
-                      context,
-                      rate > 0
-                          ? 'Tax rate set to ${rate.toStringAsFixed(rate % 1 == 0 ? 0 : 1)}%'
-                          : 'Tax removed — sales will not be taxed',
-                      icon: Icons.check_circle_rounded,
-                      color: DesignColors.success,
-                    );
-                  }
-                } catch (e) {
-                  setDialogState(() {
-                    isSaving = false;
-                    error = 'Could not save. Check your connection.';
-                  });
-                }
-              },
-            ),
-          ],
           );
         },
       ),
@@ -1251,19 +1287,23 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 Text(
                   'Pick a new logo image, or trace your existing one into a crisp scalable SVG.',
-                  style: TextStyle(fontSize: 13, color: secondary),
+                  style: Theme.of(dialogContext)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: secondary),
                 ),
                 const SizedBox(height: 16),
                 InkWell(
                   onTap: isSaving ? null : pickLogo,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                   child: Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(DesignSpacing.lg),
                     decoration: BoxDecoration(
                       color: isDark
                           ? DesignColors.darkSurfaceElevated
                           : DesignColors.surfaceSubtle,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusLg),
                       border: Border.all(
                         color: isDark
                             ? DesignColors.darkBorder
@@ -1283,7 +1323,8 @@ class SettingsScreen extends ConsumerWidget {
                           ),
                           child: logoFile != null
                               ? ClipOval(
-                                  child: Image.file(logoFile!, fit: BoxFit.cover),
+                                  child:
+                                      Image.file(logoFile!, fit: BoxFit.cover),
                                 )
                               : Icon(
                                   Icons.add_photo_alternate_outlined,
@@ -1294,14 +1335,17 @@ class SettingsScreen extends ConsumerWidget {
                         const SizedBox(width: 14),
                         Expanded(
                           child: Text(
-                            logoFile != null ? 'New logo selected' : 'Choose an image',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: isDark
-                                  ? DesignColors.darkTextPrimary
-                                  : DesignColors.textPrimary,
-                            ),
+                            logoFile != null
+                                ? 'New logo selected'
+                                : 'Choose an image',
+                            style: Theme.of(dialogContext)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark
+                                        ? DesignColors.darkTextPrimary
+                                        : DesignColors.textPrimary),
                           ),
                         ),
                         Icon(Icons.chevron_right_rounded, color: secondary),
@@ -1330,13 +1374,18 @@ class SettingsScreen extends ConsumerWidget {
                 ],
                 if (error != null) ...[
                   const SizedBox(height: 10),
-                  Text(error!, style: const TextStyle(color: DesignColors.error, fontSize: 12)),
+                  Text(error!,
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: DesignColors.error)),
                 ],
               ],
             ),
             actions: [
               TextButton(
-                onPressed: isSaving ? null : () => Navigator.of(dialogContext).pop(),
+                onPressed:
+                    isSaving ? null : () => Navigator.of(dialogContext).pop(),
                 child: const Text('Cancel'),
               ),
               SettingsPrimaryButton(
@@ -1363,7 +1412,8 @@ class SettingsScreen extends ConsumerWidget {
                               filePath: logoFile!.path,
                               fileName: fileName,
                             );
-                            logoUrl = (v['svgUrl'] ?? v['rasterUrl']) as String?;
+                            logoUrl =
+                                (v['svgUrl'] ?? v['rasterUrl']) as String?;
                             logoPublicId = v['publicId'] as String?;
                           } else {
                             final uploadResult = await apiClient.uploadImage(
@@ -1386,7 +1436,9 @@ class SettingsScreen extends ConsumerWidget {
                             'logoPublicId': updated['logoPublicId'],
                             'settings': updated['settings'],
                           });
-                          ref.read(authControllerProvider.notifier).refreshFromService();
+                          ref
+                              .read(authControllerProvider.notifier)
+                              .refreshFromService();
 
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
@@ -1660,8 +1712,7 @@ class SettingsScreen extends ConsumerWidget {
           subtitle: '${products.length} products',
           logoBytes: logoBytes,
           sections: [
-            PdfReportSection(
-                heading: 'Products', headers: headers, rows: rows),
+            PdfReportSection(heading: 'Products', headers: headers, rows: rows),
           ],
         );
         await ExportDocumentService.sharePdf(bytes, 'products_export');
@@ -1691,7 +1742,8 @@ class SettingsScreen extends ConsumerWidget {
               ? DesignColors.darkTextSecondary
               : DesignColors.textSecondary;
           return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(DesignSpacing.xl,
+                DesignSpacing.md, DesignSpacing.xl, DesignSpacing.xl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1701,7 +1753,8 @@ class SettingsScreen extends ConsumerWidget {
                         height: 4,
                         decoration: BoxDecoration(
                             color: border,
-                            borderRadius: BorderRadius.circular(2)))),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.xs)))),
                 const SizedBox(height: 18),
                 Text('Audit Trail',
                     style: Theme.of(context)
@@ -1733,7 +1786,8 @@ class SettingsScreen extends ConsumerWidget {
                         return const EmptyState(
                           icon: Icons.history_rounded,
                           title: 'No activity yet',
-                          subtitle: 'Actions like logins and branch changes will appear here.',
+                          subtitle:
+                              'Actions like logins and branch changes will appear here.',
                         );
                       }
                       return ListView(
@@ -1957,11 +2011,9 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       setState(() => _pairedPrinters = paired);
 
       if (paired.isEmpty && mounted) {
-        showGlassSnackBar(
-            context,
+        showGlassSnackBar(context,
             'No paired Bluetooth devices found — pair your printer in phone Bluetooth settings first',
-            icon: Icons.bluetooth_searching_rounded,
-            color: DesignColors.info);
+            icon: Icons.bluetooth_searching_rounded, color: DesignColors.info);
       }
     } catch (e) {
       if (mounted) {
@@ -2003,158 +2055,171 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: SettingsSheetScaffold(
-        title: 'Printer Settings',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            GroupedCard(
-              margin: EdgeInsets.zero,
-              children: [
-                SettingsRow(
-                  icon: Icons.print_rounded,
-                  title: _printerMacAddress.isEmpty
-                      ? 'No printer connected'
-                      : _printerName,
-                  subtitle: _printerMacAddress.isEmpty
-                      ? 'Scan and connect a Bluetooth printer'
-                      : _printerMacAddress,
-                  iconColor: _printerMacAddress.isEmpty
-                      ? DesignColors.textTertiary
-                      : DesignColors.success,
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              initialValue: _paperWidth,
-              decoration: InputDecoration(
-                labelText: 'Paper Width',
-                prefixIcon: const Icon(Icons.straighten_rounded),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-              items: const [
-                DropdownMenuItem(value: '58mm', child: Text('58mm (Small)')),
-                DropdownMenuItem(value: '80mm', child: Text('80mm (Standard)')),
-              ],
-              onChanged: (v) => setState(() => _paperWidth = v ?? '58mm'),
-            ),
-            const SizedBox(height: 14),
-            GroupedCard(
-              margin: EdgeInsets.zero,
-              children: [
-                SettingsRow(
-                  icon: Icons.receipt_long_rounded,
-                  title: 'Auto-print receipts',
-                  subtitle: 'Print receipt after each sale',
-                  trailing: Switch(
-                    value: _autoPrint,
-                    activeThumbColor: DesignColors.accent,
-                    onChanged: (v) => setState(() => _autoPrint = v),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            const SettingsGroupLabel('SHARED PRINTER'),
-            GroupedCard(
-              margin: EdgeInsets.zero,
-              children: [
-                SettingsRow(
-                  icon: Icons.smartphone_rounded,
-                  title: 'This device is the printer',
-                  subtitle: _printerMacAddress.isEmpty
-                      ? 'Connect a printer above first'
-                      : 'Other staff devices will queue receipts here to print — '
-                          'turn this on only on the phone physically connected '
-                          'to the till printer.',
-                  trailing: _isDesignatedPrinter == null || _isSavingDesignation
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Switch(
-                          value: _isDesignatedPrinter!,
-                          activeThumbColor: DesignColors.accent,
-                          onChanged: _printerMacAddress.isEmpty
-                              ? null
-                              : (v) => _setDesignation(v),
-                        ),
-                ),
-              ],
-            ),
-            if (_pairedPrinters.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              const SettingsGroupLabel('PAIRED DEVICES'),
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+            bottom:
+                MediaQuery.of(context).viewInsets.bottom + DesignSpacing.sm),
+        child: SettingsSheetScaffold(
+          title: 'Printer Settings',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               GroupedCard(
                 margin: EdgeInsets.zero,
-                children: _pairedPrinters
-                    .map((device) => SettingsRow(
-                          icon: Icons.bluetooth_rounded,
-                          title: device.name,
-                          subtitle: device.macAddress,
-                          trailing: _isConnecting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2))
-                              : (device.macAddress == _printerMacAddress
-                                  ? const Icon(Icons.check_circle_rounded,
-                                      color: DesignColors.success)
-                                  : null),
-                          onTap: _isConnecting ? null : () => _connectTo(device),
-                        ))
-                    .toList(),
+                children: [
+                  SettingsRow(
+                    icon: Icons.print_rounded,
+                    title: _printerMacAddress.isEmpty
+                        ? 'No printer connected'
+                        : _printerName,
+                    subtitle: _printerMacAddress.isEmpty
+                        ? 'Scan and connect a Bluetooth printer'
+                        : _printerMacAddress,
+                    iconColor: _printerMacAddress.isEmpty
+                        ? DesignColors.textTertiary
+                        : DesignColors.success,
+                  ),
+                ],
               ),
-            ],
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _isScanning ? null : _scanForPrinters,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _paperWidth,
+                decoration: InputDecoration(
+                  labelText: 'Paper Width',
+                  prefixIcon: const Icon(Icons.straighten_rounded),
+                  border: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusLg)),
+                ),
+                items: const [
+                  DropdownMenuItem(value: '58mm', child: Text('58mm (Small)')),
+                  DropdownMenuItem(
+                      value: '80mm', child: Text('80mm (Standard)')),
+                ],
+                onChanged: (v) => setState(() => _paperWidth = v ?? '58mm'),
+              ),
+              const SizedBox(height: 14),
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: Icons.receipt_long_rounded,
+                    title: 'Auto-print receipts',
+                    subtitle: 'Print receipt after each sale',
+                    trailing: Switch(
+                      value: _autoPrint,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) => setState(() => _autoPrint = v),
                     ),
-                    child: _isScanning
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const SettingsGroupLabel('SHARED PRINTER'),
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: Icons.smartphone_rounded,
+                    title: 'This device is the printer',
+                    subtitle: _printerMacAddress.isEmpty
+                        ? 'Connect a printer above first'
+                        : 'Other staff devices will queue receipts here to print — '
+                            'turn this on only on the phone physically connected '
+                            'to the till printer.',
+                    trailing: _isDesignatedPrinter == null ||
+                            _isSavingDesignation
                         ? const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Scan Printers'),
+                        : Switch(
+                            value: _isDesignatedPrinter!,
+                            activeThumbColor: DesignColors.accent,
+                            onChanged: _printerMacAddress.isEmpty
+                                ? null
+                                : (v) => _setDesignation(v),
+                          ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SettingsPrimaryButton(
-                    label: 'Save',
-                    onPressed: () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool(
-                          _SettingsKeys.autoPrintReceipt, _autoPrint);
-                      await prefs.setString(
-                          _SettingsKeys.printerName, _printerName);
-                      await prefs.setString(
-                          _SettingsKeys.printerMacAddress, _printerMacAddress);
-                      await prefs.setString(
-                          _SettingsKeys.paperWidth, _paperWidth);
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        showGlassSnackBar(context, 'Printer settings saved',
-                            icon: Icons.check_circle_rounded,
-                            color: DesignColors.success);
-                      }
-                    },
-                  ),
+                ],
+              ),
+              if (_pairedPrinters.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                const SettingsGroupLabel('PAIRED DEVICES'),
+                GroupedCard(
+                  margin: EdgeInsets.zero,
+                  children: _pairedPrinters
+                      .map((device) => SettingsRow(
+                            icon: Icons.bluetooth_rounded,
+                            title: device.name,
+                            subtitle: device.macAddress,
+                            trailing: _isConnecting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                                : (device.macAddress == _printerMacAddress
+                                    ? const Icon(Icons.check_circle_rounded,
+                                        color: DesignColors.success)
+                                    : null),
+                            onTap:
+                                _isConnecting ? null : () => _connectTo(device),
+                          ))
+                      .toList(),
                 ),
               ],
-            ),
-          ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isScanning ? null : _scanForPrinters,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(64, 48),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: DesignSpacing.md),
+                        shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd)),
+                      ),
+                      child: _isScanning
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('Scan Printers'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SettingsPrimaryButton(
+                      label: 'Save',
+                      onPressed: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool(
+                            _SettingsKeys.autoPrintReceipt, _autoPrint);
+                        await prefs.setString(
+                            _SettingsKeys.printerName, _printerName);
+                        await prefs.setString(_SettingsKeys.printerMacAddress,
+                            _printerMacAddress);
+                        await prefs.setString(
+                            _SettingsKeys.paperWidth, _paperWidth);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          showGlassSnackBar(context, 'Printer settings saved',
+                              icon: Icons.check_circle_rounded,
+                              color: DesignColors.success);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2232,10 +2297,10 @@ class _NotificationSettingsSheetState
       top: false,
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          20,
-          12,
-          20,
-          20 + MediaQuery.of(context).padding.bottom,
+          DesignSpacing.xl,
+          DesignSpacing.md,
+          DesignSpacing.xl,
+          DesignSpacing.xl + MediaQuery.of(context).padding.bottom,
         ),
         child: SettingsSheetScaffold(
           title: 'Notifications',
@@ -2278,7 +2343,8 @@ class _NotificationSettingsSheetState
                   ),
                   if (!_osPermissionGranted && !_checkingPermission)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0,
+                          DesignSpacing.lg, DesignSpacing.md),
                       child: SizedBox(
                         width: double.infinity,
                         child: SettingsPrimaryButton(
@@ -2320,14 +2386,16 @@ class _NotificationSettingsSheetState
                     ),
                     if (_availableUpdate!.releaseNotes.trim().isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0,
+                            DesignSpacing.lg, DesignSpacing.md),
                         child: Text(
                           _availableUpdate!.releaseNotes.trim(),
-                          style: const TextStyle(
-                            color: DesignColors.darkTextSecondary,
-                            fontSize: 12,
-                            height: 1.4,
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                  color: DesignColors.darkTextSecondary,
+                                  height: 1.4),
                           maxLines: 4,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -2498,117 +2566,125 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    return SingleChildScrollView(
-      controller: widget.scrollController,
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 12,
-          bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: border,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 18),
-            Text('Security',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 18),
-            GroupedCard(
-              children: [
-                SettingsRow(
-                  icon: Icons.security_rounded,
-                  title: 'Biometric Login',
-                  subtitle: widget.biometricAvailable
-                      ? 'Use device fingerprint, face, PIN, or pattern to unlock'
-                      : 'Not available on this device',
-                  enabled: widget.biometricAvailable && !_isConfirmingBiometric,
-                  trailing: _isConfirmingBiometric
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Switch(
-                          value: _biometricEnabled && widget.biometricAvailable,
-                          activeThumbColor: DesignColors.accent,
-                          onChanged: widget.biometricAvailable
-                              ? _onBiometricToggled
-                              : null,
-                        ),
-                ),
-                SettingsRow(
-                  icon: Icons.lock_clock_rounded,
-                  title: 'Require unlock when app reopens',
-                  subtitle: 'Ask for authentication after leaving the app',
-                  trailing: Switch(
-                    value: _requireUnlockOnResume,
-                    activeThumbColor: DesignColors.accent,
-                    onChanged: (v) =>
-                        setState(() => _requireUnlockOnResume = v),
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        controller: widget.scrollController,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: DesignSpacing.xl,
+            right: DesignSpacing.xl,
+            top: DesignSpacing.md,
+            bottom: DesignSpacing.xl + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: border,
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.xs)))),
+              const SizedBox(height: 18),
+              Text('Security',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 18),
+              GroupedCard(
+                children: [
+                  SettingsRow(
+                    icon: Icons.security_rounded,
+                    title: 'Biometric Login',
+                    subtitle: widget.biometricAvailable
+                        ? 'Use device fingerprint, face, PIN, or pattern to unlock'
+                        : 'Not available on this device',
+                    enabled:
+                        widget.biometricAvailable && !_isConfirmingBiometric,
+                    trailing: _isConfirmingBiometric
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Switch(
+                            value:
+                                _biometricEnabled && widget.biometricAvailable,
+                            activeThumbColor: DesignColors.accent,
+                            onChanged: widget.biometricAvailable
+                                ? _onBiometricToggled
+                                : null,
+                          ),
                   ),
-                ),
-              ],
-            ),
-            GroupedCard(
-              margin: EdgeInsets.zero,
-              children: [
-                SettingsRow(
-                  icon: Icons.timer_outlined,
-                  title: 'Auto-lock after',
-                  enabled: _requireUnlockOnResume,
-                  trailing: DropdownButton<int>(
-                    value: _autoLockMinutes,
-                    underline: const SizedBox(),
-                    onChanged: _requireUnlockOnResume
-                        ? (v) => setState(() => _autoLockMinutes = v ?? -1)
-                        : null,
-                    items: const [
-                      DropdownMenuItem(value: -1, child: Text('Immediately')),
-                      DropdownMenuItem(value: 1, child: Text('1 min')),
-                      DropdownMenuItem(value: 5, child: Text('5 min')),
-                      DropdownMenuItem(value: 15, child: Text('15 min')),
-                      DropdownMenuItem(value: 30, child: Text('30 min')),
-                      DropdownMenuItem(value: 0, child: Text('Never')),
-                    ],
+                  SettingsRow(
+                    icon: Icons.lock_clock_rounded,
+                    title: 'Require unlock when app reopens',
+                    subtitle: 'Ask for authentication after leaving the app',
+                    trailing: Switch(
+                      value: _requireUnlockOnResume,
+                      activeThumbColor: DesignColors.accent,
+                      onChanged: (v) =>
+                          setState(() => _requireUnlockOnResume = v),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: SettingsPrimaryButton(
-                label: 'Save',
-                onPressed: () async {
-                  // Biometric is committed immediately by the toggle itself
-                  // (it needs a real, just-in-time authenticate() check) —
-                  // only the remaining two settings are deferred to Save.
-                  final storage = getIt<StorageService>();
-                  await storage
-                      .setRequireUnlockOnResume(_requireUnlockOnResume);
-                  await storage.setAutoLockMinutes(_autoLockMinutes);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Security settings saved')),
-                    );
-                  }
-                },
+                ],
               ),
-            ),
-          ],
+              GroupedCard(
+                margin: EdgeInsets.zero,
+                children: [
+                  SettingsRow(
+                    icon: Icons.timer_outlined,
+                    title: 'Auto-lock after',
+                    enabled: _requireUnlockOnResume,
+                    trailing: DropdownButton<int>(
+                      value: _autoLockMinutes,
+                      underline: const SizedBox(),
+                      onChanged: _requireUnlockOnResume
+                          ? (v) => setState(() => _autoLockMinutes = v ?? -1)
+                          : null,
+                      items: const [
+                        DropdownMenuItem(value: -1, child: Text('Immediately')),
+                        DropdownMenuItem(value: 1, child: Text('1 min')),
+                        DropdownMenuItem(value: 5, child: Text('5 min')),
+                        DropdownMenuItem(value: 15, child: Text('15 min')),
+                        DropdownMenuItem(value: 30, child: Text('30 min')),
+                        DropdownMenuItem(value: 0, child: Text('Never')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: SettingsPrimaryButton(
+                  label: 'Save',
+                  onPressed: () async {
+                    // Biometric is committed immediately by the toggle itself
+                    // (it needs a real, just-in-time authenticate() check) —
+                    // only the remaining two settings are deferred to Save.
+                    final storage = getIt<StorageService>();
+                    await storage
+                        .setRequireUnlockOnResume(_requireUnlockOnResume);
+                    await storage.setAutoLockMinutes(_autoLockMinutes);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Security settings saved')),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2625,18 +2701,18 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.sm, vertical: DesignSpacing.xs),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }
@@ -2656,21 +2732,25 @@ class _InfoRow extends StatelessWidget {
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md, vertical: DesignSpacing.md),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
             flex: 2,
             child: Text(label,
-                style: TextStyle(color: secondaryColor, fontSize: 13.5),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: secondaryColor),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
           Flexible(
             flex: 3,
             child: Text(value,
-                style: TextStyle(
+                style: DesignType.numeric(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                     color: valueColor ?? titleColor),
@@ -2699,11 +2779,11 @@ class _AuditEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondaryColor = isDark
-        ? DesignColors.darkTextSecondary
-        : DesignColors.textSecondary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md, vertical: DesignSpacing.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2714,7 +2794,7 @@ class _AuditEntry extends StatelessWidget {
               color: isDark
                   ? DesignColors.darkSurfaceElevated
                   : DesignColors.surfaceSubtle,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
             ),
             child: Icon(icon, size: 18, color: secondaryColor),
           ),
@@ -2727,13 +2807,15 @@ class _AuditEntry extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(subtitle,
-                    style: TextStyle(fontSize: 12, color: secondaryColor)),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: secondaryColor)),
               ],
             ),
           ),
           Text(time,
-              style: TextStyle(
-                  fontSize: 11,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: isDark
                       ? DesignColors.darkTextTertiary
                       : DesignColors.textTertiary)),
@@ -2789,7 +2871,9 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
       final data = error.response?.data;
       if (data is Map && data['message'] != null) {
         final message = data['message'];
-        if (message is List && message.isNotEmpty) return message.first.toString();
+        if (message is List && message.isNotEmpty) {
+          return message.first.toString();
+        }
         return message.toString();
       }
     }
@@ -2848,8 +2932,10 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
               if (error != null) ...[
                 const SizedBox(height: 8),
                 Text(error!,
-                    style: const TextStyle(
-                        color: DesignColors.error, fontSize: 12)),
+                    style: Theme.of(ctx)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: DesignColors.error)),
               ],
             ],
           ),
@@ -2925,14 +3011,12 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
             children: [
               TextField(
                   controller: nameController,
-                  decoration:
-                      const InputDecoration(labelText: 'Branch Name')),
+                  decoration: const InputDecoration(labelText: 'Branch Name')),
               const SizedBox(height: 12),
               TextField(
                   controller: codeController,
                   textCapitalization: TextCapitalization.characters,
-                  decoration:
-                      const InputDecoration(labelText: 'Branch Code')),
+                  decoration: const InputDecoration(labelText: 'Branch Code')),
               const SizedBox(height: 12),
               TextField(
                   controller: addressController,
@@ -2945,8 +3029,10 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
               if (error != null) ...[
                 const SizedBox(height: 8),
                 Text(error!,
-                    style: const TextStyle(
-                        color: DesignColors.error, fontSize: 12)),
+                    style: Theme.of(ctx)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: DesignColors.error)),
               ],
             ],
           ),
@@ -3037,113 +3123,125 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-              child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: border,
-                      borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Branch Management',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w800)),
-              Text(
-                  '${_branches.length} branch${_branches.length == 1 ? '' : 'es'}',
-                  style: Theme.of(context).textTheme.bodySmall),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _loadError != null
-                    ? EmptyState(
-                        icon: Icons.error_outline_rounded,
-                        title: 'Couldn\'t load branches',
-                        subtitle: _loadError!,
-                        iconColor: DesignColors.error,
-                        actionLabel: 'Retry',
-                        onAction: _loadBranches,
-                      )
-                    : _branches.isEmpty
-                        ? const EmptyState(
-                            icon: Icons.store_outlined,
-                            title: 'No branches yet',
-                            subtitle: 'Tap "Add Branch" to create your first one',
-                          )
-                        : ListView.builder(
-                            controller: widget.scrollController,
-                            itemCount: _branches.length,
-                            itemBuilder: (context, index) {
-                              final branch = _branches[index];
-                              final isActive = branch['isActive'] as bool? ?? true;
-                              return GroupedCard(
-                                children: [
-                                  SettingsRow(
-                                    icon: Icons.store_rounded,
-                                    title: branch['name'] as String,
-                                    subtitle: (branch['address'] as String?)
-                                                ?.isNotEmpty ==
-                                            true
-                                        ? branch['address'] as String
-                                        : (branch['code'] as String? ?? ''),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _StatusBadge(
-                                            text: isActive ? 'Active' : 'Inactive',
-                                            color: isActive
-                                                ? DesignColors.success
-                                                : DesignColors.textTertiary),
-                                        PopupMenuButton<String>(
-                                          onSelected: (value) {
-                                            if (value == 'edit') {
-                                              _showEditBranchDialog(branch);
-                                            }
-                                            if (value == 'delete') {
-                                              _deleteBranch(branch);
-                                            }
-                                          },
-                                          itemBuilder: (ctx) => [
-                                            const PopupMenuItem(
-                                                value: 'edit',
-                                                child: Text('Edit')),
-                                            const PopupMenuItem(
-                                                value: 'delete',
-                                                child: Text('Delete')),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _showAddBranchDialog,
-              icon: const Icon(Icons.add_business),
-              label: const Text('Add Branch'),
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.md,
+            DesignSpacing.xl, DesignSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: border,
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.xs)))),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Branch Management',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                    '${_branches.length} branch${_branches.length == 1 ? '' : 'es'}',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+            const SizedBox(height: 18),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _loadError != null
+                      ? EmptyState(
+                          icon: Icons.error_outline_rounded,
+                          title: 'Couldn\'t load branches',
+                          subtitle: _loadError!,
+                          iconColor: DesignColors.error,
+                          actionLabel: 'Retry',
+                          onAction: _loadBranches,
+                        )
+                      : _branches.isEmpty
+                          ? const EmptyState(
+                              icon: Icons.store_outlined,
+                              title: 'No branches yet',
+                              subtitle:
+                                  'Tap "Add Branch" to create your first one',
+                            )
+                          : ListView.builder(
+                              controller: widget.scrollController,
+                              itemCount: _branches.length,
+                              itemBuilder: (context, index) {
+                                final branch = _branches[index];
+                                final isActive =
+                                    branch['isActive'] as bool? ?? true;
+                                return GroupedCard(
+                                  children: [
+                                    SettingsRow(
+                                      icon: Icons.store_rounded,
+                                      title: branch['name'] as String,
+                                      subtitle: (branch['address'] as String?)
+                                                  ?.isNotEmpty ==
+                                              true
+                                          ? branch['address'] as String
+                                          : (branch['code'] as String? ?? ''),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _StatusBadge(
+                                              text: isActive
+                                                  ? 'Active'
+                                                  : 'Inactive',
+                                              color: isActive
+                                                  ? DesignColors.success
+                                                  : DesignColors.textTertiary),
+                                          PopupMenuButton<String>(
+                                            onSelected: (value) {
+                                              if (value == 'edit') {
+                                                _showEditBranchDialog(branch);
+                                              }
+                                              if (value == 'delete') {
+                                                _deleteBranch(branch);
+                                              }
+                                            },
+                                            itemBuilder: (ctx) => [
+                                              const PopupMenuItem(
+                                                  value: 'edit',
+                                                  child: Text('Edit')),
+                                              const PopupMenuItem(
+                                                  value: 'delete',
+                                                  child: Text('Delete')),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _showAddBranchDialog,
+                style:
+                    OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
+                icon: const Icon(Icons.add_business),
+                label: const Text('Add Branch'),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

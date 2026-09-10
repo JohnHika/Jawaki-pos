@@ -12,6 +12,7 @@ import '../../../../core/services/voice_input_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/widgets/motion.dart';
 import 'ai_chart_widget.dart';
 import 'ai_chat_service.dart';
 import 'ai_add_to_chat_sheet.dart';
@@ -52,6 +53,25 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   // drives the inline skill-suggestion list shown above the input bar.
   List<AiSkillCommand>? _skillSuggestions;
 
+  // True while the shared history fetch kicked off in [initState] is still in
+  // flight. The stagger entrance is keyed on the moment this flips false:
+  // only the initial batch of messages (loaded at open, or typed before the
+  // fetch resolves) plays the once-per-entry reveal. Messages appended AFTER
+  // the initial mount — live replies, later edits — render with no entrance
+  // at all, so an ongoing conversation never re-animates per frame.
+  bool _initialMessagesMounted = false;
+
+  // How many messages were on screen at the moment the current stagger
+  // batch mounted. Only indices below this played (or would have played)
+  // the entrance; anything at or beyond it is a live message and skips it.
+  int _initialCount = 0;
+
+  /// True when [index] belongs to the current initial batch — i.e. the
+  /// message was already on screen (or the batch was declared) before new
+  /// messages started being appended. Returns false for anything appended
+  /// later, so live conversation never re-animates.
+  bool _messageIsInitial(int index) => index < _initialCount;
+
   @override
   void initState() {
     super.initState();
@@ -59,7 +79,16 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     // shop sees and continues the same thread.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _aiService.loadSharedHistory();
-      if (mounted) setState(() {});
+      if (mounted) {
+        // Snapshot the history batch at the moment the initial mount is
+        // declared: everything present now plays the once-per-entry stagger;
+        // anything appended AFTER this point (live replies, later edits) has
+        // an index at or beyond [_initialCount] and never animates.
+        setState(() {
+          _initialCount = _aiService.messages.length;
+          _initialMessagesMounted = true;
+        });
+      }
       _scrollToBottom();
     });
   }
@@ -86,9 +115,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     final started = await _voiceService.startListening(
       onResult: (text, isFinal) {
         if (!mounted) return;
-        final separator = _preVoiceText.isEmpty || _preVoiceText.endsWith(' ')
-            ? ''
-            : ' ';
+        final separator =
+            _preVoiceText.isEmpty || _preVoiceText.endsWith(' ') ? '' : ' ';
         setState(() {
           _controller.text = '$_preVoiceText$separator$text';
           _controller.selection = TextSelection.fromPosition(
@@ -117,10 +145,18 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        // Reduced motion: snap without animating — the scroll is functional
+        // positioning, not decorative motion, but the glide is still movement.
+        if (reducedMotion(context)) {
+          _scrollController.jumpTo(
+            _scrollController.position.maxScrollExtent,
+          );
+          return;
+        }
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: 300.ms,
-          curve: Curves.easeOut,
+          duration: DesignAnimation.fast,
+          curve: DesignAnimation.smooth,
         );
       }
     });
@@ -136,9 +172,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     final trimmed = text.trim();
     if (!trimmed.startsWith('/')) return text;
     final firstSpace = trimmed.indexOf(' ');
-    final commandWord =
-        (firstSpace == -1 ? trimmed.substring(1) : trimmed.substring(1, firstSpace))
-            .toLowerCase();
+    final commandWord = (firstSpace == -1
+            ? trimmed.substring(1)
+            : trimmed.substring(1, firstSpace))
+        .toLowerCase();
     final match = aiSkillCommands.where((c) => c.command == commandWord);
     if (match.isEmpty) return text;
     final extra = firstSpace == -1 ? '' : trimmed.substring(firstSpace).trim();
@@ -305,6 +342,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     if (mounted) {
       setState(() {
         _isLoading = false;
+        // A fresh thread: its opening messages form a NEW initial batch, so
+        // the stagger snapshot is re-taken here rather than reusing the old
+        // thread's count.
+        _initialCount = _aiService.messages.length;
+        _initialMessagesMounted = true;
       });
     }
   }
@@ -421,7 +463,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   child: Row(
                     children: [
                       Icon(Icons.ios_share_rounded, size: 18),
-                      SizedBox(width: 10),
+                      SizedBox(width: DesignSpacing.xs + 6),
                       Text('Export conversation'),
                     ],
                   ),
@@ -431,14 +473,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   child: Row(
                     children: [
                       Icon(Icons.refresh_rounded, size: 18),
-                      SizedBox(width: 10),
+                      SizedBox(width: DesignSpacing.xs + 6),
                       Text('New conversation'),
                     ],
                   ),
                 ),
               ],
             ),
-          const SizedBox(width: 4),
+          const SizedBox(width: DesignSpacing.xs),
         ],
       ),
       body: Column(
@@ -451,7 +493,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
+                        horizontal: DesignSpacing.lg,
+                        vertical: DesignSpacing.md),
                     itemCount: messages.length + trailingCount,
                     itemBuilder: (context, index) {
                       if (index == messages.length) {
@@ -462,17 +505,28 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                               _resumePendingTurn(questionAnswers: answers),
                           onConfirmMutation: (confirmed) =>
                               _resumePendingTurn(toolConfirmed: confirmed),
-                        ).animate().fadeIn(duration: 300.ms).slideY(
-                              begin: 0.1,
-                              end: 0,
-                              duration: 300.ms,
-                            );
+                        ).animateEntrance(
+                          context,
+                          effects: () => [
+                            const FadeEffect(
+                              duration: DesignAnimation.fast,
+                              curve: DesignAnimation.smooth,
+                            ),
+                            const SlideEffect(
+                              begin: Offset(0, 0.1),
+                              end: Offset.zero,
+                              duration: DesignAnimation.fast,
+                              curve: DesignAnimation.smooth,
+                            ),
+                          ],
+                        );
                       }
                       final msg = messages[index];
                       final isUser = msg['role'] == 'user';
                       final content = msg['content']!;
-                      final isLastAssistant =
-                          !isUser && index == messages.length - 1 && pending == null;
+                      final isLastAssistant = !isUser &&
+                          index == messages.length - 1 &&
+                          pending == null;
                       final chart = _charts[msg['id']];
                       final shouldAnimateIn = !isUser &&
                           msg['id'] != null &&
@@ -487,32 +541,50 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                           }
                         });
                       }
-                      return Column(
+                      // Staggered entrance ONLY for the initial batch of
+                      // messages present on first mount (history loaded at
+                      // open). Messages appended afterwards — every live
+                      // reply — skip it entirely so the chat never animates
+                      // on each frame of a conversation.
+                      // No unconditional entrance here: history rows render
+                      // as plain widgets (a ListView recycles children, so a
+                      // fresh [Animate] state would replay on every scroll
+                      // remount — the "animates every frame" bug). Only the
+                      // initial batch is wrapped (below), and only the reply
+                      // that just arrived gets its one-shot typewriter.
+                      final staggerThis =
+                          _initialMessagesMounted && _messageIsInitial(index);
+                      Widget row = Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _ChatBubble(
                             message: content,
                             isUser: isUser,
                             onCopy: isUser ? null : () => _copyMessage(content),
-                            onEdit: isUser ? () => _editMessage(index, content) : null,
+                            onEdit: isUser
+                                ? () => _editMessage(index, content)
+                                : null,
                             onRegenerate: isLastAssistant ? _regenerate : null,
-                            onRewind: () => _rewindTo(index, msg['role']!, content),
+                            onRewind: () =>
+                                _rewindTo(index, msg['role']!, content),
                             animateIn: shouldAnimateIn,
                           ),
                           if (chart != null) AiChartCard(chart: chart),
                         ],
-                      ).animate().fadeIn(duration: 300.ms).slideX(
-                            begin: isUser ? 20 : -20,
-                            end: 0,
-                            duration: 300.ms,
-                          );
+                      );
+                      if (!staggerThis) return row;
+                      return StaggeredItem(
+                        itemKey: 'chat-${msg['id'] ?? index}',
+                        index: index,
+                        child: row,
+                      );
                     },
                   ),
           ),
           // Input bar
           if (_skillSuggestions != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
               child: AiSkillSuggestionList(
                 commands: _skillSuggestions!,
                 onSelect: _selectSkill,
@@ -535,16 +607,20 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final surface =
         isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final todos = _aiService.todos;
     final completedCount = todos.where((t) => t.status == 'completed').length;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg, DesignSpacing.sm, DesignSpacing.lg, 0),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md + 2,
+          vertical: DesignSpacing.sm + DesignSpacing.xs),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
         border: Border.all(color: border),
       ),
       child: Column(
@@ -552,12 +628,16 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         children: [
           Text(
             'Tasks · $completedCount/${todos.length}',
-            style: TextStyle(color: secondaryColor, fontSize: 11, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                color: secondaryColor,
+                fontSize: DesignType.chatMeta,
+                fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: DesignSpacing.xs + 2),
           for (final todo in todos)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding:
+                  const EdgeInsets.symmetric(vertical: DesignSpacing.xs / 2),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -574,15 +654,23 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                             ? DesignColors.accent
                             : secondaryColor,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: DesignSpacing.sm),
                   Expanded(
                     child: Text(
-                      todo.status == 'in_progress' ? todo.activeForm : todo.content,
+                      todo.status == 'in_progress'
+                          ? todo.activeForm
+                          : todo.content,
                       style: TextStyle(
-                        color: todo.status == 'completed' ? secondaryColor : textColor,
-                        fontSize: 13,
-                        decoration: todo.status == 'completed' ? TextDecoration.lineThrough : null,
-                        fontWeight: todo.status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+                        color: todo.status == 'completed'
+                            ? secondaryColor
+                            : textColor,
+                        fontSize: DesignType.chatBody,
+                        decoration: todo.status == 'completed'
+                            ? TextDecoration.lineThrough
+                            : null,
+                        fontWeight: todo.status == 'in_progress'
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -600,7 +688,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(DesignSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -609,7 +697,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
               height: 80,
               decoration: BoxDecoration(
                 color: DesignColors.accent.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
               ),
               child: Center(
                 child: AxonAiIcon(
@@ -617,21 +705,42 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   size: 44,
                 ),
               ),
-            ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
-            const SizedBox(height: 20),
+            ).animateEntrance(
+              context,
+              effects: () => [
+                const ScaleEffect(
+                  duration: DesignAnimation.slowest,
+                  curve: DesignAnimation.bounce,
+                ),
+              ],
+            ),
+            const SizedBox(height: DesignSpacing.xl),
             Text(
               'Axon AI Assistant',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
-            ).animate().fadeIn(delay: 200.ms),
-            const SizedBox(height: 8),
+            ).animateEntrance(
+              context,
+              delay: DesignAnimation.fast,
+              effects: () => [
+                const FadeEffect(duration: DesignAnimation.fast),
+              ],
+            ),
+            const SizedBox(height: DesignSpacing.sm),
             Text(
               'Your intelligent business companion.\nAsk me anything about your sales, inventory, and customers.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: secondaryColor, fontSize: 14),
-            ).animate().fadeIn(delay: 400.ms),
-            const SizedBox(height: 24),
+              style: TextStyle(
+                  color: secondaryColor, fontSize: DesignType.chatBody),
+            ).animateEntrance(
+              context,
+              delay: DesignAnimation.normal,
+              effects: () => [
+                const FadeEffect(duration: DesignAnimation.fast),
+              ],
+            ),
+            const SizedBox(height: DesignSpacing.xxl),
           ],
         ),
       ),
@@ -640,7 +749,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
   Widget _buildTypingIndicator() {
     return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.symmetric(vertical: DesignSpacing.sm),
       child: Align(
         alignment: Alignment.centerLeft,
         child: _TypingIndicator(),
@@ -650,7 +759,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
   Widget _buildInputBar() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fill = isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
+    final fill =
+        isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
     final hintColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final iconColor =
@@ -658,24 +768,29 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     final hasText = _controller.text.trim().isNotEmpty;
 
     return Padding(
-      // Scaffold's default resizeToAvoidBottomInset already shrinks the
-      // body when the keyboard opens, so only the safe-area inset needs
-      // adding here — adding viewInsets.bottom too would double-count it
-      // and push the bar needlessly high above the keyboard.
+      // Keyboard-safe: the Scaffold (resizeToAvoidBottomInset) already shrinks
+      // the body to make room for the keyboard, so only the safe-area inset
+      // is added here — adding viewInsets.bottom too would double-count it
+      // and push the bar needlessly high above the keyboard. The input row
+      // itself uses `isDense`-free intrinsic sizing and stays pinned above
+      // the keyboard on both resizing and non-resizing scaffolds.
       padding: EdgeInsets.fromLTRB(
-        12,
-        8,
-        12,
-        MediaQuery.of(context).padding.bottom + 8,
+        DesignSpacing.md,
+        DesignSpacing.sm,
+        DesignSpacing.md,
+        MediaQuery.of(context).padding.bottom + DesignSpacing.sm,
       ),
       // A floating rounded pill with no top shadow/divider line — it reads
       // as a compact input control sitting over the content, not a full
       // width toolbar boxed off from the rest of the screen.
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        padding: const EdgeInsets.symmetric(
+            horizontal: DesignSpacing.xs + DesignSpacing.xs,
+            vertical: DesignSpacing.xs + DesignSpacing.xs),
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius:
+              BorderRadius.circular(DesignSpacing.radiusXxl + DesignSpacing.xs),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -708,8 +823,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   focusedBorder: InputBorder.none,
                   filled: false,
                   isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                      vertical: DesignSpacing.sm + 2),
                 ),
                 textInputAction: TextInputAction.send,
                 onSubmitted: _sendMessage,
@@ -723,43 +838,68 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 ),
                 onPressed: _toggleListening,
                 tooltip: _isListening ? 'Stop listening' : 'Voice input',
-              ).animate(target: _isListening ? 1 : 0).scale(
-                    begin: const Offset(1, 1),
-                    end: const Offset(1.15, 1.15),
-                    duration: 400.ms,
+              ).animateEntrance(
+                context,
+                effects: () => [
+                  const ScaleEffect(
+                    begin: Offset(1, 1),
+                    end: Offset(1.15, 1.15),
+                    duration: DesignAnimation.slower,
                   ),
-            const SizedBox(width: 4),
+                ],
+              ),
+            const SizedBox(width: DesignSpacing.xs),
             Padding(
-              padding: const EdgeInsets.all(4),
+              padding: const EdgeInsets.all(DesignSpacing.xs),
               child: _isLoading
                   ? const SizedBox(
                       width: 32,
                       height: 32,
                       child: Padding(
-                        padding: EdgeInsets.all(6),
+                        padding: EdgeInsets.all(DesignSpacing.xs + 2),
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : GestureDetector(
-                      onTap: hasText
-                          ? () => _sendMessage(_controller.text)
-                          : null,
-                      child: AnimatedContainer(
-                        duration: 150.ms,
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: hasText
-                              ? DesignColors.accent
-                              : (isDark
-                                  ? DesignColors.darkBorder
-                                  : DesignColors.surfaceBorder),
-                        ),
-                        child: Icon(
-                          Icons.arrow_upward_rounded,
-                          size: 18,
-                          color: hasText ? Colors.black : hintColor,
+                  // Material+InkWell so the send press shows an ink ripple;
+                  // 44px minimum tap target per the design system's a11y rule
+                  // (the visual circle stays 32px, the hit area does not).
+                  // Disabled when the field is empty — grey fill, inert tap.
+                  : Semantics(
+                      button: true,
+                      enabled: hasText,
+                      label: 'Send message',
+                      child: Material(
+                        color: Colors.transparent,
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: hasText
+                              ? () => _sendMessage(_controller.text)
+                              : null,
+                          child: SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Center(
+                              child: AnimatedContainer(
+                                duration: DesignAnimation.pressScale,
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: hasText
+                                      ? DesignColors.accent
+                                      : (isDark
+                                          ? DesignColors.darkBorder
+                                          : DesignColors.surfaceBorder),
+                                ),
+                                child: Icon(
+                                  Icons.arrow_upward_rounded,
+                                  size: 18,
+                                  color: hasText ? Colors.black : hintColor,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -871,16 +1011,17 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final surface =
         isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs + 2),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(DesignSpacing.md + 2),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           border: Border.all(color: border),
         ),
         child: Column(
@@ -890,38 +1031,46 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.sm,
+                        vertical: DesignSpacing.xs / 2),
                     decoration: BoxDecoration(
                       color: DesignColors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusSm),
                     ),
                     child: Text(
                       q.header,
                       style: const TextStyle(
                         color: DesignColors.accent,
-                        fontSize: 11,
+                        fontSize: DesignType.chatMeta,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               Text(
                 q.question,
                 style: TextStyle(
                   color: textColor,
-                  fontSize: 14,
+                  fontSize: DesignType.chatBody,
                   fontWeight: FontWeight.w600,
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 10),
-              ...q.options.map((opt) => _buildOption(q, opt.label, opt.description, textColor, secondaryColor, border)),
-              _buildOption(q, 'Other', 'Type your own answer', textColor, secondaryColor, border),
+              const SizedBox(height: DesignSpacing.xs + 6),
+              ...q.options.map((opt) => _buildOption(q, opt.label,
+                  opt.description, textColor, secondaryColor, border)),
+              _buildOption(q, 'Other', 'Type your own answer', textColor,
+                  secondaryColor, border),
               if ((_selections[q.question] ?? const {}).contains('Other'))
                 Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 2, right: 2),
+                  padding: const EdgeInsets.only(
+                      top: DesignSpacing.sm,
+                      left: DesignSpacing.xs / 2,
+                      right: DesignSpacing.xs / 2),
                   child: TextField(
                     controller: _otherControllers.putIfAbsent(
                       q.question,
@@ -929,48 +1078,64 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
                     ),
                     enabled: !_submitted,
                     onChanged: (_) => setState(() {}),
-                    style: TextStyle(color: textColor, fontSize: 13),
+                    style: TextStyle(
+                        color: textColor, fontSize: DesignType.chatBody),
                     decoration: InputDecoration(
                       hintText: 'Your answer...',
                       hintStyle: TextStyle(color: secondaryColor),
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.xs + 6,
+                          vertical: DesignSpacing.xs + 6),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusSm + 2),
                         borderSide: BorderSide(color: border),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusSm + 2),
                         borderSide: BorderSide(color: border),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: DesignColors.accent),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusSm + 2),
+                        borderSide:
+                            const BorderSide(color: DesignColors.accent),
                       ),
                     ),
                   ),
                 ),
-              const SizedBox(height: 4),
+              const SizedBox(height: DesignSpacing.xs),
             ],
-            const SizedBox(height: 6),
+            const SizedBox(height: DesignSpacing.xs + 2),
             Align(
               alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: (_submitted || !_canSubmit()) ? null : _submitQuestions,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: (_submitted || !_canSubmit())
-                        ? border
-                        : DesignColors.accent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _submitted ? 'Sent' : 'Submit',
-                    style: TextStyle(
-                      color: (_submitted || !_canSubmit()) ? secondaryColor : Colors.black,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+              child: Material(
+                color: (_submitted || !_canSubmit())
+                    ? border
+                    : DesignColors.accent,
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                child: InkWell(
+                  onTap:
+                      (_submitted || !_canSubmit()) ? null : _submitQuestions,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  child: Container(
+                    constraints:
+                        const BoxConstraints(minHeight: DesignSpacing.huge),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.xl + 2,
+                        vertical: DesignSpacing.sm + DesignSpacing.xs),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _submitted ? 'Sent' : 'Submit',
+                      style: TextStyle(
+                        color: (_submitted || !_canSubmit())
+                            ? secondaryColor
+                            : Colors.black,
+                        fontSize: DesignType.chatBody,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -992,15 +1157,18 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
   ) {
     final selected = (_selections[q.question] ?? const {}).contains(label);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.xs + 2),
       child: InkWell(
         onTap: () => _toggle(q, label),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.md, vertical: DesignSpacing.xs + 6),
           decoration: BoxDecoration(
-            color: selected ? DesignColors.accent.withValues(alpha: 0.12) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            color: selected
+                ? DesignColors.accent.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             border: Border.all(
               color: selected ? DesignColors.accent : border,
             ),
@@ -1009,12 +1177,16 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
             children: [
               Icon(
                 q.multiSelect
-                    ? (selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded)
-                    : (selected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded),
+                    ? (selected
+                        ? Icons.check_box_rounded
+                        : Icons.check_box_outline_blank_rounded)
+                    : (selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded),
                 size: 18,
                 color: selected ? DesignColors.accent : secondaryColor,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignSpacing.xs + 6),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1023,14 +1195,16 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
                       label,
                       style: TextStyle(
                         color: textColor,
-                        fontSize: 13.5,
+                        fontSize: DesignType.chatBody,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     if (description.isNotEmpty)
                       Text(
                         description,
-                        style: TextStyle(color: secondaryColor, fontSize: 12),
+                        style: TextStyle(
+                            color: secondaryColor,
+                            fontSize: DesignType.chatSecondary),
                       ),
                   ],
                 ),
@@ -1050,16 +1224,17 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final surface =
         isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs + 2),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(DesignSpacing.md + 2),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           border: Border.all(color: border),
         ),
         child: Column(
@@ -1068,62 +1243,98 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
             const Row(
               children: [
                 Icon(Icons.bolt_rounded, size: 18, color: DesignColors.accent),
-                SizedBox(width: 6),
+                SizedBox(width: DesignSpacing.xs + 2),
                 Text(
                   'Confirm action',
                   style: TextStyle(
                     color: DesignColors.accent,
-                    fontSize: 12,
+                    fontSize: DesignType.chatSecondary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             Text(
               widget.pending.summary ?? 'Run this action?',
-              style: TextStyle(color: textColor, fontSize: 14, height: 1.4),
+              style: TextStyle(
+                  color: textColor, fontSize: DesignType.chatBody, height: 1.4),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: DesignSpacing.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 if (!_submitted) ...[
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _submitted = true);
-                      widget.onConfirmMutation(false);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: Text(
-                        'Cancel',
-                        style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                  // Material+InkWell: real ripple + >=44px target (a plain
+                  // text tap target is far below the 44px minimum).
+                  Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _submitted = true);
+                        widget.onConfirmMutation(false);
+                      },
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: DesignSpacing.huge,
+                          minHeight: DesignSpacing.huge,
+                        ),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.md + 2,
+                            vertical: DesignSpacing.sm + DesignSpacing.xs),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: secondaryColor,
+                            fontSize: DesignType.chatBody,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _submitted = true);
-                      widget.onConfirmMutation(true);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: DesignColors.accent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'Approve',
-                        style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                  const SizedBox(width: DesignSpacing.xs + 2),
+                  Material(
+                    color: DesignColors.accent,
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _submitted = true);
+                        widget.onConfirmMutation(true);
+                      },
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: DesignSpacing.huge,
+                          minHeight: DesignSpacing.huge,
+                        ),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.xl + 2,
+                            vertical: DesignSpacing.sm + DesignSpacing.xs),
+                        child: const Text(
+                          'Approve',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: DesignType.chatBody,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ] else
                   Text(
                     'Sent',
-                    style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        color: secondaryColor,
+                        fontSize: DesignType.chatBody,
+                        fontWeight: FontWeight.w600),
                   ),
               ],
             ),
@@ -1141,16 +1352,17 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final surface =
         isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs + 2),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(DesignSpacing.md + 2),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           border: Border.all(color: border),
         ),
         child: Column(
@@ -1158,63 +1370,100 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
           children: [
             const Row(
               children: [
-                Icon(Icons.checklist_rounded, size: 18, color: DesignColors.accent),
-                SizedBox(width: 6),
+                Icon(Icons.checklist_rounded,
+                    size: 18, color: DesignColors.accent),
+                SizedBox(width: DesignSpacing.xs + 2),
                 Text(
                   'Proposed plan',
                   style: TextStyle(
                     color: DesignColors.accent,
-                    fontSize: 12,
+                    fontSize: DesignType.chatSecondary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             GptMarkdown(
               widget.pending.plan ?? '',
-              style: TextStyle(color: textColor, fontSize: 14, height: 1.4),
+              style: TextStyle(
+                  color: textColor, fontSize: DesignType.chatBody, height: 1.4),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: DesignSpacing.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 if (!_submitted) ...[
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _submitted = true);
-                      widget.onConfirmMutation(false);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: Text(
-                        'Reject',
-                        style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                  // Material+InkWell: real ripple + >=44px target (a plain
+                  // text tap target is far below the 44px minimum).
+                  Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _submitted = true);
+                        widget.onConfirmMutation(false);
+                      },
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: DesignSpacing.huge,
+                          minHeight: DesignSpacing.huge,
+                        ),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.md + 2,
+                            vertical: DesignSpacing.sm + DesignSpacing.xs),
+                        child: Text(
+                          'Reject',
+                          style: TextStyle(
+                            color: secondaryColor,
+                            fontSize: DesignType.chatBody,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _submitted = true);
-                      widget.onConfirmMutation(true);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: DesignColors.accent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'Approve plan',
-                        style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                  const SizedBox(width: DesignSpacing.xs + 2),
+                  Material(
+                    color: DesignColors.accent,
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _submitted = true);
+                        widget.onConfirmMutation(true);
+                      },
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: DesignSpacing.huge,
+                          minHeight: DesignSpacing.huge,
+                        ),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.xl + 2,
+                            vertical: DesignSpacing.sm + DesignSpacing.xs),
+                        child: const Text(
+                          'Approve plan',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: DesignType.chatBody,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ] else
                   Text(
                     'Sent',
-                    style: TextStyle(color: secondaryColor, fontSize: 13, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        color: secondaryColor,
+                        fontSize: DesignType.chatBody,
+                        fontWeight: FontWeight.w600),
                   ),
               ],
             ),
@@ -1232,6 +1481,7 @@ class _ChatBubble extends ConsumerWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onRegenerate;
   final VoidCallback? onRewind;
+
   /// True only for an assistant reply that just arrived this session (not
   /// history loaded/scrolled back to) — the backend answers in one shot
   /// (see the "client-side typewriter, not real token streaming" decision:
@@ -1260,7 +1510,7 @@ class _ChatBubble extends ConsumerWidget {
     final actionColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs + 2),
       child: Row(
         mainAxisAlignment:
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -1275,7 +1525,7 @@ class _ChatBubble extends ConsumerWidget {
                 size: 20,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: DesignSpacing.sm),
           ],
           Flexible(
             child: Column(
@@ -1294,7 +1544,8 @@ class _ChatBubble extends ConsumerWidget {
                   ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
+                        horizontal: DesignSpacing.lg,
+                        vertical: DesignSpacing.md),
                     decoration: BoxDecoration(
                       color: isUser
                           ? DesignColors.accent.withValues(alpha: 0.1)
@@ -1302,10 +1553,12 @@ class _ChatBubble extends ConsumerWidget {
                               ? DesignColors.darkSurfaceElevated
                               : DesignColors.surfaceMuted),
                       borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: Radius.circular(isUser ? 16 : 4),
-                        bottomRight: Radius.circular(isUser ? 4 : 16),
+                        topLeft: const Radius.circular(DesignSpacing.radiusLg),
+                        topRight: const Radius.circular(DesignSpacing.radiusLg),
+                        bottomLeft: Radius.circular(
+                            isUser ? DesignSpacing.radiusLg : DesignSpacing.xs),
+                        bottomRight: Radius.circular(
+                            isUser ? DesignSpacing.xs : DesignSpacing.radiusLg),
                       ),
                     ),
                     child: _buildMessageContent(textColor),
@@ -1317,7 +1570,7 @@ class _ChatBubble extends ConsumerWidget {
               ],
             ),
           ),
-          if (isUser) const SizedBox(width: 8),
+          if (isUser) const SizedBox(width: DesignSpacing.sm),
         ],
       ),
     );
@@ -1332,14 +1585,19 @@ class _ChatBubble extends ConsumerWidget {
       children.add(_actionButton(Icons.edit_rounded, 'Edit', onEdit!, color));
     }
     if (onRegenerate != null) {
-      children.add(_actionButton(Icons.refresh_rounded, 'Regenerate', onRegenerate!, color));
+      children.add(_actionButton(
+          Icons.refresh_rounded, 'Regenerate', onRegenerate!, color));
     }
     if (onRewind != null) {
-      children.add(_actionButton(Icons.history_rounded, 'Rewind here', onRewind!, color));
+      children.add(_actionButton(
+          Icons.history_rounded, 'Rewind here', onRewind!, color));
     }
     if (children.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+      padding: const EdgeInsets.only(
+          top: DesignSpacing.xs / 2,
+          left: DesignSpacing.xs,
+          right: DesignSpacing.xs),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: children,
@@ -1349,11 +1607,15 @@ class _ChatBubble extends ConsumerWidget {
 
   Widget _actionButton(
       IconData icon, String tooltip, VoidCallback onTap, Color color) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(6),
+    // >=44px tap target (design-system a11y rule): the 15px glyph sits inside
+    // a 44x44 hit box via a SizedBox wrapper; the ink ripple is clipped to
+    // the same rounded shape.
+    return SizedBox(
+      width: DesignSpacing.huge,
+      height: DesignSpacing.huge,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusSm + 2),
         child: Icon(icon, size: 15, color: color),
       ),
     );
@@ -1368,14 +1630,15 @@ class _ChatBubble extends ConsumerWidget {
       if (animateIn) {
         return _TypewriterMarkdown(
           text: message,
-          style: TextStyle(color: textColor, fontSize: 14, height: 1.5),
+          style: TextStyle(
+              color: textColor, fontSize: DesignType.chatBody, height: 1.5),
         );
       }
       return GptMarkdown(
         message,
         style: TextStyle(
           color: textColor,
-          fontSize: 14,
+          fontSize: DesignType.chatBody,
           height: 1.5,
         ),
       );
@@ -1387,7 +1650,7 @@ class _ChatBubble extends ConsumerWidget {
       message,
       style: TextStyle(
         color: textColor,
-        fontSize: 14,
+        fontSize: DesignType.chatBody,
         height: 1.5,
       ),
     );
@@ -1412,6 +1675,8 @@ class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
   int _visibleWords = 0;
   Timer? _timer;
 
+  bool _revealedAll = false;
+
   @override
   void initState() {
     super.initState();
@@ -1420,12 +1685,27 @@ class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
     _words = widget.text.split(RegExp(r'(?<=\s)'));
     if (_words.isEmpty) {
       _visibleWords = 0;
-    } else {
-      _startRevealing();
+      _revealedAll = true;
     }
+    // NOTE: [reducedMotion] is read in [didChangeDependencies], never here —
+    // it is an inherited-widget lookup and initState runs before those exist.
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_revealedAll) return;
+    _startRevealing();
   }
 
   void _startRevealing() {
+    // Reduced motion: skip the word-by-word reveal entirely and show the
+    // full reply at once — motion is replaced by an instant final state.
+    if (reducedMotion(context)) {
+      setState(() => _visibleWords = _words.length);
+      _revealedAll = true;
+      return;
+    }
     // A steady, brisk cadence rather than trying to match any real token
     // rate — this is a UI affordance, not a simulation of the model.
     _timer = Timer.periodic(const Duration(milliseconds: 18), (timer) {
@@ -1469,8 +1749,25 @@ class _TypingIndicatorState extends State<_TypingIndicator>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: 1200.ms,
+      duration: DesignAnimation.slower + DesignAnimation.slower,
     )..repeat();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduced motion: an infinite pulsing loop is exactly the kind of motion
+    // the OS "remove animations" setting exists to stop. The loop is halted
+    // and the dots render fully opaque — "AI is thinking" is still visible
+    // (the bubble is), just without the animation.
+    if (reducedMotion(context)) {
+      if (_controller.isAnimating) {
+        _controller.stop();
+        _controller.reset();
+      }
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -1482,17 +1779,18 @@ class _TypingIndicatorState extends State<_TypingIndicator>
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.lg, vertical: DesignSpacing.md),
       decoration: BoxDecoration(
         color: Theme.of(context)
             .colorScheme
             .surfaceContainerHighest
             .withValues(alpha: 0.5),
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(16),
-          bottomLeft: Radius.circular(16),
-          bottomRight: Radius.circular(16),
+          topLeft: Radius.circular(DesignSpacing.xs),
+          topRight: Radius.circular(DesignSpacing.radiusLg),
+          bottomLeft: Radius.circular(DesignSpacing.radiusLg),
+          bottomRight: Radius.circular(DesignSpacing.radiusLg),
         ),
       ),
       child: AnimatedBuilder(
@@ -1506,9 +1804,10 @@ class _TypingIndicatorState extends State<_TypingIndicator>
               final opacity =
                   (value < 0.5 ? value * 2 : 2 - value * 2).clamp(0.2, 1.0);
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.xs / 2),
                 child: Opacity(
-                  opacity: opacity,
+                  opacity: reducedMotion(context) ? 1.0 : opacity,
                   child: Container(
                     width: 8,
                     height: 8,

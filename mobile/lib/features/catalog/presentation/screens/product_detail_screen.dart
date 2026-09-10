@@ -135,6 +135,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   Widget _buildContent(BuildContext context) {
     final product = _product!;
+    final theme = Theme.of(context);
     final stockPresentation = buildStockQuantityPresentation(
       baseQuantity: _stock?.quantity ?? 0,
       baseUnit: product.unit,
@@ -156,11 +157,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
+        const SizedBox(height: DesignSpacing.sm),
 
         // Hero Image Section
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
+          margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
           decoration: BoxDecoration(
             color: surface,
             border: Border.all(color: border),
@@ -194,8 +195,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
               // Quick Info Bar
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.xl, vertical: DesignSpacing.lg),
                 child: Row(
                   children: [
                     Expanded(
@@ -204,40 +205,38 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         children: [
                           Text(
                             product.name,
-                            style: TextStyle(
-                              fontSize: 22,
+                            style: theme.textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w800,
                               color: titleColor,
                               letterSpacing: -0.5,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: DesignSpacing.xs),
                           Row(
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                                    horizontal: DesignSpacing.sm,
+                                    vertical: DesignSpacing.xs - 1),
                                 decoration: BoxDecoration(
                                   color: DesignColors.accent
                                       .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusSm - 2),
                                 ),
                                 child: Text(
                                   _categoryName,
-                                  style: const TextStyle(
-                                    fontSize: 11,
+                                  style: theme.textTheme.labelSmall?.copyWith(
                                     color: DesignColors.accent,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: DesignSpacing.sm),
                               Text(
                                 'SKU: ${product.sku}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: tertiaryColor,
-                                ),
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: tertiaryColor),
                               ),
                             ],
                           ),
@@ -255,7 +254,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           ),
                         ),
                         if (product.costPrice != null) ...[
-                          const SizedBox(height: 2),
+                          const SizedBox(height: DesignSpacing.xs - 2),
                           Text(
                             'Cost: KES ${product.costPrice!.toStringAsFixed(0)}',
                             style: DesignType.numeric(
@@ -274,11 +273,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: DesignSpacing.lg),
 
         // Stock & Status Section
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
           child: Row(
             children: [
               Expanded(
@@ -289,7 +288,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   color: DesignColors.brand,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Unit',
@@ -298,7 +297,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   color: DesignColors.info,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: MetricCard(
                   title: 'Status',
@@ -315,7 +314,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: DesignSpacing.xl),
 
         // Description Section
         const SectionHeader(
@@ -323,16 +322,15 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           icon: Icons.description_outlined,
         ),
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
+          padding: const EdgeInsets.all(DesignSpacing.lg),
           decoration:
               BoxDecoration(color: surface, border: Border.all(color: border)),
           child: Text(
             product.description?.isNotEmpty == true
                 ? product.description!
                 : 'No description provided for this product.',
-            style: TextStyle(
-              fontSize: 14,
+            style: theme.textTheme.bodyMedium?.copyWith(
               color: product.description?.isNotEmpty == true
                   ? titleColor
                   : tertiaryColor,
@@ -341,7 +339,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: DesignSpacing.xl),
 
         // Additional Details
         const SectionHeader(
@@ -349,8 +347,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           icon: Icons.info_outline_rounded,
         ),
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(vertical: 4),
+          margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
+          padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs),
           decoration:
               BoxDecoration(color: surface, border: Border.all(color: border)),
           child: Column(
@@ -439,7 +437,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ),
         ),
 
-        const SizedBox(height: 32),
+        const SizedBox(height: DesignSpacing.xxxl),
       ],
     );
   }
@@ -449,10 +447,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(DesignSpacing.xl),
           decoration: BoxDecoration(
             color: DesignColors.brand.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           ),
           child: Icon(
             Icons.inventory_2_rounded,
@@ -460,14 +458,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             color: tertiaryColor,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: DesignSpacing.md),
         Text(
           _product?.name ?? 'Product',
-          style: TextStyle(
-            color: tertiaryColor,
-            fontWeight: FontWeight.w500,
-            fontSize: 13,
-          ),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: tertiaryColor,
+                fontWeight: FontWeight.w500,
+              ),
         ),
       ],
     );
@@ -482,24 +479,27 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     Color? valueColor,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md, vertical: DesignSpacing.md),
       child: Row(
         children: [
           Icon(icon, size: 16, color: secondaryColor),
-          const SizedBox(width: 12),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Text(
               label,
-              style: TextStyle(fontSize: 13, color: secondaryColor),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: secondaryColor),
             ),
           ),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: valueColor ?? titleColor,
-            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: valueColor ?? titleColor,
+                ),
           ),
         ],
       ),
@@ -508,7 +508,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   Widget _divider(Color border) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
       child: Container(height: 1, color: border),
     );
   }

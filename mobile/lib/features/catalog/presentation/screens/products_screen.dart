@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -74,10 +75,10 @@ class ProductsScreen extends ConsumerWidget {
           if (perms.canEditProducts)
             IconButton(
               icon: Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(DesignSpacing.sm),
                 decoration: BoxDecoration(
                   color: DesignColors.brand.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
                 child: const Icon(Icons.category_outlined,
                     color: DesignColors.brand, size: 20),
@@ -92,43 +93,50 @@ class ProductsScreen extends ConsumerWidget {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
+              padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                  DesignSpacing.sm + 2, DesignSpacing.md, DesignSpacing.xs + 2),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(DesignSpacing.sm),
                     decoration: BoxDecoration(
                       color: DesignColors.brand.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                     ),
                     child: const Icon(Icons.inventory_2_rounded,
                         color: DesignColors.brand, size: 18),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: DesignSpacing.sm + 2),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Catalog',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: titleColor,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: titleColor,
+                                  ),
                         ),
                         Text(
                           'Products, pricing, and stock',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: secondaryColor,
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: secondaryColor),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
                     tooltip: gridView ? 'Use list view' : 'Use grid view',
+                    // >=44px tap target for the list/grid toggle.
+                    constraints: const BoxConstraints(
+                        minWidth: DesignSpacing.xl + 24,
+                        minHeight: DesignSpacing.xl + 24),
+                    padding: EdgeInsets.zero,
                     onPressed: () => ref
                         .read(_catalogGridViewProvider.notifier)
                         .state = !gridView,
@@ -145,7 +153,8 @@ class ProductsScreen extends ConsumerWidget {
             ),
             // Search bar with consistent styling
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              padding: const EdgeInsets.fromLTRB(
+                  DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xs + 2),
               child: TextField(
                 style: TextStyle(color: titleColor),
                 decoration: InputDecoration(
@@ -165,20 +174,21 @@ class ProductsScreen extends ConsumerWidget {
                       ? DesignColors.darkSurfaceElevated
                       : DesignColors.surfaceSubtle.withValues(alpha: 0.3),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide: BorderSide.none,
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide: BorderSide.none,
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
                         const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.md - 1),
                 ),
                 onChanged: (value) =>
                     ref.read(_searchQueryProvider.notifier).state = value,
@@ -193,14 +203,19 @@ class ProductsScreen extends ConsumerWidget {
                     .toList()
                   ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
                 return SizedBox(
-                  height: 38,
+                  // 48 keeps every chip's tap area >=44px tall.
+                  height: DesignSpacing.xl + 28,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.md,
+                        vertical: DesignSpacing.xs),
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.xs),
                         child: _buildChip(
+                          context,
                           label: 'All',
                           selected: selectedCategory == null,
                           onTap: () => ref
@@ -211,8 +226,10 @@ class ProductsScreen extends ConsumerWidget {
                       ),
                       ...activeCategories.map(
                         (cat) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: DesignSpacing.xs),
                           child: _buildChip(
+                            context,
                             label: cat.name,
                             selected: selectedCategory == cat.id,
                             onTap: () {
@@ -242,7 +259,8 @@ class ProductsScreen extends ConsumerWidget {
                 final filtered =
                     _filterProducts(products, selectedCategory, searchQuery);
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+                  padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                      DesignSpacing.xs, DesignSpacing.lg, DesignSpacing.xs + 2),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -250,21 +268,20 @@ class ProductsScreen extends ConsumerWidget {
                         children: [
                           Text(
                             '${filtered.length} product${filtered.length == 1 ? '' : 's'}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: secondaryColor,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                           ),
                         ],
                       ),
                       Text(
                         gridView ? 'Grid' : 'List',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: tertiaryColor,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: tertiaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
                       ),
                     ],
                   ),
@@ -327,57 +344,75 @@ class ProductsScreen extends ConsumerWidget {
                             : Colors.white,
                         child: gridView
                             ? GridView.builder(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                padding: const EdgeInsets.fromLTRB(
+                                    DesignSpacing.lg,
+                                    0,
+                                    DesignSpacing.lg,
+                                    DesignSpacing.xxl),
                                 gridDelegate:
                                     const SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 2,
-                                  crossAxisSpacing: 10,
-                                  mainAxisSpacing: 10,
+                                  crossAxisSpacing: DesignSpacing.sm + 2,
+                                  mainAxisSpacing: DesignSpacing.sm + 2,
                                   childAspectRatio: 0.72,
                                 ),
                                 itemCount: filtered.length,
+                                // First-mount entrance: each card fades/rises
+                                // in once, staggered (see StaggeredItem).
+                                // Keys are stable per product, so pull-to-
+                                // refresh never replays the choreography.
                                 itemBuilder: (context, index) {
                                   final product = filtered[index];
-                                  return _ProductGridCard(
-                                    product: product,
-                                    categoryName:
-                                        categoryMap[product.categoryId] ??
-                                            'Unknown',
-                                    onEdit: perms.canEditProducts
-                                        ? () => _showAddEditProduct(
-                                            context, ref,
-                                            product: product)
-                                        : null,
-                                    onDelete: perms.canEditProducts
-                                        ? () => _confirmDelete(
-                                            context, ref, product)
-                                        : null,
-                                    isDark: isDark,
+                                  return StaggeredItem(
+                                    itemKey: 'catalog-grid-${product.id}',
+                                    index: index,
+                                    child: _ProductGridCard(
+                                      product: product,
+                                      categoryName:
+                                          categoryMap[product.categoryId] ??
+                                              'Unknown',
+                                      onEdit: perms.canEditProducts
+                                          ? () => _showAddEditProduct(
+                                              context, ref,
+                                              product: product)
+                                          : null,
+                                      onDelete: perms.canEditProducts
+                                          ? () => _confirmDelete(
+                                              context, ref, product)
+                                          : null,
+                                      isDark: isDark,
+                                    ),
                                   );
                                 },
                               )
                             : ListView.builder(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                padding: const EdgeInsets.fromLTRB(
+                                    DesignSpacing.lg,
+                                    0,
+                                    DesignSpacing.lg,
+                                    DesignSpacing.xxl),
                                 itemCount: filtered.length,
                                 itemBuilder: (context, index) {
                                   final product = filtered[index];
-                                  return _ProductListTile(
-                                    product: product,
-                                    categoryName:
-                                        categoryMap[product.categoryId] ??
-                                            'Unknown',
-                                    onEdit: perms.canEditProducts
-                                        ? () => _showAddEditProduct(
-                                            context, ref,
-                                            product: product)
-                                        : null,
-                                    onDelete: perms.canEditProducts
-                                        ? () => _confirmDelete(
-                                            context, ref, product)
-                                        : null,
-                                    isDark: isDark,
+                                  return StaggeredItem(
+                                    itemKey: 'catalog-list-${product.id}',
+                                    index: index,
+                                    child: _ProductListTile(
+                                      product: product,
+                                      categoryName:
+                                          categoryMap[product.categoryId] ??
+                                              'Unknown',
+                                      onEdit: perms.canEditProducts
+                                          ? () => _showAddEditProduct(
+                                              context, ref,
+                                              product: product)
+                                          : null,
+                                      onDelete: perms.canEditProducts
+                                          ? () => _confirmDelete(
+                                              context, ref, product)
+                                          : null,
+                                      isDark: isDark,
+                                    ),
                                   );
                                 },
                               ),
@@ -396,9 +431,18 @@ class ProductsScreen extends ConsumerWidget {
                     ),
                   );
                 },
-                loading: () => const Center(
-                    child:
-                        CircularProgressIndicator(color: DesignColors.brand)),
+                loading: () => GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                      DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xxl),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: DesignSpacing.sm + 2,
+                    mainAxisSpacing: DesignSpacing.sm + 2,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: 6,
+                  itemBuilder: (context, index) => const ProductCardShimmer(),
+                ),
                 error: (e, _) => EmptyState(
                   icon: Icons.inventory_2_outlined,
                   title: 'Couldn\'t load products',
@@ -414,55 +458,70 @@ class ProductsScreen extends ConsumerWidget {
       ),
       bottomNavigationBar: perms.canEditProducts
           ? SafeArea(
-              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              minimum: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                  DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.md),
               child: GradientButton(
                 label: 'Add Product',
                 icon: Icons.add_rounded,
                 onPressed: () => _showAddEditProduct(context, ref),
                 height: 52,
-                borderRadius: 12,
+                borderRadius: DesignSpacing.radiusMd,
               ),
             )
           : null,
     );
   }
 
-  Widget _buildChip({
+  Widget _buildChip(
+    BuildContext context, {
     required String label,
     required bool selected,
     required VoidCallback onTap,
     bool isDark = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: DesignAnimation.fast,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? DesignColors.accent
-              : isDark
-                  ? DesignColors.darkSurfaceElevated
-                  : DesignColors.surfaceSubtle,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected
-                ? DesignColors.accent
-                : isDark
-                    ? DesignColors.darkBorder
-                    : DesignColors.surfaceBorder,
+    final borderColor = selected
+        ? DesignColors.accent
+        : isDark
+            ? DesignColors.darkBorder
+            : DesignColors.surfaceBorder;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        // Pressed state: the InkWell ripple doubles as press feedback while
+        // the container keeps its selected/unselected styling.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: DesignSpacing.xl + 24,
+            minHeight: DesignSpacing.xl + 24,
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected
-                ? Colors.black
-                : (isDark
-                    ? DesignColors.darkTextPrimary
-                    : DesignColors.textPrimary),
+          child: AnimatedContainer(
+            duration: DesignAnimation.fast,
+            padding: const EdgeInsets.symmetric(
+                horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
+            decoration: BoxDecoration(
+              color: selected
+                  ? DesignColors.accent
+                  : isDark
+                      ? DesignColors.darkSurfaceElevated
+                      : DesignColors.surfaceSubtle,
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              border: Border.all(color: borderColor),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected
+                          ? Colors.black
+                          : (isDark
+                              ? DesignColors.darkTextPrimary
+                              : DesignColors.textPrimary),
+                    ),
+              ),
+            ),
           ),
         ),
       ),
@@ -651,12 +710,12 @@ class _ProductGridCard extends ConsumerWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onEdit,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         child: Container(
           decoration: BoxDecoration(
             color: surface,
             border: Border.all(color: border),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -667,13 +726,13 @@ class _ProductGridCard extends ConsumerWidget {
                   _ProductImage(
                     imageUrl: product.imageUrl,
                     height: 112,
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(14)),
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(DesignSpacing.radiusLg)),
                     isDark: isDark,
                   ),
                   Positioned(
-                    top: 6,
-                    right: 6,
+                    top: DesignSpacing.xs + 2,
+                    right: DesignSpacing.xs + 2,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: surface.withValues(alpha: 0.92),
@@ -686,7 +745,8 @@ class _ProductGridCard extends ConsumerWidget {
                 ],
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
+                padding: const EdgeInsets.fromLTRB(DesignSpacing.md,
+                    DesignSpacing.sm, DesignSpacing.sm, DesignSpacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -694,37 +754,42 @@ class _ProductGridCard extends ConsumerWidget {
                       product.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: titleColor),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
+                            fontSize: 13,
+                          ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: DesignSpacing.xs - 1),
                     Text(categoryName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 10, color: secondaryColor)),
-                    const SizedBox(height: 7),
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: secondaryColor)),
+                    const SizedBox(height: DesignSpacing.sm - 1),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
                             'KES ${product.price.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: DesignColors.brand),
+                            style: DesignType.numeric(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: DesignColors.brand,
+                            ),
                           ),
                         ),
                         Text(
                           inStock ? '${stock.toStringAsFixed(0)} left' : 'Out',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: inStock
-                                ? DesignColors.success
-                                : DesignColors.error,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: inStock
+                                        ? DesignColors.success
+                                        : DesignColors.error,
+                                  ),
                         ),
                       ],
                     ),
@@ -774,17 +839,17 @@ class _ProductListTile extends ConsumerWidget {
     final stockColor = hasStock ? DesignColors.success : DesignColors.error;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.md),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onEdit,
           child: Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(DesignSpacing.md),
             decoration: BoxDecoration(
                 color: surface,
                 border: Border.all(color: border),
-                borderRadius: BorderRadius.circular(14)),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg)),
             child: Row(
               children: [
                 SizedBox(
@@ -792,11 +857,11 @@ class _ProductListTile extends ConsumerWidget {
                   child: _ProductImage(
                     imageUrl: product.imageUrl,
                     height: 62,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     isDark: isDark,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: DesignSpacing.md),
 
                 // Product info
                 Expanded(
@@ -805,30 +870,32 @@ class _ProductListTile extends ConsumerWidget {
                     children: [
                       Text(
                         product.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: titleColor,
-                        ),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: titleColor,
+                            ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: DesignSpacing.xs - 1),
                       Text('$categoryName · ${product.unit}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: tertiaryColor)),
-                      const SizedBox(height: 2),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: tertiaryColor)),
+                      const SizedBox(height: DesignSpacing.xs - 2),
                       stockAsync.when(
                         data: (qty) => Text(
                           hasStock
                               ? '$stockLabel ${product.unit} in stock'
                               : 'Out of stock',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: stockColor,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: stockColor,
+                                  ),
                         ),
                         loading: () => const SizedBox.shrink(),
                         error: (_, __) => const SizedBox.shrink(),
@@ -837,13 +904,13 @@ class _ProductListTile extends ConsumerWidget {
                   ),
                 ),
 
-                const SizedBox(width: 8),
+                const SizedBox(width: DesignSpacing.sm),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       'KES ${product.price.toStringAsFixed(0)}',
-                      style: const TextStyle(
+                      style: DesignType.numeric(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
                         color: DesignColors.brand,
@@ -874,7 +941,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -886,20 +954,20 @@ class _CategoryManagementSheet extends ConsumerWidget {
                 label: 'Add',
                 icon: Icons.add_rounded,
                 onPressed: () => _showAddCategoryDialog(context),
-                height: 36,
+                height: 44,
                 expanded: false,
-                borderRadius: 10,
+                borderRadius: DesignSpacing.radiusMd,
                 gradient: const [DesignColors.accent],
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: DesignSpacing.sm),
           Divider(
             color:
                 isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
             height: 1,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: DesignSpacing.sm),
           Expanded(
             child: categoriesAsync.when(
               data: (categories) {
@@ -917,11 +985,12 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   itemBuilder: (context, index) {
                     final cat = sorted[index];
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
                       child: GlassCard(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        borderRadius: 12,
+                            horizontal: DesignSpacing.md,
+                            vertical: DesignSpacing.xs + 2),
+                        borderRadius: DesignSpacing.radiusMd,
                         tint: Colors.transparent,
                         borderColor: isDark
                             ? DesignColors.darkBorder
@@ -934,42 +1003,50 @@ class _CategoryManagementSheet extends ConsumerWidget {
                               decoration: BoxDecoration(
                                 color:
                                     DesignColors.brand.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusMd),
                               ),
                               child: Center(
                                 child: Text(
                                   cat.name[0].toUpperCase(),
-                                  style: const TextStyle(
-                                    color: DesignColors.brand,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 18,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        color: DesignColors.brand,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: DesignSpacing.md),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     cat.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                      color: titleColor,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          color: titleColor,
+                                        ),
                                   ),
                                   if (cat.description != null) ...[
-                                    const SizedBox(height: 2),
+                                    const SizedBox(
+                                        height: DesignSpacing.xs - 2),
                                     Text(
                                       cat.description!,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: tertiaryColor,
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: tertiaryColor,
+                                          ),
                                     ),
                                   ],
                                 ],
@@ -979,11 +1056,12 @@ class _CategoryManagementSheet extends ConsumerWidget {
                               onTap: () =>
                                   _showEditCategoryDialog(context, cat),
                               child: Container(
-                                padding: const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(DesignSpacing.sm),
                                 decoration: BoxDecoration(
                                   color:
                                       DesignColors.info.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusSm),
                                 ),
                                 child: const Icon(
                                   Icons.edit_outlined,
@@ -992,15 +1070,16 @@ class _CategoryManagementSheet extends ConsumerWidget {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: DesignSpacing.xs),
                             GestureDetector(
                               onTap: () => _confirmDeleteCategory(context, cat),
                               child: Container(
-                                padding: const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(DesignSpacing.sm),
                                 decoration: BoxDecoration(
                                   color: DesignColors.error
                                       .withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusSm),
                                 ),
                                 child: const Icon(
                                   Icons.delete_outline_rounded,
@@ -1053,11 +1132,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
               : DesignColors.textTertiary;
           return AlertDialog(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             ),
             title: Text('Add Category',
-                style:
-                    TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700, color: titleColor)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1077,16 +1158,18 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                        horizontal: DesignSpacing.lg,
+                        vertical: DesignSpacing.xl - 6),
                   ),
                   textCapitalization: TextCapitalization.words,
                   autofocus: true,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
                 TextField(
                   controller: descController,
                   style: TextStyle(color: titleColor),
@@ -1102,15 +1185,17 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                        horizontal: DesignSpacing.lg,
+                        vertical: DesignSpacing.xl - 6),
                   ),
                   textCapitalization: TextCapitalization.sentences,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
                 ImagePickerSection(
                   initialImageUrl: categoryImageUrl,
                   type: 'category',
@@ -1157,10 +1242,11 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   backgroundColor: DesignColors.accent,
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.xxl,
+                      vertical: DesignSpacing.md),
                 ),
                 child: const Text('Add'),
               ),
@@ -1188,11 +1274,13 @@ class _CategoryManagementSheet extends ConsumerWidget {
               : DesignColors.textSecondary;
           return AlertDialog(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
             ),
             title: Text('Edit Category',
-                style:
-                    TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700, color: titleColor)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1206,15 +1294,17 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                        horizontal: DesignSpacing.lg,
+                        vertical: DesignSpacing.xl - 6),
                   ),
                   textCapitalization: TextCapitalization.words,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
                 TextField(
                   controller: descController,
                   style: TextStyle(color: titleColor),
@@ -1225,15 +1315,17 @@ class _CategoryManagementSheet extends ConsumerWidget {
                         ? DesignColors.darkSurfaceElevated
                         : DesignColors.surfaceSubtle,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                        horizontal: DesignSpacing.lg,
+                        vertical: DesignSpacing.xl - 6),
                   ),
                   textCapitalization: TextCapitalization.sentences,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignSpacing.md),
                 ImagePickerSection(
                   initialImageUrl: categoryImageUrl,
                   type: 'category',
@@ -1283,10 +1375,11 @@ class _CategoryManagementSheet extends ConsumerWidget {
                   backgroundColor: DesignColors.accent,
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.xxl,
+                      vertical: DesignSpacing.md),
                 ),
                 child: const Text('Save'),
               ),

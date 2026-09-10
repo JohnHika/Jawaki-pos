@@ -8,6 +8,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../domain/billing_entitlement.dart';
 import '../providers/entitlement_provider.dart';
 
@@ -201,33 +202,59 @@ class _SubscriptionBillingScreenState
           onRefresh: _loadData,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.sm,
+              DesignSpacing.lg,
+              DesignSpacing.xxxl,
+            ),
             children: [
               if (_error != null) ...[
                 _buildErrorCard(_error!),
-                const SizedBox(height: 16),
+                const SizedBox(height: DesignSpacing.lg),
               ],
-              _buildEntitlementCard(),
-              const SizedBox(height: 20),
-              _buildPayWithMpesaButton(),
-              const SizedBox(height: 12),
+              // First-mount entrance choreography: each section and invoice
+              // row fades/rises in once, staggered (see StaggeredItem).
+              // Keys are stable, so pull-to-refresh never replays them.
+              StaggeredItem(
+                itemKey: 'billing-entitlement',
+                child: _buildEntitlementCard(),
+              ),
+              const SizedBox(height: DesignSpacing.xl),
+              StaggeredItem(
+                itemKey: 'billing-pay-cta',
+                index: 1,
+                child: _buildPayWithMpesaButton(),
+              ),
+              const SizedBox(height: DesignSpacing.md),
               if (_isAdmin) ...[
-                _buildAutoRenewTile(),
-                const SizedBox(height: 24),
+                StaggeredItem(
+                  itemKey: 'billing-auto-renew',
+                  index: 2,
+                  child: _buildAutoRenewTile(),
+                ),
+                const SizedBox(height: DesignSpacing.xxl),
               ],
               const SettingsGroupLabel('Invoice History'),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               if (_isLoadingInvoices)
                 const Center(
                   child: Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: EdgeInsets.all(DesignSpacing.xxl),
                     child: CircularProgressIndicator(),
                   ),
                 )
               else if (_invoices.isEmpty)
                 _buildEmptyInvoices()
               else
-                ..._invoices.map((inv) => _buildInvoiceRow(inv)),
+                ..._invoices.asMap().entries.map(
+                      (entry) => StaggeredItem(
+                        itemKey:
+                            'billing-invoice-${entry.value['id'] ?? entry.key}',
+                        index: 3 + entry.key,
+                        child: _buildInvoiceRow(entry.value),
+                      ),
+                    ),
             ],
           ),
         ),
@@ -238,10 +265,11 @@ class _SubscriptionBillingScreenState
   // ── Entitlement summary card ────────────────────────────────────────
 
   Widget _buildEntitlementCard() {
+    final theme = Theme.of(context);
     if (_isLoadingEntitlement && _entitlement == null) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(40),
+          padding: EdgeInsets.all(DesignSpacing.huge),
           child: CircularProgressIndicator(),
         ),
       );
@@ -250,20 +278,21 @@ class _SubscriptionBillingScreenState
     final entitlement = _entitlement;
     if (entitlement == null) {
       return Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
           color: DesignColors.darkSurface.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(color: DesignColors.darkBorder),
         ),
-        child: const Column(
+        child: Column(
           children: [
-            Icon(Icons.error_outline_rounded,
+            const Icon(Icons.error_outline_rounded,
                 color: DesignColors.darkTextTertiary, size: 40),
-            SizedBox(height: 12),
+            const SizedBox(height: DesignSpacing.md),
             Text(
               'Could not load subscription details',
-              style: TextStyle(color: DesignColors.darkTextSecondary),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: DesignColors.darkTextSecondary),
             ),
           ],
         ),
@@ -275,19 +304,19 @@ class _SubscriptionBillingScreenState
     final nextPayment = entitlement.paidUntil;
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            DesignColors.brand.withValues(alpha: 0.20),
+            DesignColors.brand.withValues(alpha: 0.14),
             DesignColors.darkSurfaceElevated,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(
-          color: DesignColors.brand.withValues(alpha: 0.45),
+          color: DesignColors.brand.withValues(alpha: 0.32),
         ),
       ),
       child: Column(
@@ -301,7 +330,7 @@ class _SubscriptionBillingScreenState
                 height: 44,
                 decoration: BoxDecoration(
                   color: DesignColors.brand.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
                 child: const Icon(
                   Icons.subscriptions_rounded,
@@ -309,36 +338,36 @@ class _SubscriptionBillingScreenState
                   size: 24,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       entitlement.plan.toUpperCase(),
-                      style: const TextStyle(
+                      style: theme.textTheme.titleMedium?.copyWith(
                         color: DesignColors.darkTextPrimary,
                         fontWeight: FontWeight.w800,
-                        fontSize: 18,
                         letterSpacing: 1.0,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: DesignSpacing.xs),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                          horizontal: DesignSpacing.sm,
+                          vertical: DesignSpacing.xs),
                       decoration: BoxDecoration(
                         color: badgeColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusFull),
                         border: Border.all(
                           color: badgeColor.withValues(alpha: 0.35),
                         ),
                       ),
                       child: Text(
                         _statusLabel(entitlement.status),
-                        style: TextStyle(
+                        style: theme.textTheme.labelSmall?.copyWith(
                           color: badgeColor,
-                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.4,
                         ),
@@ -349,7 +378,7 @@ class _SubscriptionBillingScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           // Amount
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -362,25 +391,23 @@ class _SubscriptionBillingScreenState
                   color: DesignColors.darkTextPrimary,
                 ),
               ),
-              const SizedBox(width: 6),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 3),
+              const SizedBox(width: DesignSpacing.sm),
+              Padding(
+                padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
                 child: Text(
                   '/month',
-                  style: TextStyle(
-                    color: DesignColors.darkTextTertiary,
-                    fontSize: 14,
-                  ),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: DesignColors.darkTextTertiary),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           Container(
             height: 1,
             color: DesignColors.darkBorder.withValues(alpha: 0.6),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           // Next payment + days remaining
           if (nextPayment != null)
             _buildInfoRow(
@@ -398,10 +425,10 @@ class _SubscriptionBillingScreenState
               '${entitlement.maxUsers != null ? ' · ${entitlement.maxUsers} users' : ''}',
             ),
           if (entitlement.state == EntitlementState.grace) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             _buildGraceNotice(),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: DesignSpacing.md),
           // Days-remaining progress bar
           _buildDaysProgressBar(days),
         ],
@@ -410,19 +437,18 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         children: [
           Icon(icon, color: DesignColors.darkTextSecondary, size: 16),
-          const SizedBox(width: 8),
+          const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: DesignColors.darkTextSecondary,
-                fontSize: 13,
-              ),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: DesignColors.darkTextSecondary),
             ),
           ),
         ],
@@ -431,26 +457,25 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _buildGraceNotice() {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
         color: DesignColors.warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: DesignColors.warning.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: 0.3)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.schedule_rounded,
+          const Icon(Icons.schedule_rounded,
               color: DesignColors.warning, size: 16),
-          SizedBox(width: 8),
+          const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
               'Payment overdue — you\u2019re in the 3-day grace period. '
               'Pay now to keep creating sales.',
-              style: TextStyle(
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: DesignColors.warning,
-                fontSize: 12,
                 height: 1.35,
               ),
             ),
@@ -461,6 +486,7 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _buildDaysProgressBar(int daysRemaining) {
+    final theme = Theme.of(context);
     // 31-day cycle assumption: the bar depletes as the period runs out.
     const cycleDays = 31;
     final fraction = (daysRemaining / cycleDays).clamp(0.0, 1.0);
@@ -476,11 +502,10 @@ class _SubscriptionBillingScreenState
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
+            Text(
               'DAYS REMAINING',
-              style: TextStyle(
+              style: theme.textTheme.labelSmall?.copyWith(
                 color: DesignColors.darkTextTertiary,
-                fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.6,
               ),
@@ -495,9 +520,9 @@ class _SubscriptionBillingScreenState
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: DesignSpacing.sm),
         ClipRRect(
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
           child: LinearProgressIndicator(
             value: fraction,
             minHeight: 6,
@@ -517,19 +542,20 @@ class _SubscriptionBillingScreenState
       icon: Icons.phone_android_rounded,
       onPressed: _showPaySheet,
       height: 52,
-      borderRadius: 16,
+      borderRadius: DesignSpacing.radiusLg,
     );
   }
 
   Widget _buildAutoRenewTile() {
+    final theme = Theme.of(context);
     final settings = _settings;
     final autoRenew = settings?['autoRenewEnabled'] == true;
     final phone = settings?['billingPhone']?.toString() ?? '';
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.darkBorder),
       ),
       child: Row(
@@ -539,7 +565,7 @@ class _SubscriptionBillingScreenState
             height: 36,
             decoration: BoxDecoration(
               color: DesignColors.accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
             child: const Icon(
               Icons.autorenew_rounded,
@@ -547,30 +573,27 @@ class _SubscriptionBillingScreenState
               size: 20,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Auto-Renew',
-                  style: TextStyle(
+                  style: theme.textTheme.titleSmall?.copyWith(
                     color: DesignColors.darkTextPrimary,
                     fontWeight: FontWeight.w700,
-                    fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: DesignSpacing.xs),
                 Text(
                   autoRenew
                       ? (phone.isEmpty
                           ? 'On — no billing phone set'
                           : 'On — $phone')
                       : 'Off — pay manually each month',
-                  style: const TextStyle(
-                    color: DesignColors.darkTextSecondary,
-                    fontSize: 12,
-                  ),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: DesignColors.darkTextSecondary),
                 ),
               ],
             ),
@@ -597,8 +620,7 @@ class _SubscriptionBillingScreenState
         monthlyAmount: _settings?['plan'] != null
             ? _monthlyAmountFromSettings(_settings!)
             : null,
-        manualPaybillPhone:
-            _settings?['manualPaybill']?['phone']?.toString(),
+        manualPaybillPhone: _settings?['manualPaybill']?['phone']?.toString(),
         accountFormat:
             _settings?['manualPaybill']?['accountFormat']?.toString(),
         onSubmitted: () {
@@ -629,6 +651,7 @@ class _SubscriptionBillingScreenState
   // ── Invoice rows ────────────────────────────────────────────────────
 
   Widget _buildInvoiceRow(Map<String, dynamic> invoice) {
+    final theme = Theme.of(context);
     final amount = invoice['amount'] as num? ?? 0;
     final currency = invoice['currency'] as String? ?? 'KES';
     final status = invoice['status'] as String? ?? '';
@@ -638,15 +661,15 @@ class _SubscriptionBillingScreenState
         (invoice['plan'] != null
             ? '${invoice['plan']} subscription'
             : 'Subscription');
-    final reference = invoice['reference'] as String? ??
-        invoice['mpesaReference'] as String?;
+    final reference =
+        invoice['reference'] as String? ?? invoice['mpesaReference'] as String?;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+      padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.darkBorder),
       ),
       child: Row(
@@ -656,7 +679,7 @@ class _SubscriptionBillingScreenState
             height: 36,
             decoration: BoxDecoration(
               color: DesignColors.darkSurfaceElevated,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
             child: const Icon(
               Icons.receipt_long_rounded,
@@ -664,31 +687,28 @@ class _SubscriptionBillingScreenState
               size: 18,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   description,
-                  style: const TextStyle(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: DesignColors.darkTextPrimary,
                     fontWeight: FontWeight.w600,
-                    fontSize: 13,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: DesignSpacing.xs),
                 Text(
                   date.isNotEmpty ? _formatDate(date) : '',
-                  style: const TextStyle(
-                    color: DesignColors.darkTextTertiary,
-                    fontSize: 11,
-                  ),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: DesignColors.darkTextTertiary),
                 ),
                 if (reference != null && reference.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: DesignSpacing.xs),
                   Text(
                     'M-Pesa $reference',
                     style: DesignType.numeric(
@@ -712,19 +732,18 @@ class _SubscriptionBillingScreenState
                   color: DesignColors.darkTextPrimary,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: DesignSpacing.xs),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.xs, vertical: DesignSpacing.xs),
                 decoration: BoxDecoration(
                   color: statusColor(status).withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
                 ),
                 child: Text(
                   status.replaceAll('_', ' ').toUpperCase(),
-                  style: TextStyle(
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: statusColor(status),
-                    fontSize: 9,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.3,
                   ),
@@ -738,33 +757,30 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _buildEmptyInvoices() {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(DesignSpacing.xxl),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.darkBorder),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.receipt_long_outlined,
+          const Icon(Icons.receipt_long_outlined,
               color: DesignColors.darkTextTertiary, size: 36),
-          SizedBox(height: 10),
+          const SizedBox(height: DesignSpacing.md),
           Text(
             'No invoices yet',
-            style: TextStyle(
-              color: DesignColors.darkTextSecondary,
-              fontSize: 14,
-            ),
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: DesignColors.darkTextSecondary),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: DesignSpacing.xs),
           Text(
             'Invoices appear at each monthly renewal.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: DesignColors.darkTextTertiary,
-              fontSize: 12,
-            ),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: DesignColors.darkTextTertiary),
           ),
         ],
       ),
@@ -773,10 +789,10 @@ class _SubscriptionBillingScreenState
 
   Widget _buildErrorCard(String message) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
         color: DesignColors.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.error.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -784,7 +800,7 @@ class _SubscriptionBillingScreenState
         children: [
           const Icon(Icons.error_outline_rounded,
               color: DesignColors.error, size: 20),
-          const SizedBox(width: 10),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Text(message,
                 style:
@@ -883,7 +899,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
     // The backend fires the STK push against the billing phone on file
     // (auto-charge path). Here we only surface instructions — the actual
     // charge lands as an invoice claim the admin/payment webhook confirms.
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(DesignAnimation.normal);
     if (!mounted) return;
     setState(() {
       _isSubmitting = false;
@@ -894,8 +910,8 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
   Future<void> _submitCode() async {
     final code = _codeController.text.trim().toUpperCase();
     if (code.length < 8) {
-      setState(
-          () => _error = 'Enter the M-Pesa confirmation code (e.g. QGH7XY92K1)');
+      setState(() =>
+          _error = 'Enter the M-Pesa confirmation code (e.g. QGH7XY92K1)');
       return;
     }
     setState(() {
@@ -932,186 +948,185 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final amountLabel = 'KES ${NumberFormat('#,###').format(_amount)}';
+    // Keyboard-safe sheet: lift above the keyboard (viewInsets) and keep
+    // content clear of system gestures (SafeArea).
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.viewInsetsOf(context).bottom,
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: DesignColors.darkBorder,
-                  borderRadius: BorderRadius.circular(2),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.xl,
+            DesignSpacing.lg,
+            DesignSpacing.xl,
+            DesignSpacing.xxl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: DesignColors.darkBorder,
+                    borderRadius: BorderRadius.circular(DesignSpacing.xs),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Pay with M-Pesa',
-              style: TextStyle(
-                color: DesignColors.darkTextPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
+              const SizedBox(height: DesignSpacing.lg),
+              Text(
+                'Pay with M-Pesa',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: DesignColors.darkTextPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Renew your subscription via M-Pesa',
-              style: TextStyle(
-                color: DesignColors.darkTextSecondary,
-                fontSize: 13,
+              const SizedBox(height: DesignSpacing.xs),
+              Text(
+                'Renew your subscription via M-Pesa',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: DesignColors.darkTextSecondary),
               ),
-            ),
-            const SizedBox(height: 18),
+              const SizedBox(height: DesignSpacing.xl),
 
-            // ── Step 1: invoice summary ──
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: DesignColors.darkSurfaceElevated,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: DesignColors.darkBorder),
+              // ── Step 1: invoice summary ──
+              Container(
+                padding: DesignSpacing.paddingCard,
+                decoration: BoxDecoration(
+                  color: DesignColors.darkSurfaceElevated,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                  border: Border.all(color: DesignColors.darkBorder),
+                ),
+                child: Column(
+                  children: [
+                    _buildSummaryRow('Subscription', 'Monthly renewal'),
+                    _buildSummaryRow('Amount due', amountLabel),
+                    if (widget.manualPaybillPhone != null)
+                      _buildSummaryRow('Paybill', widget.manualPaybillPhone!),
+                    if (widget.accountFormat != null)
+                      _buildSummaryRow('Account', widget.accountFormat!),
+                  ],
+                ),
               ),
-              child: Column(
-                children: [
-                  _buildSummaryRow('Subscription', 'Monthly renewal'),
-                  _buildSummaryRow('Amount due', amountLabel),
-                  if (widget.manualPaybillPhone != null)
-                    _buildSummaryRow(
-                        'Paybill', widget.manualPaybillPhone!),
-                  if (widget.accountFormat != null)
-                    _buildSummaryRow('Account', widget.accountFormat!),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
 
-            // Option A: STK push to the number entered
-            const Text(
-              'OPTION 1 — STK PUSH',
-              style: TextStyle(
-                color: DesignColors.darkTextTertiary,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
+              // Option A: STK push to the number entered
+              Text(
+                'OPTION 1 — STK PUSH',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: DesignColors.darkTextTertiary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'M-Pesa phone number',
-                hintText: '07XX XXX XXX',
-                prefixIcon: Icon(Icons.phone_android_rounded),
-                border: OutlineInputBorder(),
+              const SizedBox(height: DesignSpacing.sm),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'M-Pesa phone number',
+                  hintText: '07XX XXX XXX',
+                  prefixIcon: Icon(Icons.phone_android_rounded),
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            if (_stkRequested)
-              const Text(
-                'STK push sent — check your phone and enter your PIN. '
-                'Then confirm below with the M-Pesa code if asked.',
-                style: TextStyle(
-                  color: DesignColors.success,
-                  fontSize: 12,
+              const SizedBox(height: DesignSpacing.md),
+              if (_stkRequested)
+                Text(
+                  'STK push sent — check your phone and enter your PIN. '
+                  'Then confirm below with the M-Pesa code if asked.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: DesignColors.success,
+                    height: 1.35,
+                  ),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: SettingsPrimaryButton(
+                    label: 'Send STK Push',
+                    isLoading: _isSubmitting,
+                    onPressed: _requestStkPush,
+                    color: DesignColors.mpesa,
+                  ),
+                ),
+              const SizedBox(height: DesignSpacing.xl),
+
+              // Option B: manual paybill code entry
+              Text(
+                'OPTION 2 — PAID VIA PAYBILL? ENTER CODE',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: DesignColors.darkTextTertiary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              TextField(
+                controller: _codeController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'M-Pesa confirmation code',
+                  hintText: 'e.g. QGH7XY92K1',
+                  prefixIcon: Icon(Icons.confirmation_number_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              Text(
+                'The code is recorded as a pending claim until an admin '
+                'confirms the payment.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: DesignColors.darkTextTertiary,
                   height: 1.35,
                 ),
-              )
-            else
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: DesignSpacing.md),
+                Text(
+                  _error!,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: DesignColors.error),
+                ),
+              ],
+              const SizedBox(height: DesignSpacing.lg),
               SizedBox(
                 width: double.infinity,
                 child: SettingsPrimaryButton(
-                  label: 'Send STK Push',
+                  label: 'Submit Payment Code',
                   isLoading: _isSubmitting,
-                  onPressed: _requestStkPush,
-                  color: DesignColors.mpesa,
-                ),
-              ),
-            const SizedBox(height: 18),
-
-            // Option B: manual paybill code entry
-            const Text(
-              'OPTION 2 — PAID VIA PAYBILL? ENTER CODE',
-              style: TextStyle(
-                color: DesignColors.darkTextTertiary,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _codeController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'M-Pesa confirmation code',
-                hintText: 'e.g. QGH7XY92K1',
-                prefixIcon: Icon(Icons.confirmation_number_rounded),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'The code is recorded as a pending claim until an admin '
-              'confirms the payment.',
-              style: TextStyle(
-                color: DesignColors.darkTextTertiary,
-                fontSize: 11.5,
-                height: 1.35,
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: DesignColors.error,
-                  fontSize: 12.5,
+                  onPressed: _submitCode,
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: SettingsPrimaryButton(
-                label: 'Submit Payment Code',
-                isLoading: _isSubmitting,
-                onPressed: _submitCode,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildSummaryRow(String label, String value) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: DesignColors.darkTextSecondary,
-              fontSize: 12.5,
-            ),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: DesignColors.darkTextSecondary),
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: theme.textTheme.bodySmall?.copyWith(
               color: DesignColors.darkTextPrimary,
-              fontSize: 12.5,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1185,105 +1200,111 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Keyboard-safe sheet: lift above the keyboard (viewInsets), keep
+    // content clear of system gestures (SafeArea), and scroll when the
+    // keyboard squeezes the available height.
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.viewInsetsOf(context).bottom,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: DesignColors.darkBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Set up Auto-Renew',
-              style: TextStyle(
-                color: DesignColors.darkTextPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'We STK push the plan price to this number each month when '
-              'the subscription renews.',
-              style: TextStyle(
-                color: DesignColors.darkTextSecondary,
-                fontSize: 13,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: DesignColors.darkSurfaceElevated,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: DesignColors.darkBorder),
-              ),
-              // Material wrapper so the tile paints its ink/background on
-              // this Material instead of one hidden behind the decorated
-              // Container (fixes the ListTile-in-DecoratedBox assertion).
-              child: Material(
-                type: MaterialType.transparency,
-                child: SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _autoRenew,
-                  activeThumbColor: DesignColors.accent,
-                  title: const Text(
-                    'Auto-renew subscription',
-                    style: TextStyle(
-                      color: DesignColors.darkTextPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.xl,
+            DesignSpacing.lg,
+            DesignSpacing.xl,
+            DesignSpacing.xxl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: DesignColors.darkBorder,
+                    borderRadius: BorderRadius.circular(DesignSpacing.xs),
                   ),
-                  onChanged: (v) => setState(() => _autoRenew = v),
                 ),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Billing phone number',
-                hintText: '07XX XXX XXX',
-                prefixIcon: Icon(Icons.phone_android_rounded),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: DesignSpacing.lg),
               Text(
-                _error!,
-                style: const TextStyle(
-                  color: DesignColors.error,
-                  fontSize: 12.5,
+                'Set up Auto-Renew',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: DesignColors.darkTextPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.xs),
+              Text(
+                'We STK push the plan price to this number each month when '
+                'the subscription renews.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: DesignColors.darkTextSecondary,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.xl),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
+                decoration: BoxDecoration(
+                  color: DesignColors.darkSurfaceElevated,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                  border: Border.all(color: DesignColors.darkBorder),
+                ),
+                // Material wrapper so the tile paints its ink/background on
+                // this Material instead of one hidden behind the decorated
+                // Container (fixes the ListTile-in-DecoratedBox assertion).
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _autoRenew,
+                    activeThumbColor: DesignColors.accent,
+                    title: Text(
+                      'Auto-renew subscription',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(color: DesignColors.darkTextPrimary),
+                    ),
+                    onChanged: (v) => setState(() => _autoRenew = v),
+                  ),
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.lg),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Billing phone number',
+                  hintText: '07XX XXX XXX',
+                  prefixIcon: Icon(Icons.phone_android_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: DesignSpacing.md),
+                Text(
+                  _error!,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: DesignColors.error),
+                ),
+              ],
+              const SizedBox(height: DesignSpacing.lg),
+              SizedBox(
+                width: double.infinity,
+                child: SettingsPrimaryButton(
+                  label: 'Save',
+                  isLoading: _isSaving,
+                  onPressed: _save,
                 ),
               ),
             ],
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: SettingsPrimaryButton(
-                label: 'Save',
-                isLoading: _isSaving,
-                onPressed: _save,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

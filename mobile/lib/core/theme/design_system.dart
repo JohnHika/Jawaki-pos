@@ -39,6 +39,19 @@ class DesignType {
   static TextStyle get display => GoogleFonts.sora();
   static TextStyle get body => GoogleFonts.plusJakartaSans();
 
+  // ── Inline chat type scale ──────────────────────────────────────
+  // Chat surfaces (AI assistant, pending-turn cards, todo checklist) render
+  // dense inline text; these tokens pin their sizes so screens stop passing
+  // raw numbers to TextStyle(fontSize:).
+  /// Small metadata/label text (badges, checklist headers).
+  static const double chatMeta = 11;
+
+  /// Standard chat body text (bubbles, questions, buttons).
+  static const double chatBody = 14;
+
+  /// Secondary chat text (option descriptions, hints).
+  static const double chatSecondary = 12;
+
   /// Every monetary or counted figure in the app uses this.
   static TextStyle numeric({
     double fontSize = 16,
