@@ -9,6 +9,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 
 /// Cash till vs credit — mirrors CashFundingSource on the backend.
 enum InvoiceFundingSource { cashTill, creditSupplier }
@@ -40,7 +41,8 @@ class InvoiceReviewScreen extends ConsumerStatefulWidget {
       NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
 
   @override
-  ConsumerState<InvoiceReviewScreen> createState() => _InvoiceReviewScreenState();
+  ConsumerState<InvoiceReviewScreen> createState() =>
+      _InvoiceReviewScreenState();
 }
 
 class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
@@ -117,23 +119,25 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
       prefixStyle: prefixText != null
           ? TextStyle(color: secondaryColor, fontWeight: FontWeight.w600)
           : null,
-      prefixIcon:
-          prefixIcon != null ? Icon(prefixIcon, color: tertiaryColor, size: 20) : null,
+      prefixIcon: prefixIcon != null
+          ? Icon(prefixIcon, color: tertiaryColor, size: 20)
+          : null,
       filled: true,
       fillColor: fill,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         borderSide: const BorderSide(color: DesignColors.brand, width: 1.5),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.lg, vertical: DesignSpacing.radiusMd + 2),
     );
   }
 
@@ -173,13 +177,14 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.lg, vertical: DesignSpacing.lg),
                 children: [
                   if (widget.scan.imagePath.isNotEmpty ||
                       widget.scan.summary.isNotEmpty)
                     Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(DesignSpacing.lg),
+                      margin: const EdgeInsets.only(bottom: DesignSpacing.lg),
                       decoration: BoxDecoration(
                         color: surface,
                         border: Border.all(
@@ -190,33 +195,37 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                         children: [
                           if (widget.scan.imagePath.startsWith('http'))
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
                               child: Image.network(
                                 widget.scan.imagePath,
                                 height: 160,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
                               ),
                             ),
                           if (widget.scan.imagePath.startsWith('http'))
-                            const SizedBox(height: 12),
+                            const SizedBox(height: DesignSpacing.md),
                           if (widget.scan.summary.isNotEmpty)
                             Text(widget.scan.summary,
-                                style: TextStyle(fontSize: 12, color: secondaryColor)),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall!
+                                    .copyWith(color: secondaryColor)),
                         ],
                       ),
                     ),
-
                   TextFormField(
                     controller: _supplierController,
                     style: TextStyle(color: titleColor),
                     decoration: _fieldDecoration(context,
-                        labelText: 'Supplier name', prefixIcon: Icons.business_rounded),
+                        labelText: 'Supplier name',
+                        prefixIcon: Icons.business_rounded),
                     onChanged: (_) => setState(() {}),
                   ),
-                  const SizedBox(height: 14),
-
+                  const SizedBox(height: DesignSpacing.radiusMd + 2),
                   Row(
                     children: [
                       Expanded(
@@ -227,18 +236,18 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                               labelText: 'Invoice/receipt number'),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: DesignSpacing.sm + 2),
                       Expanded(
                         child: TextFormField(
                           controller: _termsController,
                           style: TextStyle(color: titleColor),
-                          decoration: _fieldDecoration(context, labelText: 'Terms'),
+                          decoration:
+                              _fieldDecoration(context, labelText: 'Terms'),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-
+                  const SizedBox(height: DesignSpacing.radiusMd + 2),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -252,30 +261,37 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                           onChanged: (_) => setState(() {}),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: DesignSpacing.sm + 2),
                       Expanded(
                         child: InkWell(
                           onTap: () => _pickDueDate(context),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
+                                horizontal: DesignSpacing.lg,
+                                vertical: DesignSpacing.radiusMd + 2),
                             decoration: BoxDecoration(
                               color: isDark
                                   ? DesignColors.darkSurfaceElevated
-                                  : DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
+                                  : DesignColors.surfaceBorder
+                                      .withValues(alpha: 0.15),
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
                             ),
                             child: Row(
                               children: [
                                 Icon(Icons.event_rounded,
                                     color: secondaryColor, size: 20),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: DesignSpacing.sm + 2),
                                 Expanded(
                                   child: Text(
                                     _dueDate == null
                                         ? 'No due date'
-                                        : DateFormat('dd MMM yyyy').format(_dueDate!),
-                                    style: TextStyle(color: titleColor, fontSize: 14),
+                                        : DateFormat('dd MMM yyyy')
+                                            .format(_dueDate!),
+                                    style: TextStyle(
+                                        color: titleColor, fontSize: 14),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -286,14 +302,11 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-
+                  const SizedBox(height: DesignSpacing.lg),
                   Text('Funding source',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: secondaryColor)),
-                  const SizedBox(height: 8),
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                          fontWeight: FontWeight.w600, color: secondaryColor)),
+                  const SizedBox(height: DesignSpacing.sm),
                   SegmentedButton<InvoiceFundingSource>(
                     segments: const [
                       ButtonSegment(
@@ -311,32 +324,36 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                     onSelectionChanged: (selection) =>
                         setState(() => _fundingSource = selection.first),
                   ),
-                  const SizedBox(height: 20),
-
+                  const SizedBox(height: DesignSpacing.xl),
                   Text('Items',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: titleColor)),
-                  const SizedBox(height: 10),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: titleColor)),
+                  const SizedBox(height: DesignSpacing.sm + 2),
                   ..._itemRows.asMap().entries.map(
-                        (entry) => _InvoiceItemCard(
-                          item: entry.value,
-                          onChanged: () => setState(() {}),
-                          onRemove: _itemRows.length == 1
-                              ? null
-                              : () => setState(() {
-                                    _itemRows[entry.key].dispose();
-                                    _itemRows.removeAt(entry.key);
-                                  }),
+                        (entry) => StaggeredItem(
+                          itemKey:
+                              'invoice-item-${entry.key}-${entry.value.name}',
+                          index: entry.key,
+                          child: _InvoiceItemCard(
+                            item: entry.value,
+                            onChanged: () => setState(() {}),
+                            onRemove: _itemRows.length == 1
+                                ? null
+                                : () => setState(() {
+                                      _itemRows[entry.key].dispose();
+                                      _itemRows.removeAt(entry.key);
+                                    }),
+                          ),
                         ),
                       ),
-                  const SizedBox(height: 16),
-
+                  const SizedBox(height: DesignSpacing.lg),
                   _InvoiceTotalsCard(total: _total, paid: _paid, due: _due),
                 ],
               ),
             ),
-
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                  DesignSpacing.md, DesignSpacing.lg, DesignSpacing.lg),
               decoration: BoxDecoration(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 boxShadow: [
@@ -354,7 +371,7 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                   onPressed: _canSave && !_isSaving ? _save : null,
                   isLoading: _isSaving,
                   height: 52,
-                  borderRadius: 14,
+                  borderRadius: DesignSpacing.radiusLg - 2,
                 ),
               ),
             ),
@@ -397,9 +414,11 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
     final payload = {
       'branchId': branchId,
       'supplierName': _supplierController.text.trim(),
-      'invoiceNumber':
-          _invoiceController.text.trim().isEmpty ? null : _invoiceController.text.trim(),
-      'receiptImageUrl': widget.scan.imagePath.isEmpty ? null : widget.scan.imagePath,
+      'invoiceNumber': _invoiceController.text.trim().isEmpty
+          ? null
+          : _invoiceController.text.trim(),
+      'receiptImageUrl':
+          widget.scan.imagePath.isEmpty ? null : widget.scan.imagePath,
       'items': items,
       'paidAmount': double.tryParse(_paidController.text) ?? 0,
       'fundingSource': _fundingSource.wireName,
@@ -422,7 +441,8 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
           eventType: SyncEventType.supplierInvoiceCreated,
           data: {
             ...payload,
-            'offlineId': 'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
+            'offlineId':
+                'offline-invoice-${DateTime.now().microsecondsSinceEpoch}',
           },
           deviceId: authService.deviceId ?? '',
           userId: authService.userId ?? '',
@@ -451,15 +471,18 @@ class _InvoiceItemDraft {
   final TextEditingController unitCostController;
   final TextEditingController skuController;
 
-  _InvoiceItemDraft({String name = '', double quantity = 1, double unitCost = 0, String? sku})
+  _InvoiceItemDraft(
+      {String name = '', double quantity = 1, double unitCost = 0, String? sku})
       : nameController = TextEditingController(text: name),
         quantityController = TextEditingController(
-            text: quantity.toStringAsFixed(quantity.truncateToDouble() == quantity ? 0 : 2)),
-        unitCostController =
-            TextEditingController(text: unitCost == 0 ? '' : unitCost.toStringAsFixed(0)),
+            text: quantity.toStringAsFixed(
+                quantity.truncateToDouble() == quantity ? 0 : 2)),
+        unitCostController = TextEditingController(
+            text: unitCost == 0 ? '' : unitCost.toStringAsFixed(0)),
         skuController = TextEditingController(text: sku ?? '');
 
-  factory _InvoiceItemDraft.fromScan(SupplierReceiptLineItem item) => _InvoiceItemDraft(
+  factory _InvoiceItemDraft.fromScan(SupplierReceiptLineItem item) =>
+      _InvoiceItemDraft(
         name: item.name,
         quantity: item.quantity,
         unitCost: item.unitCost,
@@ -484,25 +507,29 @@ class _InvoiceItemCard extends StatelessWidget {
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
 
-  const _InvoiceItemCard({required this.item, required this.onChanged, this.onRemove});
+  const _InvoiceItemCard(
+      {required this.item, required this.onChanged, this.onRemove});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final fill = isDark
         ? DesignColors.darkSurfaceElevated
         : DesignColors.surfaceBorder.withValues(alpha: 0.15);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.md),
       child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+        padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
+        decoration:
+            BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -515,35 +542,46 @@ class _InvoiceItemCard extends StatelessWidget {
                     style: TextStyle(color: titleColor),
                     decoration: InputDecoration(
                       labelText: 'Product',
-                      labelStyle: TextStyle(color: secondaryColor, fontSize: 12),
+                      labelStyle: Theme.of(context)
+                          .textTheme
+                          .bodySmall!
+                          .copyWith(color: secondaryColor),
                       filled: true,
                       fillColor: fill,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.sm + 2),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.md,
+                          vertical: DesignSpacing.sm + 2),
                     ),
                     onChanged: (_) => onChanged(),
                   ),
                 ),
                 if (onRemove != null) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onRemove,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: DesignColors.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+                  const SizedBox(width: DesignSpacing.sm),
+                  SizedBox(
+                    width: DesignSpacing.huge,
+                    height: DesignSpacing.huge,
+                    child: Material(
+                      color: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.sm + 2),
                       ),
-                      child: const Icon(Icons.delete_outline_rounded,
-                          color: DesignColors.error, size: 18),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: onRemove,
+                        child: const Icon(Icons.delete_outline_rounded,
+                            color: DesignColors.error, size: 18),
+                      ),
                     ),
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: DesignSpacing.sm + 2),
             Row(
               children: [
                 Expanded(
@@ -553,18 +591,24 @@ class _InvoiceItemCard extends StatelessWidget {
                     style: TextStyle(color: titleColor),
                     decoration: InputDecoration(
                       labelText: 'Qty',
-                      labelStyle: TextStyle(color: secondaryColor, fontSize: 12),
+                      labelStyle: Theme.of(context)
+                          .textTheme
+                          .bodySmall!
+                          .copyWith(color: secondaryColor),
                       filled: true,
                       fillColor: fill,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.sm + 2),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.md,
+                          vertical: DesignSpacing.sm + 2),
                     ),
                     onChanged: (_) => onChanged(),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: DesignSpacing.sm),
                 Expanded(
                   child: TextFormField(
                     controller: item.unitCostController,
@@ -572,43 +616,56 @@ class _InvoiceItemCard extends StatelessWidget {
                     style: TextStyle(color: titleColor),
                     decoration: InputDecoration(
                       labelText: 'Cost',
-                      labelStyle: TextStyle(color: secondaryColor, fontSize: 12),
+                      labelStyle: Theme.of(context)
+                          .textTheme
+                          .bodySmall!
+                          .copyWith(color: secondaryColor),
                       filled: true,
                       fillColor: fill,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.sm + 2),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.md,
+                          vertical: DesignSpacing.sm + 2),
                     ),
                     onChanged: (_) => onChanged(),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: DesignSpacing.sm),
                 Expanded(
                   child: TextFormField(
                     controller: item.skuController,
                     style: TextStyle(color: titleColor),
                     decoration: InputDecoration(
                       labelText: 'SKU',
-                      labelStyle: TextStyle(color: secondaryColor, fontSize: 12),
+                      labelStyle: Theme.of(context)
+                          .textTheme
+                          .bodySmall!
+                          .copyWith(color: secondaryColor),
                       filled: true,
                       fillColor: fill,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.sm + 2),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.md,
+                          vertical: DesignSpacing.sm + 2),
                     ),
                     onChanged: (_) => onChanged(),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: DesignSpacing.sm),
             Align(
               alignment: Alignment.centerRight,
               child: Text(
                 InvoiceReviewScreen._currencyFmt.format(item.lineTotal),
-                style: TextStyle(fontWeight: FontWeight.w700, color: titleColor),
+                style:
+                    TextStyle(fontWeight: FontWeight.w700, color: titleColor),
               ),
             ),
           ],
@@ -623,29 +680,32 @@ class _InvoiceTotalsCard extends StatelessWidget {
   final double paid;
   final double due;
 
-  const _InvoiceTotalsCard({required this.total, required this.paid, required this.due});
+  const _InvoiceTotalsCard(
+      {required this.total, required this.paid, required this.due});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final fill = isDark
         ? DesignColors.darkSurfaceElevated
         : DesignColors.surfaceBorder.withValues(alpha: 0.2);
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DesignSpacing.lg),
       decoration: BoxDecoration(color: fill, border: Border.all(color: border)),
       child: Column(
         children: [
           _row('Total', total, secondaryColor, titleColor),
-          const SizedBox(height: 8),
+          const SizedBox(height: DesignSpacing.sm),
           _row('Paid', paid, secondaryColor, titleColor),
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(vertical: DesignSpacing.sm + 2),
             child: Divider(height: 1, color: border),
           ),
           _row('Balance due', due, secondaryColor, titleColor, isStrong: true),
@@ -654,7 +714,8 @@ class _InvoiceTotalsCard extends StatelessWidget {
     );
   }
 
-  Widget _row(String label, double value, Color secondaryColor, Color titleColor,
+  Widget _row(
+      String label, double value, Color secondaryColor, Color titleColor,
       {bool isStrong = false}) {
     return Row(
       children: [

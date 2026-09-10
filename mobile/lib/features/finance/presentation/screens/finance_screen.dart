@@ -13,6 +13,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import 'invoice_review_screen.dart';
 
 /// Cash till vs credit — mirrors CashFundingSource on the backend.
@@ -164,35 +165,46 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               0, (sum, s) => sum + ((s['overdueCount'] as int?) ?? 0));
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
+            padding: const EdgeInsets.fromLTRB(
+                DesignSpacing.lg,
+                DesignSpacing.md,
+                DesignSpacing.lg,
+                DesignSpacing.huge + DesignSpacing.massive - DesignSpacing.xs),
             children: [
-              Row(
-                children: [
-                  Expanded(
-                      child: MetricCard(
-                          title: 'Total Owed',
-                          value: FinanceScreen.currencyFmt.format(totalOwed),
-                          icon: Icons.trending_up_rounded,
-                          color: DesignColors.error)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: MetricCard(
-                          title: 'Total Paid',
-                          value: FinanceScreen.currencyFmt.format(totalPaid),
-                          icon: Icons.check_circle_rounded,
-                          color: DesignColors.success)),
-                ],
+              StaggeredItem(
+                itemKey: 'finance-metrics',
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: MetricCard(
+                            title: 'Total Owed',
+                            value: FinanceScreen.currencyFmt.format(totalOwed),
+                            icon: Icons.trending_up_rounded,
+                            color: DesignColors.error)),
+                    const SizedBox(width: DesignSpacing.md),
+                    Expanded(
+                        child: MetricCard(
+                            title: 'Total Paid',
+                            value: FinanceScreen.currencyFmt.format(totalPaid),
+                            icon: Icons.check_circle_rounded,
+                            color: DesignColors.success)),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              _ReceiptCapturePanel(
-                totalInvoices: totalInvoices,
-                overdueCount: overdue,
-                isScanning: _isScanning,
-                onScan: _pickAndScanReceipt,
-                onManual: _showManualInvoiceDialog,
-                isDark: isDark,
+              const SizedBox(height: DesignSpacing.md),
+              StaggeredItem(
+                itemKey: 'finance-capture-panel',
+                index: 1,
+                child: _ReceiptCapturePanel(
+                  totalInvoices: totalInvoices,
+                  overdueCount: overdue,
+                  isScanning: _isScanning,
+                  onScan: _pickAndScanReceipt,
+                  onManual: _showManualInvoiceDialog,
+                  isDark: isDark,
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
               SectionHeader(
                 title: 'Supplier Balances',
                 subtitle:
@@ -205,7 +217,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   isActive: true,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               if (suppliers.isEmpty)
                 EmptyState(
                   icon: Icons.account_balance_wallet_outlined,
@@ -216,25 +228,39 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   onAction: _pickAndScanReceipt,
                 )
               else
-                ...suppliers.map((s) => _SupplierBalanceCard(
-                      supplier: s,
-                      onRecordPayment: (amount) => _recordPayment(
-                          s['id'] as String, s['name'] as String, amount),
-                      onViewInvoices: () => _showSupplierInvoices(
-                          s['id'] as String, s['name'] as String),
-                      isDark: isDark,
+                ...suppliers.asMap().entries.map((entry) => StaggeredItem(
+                      itemKey:
+                          'finance-supplier-${entry.value['id'] ?? entry.key}',
+                      index: 2 + entry.key,
+                      child: _SupplierBalanceCard(
+                        supplier: entry.value,
+                        onRecordPayment: (amount) => _recordPayment(
+                            entry.value['id'] as String,
+                            entry.value['name'] as String,
+                            amount),
+                        onViewInvoices: () => _showSupplierInvoices(
+                            entry.value['id'] as String,
+                            entry.value['name'] as String),
+                        isDark: isDark,
+                      ),
                     )),
             ],
           );
         },
         loading: () => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.md,
+              DesignSpacing.lg,
+              DesignSpacing.huge + DesignSpacing.massive - DesignSpacing.xs),
           children: List.generate(
               4,
               (_) => const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
+                    padding: EdgeInsets.only(bottom: DesignSpacing.sm + 2),
                     child: ShimmerWidget(
-                        width: double.infinity, height: 100, borderRadius: 14),
+                        width: double.infinity,
+                        height: 100,
+                        borderRadius: DesignSpacing.radiusLg - 2),
                   )),
         ),
         error: (e, _) => EmptyState(
@@ -360,7 +386,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.xs,
+              DesignSpacing.xl, DesignSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,7 +396,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 children: [
                   Icon(Icons.image_not_supported_rounded,
                       color: DesignColors.warning),
-                  SizedBox(width: 10),
+                  SizedBox(width: DesignSpacing.sm + 2),
                   Expanded(
                     child: Text('This doesn\'t look like a receipt',
                         style: TextStyle(
@@ -377,9 +404,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignSpacing.sm),
               Text(reason, style: const TextStyle(fontSize: 13)),
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignSpacing.lg),
               ListTile(
                   leading: const Icon(Icons.photo_camera_rounded),
                   title: const Text('Try another photo'),
@@ -432,9 +459,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         final sheetSecondary = sheetIsDark
             ? DesignColors.darkTextSecondary
             : DesignColors.textSecondary;
+        // NO MediaQuery viewInsets here: GlassBottomSheet already lifts its
+        // content via its own AnimatedPadding keyed on the keyboard inset —
+        // adding this sheet's own would double-count it.
         return Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.sm,
+              DesignSpacing.xl, DesignSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -442,7 +472,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               Text(
                   'Current balance: ${FinanceScreen.currencyFmt.format(currentDebt)}',
                   style: TextStyle(color: sheetSecondary, fontSize: 13)),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               TextField(
                 controller: controller,
                 autofocus: true,
@@ -451,32 +481,37 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     labelText: 'Payment Amount (KES)',
                     prefixIcon: const Icon(Icons.payments_outlined),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12))),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd))),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context, false),
+                      onPressed: () => Navigator.pop(sheetContext, false),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: DesignSpacing.radiusMd + 2),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd)),
                       ),
                       child: const Text('Cancel'),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: DesignSpacing.md),
                   Expanded(
                     flex: 2,
                     child: FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
+                      onPressed: () => Navigator.pop(sheetContext, true),
                       style: FilledButton.styleFrom(
                         backgroundColor: DesignColors.success,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: DesignSpacing.radiusMd + 2),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd)),
                       ),
                       child: const Text('Record Payment'),
                     ),
@@ -631,7 +666,7 @@ class _ReceiptCapturePanel extends StatelessWidget {
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
       decoration:
           BoxDecoration(color: surface, border: Border.all(color: border)),
       child: Column(
@@ -644,10 +679,11 @@ class _ReceiptCapturePanel extends StatelessWidget {
                   height: 42,
                   decoration: BoxDecoration(
                       color: DesignColors.brand.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd)),
                   child: const Icon(Icons.document_scanner_rounded,
                       color: DesignColors.brand)),
-              const SizedBox(width: 12),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -659,13 +695,16 @@ class _ReceiptCapturePanel extends StatelessWidget {
                             color: titleColor)),
                     Text(
                         '$totalInvoices invoice${totalInvoices == 1 ? '' : 's'} tracked, $overdueCount overdue',
-                        style: TextStyle(fontSize: 12, color: secondaryColor)),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall!
+                            .copyWith(color: secondaryColor)),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: DesignSpacing.md),
           Row(
             children: [
               Expanded(
@@ -673,8 +712,10 @@ class _ReceiptCapturePanel extends StatelessWidget {
                       label: isScanning ? 'Scanning...' : 'Scan',
                       icon: Icons.document_scanner_rounded,
                       onPressed: isScanning ? null : onScan,
-                      height: 42)),
-              const SizedBox(width: 10),
+                      // 42 was below the 44px minimum tap target; 48 puts the
+                      // primary capture action on the DesignSpacing.huge grid.
+                      height: DesignSpacing.huge)),
+              const SizedBox(width: DesignSpacing.sm + 2),
               Expanded(
                   child: OutlinedButton.icon(
                       onPressed: onManual,
@@ -721,9 +762,9 @@ class _SupplierBalanceCard extends StatelessWidget {
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
         decoration:
             BoxDecoration(color: surface, border: Border.all(color: border)),
         child: Column(
@@ -735,12 +776,13 @@ class _SupplierBalanceCard extends StatelessWidget {
                     height: 40,
                     decoration: BoxDecoration(
                         color: DesignColors.brand.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.sm + 2),
                         border: Border.all(
                             color: DesignColors.brand.withValues(alpha: 0.15))),
                     child: const Icon(Icons.business_rounded,
                         color: DesignColors.brand, size: 20)),
-                const SizedBox(width: 12),
+                const SizedBox(width: DesignSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -752,24 +794,30 @@ class _SupplierBalanceCard extends StatelessWidget {
                               color: titleColor)),
                       const SizedBox(height: 2),
                       Wrap(
-                        spacing: 10,
+                        spacing: DesignSpacing.sm + 2,
                         runSpacing: 2,
                         children: [
                           Text(
                               'Owed: ${FinanceScreen.currencyFmt.format(totalOwed)}',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: totalOwed > 0
-                                      ? DesignColors.error
-                                      : DesignColors.success,
-                                  fontWeight: FontWeight.w600)),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall!
+                                  .copyWith(
+                                      color: totalOwed > 0
+                                          ? DesignColors.error
+                                          : DesignColors.success,
+                                      fontWeight: FontWeight.w600)),
                           Text(
                               'Paid: ${FinanceScreen.currencyFmt.format(totalPaid)}',
-                              style: TextStyle(
-                                  fontSize: 12, color: tertiaryColor)),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall!
+                                  .copyWith(color: tertiaryColor)),
                           Text('$invoices invoice${invoices == 1 ? '' : 's'}',
-                              style: TextStyle(
-                                  fontSize: 12, color: tertiaryColor)),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall!
+                                  .copyWith(color: tertiaryColor)),
                         ],
                       ),
                     ],
@@ -791,9 +839,9 @@ class _SupplierBalanceCard extends StatelessWidget {
               ],
             ),
             if (totalInvoiced > 0) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: DesignSpacing.sm + 2),
               ClipRRect(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(DesignSpacing.xs),
                 child: LinearProgressIndicator(
                     value: percentage / 100,
                     backgroundColor: border,
@@ -801,7 +849,7 @@ class _SupplierBalanceCard extends StatelessWidget {
                         DesignColors.success),
                     minHeight: 6),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: DesignSpacing.sm - 2),
               Row(
                 children: [
                   Text('${percentage.toStringAsFixed(0)}% paid',

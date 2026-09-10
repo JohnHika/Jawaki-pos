@@ -6,6 +6,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'finance_screen.dart' show FinanceScreen;
 
@@ -102,17 +103,21 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
           final breakdown = Map<String, dynamic>.from(data['breakdown'] as Map);
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                DesignSpacing.md, DesignSpacing.lg, DesignSpacing.xxl),
             children: [
-              MetricCard(
-                title: 'Available to restock',
-                value: FinanceScreen.currencyFmt.format(availableCash),
-                icon: Icons.account_balance_wallet_rounded,
-                color: availableCash > 0
-                    ? DesignColors.success
-                    : DesignColors.error,
+              StaggeredItem(
+                itemKey: 'cashflow-metrics',
+                child: MetricCard(
+                  title: 'Available to restock',
+                  value: FinanceScreen.currencyFmt.format(availableCash),
+                  icon: Icons.account_balance_wallet_rounded,
+                  color: availableCash > 0
+                      ? DesignColors.success
+                      : DesignColors.error,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignSpacing.md),
               Row(
                 children: [
                   Expanded(
@@ -123,7 +128,7 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                       color: DesignColors.success,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: DesignSpacing.md),
                   Expanded(
                     child: MetricCard(
                       title: 'Cash out today',
@@ -134,7 +139,7 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
               const SettingsGroupLabel('CALCULATION MODE'),
               GroupedCard(
                 children: CashFlowMode.values
@@ -146,7 +151,8 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2))
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2))
                               : Icon(
                                   m == mode
                                       ? Icons.radio_button_checked_rounded
@@ -159,51 +165,55 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                         ))
                     .toList(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
               const SettingsGroupLabel('TODAY\'S BREAKDOWN'),
-              GroupedCard(
-                children: [
-                  if (breakdown['salesCashIn'] != null)
+              StaggeredItem(
+                itemKey: 'cashflow-shortcuts',
+                index: 1,
+                child: GroupedCard(
+                  children: [
+                    if (breakdown['salesCashIn'] != null)
+                      SettingsRow(
+                        icon: Icons.point_of_sale_rounded,
+                        iconColor: DesignColors.success,
+                        title: 'Cash sales',
+                        trailing: Text(FinanceScreen.currencyFmt.format(
+                            (breakdown['salesCashIn'] as num).toDouble())),
+                      ),
+                    if (breakdown['allRevenue'] != null)
+                      SettingsRow(
+                        icon: Icons.point_of_sale_rounded,
+                        iconColor: DesignColors.success,
+                        title: 'Total revenue',
+                        trailing: Text(FinanceScreen.currencyFmt.format(
+                            (breakdown['allRevenue'] as num).toDouble())),
+                      ),
+                    if (breakdown['runningBalance'] != null)
+                      SettingsRow(
+                        icon: Icons.savings_outlined,
+                        iconColor: DesignColors.success,
+                        title: 'Running balance',
+                        trailing: Text(FinanceScreen.currencyFmt.format(
+                            (breakdown['runningBalance'] as num).toDouble())),
+                      ),
                     SettingsRow(
-                      icon: Icons.point_of_sale_rounded,
-                      iconColor: DesignColors.success,
-                      title: 'Cash sales',
+                      icon: Icons.local_shipping_outlined,
+                      iconColor: DesignColors.error,
+                      title: 'Restock purchases',
                       trailing: Text(FinanceScreen.currencyFmt
-                          .format((breakdown['salesCashIn'] as num).toDouble())),
+                          .format((breakdown['restockOut'] as num).toDouble())),
                     ),
-                  if (breakdown['allRevenue'] != null)
                     SettingsRow(
-                      icon: Icons.point_of_sale_rounded,
-                      iconColor: DesignColors.success,
-                      title: 'Total revenue',
+                      icon: Icons.receipt_long_outlined,
+                      iconColor: DesignColors.error,
+                      title: 'Expenses',
                       trailing: Text(FinanceScreen.currencyFmt
-                          .format((breakdown['allRevenue'] as num).toDouble())),
+                          .format((breakdown['expenseOut'] as num).toDouble())),
                     ),
-                  if (breakdown['runningBalance'] != null)
-                    SettingsRow(
-                      icon: Icons.savings_outlined,
-                      iconColor: DesignColors.success,
-                      title: 'Running balance',
-                      trailing: Text(FinanceScreen.currencyFmt
-                          .format((breakdown['runningBalance'] as num).toDouble())),
-                    ),
-                  SettingsRow(
-                    icon: Icons.local_shipping_outlined,
-                    iconColor: DesignColors.error,
-                    title: 'Restock purchases',
-                    trailing: Text(FinanceScreen.currencyFmt
-                        .format((breakdown['restockOut'] as num).toDouble())),
-                  ),
-                  SettingsRow(
-                    icon: Icons.receipt_long_outlined,
-                    iconColor: DesignColors.error,
-                    title: 'Expenses',
-                    trailing: Text(FinanceScreen.currencyFmt
-                        .format((breakdown['expenseOut'] as num).toDouble())),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: DesignSpacing.xl),
               GroupedCard(
                 children: [
                   SettingsRow(
@@ -224,13 +234,16 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
           );
         },
         loading: () => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
+              DesignSpacing.lg, DesignSpacing.xxl),
           children: List.generate(
               3,
               (_) => const Padding(
-                    padding: EdgeInsets.only(bottom: 12),
+                    padding: EdgeInsets.only(bottom: DesignSpacing.md),
                     child: ShimmerWidget(
-                        width: double.infinity, height: 90, borderRadius: 14),
+                        width: double.infinity,
+                        height: 90,
+                        borderRadius: DesignSpacing.radiusLg),
                   )),
         ),
         error: (e, _) => EmptyState(
