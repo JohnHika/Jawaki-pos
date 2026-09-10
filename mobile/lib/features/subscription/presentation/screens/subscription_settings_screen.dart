@@ -142,11 +142,10 @@ class _SubscriptionSettingsScreenState
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     'Select a new plan. Changes take effect immediately.',
-                    style: TextStyle(
-                      color: DesignColors.darkTextSecondary,
-                      fontSize: 13,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DesignColors.darkTextSecondary,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -400,11 +399,10 @@ class _SubscriptionSettingsScreenState
                   children: [
                     Text(
                       planName,
-                      style: const TextStyle(
-                        color: DesignColors.darkTextPrimary,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                        letterSpacing: 1.0,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: DesignColors.darkTextPrimary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.0,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -420,11 +418,10 @@ class _SubscriptionSettingsScreenState
                       ),
                       child: Text(
                         _statusLabel(status),
-                        style: TextStyle(
-                          color: _statusColor(status),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.4,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: _statusColor(status),
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
                         ),
                       ),
                     ),
@@ -447,13 +444,12 @@ class _SubscriptionSettingsScreenState
                 ),
               ),
               const SizedBox(width: 6),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 3),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
                 child: Text(
                   '/month',
-                  style: TextStyle(
-                    color: DesignColors.darkTextTertiary,
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: DesignColors.darkTextTertiary,
                   ),
                 ),
               ),
@@ -469,12 +465,11 @@ class _SubscriptionSettingsScreenState
                     color: DesignColors.accent.withValues(alpha: 0.25),
                   ),
                 ),
-                child: const Text(
+                child: Text(
                   'KES 35,000 setup',
-                  style: TextStyle(
-                    color: DesignColors.accent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: DesignColors.accent,
+                      fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -521,9 +516,8 @@ class _SubscriptionSettingsScreenState
           const SizedBox(width: 8),
           Text(
             text,
-            style: const TextStyle(
-              color: DesignColors.darkTextSecondary,
-              fontSize: 13,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: DesignColors.darkTextSecondary,
             ),
           ),
         ],
@@ -569,10 +563,9 @@ class _SubscriptionSettingsScreenState
               children: [
                 Text(
                   description,
-                  style: const TextStyle(
-                    color: DesignColors.darkTextPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: DesignColors.darkTextPrimary,
+                      fontWeight: FontWeight.w600,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -580,9 +573,8 @@ class _SubscriptionSettingsScreenState
                 const SizedBox(height: 2),
                 Text(
                   date.isNotEmpty ? _formatDate(date) : '',
-                  style: const TextStyle(
-                    color: DesignColors.darkTextTertiary,
-                    fontSize: 11,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: DesignColors.darkTextTertiary,
                   ),
                 ),
               ],
@@ -608,11 +600,10 @@ class _SubscriptionSettingsScreenState
                 ),
                 child: Text(
                   status.toUpperCase(),
-                  style: TextStyle(
-                    color: _statusColor(status),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: _statusColor(status),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
                   ),
                 ),
               ),
@@ -631,25 +622,23 @@ class _SubscriptionSettingsScreenState
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: DesignColors.darkBorder),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.receipt_long_outlined,
+          const Icon(Icons.receipt_long_outlined,
               color: DesignColors.darkTextTertiary, size: 36),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Text(
             'No invoices yet',
-            style: TextStyle(
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: DesignColors.darkTextSecondary,
-              fontSize: 14,
             ),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
             'Invoices will appear after your first billing cycle.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: DesignColors.darkTextTertiary,
-              fontSize: 12,
             ),
           ),
         ],
@@ -708,10 +697,9 @@ class _SubscriptionSettingsScreenState
       ),
       child: Text(
         'What\u2019s included in $planName',
-        style: const TextStyle(
-          color: DesignColors.darkTextPrimary,
-          fontWeight: FontWeight.w800,
-          fontSize: 16,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: DesignColors.darkTextPrimary,
+            fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -836,10 +824,9 @@ class _PlanOptionTile extends StatelessWidget {
                     children: [
                       Text(
                         name,
-                        style: const TextStyle(
-                          color: DesignColors.darkTextPrimary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: DesignColors.darkTextPrimary,
+                            fontWeight: FontWeight.w700,
                         ),
                       ),
                       if (isCurrent) ...[
@@ -852,12 +839,11 @@ class _PlanOptionTile extends StatelessWidget {
                                 .withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(999),
                           ),
-                          child: const Text(
+                          child: Text(
                             'CURRENT',
-                            style: TextStyle(
-                              color: DesignColors.darkTextTertiary,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: DesignColors.darkTextTertiary,
+                                fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
@@ -867,9 +853,8 @@ class _PlanOptionTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     price,
-                    style: const TextStyle(
-                      color: DesignColors.darkTextSecondary,
-                      fontSize: 12,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DesignColors.darkTextSecondary,
                     ),
                   ),
                 ],

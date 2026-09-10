@@ -120,16 +120,16 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                 const SizedBox(height: 8),
                 Text(
                   'Profit Adjustment',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Adjust your cost of goods to match your accounting method',
-                  style: TextStyle(fontSize: 14, color: secondaryColor),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: secondaryColor),
                 ),
                 const SizedBox(height: 20),
 
@@ -144,11 +144,14 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('Current Sales:',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, color: titleColor)),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
+                              )),
                           Text(currencyFmt.format(widget.currentRevenue),
                               style: DesignType.numeric(
-                                  fontSize: 14, color: titleColor)),
+                                  color: titleColor,
+                              )),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -160,7 +163,8 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                                   fontWeight: FontWeight.w600, color: titleColor)),
                           Text(currencyFmt.format(widget.currentCost),
                               style: DesignType.numeric(
-                                  fontSize: 14, color: titleColor)),
+                                  color: titleColor,
+                              )),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -196,10 +200,10 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Your Adjusted Profit:', style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.success,
-                          )),
+                          Text('Your Adjusted Profit:',
+                              style: DesignType.numeric(
+                                color: DesignColors.success,
+                              )),
                           Text(currencyFmt.format(_newProfit),
                               style: DesignType.numeric(
                             color: DesignColors.success,
@@ -215,16 +219,17 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                 // Adjustment input
                 Text(
                   'Set Your Cost of Goods',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: titleColor,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _adjustmentController,
-                  style: TextStyle(color: titleColor),
+                  style: DesignType.numeric(
+                      color: titleColor,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Total cost of goods for today',
                     hintText: 'Enter your actual cost of goods',
@@ -310,7 +315,8 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                           Expanded(
                             child: Text(
                               'No complex calculations - just clean, simple math!',
-                              style: TextStyle(color: secondaryColor, fontSize: 12),
+                              style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: secondaryColor),
                             ),
                           ),
                         ],
@@ -348,10 +354,9 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
             children: [
               Text(
                 'Use this screen to adjust your profit calculation when:',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: titleColor,
                 ),
               ),
               const SizedBox(height: 12),
@@ -370,7 +375,9 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(item,
-                          style: TextStyle(fontSize: 14, color: titleColor)),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: titleColor,
+                          )),
                     ),
                   ],
                 ),
@@ -378,7 +385,9 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
               const SizedBox(height: 16),
               Text(
                 'Your adjustment will be saved and used for all profit reports today.',
-                style: TextStyle(fontSize: 12, color: secondaryColor),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: secondaryColor,
+                ),
               ),
             ],
           ),

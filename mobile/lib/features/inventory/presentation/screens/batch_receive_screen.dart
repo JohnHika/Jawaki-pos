@@ -391,7 +391,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       labelText: labelText,
       hintText: hintText,
       helperText: helperText,
-      helperStyle: TextStyle(color: tertiaryColor, fontSize: 12),
+      helperStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: tertiaryColor,
+      ),
       hintStyle: TextStyle(color: tertiaryColor),
       labelStyle: TextStyle(color: secondaryColor, fontWeight: FontWeight.w500),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
@@ -507,17 +509,17 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               children: [
                                 Text(
                                   _resolvedProductName ?? 'Selected Product',
-                                  style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
-                                    color: titleColor,
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: titleColor,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
-                                  style: TextStyle(
-                                      fontSize: 13, color: secondaryColor),
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                  ),
                                 ),
                               ],
                             ),
@@ -551,10 +553,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                   ),
                                   child: Text(
                                     '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: DesignColors.brand,
-                                      fontWeight: FontWeight.w500,
+                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                        color: DesignColors.brand,
+                                        fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ),
@@ -606,18 +607,16 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                             children: [
                               Text(
                                 'Total Batches:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: secondaryColor,
-                                  fontWeight: FontWeight.w500,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: secondaryColor,
+                                    fontWeight: FontWeight.w500,
                                 ),
                               ),
                               Text(
                                 '${_batches.length}',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: titleColor,
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: titleColor,
                                 ),
                               ),
                             ],
@@ -678,20 +677,18 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                   ),
                   child: Text(
                     '${index + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   'Batch ${index + 1}',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: titleColor,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: titleColor,
                   ),
                 ),
                 const Spacer(),
@@ -773,10 +770,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                             isDark ? DesignColors.darkSurface : Colors.white,
                         icon: Icon(Icons.expand_more_rounded,
                             color: tertiaryColor),
-                        style: TextStyle(
-                          color: titleColor,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: titleColor,
+                            fontWeight: FontWeight.w600,
                         ),
                         items: _unitConfig!.availableUnits.map((unit) {
                           return DropdownMenuItem(
@@ -831,10 +827,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                         children: [
                           Text(
                             'Expiry Date',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: secondaryColor,
-                              fontWeight: FontWeight.w500,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                                fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -844,14 +839,13 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                 : DateFormat(
                                     'MMM d, yyyy',
                                   ).format(batch.expiryDate!),
-                            style: TextStyle(
-                              color: batch.expiryDate == null
-                                  ? tertiaryColor
-                                  : titleColor,
-                              fontWeight: batch.expiryDate != null
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                              fontSize: 14,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: batch.expiryDate == null
+                                ? tertiaryColor
+                                : titleColor,
+                                fontWeight: batch.expiryDate != null
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                             ),
                           ),
                         ],
@@ -874,10 +868,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
               child: ExpansionTile(
                 title: Text(
                   'Additional Details (Optional)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: secondaryColor,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: secondaryColor,
                   ),
                 ),
                 tilePadding: EdgeInsets.zero,
@@ -911,10 +904,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               children: [
                                 Text(
                                   'Manufacture Date',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: secondaryColor,
-                                    fontWeight: FontWeight.w500,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                      fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -924,14 +916,13 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                       : DateFormat(
                                           'MMM d, yyyy',
                                         ).format(batch.manufactureDate!),
-                                  style: TextStyle(
-                                    color: batch.manufactureDate == null
-                                        ? tertiaryColor
-                                        : titleColor,
-                                    fontWeight: batch.manufactureDate != null
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                    fontSize: 14,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: batch.manufactureDate == null
+                                      ? tertiaryColor
+                                      : titleColor,
+                                      fontWeight: batch.manufactureDate != null
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
                                   ),
                                 ),
                               ],
@@ -1027,10 +1018,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
           Expanded(
             child: Text(
               '= $baseQty ${_unitConfig!.baseUnit}${baseQty > 1 ? 's' : ''}',
-              style: const TextStyle(
-                fontSize: 14,
-                color: DesignColors.brand,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: DesignColors.brand,
+                  fontWeight: FontWeight.w600,
               ),
             ),
           ),

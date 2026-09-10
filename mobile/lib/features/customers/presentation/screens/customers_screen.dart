@@ -115,11 +115,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 children: [
                   Text(
                     'Contact details',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: tertiaryColor,
-                      letterSpacing: 0.4,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: tertiaryColor,
+                        letterSpacing: 0.4,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -169,17 +168,18 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   const SizedBox(height: 20),
                   Text(
                     'Credit sale (optional)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: tertiaryColor,
-                      letterSpacing: 0.4,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: tertiaryColor,
+                        letterSpacing: 0.4,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Record what this customer owes right now if they\'re taking stock today and paying later.',
-                    style: TextStyle(fontSize: 12, color: secondaryColor),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: secondaryColor,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -355,10 +355,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                           Expanded(
                             child: Text(
                               '${_overdueInstallments.length} overdue payment${_overdueInstallments.length == 1 ? '' : 's'} — follow up today',
-                              style: const TextStyle(
-                                  fontSize: 12,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   fontWeight: FontWeight.w600,
-                                  color: DesignColors.error),
+                                  color: DesignColors.error,
+                              ),
                             ),
                           ),
                           const Icon(Icons.chevron_right_rounded,
@@ -419,7 +419,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ChoiceChip(
                     label: const Text('All customers'),
                     visualDensity: VisualDensity.compact,
-                    labelStyle: const TextStyle(fontSize: 12),
+                    labelStyle: Theme.of(context).textTheme.bodySmall,
                     selected: !_showDebtOnly,
                     onSelected: (_) {
                       setState(() => _showDebtOnly = false);
@@ -432,7 +432,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     avatar: const Icon(Icons.account_balance_wallet_outlined,
                         size: 16),
                     visualDensity: VisualDensity.compact,
-                    labelStyle: const TextStyle(fontSize: 12),
+                    labelStyle: Theme.of(context).textTheme.bodySmall,
                     selected: _showDebtOnly,
                     selectedColor: DesignColors.error.withValues(alpha: 0.15),
                     onSelected: (_) {
@@ -524,19 +524,19 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                       CrossAxisAlignment.start,
                                                   children: [
                                                     Text(c['name'] ?? '',
-                                                        style: TextStyle(
+                                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                                             fontWeight:
-                                                                FontWeight.w600,
-                                                            fontSize: 14,
-                                                            color: titleColor)),
+                                                            FontWeight.w600,
+                                                            color: titleColor,
+                                                        )),
                                                     if ((c['phone'] ?? '')
                                                         .toString()
                                                         .isNotEmpty)
                                                       Text(c['phone'],
-                                                          style: TextStyle(
-                                                              fontSize: 12,
+                                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                                               color:
-                                                                  secondaryColor)),
+                                                              secondaryColor,
+                                                          )),
                                                     if ((c['location'] ?? '')
                                                         .toString()
                                                         .isNotEmpty)
@@ -553,10 +553,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                           const SizedBox(
                                                               width: 2),
                                                           Text(c['location'],
-                                                              style: TextStyle(
-                                                                  fontSize: 11,
+                                                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                                                   color:
-                                                                      tertiaryColor)),
+                                                                  tertiaryColor,
+                                                              )),
                                                         ],
                                                       ),
                                                   ],
@@ -569,27 +569,25 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                   if (balance > 0)
                                                     Text(
                                                         'Owes KES ${balance.toStringAsFixed(0)}',
-                                                        style: const TextStyle(
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            fontSize: 13,
+                                                        style: DesignType.numeric(
                                                             color: DesignColors
-                                                                .error))
+                                                            .error,
+                                                            fontWeight: FontWeight.w700,
+                                                        ))
                                                   else
                                                     Text(
                                                         'KES ${(c['totalSpent'] as num?)?.toStringAsFixed(0) ?? '0'}',
-                                                        style: const TextStyle(
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            fontSize: 13,
+                                                        style: DesignType.numeric(
                                                             color: DesignColors
-                                                                .brand)),
+                                                            .brand,
+                                                            fontWeight: FontWeight.w700,
+                                                        )),
                                                   Text(
                                                       '${c['totalPurchases'] ?? 0} purchases',
-                                                      style: TextStyle(
-                                                          fontSize: 11,
+                                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                                           color:
-                                                              tertiaryColor)),
+                                                          tertiaryColor,
+                                                      )),
                                                 ],
                                               ),
                                             ],

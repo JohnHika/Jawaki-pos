@@ -316,10 +316,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     widget.companyName == null || widget.companyName!.isEmpty
                         ? 'Start with a 7-day free trial. No subscription charges until your trial ends.'
                         : '${widget.companyName} is ready. Pick a plan to start your 7-day free trial.',
-                    style: const TextStyle(
-                      color: DesignColors.darkTextSecondary,
-                      fontSize: 15,
-                      height: 1.45,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: DesignColors.darkTextSecondary,
+                        height: 1.45,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -351,13 +350,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     borderRadius: 16,
                   ),
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     'A one-time KSh 35,000 setup fee applies before your free trial begins. Cancel anytime during the trial.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: DesignColors.darkTextTertiary,
-                      fontSize: 12,
-                      height: 1.4,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DesignColors.darkTextTertiary,
+                        height: 1.4,
                     ),
                   ),
                   const SizedBox(height: 36),
@@ -391,11 +389,11 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
           ),
         ),
         const SizedBox(width: 14),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'AXON / SUBSCRIPTION',
                 style: TextStyle(
                   color: DesignColors.darkTextPrimary,
@@ -403,14 +401,13 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   letterSpacing: 1.6,
                 ),
               ),
-              SizedBox(height: 3),
+              const SizedBox(height: 3),
               Text(
                 'STEP 4 · CHOOSE PLAN',
-                style: TextStyle(
-                  color: DesignColors.accent,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.1,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: DesignColors.accent,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
                 ),
               ),
             ],
@@ -469,11 +466,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         children: [
                           Text(
                             plan.name,
-                            style: const TextStyle(
-                              color: DesignColors.darkTextPrimary,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 20,
-                              letterSpacing: 1.2,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                color: DesignColors.darkTextPrimary,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
                             ),
                           ),
                           if (plan.isPopular) ...[
@@ -490,13 +486,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                                       .withValues(alpha: 0.4),
                                 ),
                               ),
-                              child: const Text(
+                              child: Text(
                                 'POPULAR',
-                                style: TextStyle(
-                                  color: DesignColors.accent,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: DesignColors.accent,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.8,
                                 ),
                               ),
                             ),
@@ -506,10 +501,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       const SizedBox(height: 4),
                       Text(
                         plan.tagline,
-                        style: const TextStyle(
-                          color: DesignColors.darkTextSecondary,
-                          fontSize: 13,
-                          height: 1.35,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: DesignColors.darkTextSecondary,
+                            height: 1.35,
                         ),
                       ),
                     ],
@@ -544,13 +538,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
                     '/month',
-                    style: TextStyle(
-                      color: DesignColors.darkTextTertiary,
-                      fontSize: 14,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: DesignColors.darkTextTertiary,
                     ),
                   ),
                 ),
@@ -614,25 +607,23 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             size: 22,
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'One-time setup fee',
-                  style: TextStyle(
-                    color: DesignColors.darkTextPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: DesignColors.darkTextPrimary,
+                      fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'KSh 35,000 gets your business fully onboarded before your trial starts.',
-                  style: TextStyle(
-                    color: DesignColors.darkTextSecondary,
-                    fontSize: 12,
-                    height: 1.35,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: DesignColors.darkTextSecondary,
+                      height: 1.35,
                   ),
                 ),
               ],
@@ -663,12 +654,11 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'See exactly what you get with each plan.',
-          style: TextStyle(
-            color: DesignColors.darkTextTertiary,
-            fontSize: 13,
-            height: 1.4,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: DesignColors.darkTextTertiary,
+              height: 1.4,
           ),
         ),
         const SizedBox(height: 16),
@@ -692,17 +682,16 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     bottom: BorderSide(color: DesignColors.darkBorder),
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     Expanded(
                       flex: 3,
                       child: Text(
                         'Feature',
-                        style: TextStyle(
-                          color: DesignColors.darkTextTertiary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: DesignColors.darkTextTertiary,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
                         ),
                       ),
                     ),
@@ -711,11 +700,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       child: Center(
                         child: Text(
                           'CORE',
-                          style: TextStyle(
-                            color: DesignColors.darkTextPrimary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.8,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: DesignColors.darkTextPrimary,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
                           ),
                         ),
                       ),
@@ -725,11 +713,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       child: Center(
                         child: Text(
                           'ENTERPRISE',
-                          style: TextStyle(
-                            color: DesignColors.accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.8,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: DesignColors.accent,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
                           ),
                         ),
                       ),
@@ -760,10 +747,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             flex: 3,
             child: Text(
               feature.text,
-              style: const TextStyle(
-                color: DesignColors.darkTextSecondary,
-                fontSize: 13,
-                height: 1.35,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: DesignColors.darkTextSecondary,
+                  height: 1.35,
               ),
             ),
           ),

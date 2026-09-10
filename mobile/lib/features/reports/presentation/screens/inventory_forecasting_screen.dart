@@ -228,10 +228,9 @@ class _InventoryForecastingScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Last 7 Days — Units Sold',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -291,7 +290,9 @@ class _InventoryForecastingScreenState
                             padding: const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               _forecastData[index]['day'] ?? '',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tertiaryColor, fontSize: 12),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: tertiaryColor,
+                              ),
                             ),
                           );
                         }
@@ -307,7 +308,9 @@ class _InventoryForecastingScreenState
                           padding: const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
                             '${value.toInt()}',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tertiaryColor, fontSize: 11),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: tertiaryColor,
+                            ),
                           ),
                         );
                       },
@@ -360,10 +363,9 @@ class _InventoryForecastingScreenState
                   children: [
                     Text(
                       'Low Stock Alerts',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: titleColor,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: titleColor,
                       ),
                     ),
                     const Spacer(),
@@ -430,25 +432,26 @@ class _InventoryForecastingScreenState
                           Text(
                             name,
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: DesignSpacing.xs),
-                          Text(sku, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor)),
+                          Text(sku,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                              )),
                         ],
                       ),
                     ),
                     Text(
                       isOut ? 'Out of Stock' : '$quantity left',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color:
-                            isOut ? DesignColors.error : DesignColors.warning,
+                          fontWeight: FontWeight.bold,
+                          color:
+                          isOut ? DesignColors.error : DesignColors.warning,
                       ),
                     ),
                   ],
@@ -496,10 +499,9 @@ class _InventoryForecastingScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Fast Moving Items',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -534,12 +536,11 @@ class _InventoryForecastingScreenState
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: index == 0
-                                ? Colors.amber[700]
-                                : secondaryColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: index == 0
+                              ? Colors.amber[700]
+                              : secondaryColor,
+                              fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
@@ -552,9 +553,8 @@ class _InventoryForecastingScreenState
                           Text(
                             product['productName'] ?? 'Unknown',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -562,7 +562,9 @@ class _InventoryForecastingScreenState
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalRevenue']?.toStringAsFixed(0) ?? 0} revenue',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                            ),
                           ),
                         ],
                       ),
@@ -600,10 +602,9 @@ class _InventoryForecastingScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Slow Moving Items',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -637,10 +638,9 @@ class _InventoryForecastingScreenState
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: secondaryColor,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: secondaryColor,
+                              fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -653,9 +653,8 @@ class _InventoryForecastingScreenState
                           Text(
                             product['productName'] ?? 'Unknown',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -663,7 +662,9 @@ class _InventoryForecastingScreenState
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalRevenue']?.toStringAsFixed(0) ?? 0} revenue',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                            ),
                           ),
                         ],
                       ),

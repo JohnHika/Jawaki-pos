@@ -195,8 +195,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       identity.userFirstName.isNotEmpty
                           ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
                           : 'Good ${_getGreeting()}',
-                      style: TextStyle(
-                        fontSize: 22,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: Theme.of(context).brightness == Brightness.dark
                             ? DesignColors.darkTextPrimary
@@ -206,8 +205,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     const SizedBox(height: DesignSpacing.xs - 2),
                     Text(
                       identity.companyName,
-                      style: const TextStyle(
-                        fontSize: 13,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: DesignColors.accent,
                       ),
@@ -215,11 +213,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
                       _dateFmt.format(DateTime.now()),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).brightness == Brightness.dark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
                       ),
                     ),
                   ],
@@ -270,11 +267,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 subtitle: 'Today\'s transactions',
                 trailing: Text(
                   'Last 10',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? DesignColors.darkTextTertiary
-                        : DesignColors.textTertiary,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).brightness == Brightness.dark
+                      ? DesignColors.darkTextTertiary
+                      : DesignColors.textTertiary,
                   ),
                 ),
               ),
@@ -344,23 +340,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       children: [
                                         Text(
                                           sale.receiptNumber,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13.5,
-                                            color: isDark
-                                                ? DesignColors.darkTextPrimary
-                                                : DesignColors.textPrimary,
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: isDark
+                                              ? DesignColors.darkTextPrimary
+                                              : DesignColors.textPrimary,
                                           ),
                                         ),
                                         const SizedBox(
                                             height: DesignSpacing.xs - 1),
                                         Text(
                                           '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
-                                          style: TextStyle(
-                                            fontSize: 11.5,
-                                            color: isDark
-                                                ? DesignColors.darkTextTertiary
-                                                : DesignColors.textTertiary,
+                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                              color: isDark
+                                              ? DesignColors.darkTextTertiary
+                                              : DesignColors.textTertiary,
                                           ),
                                         ),
                                       ],
@@ -541,13 +535,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     const SizedBox(width: DesignSpacing.sm),
                     Text(
                       'AI BRIEF',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
-                        color: isDark
-                            ? DesignColors.darkTextTertiary
-                            : DesignColors.textTertiary,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                          color: isDark
+                          ? DesignColors.darkTextTertiary
+                          : DesignColors.textTertiary,
                       ),
                     ),
                   ],
@@ -564,12 +557,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       // "**bold**" and "| pipe | text |" instead of formatting.
                       return GptMarkdown(
                         brief.trim(),
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          height: 1.45,
-                          color: isDark
-                              ? DesignColors.darkTextSecondary
-                              : DesignColors.textSecondary,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            height: 1.45,
+                            color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
                         ),
                       );
                     }
@@ -591,12 +583,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       const SizedBox(width: DesignSpacing.sm),
                       Text(
                         'Thinking about today\'s numbers...',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: isDark
-                              ? DesignColors.darkTextTertiary
-                              : DesignColors.textTertiary,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontStyle: FontStyle.italic,
+                            color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
                         ),
                       ),
                     ],
@@ -630,12 +621,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
               child: Text(
                 snippet,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  height: 1.45,
-                  color: isDark
-                      ? DesignColors.darkTextSecondary
-                      : DesignColors.textSecondary,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    height: 1.45,
+                    color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
                 ),
               ),
             ),
@@ -687,13 +677,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   children: [
                     Text(
                       "TODAY'S COST & PROFIT",
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
-                        color: isDark
-                            ? DesignColors.darkTextTertiary
-                            : DesignColors.textTertiary,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                          color: isDark
+                          ? DesignColors.darkTextTertiary
+                          : DesignColors.textTertiary,
                       ),
                     ),
                     const Spacer(),
@@ -721,18 +710,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             horizontal: DesignSpacing.sm + DesignSpacing.xs,
                           ),
                           alignment: Alignment.center,
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.tune_rounded,
+                              const Icon(Icons.tune_rounded,
                                   size: 14, color: DesignColors.accent),
-                              SizedBox(width: DesignSpacing.xs),
+                              const SizedBox(width: DesignSpacing.xs),
                               Text('ADJUST',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.5,
-                                    color: DesignColors.accent,
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.5,
+                                      color: DesignColors.accent,
                                   )),
                             ],
                           ),
@@ -783,13 +771,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       children: [
         Text(
           label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.4,
-            color: isDark
-                ? DesignColors.darkTextTertiary
-                : DesignColors.textTertiary,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: isDark
+              ? DesignColors.darkTextTertiary
+              : DesignColors.textTertiary,
           ),
         ),
         const SizedBox(height: DesignSpacing.xs - 1),

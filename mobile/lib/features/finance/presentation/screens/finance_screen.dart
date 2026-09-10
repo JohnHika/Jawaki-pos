@@ -392,20 +392,21 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.image_not_supported_rounded,
+                  const Icon(Icons.image_not_supported_rounded,
                       color: DesignColors.warning),
-                  SizedBox(width: DesignSpacing.sm + 2),
+                  const SizedBox(width: DesignSpacing.sm + 2),
                   Expanded(
                     child: Text('This doesn\'t look like a receipt',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 16)),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                        )),
                   ),
                 ],
               ),
               const SizedBox(height: DesignSpacing.sm),
-              Text(reason, style: const TextStyle(fontSize: 13)),
+              Text(reason, style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: DesignSpacing.lg),
               ListTile(
                   leading: const Icon(Icons.photo_camera_rounded),
@@ -471,7 +472,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             children: [
               Text(
                   'Current balance: ${FinanceScreen.currencyFmt.format(currentDebt)}',
-                  style: TextStyle(color: sheetSecondary, fontSize: 13)),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: sheetSecondary)),
               const SizedBox(height: DesignSpacing.md),
               TextField(
                 controller: controller,
@@ -591,8 +593,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
             Text(supplierName,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                )),
             const SizedBox(height: 12),
             if (invoices.isEmpty)
               const EmptyState(
@@ -626,9 +629,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
                         Text(invoice['status'] as String,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: DesignColors.textTertiary)),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: DesignColors.textTertiary,
+                            )),
                       ],
                     ),
                   )),
@@ -689,10 +692,10 @@ class _ReceiptCapturePanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Supplier Receipt Intake',
-                        style: TextStyle(
-                            fontSize: 15,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: titleColor)),
+                            color: titleColor,
+                        )),
                     Text(
                         '$totalInvoices invoice${totalInvoices == 1 ? '' : 's'} tracked, $overdueCount overdue',
                         style: Theme.of(context)
@@ -788,10 +791,10 @@ class _SupplierBalanceCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(supplier['name'] as String,
-                          style: TextStyle(
-                              fontSize: 14,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: titleColor)),
+                              color: titleColor,
+                          )),
                       const SizedBox(height: 2),
                       Wrap(
                         spacing: DesignSpacing.sm + 2,
@@ -853,14 +856,16 @@ class _SupplierBalanceCard extends StatelessWidget {
               Row(
                 children: [
                   Text('${percentage.toStringAsFixed(0)}% paid',
-                      style: TextStyle(fontSize: 10, color: tertiaryColor)),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: tertiaryColor,
+                      )),
                   if (overdue > 0) ...[
                     const SizedBox(width: 8),
                     Text('$overdue overdue',
-                        style: const TextStyle(
-                            fontSize: 10,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: DesignColors.error,
-                            fontWeight: FontWeight.w700)),
+                            fontWeight: FontWeight.w700,
+                        )),
                   ],
                   const Spacer(),
                   if (lastPayment != null)
@@ -870,7 +875,9 @@ class _SupplierBalanceCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.end,
-                        style: TextStyle(fontSize: 10, color: tertiaryColor),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: tertiaryColor,
+                        ),
                       ),
                     ),
                 ],

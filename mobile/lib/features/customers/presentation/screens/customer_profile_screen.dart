@@ -258,10 +258,10 @@ class _CustomerProfileScreenState
                               child: Text(
                                   (_customer!['name'] as String)[0]
                                       .toUpperCase(),
-                                  style: const TextStyle(
-                                      fontSize: 28,
+                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                       fontWeight: FontWeight.bold,
-                                      color: DesignColors.brand)),
+                                      color: DesignColors.brand,
+                                  )),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -269,11 +269,11 @@ class _CustomerProfileScreenState
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(_customer!['name'],
-                                      style: TextStyle(
-                                          fontSize: 20,
+                                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                           fontWeight: FontWeight.w800,
                                           letterSpacing: -0.5,
-                                          color: titleColor)),
+                                          color: titleColor,
+                                      )),
                                   if ((_customer!['phone'] ?? '')
                                       .toString()
                                       .isNotEmpty)
@@ -282,9 +282,9 @@ class _CustomerProfileScreenState
                                           size: 14, color: secondaryColor),
                                       const SizedBox(width: 4),
                                       Text(_customer!['phone'],
-                                          style: TextStyle(
-                                              fontSize: 13,
-                                              color: secondaryColor))
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: secondaryColor,
+                                          ))
                                     ]),
                                   if ((_customer!['location'] ?? '')
                                       .toString()
@@ -295,9 +295,9 @@ class _CustomerProfileScreenState
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(_customer!['location'],
-                                            style: TextStyle(
-                                                fontSize: 13,
-                                                color: secondaryColor)),
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                color: secondaryColor,
+                                            )),
                                       ),
                                     ]),
                                 ],
@@ -361,7 +361,9 @@ class _CustomerProfileScreenState
                               horizontal: 16, vertical: 12),
                           child: Text(
                             'No scheduled payments. Add one when this customer takes stock on credit.',
-                            style: TextStyle(fontSize: 13, color: tertiaryColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: tertiaryColor,
+                            ),
                           ),
                         )
                       else
@@ -403,10 +405,10 @@ class _CustomerProfileScreenState
                                       children: [
                                         Text(
                                           'KES ${(inst['amount'] as num).toStringAsFixed(0)}',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              color: titleColor),
+                                          style: DesignType.numeric(
+                                              color: titleColor,
+                                              fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                         Text(
                                           isPaid
@@ -414,8 +416,9 @@ class _CustomerProfileScreenState
                                               : isOverdue
                                                   ? 'Overdue — was due ${dueDate.day}/${dueDate.month}/${dueDate.year}'
                                                   : 'Due ${dueDate.day}/${dueDate.month}/${dueDate.year}',
-                                          style: TextStyle(
-                                              fontSize: 12, color: statusColor),
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: statusColor,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -451,13 +454,14 @@ class _CustomerProfileScreenState
                                   const SizedBox(width: 10),
                                   Expanded(
                                       child: Text(p['productName'] ?? '',
-                                          style: TextStyle(
-                                              fontSize: 13, color: titleColor))),
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: titleColor,
+                                          ))),
                                   Text('${p['timesBought'] ?? 0}x',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: DesignColors.brand)),
+                                      style: DesignType.numeric(
+                                          color: DesignColors.brand,
+                                          fontWeight: FontWeight.w700,
+                                      )),
                                 ]),
                               ),
                             ))),
@@ -493,29 +497,28 @@ class _CustomerProfileScreenState
                                         Expanded(
                                             child: Text(
                                                 'Receipt #${(s['id'] as String).substring(0, 8).toUpperCase()}',
-                                                style: TextStyle(
-                                                    fontSize: 13,
+                                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                                     fontWeight: FontWeight.w600,
-                                                    color: titleColor))),
+                                                    color: titleColor,
+                                                ))),
                                         Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.end,
                                             children: [
                                               Text(
                                                   'KES ${(s['total'] as num).toStringAsFixed(0)}',
-                                                  style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 14,
-                                                      color: DesignColors.brand)),
+                                                  style: DesignType.numeric(
+                                                      color: DesignColors.brand,
+                                                      fontWeight: FontWeight.w700,
+                                                  )),
                                           Text(
                                               s['createdAt']
                                                       ?.toString()
                                                       .substring(0, 10) ??
                                                   '',
-                                              style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: tertiaryColor)),
+                                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                  color: tertiaryColor,
+                                              )),
                                         ]),
                                       ]),
                                     ),

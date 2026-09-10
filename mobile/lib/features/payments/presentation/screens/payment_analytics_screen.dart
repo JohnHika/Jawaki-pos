@@ -232,12 +232,11 @@ class _PaymentAnalyticsScreenState
                     child: Text(
                       period,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color:
-                            isSelected ? DesignColors.accent : secondaryColor,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                          color:
+                          isSelected ? DesignColors.accent : secondaryColor,
                       ),
                     ),
                   ),
@@ -331,10 +330,9 @@ class _PaymentAnalyticsScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Payment Method Breakdown',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -379,7 +377,9 @@ class _PaymentAnalyticsScreenState
                             _formatPaymentMethod(method),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 14, color: titleColor),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: titleColor,
+                            ),
                           ),
                         ),
                         const SizedBox(width: DesignSpacing.md),
@@ -389,10 +389,9 @@ class _PaymentAnalyticsScreenState
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
                             ),
                           ),
                         ),
@@ -415,10 +414,9 @@ class _PaymentAnalyticsScreenState
                         const SizedBox(width: DesignSpacing.md),
                         Text(
                           formatMoney(total, symbol: 'KSh '),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: color,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: color,
                           ),
                         ),
                       ],
@@ -458,10 +456,9 @@ class _PaymentAnalyticsScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Transaction Trends',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -526,9 +523,8 @@ class _PaymentAnalyticsScreenState
                             padding: const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               time,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: tertiaryColor,
-                                fontSize: 11,
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: tertiaryColor,
                               ),
                             ),
                           );
@@ -545,9 +541,8 @@ class _PaymentAnalyticsScreenState
                           padding: const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
                             'KSh ${(value as num).toInt() ~/ 1000}k',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: tertiaryColor,
-                              fontSize: 11,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: tertiaryColor,
                             ),
                           ),
                         );
@@ -610,10 +605,9 @@ class _PaymentAnalyticsScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Peak Hours Analysis',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -656,9 +650,8 @@ class _PaymentAnalyticsScreenState
                         child: Text(
                           '$hourNum:00',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: color,
+                              fontWeight: FontWeight.bold,
+                              color: color,
                           ),
                         ),
                       ),
@@ -678,16 +671,18 @@ class _PaymentAnalyticsScreenState
                               const SizedBox(width: DesignSpacing.xs),
                               Text(
                                 _formatHourLabel(hourNum),
-                                style:
-                                    Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13, color: titleColor),
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: titleColor,
+                                ),
                               ),
                             ],
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '$count transactions',
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                            ),
                           ),
                         ],
                       ),
@@ -702,17 +697,17 @@ class _PaymentAnalyticsScreenState
                             child: Text(
                               formatMoney(total, symbol: 'KSh '),
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: color,
+                                  fontWeight: FontWeight.bold,
+                                  color: color,
                               ),
                             ),
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${trafficShare.toStringAsFixed(1)}% of traffic',
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 11, color: secondaryColor),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: secondaryColor,
+                            ),
                           ),
                         ],
                       ),

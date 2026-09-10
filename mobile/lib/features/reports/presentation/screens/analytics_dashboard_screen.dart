@@ -231,12 +231,11 @@ class _AnalyticsDashboardScreenState
                     child: Text(
                       period,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color:
-                            isSelected ? DesignColors.accent : secondaryColor,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                          color:
+                          isSelected ? DesignColors.accent : secondaryColor,
                       ),
                     ),
                   ),
@@ -333,10 +332,9 @@ class _AnalyticsDashboardScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Sales Trend',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -399,8 +397,9 @@ class _AnalyticsDashboardScreenState
                             padding: const EdgeInsets.only(top: DesignSpacing.sm),
                             child: Text(
                               time,
-                              style:
-                                  Theme.of(context).textTheme.bodyMedium?.copyWith(color: tertiaryColor, fontSize: 11),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: tertiaryColor,
+                              ),
                             ),
                           );
                         }
@@ -469,10 +468,9 @@ class _AnalyticsDashboardScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Top Products',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -522,16 +520,15 @@ class _AnalyticsDashboardScreenState
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: index == 0
-                                ? Colors.amber[700]
-                                : index == 1
-                                    ? Colors.grey[700]
-                                    : index == 2
-                                        ? Colors.orange[700]
-                                        : tertiaryColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: index == 0
+                              ? Colors.amber[700]
+                              : index == 1
+                              ? Colors.grey[700]
+                              : index == 2
+                              ? Colors.orange[700]
+                              : tertiaryColor,
+                              fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
@@ -544,9 +541,8 @@ class _AnalyticsDashboardScreenState
                           Text(
                             product['productName'] ?? 'Unknown',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -554,8 +550,9 @@ class _AnalyticsDashboardScreenState
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${product['totalQty']} units sold',
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                            ),
                           ),
                         ],
                       ),
@@ -566,15 +563,16 @@ class _AnalyticsDashboardScreenState
                         Text(
                           'KSh ${revenue.toStringAsFixed(0)}',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: DesignColors.success,
+                              fontWeight: FontWeight.bold,
+                              color: DesignColors.success,
                           ),
                         ),
                         const SizedBox(height: DesignSpacing.xs),
                         Text(
                           '${(revenue / (_summary['totalRevenue'] ?? 1) * 100).toStringAsFixed(1)}%',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 11, color: secondaryColor),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: secondaryColor,
+                          ),
                         ),
                       ],
                     ),
@@ -613,10 +611,9 @@ class _AnalyticsDashboardScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Payments',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -671,16 +668,16 @@ class _AnalyticsDashboardScreenState
                           Text(
                             _formatPaymentMethod(method),
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
                             ),
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '$count transactions',
-                            style:
-                                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12, color: secondaryColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: secondaryColor,
+                            ),
                           ),
                         ],
                       ),
@@ -691,15 +688,16 @@ class _AnalyticsDashboardScreenState
                         Text(
                           'KSh ${total.toStringAsFixed(0)}',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: titleColor,
+                              fontWeight: FontWeight.bold,
+                              color: titleColor,
                           ),
                         ),
                         const SizedBox(height: DesignSpacing.xs),
                         Text(
                           '$percent%',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 11, color: secondaryColor),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: secondaryColor,
+                          ),
                         ),
                       ],
                     ),
@@ -736,8 +734,7 @@ class _AnalyticsDashboardScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Sales by Category',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: titleColor,
                 ),
@@ -782,7 +779,9 @@ class _AnalyticsDashboardScreenState
                             catName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13, color: titleColor),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: titleColor,
+                            ),
                           ),
                         ),
                         const SizedBox(width: DesignSpacing.md),
@@ -792,10 +791,9 @@ class _AnalyticsDashboardScreenState
                             alignment: Alignment.centerRight,
                             child: Text(
                               'KSh ${total.toStringAsFixed(0)}',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
                               ),
                             ),
                           ),
@@ -847,10 +845,9 @@ class _AnalyticsDashboardScreenState
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Hourly Sales Distribution',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
                 ),
               ),
             ],
@@ -911,8 +908,9 @@ class _AnalyticsDashboardScreenState
                               padding: const EdgeInsets.only(top: DesignSpacing.sm),
                               child: Text(
                                 time,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: tertiaryColor, fontSize: 11),
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: tertiaryColor,
+                                ),
                               ),
                             );
                           }

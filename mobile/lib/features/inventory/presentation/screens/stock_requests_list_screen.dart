@@ -123,14 +123,14 @@ class _StockRequestsListScreenState
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 indicatorPadding: const EdgeInsets.all(4),
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                ),
+                labelStyle: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+                unselectedLabelStyle: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(fontWeight: FontWeight.w500),
                 tabs: const [
                   Tab(text: 'Pending'),
                   Tab(text: 'Approved'),
@@ -245,16 +245,16 @@ class _StockRequestsListScreenState
                     children: [
                       Text(
                         productName,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: titleColor,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
                         ),
                       ),
                       if (productSku.isNotEmpty)
                         Text(
                           'SKU: $productSku',
-                          style: TextStyle(fontSize: 11, color: tertiaryColor),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: tertiaryColor),
                         ),
                     ],
                   ),
@@ -282,19 +282,17 @@ class _StockRequestsListScreenState
                       children: [
                         Text(
                           'Requested',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: secondaryColor,
-                            fontWeight: FontWeight.w500,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: secondaryColor,
+                              fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           '$quantity $unit',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: titleColor,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: titleColor,
                           ),
                         ),
                       ],
@@ -307,23 +305,21 @@ class _StockRequestsListScreenState
                       children: [
                         Text(
                           'Current Stock',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: secondaryColor,
-                            fontWeight: FontWeight.w500,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: secondaryColor,
+                              fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           '$currentStock $unit',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: currentStock == 0
-                                ? DesignColors.error
-                                : currentStock < quantity
-                                    ? DesignColors.warning
-                                    : DesignColors.success,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: currentStock == 0
+                              ? DesignColors.error
+                              : currentStock < quantity
+                              ? DesignColors.warning
+                              : DesignColors.success,
                           ),
                         ),
                       ],
@@ -337,11 +333,10 @@ class _StockRequestsListScreenState
               const SizedBox(height: 10),
               Text(
                 reason,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: secondaryColor,
-                  fontStyle: FontStyle.italic,
-                  height: 1.3,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: secondaryColor,
+                    fontStyle: FontStyle.italic,
+                    height: 1.3,
                 ),
               ),
             ],
@@ -356,18 +351,23 @@ class _StockRequestsListScreenState
                 Expanded(
                   child: Text(
                     requesterName,
-                    style: TextStyle(fontSize: 11, color: tertiaryColor),
+                    style: Theme.of(context).textTheme.labelSmall
+                        ?.copyWith(color: tertiaryColor),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Icon(Icons.store_outlined, size: 14, color: tertiaryColor),
                 const SizedBox(width: 4),
-                Text(branchName, style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                Text(branchName,
+                    style: Theme.of(context).textTheme.labelSmall
+                        ?.copyWith(color: tertiaryColor)),
                 const SizedBox(width: 12),
                 Icon(Icons.access_time_rounded, size: 14, color: tertiaryColor),
                 const SizedBox(width: 4),
-                Text(_formatDate(createdAt), style: TextStyle(fontSize: 11, color: tertiaryColor)),
+                Text(_formatDate(createdAt),
+                    style: Theme.of(context).textTheme.labelSmall
+                        ?.copyWith(color: tertiaryColor)),
               ],
             ),
 
@@ -468,11 +468,10 @@ class _StockRequestsListScreenState
           const SizedBox(width: 4),
           Text(
             priority.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: color,
-              letterSpacing: 0.5,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.5,
             ),
           ),
         ],
@@ -565,11 +564,10 @@ class _StockRequestsListScreenState
                 Expanded(
                   child: Text(
                     'Request Details',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: titleColor,
-                      letterSpacing: -0.3,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: titleColor,
+                        letterSpacing: -0.3,
                     ),
                   ),
                 ),
@@ -623,15 +621,15 @@ class _StockRequestsListScreenState
                   children: [
                     Text(
                       request['productName'] ?? '',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        color: titleColor,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
                       ),
                     ),
                     Text(
                       'SKU: ${request['productSku'] ?? ''}',
-                      style: TextStyle(fontSize: 12, color: tertiaryColor),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: tertiaryColor),
                     ),
                   ],
                 ),
@@ -697,7 +695,10 @@ class _StockRequestsListScreenState
                 ),
                 child: Text(
                   request['reason'] as String,
-                  style: TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: secondaryColor,
+                      height: 1.4,
+                  ),
                 ),
               ),
             ],
@@ -734,19 +735,17 @@ class _StockRequestsListScreenState
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: tertiaryColor,
-                  fontWeight: FontWeight.w500,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: tertiaryColor,
+                    fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: titleColor,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: titleColor,
                 ),
               ),
             ],
