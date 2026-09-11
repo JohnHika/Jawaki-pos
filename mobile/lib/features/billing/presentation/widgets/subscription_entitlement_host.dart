@@ -3,19 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/billing_entitlement.dart';
 import '../providers/entitlement_provider.dart';
+import 'subscription_expiry_toast.dart';
 import 'subscription_restricted_banner.dart';
 
-/// Global subscription banner host, mounted in the home shell scaffold
+/// Global subscription notice host, mounted in the home shell scaffold
 /// (directly under the offline banner, above the routed child).
 ///
 /// Watches [entitlementProvider] (fetched on login/app-resume) and renders:
-///  - red restricted banner when `restrictedMode` is true
-///  - amber expiry reminder when `daysRemaining` is 1..7
-///  - nothing when ACTIVE with comfortable runway
+///  - a RED, layout-pushing BANNER when `restrictedMode` is true — sales
+///    creation is actually blocked, so this deserves permanent visibility
+///    (Stripe's own guidance: banners are for things needing action that
+///    block the user; https://docs.stripe.com/stripe-apps/patterns/communicating-state).
+///  - an AMBER, floating, dismissible TOAST when the plan is merely
+///    expiring soon (1–7 days) — informational only, nothing is blocked,
+///    so it must never resize every screen under it. It anchors above the
+///    bottom nav like a standard mobile toast instead.
+///  - nothing when ACTIVE with comfortable runway.
 ///
-/// Dismissal is per-session (a Set of dismissed variant keys) — the banner
+/// Dismissal is per-session (a Set of dismissed variant keys) — the notice
 /// reappears after a fresh fetch flips the state. Never blocks navigation
-/// to data screens: it's a passive strip in the shell, not a gate.
+/// to data screens: both are passive, not gates.
 class SubscriptionEntitlementHost extends ConsumerStatefulWidget {
   const SubscriptionEntitlementHost({super.key, required this.child});
 
@@ -39,51 +46,55 @@ class _SubscriptionEntitlementHostState
     // no cache): show nothing rather than guessing.
     if (entitlement == null) return widget.child;
 
-    final banner = _buildBanner(entitlement);
-    if (banner == null) return widget.child;
-
-    return Column(
-      children: [
-        banner,
-        Expanded(child: widget.child),
-      ],
-    );
-  }
-
-  Widget? _buildBanner(BillingEntitlement entitlement) {
-    // 1. Restricted mode — red, non-blocking.
-    if (entitlement.restrictedMode ||
-        entitlement.state == EntitlementState.restricted) {
-      if (_dismissed.contains(SubscriptionBannerVariant.restricted)) {
-        return null;
-      }
-      return SubscriptionRestrictedBanner(
-        key: const ValueKey('billing-banner-restricted'),
-        restrictedReason: entitlement.restrictedReason,
-        onDismiss: () => setState(
-            () => _dismissed.add(SubscriptionBannerVariant.restricted)),
+    // 1. Restricted mode — red, layout-pushing banner. Sales are actually
+    //    blocked, so this earns permanent space above the content.
+    if (_isRestricted(entitlement) &&
+        !_dismissed.contains(SubscriptionBannerVariant.restricted)) {
+      return Column(
+        children: [
+          SubscriptionRestrictedBanner(
+            key: const ValueKey('billing-banner-restricted'),
+            restrictedReason: entitlement.restrictedReason,
+            onDismiss: () => setState(
+                () => _dismissed.add(SubscriptionBannerVariant.restricted)),
+          ),
+          Expanded(child: widget.child),
+        ],
       );
     }
 
-    // 2. Expiry reminder — amber, daysRemaining <= 7 (per John's spec).
-    //    day -3 and beyond (grace) is covered by the restricted banner
-    //    via PAST_DUE/GRACE_PERIOD + restrictedMode from the server.
-    final days = entitlement.daysRemaining;
-    if (isExpiringSoon(entitlement)) {
-      if (_dismissed.contains(SubscriptionBannerVariant.reminder)) {
-        return null;
-      }
-      return SubscriptionRestrictedBanner.reminder(
-        key: const ValueKey('billing-banner-reminder'),
-        daysRemaining: days ?? 0,
-        expiryDate:
-            entitlement.paidUntil == null ? null : DateTime.tryParse(entitlement.paidUntil!),
-        onDismiss: () =>
-            setState(() => _dismissed.add(SubscriptionBannerVariant.reminder)),
+    // 2. Expiry reminder — amber, floating toast anchored above the bottom
+    //    nav. Nothing is blocked, so the child keeps its full layout;
+    //    the toast overlays on top instead of pushing content down.
+    if (isExpiringSoon(entitlement) &&
+        !_dismissed.contains(SubscriptionBannerVariant.reminder)) {
+      return Stack(
+        children: [
+          widget.child,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: SubscriptionExpiryToast(
+                key: const ValueKey('billing-toast-reminder'),
+                daysRemaining: entitlement.daysRemaining ?? 0,
+                onDismiss: () => setState(
+                    () => _dismissed.add(SubscriptionBannerVariant.reminder)),
+              ),
+            ),
+          ),
+        ],
       );
     }
-    return null;
+
+    return widget.child;
   }
+
+  bool _isRestricted(BillingEntitlement entitlement) =>
+      entitlement.restrictedMode ||
+      entitlement.state == EntitlementState.restricted;
 }
 
 /// True when the entitlement says the paid window closes within 7 days.

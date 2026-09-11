@@ -106,6 +106,9 @@ void main() {
 
     expect(find.text('Subscription expires in 5 days'), findsOneWidget);
     expect(find.text('Renew'), findsOneWidget);
+    // The reminder is a floating toast, not an inline banner: the routed
+    // child must still be fully present underneath it.
+    expect(find.text('POS CONTENT'), findsOneWidget);
   });
 
   testWidgets('daysRemaining > 7 → no banner', (tester) async {

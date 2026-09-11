@@ -558,23 +558,61 @@ class _OverviewTab extends StatelessWidget {
         .length;
     final net = snapshot.retailReceivablesOutstanding +
         snapshot.peerReceivablesOutstanding;
-    return ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
-      _MetricCard(
-          label: 'We owe suppliers',
-          value: snapshot.supplierPayablesOutstanding,
-          color: DesignColors.error),
-      _MetricCard(
-          label: 'Customers owe us',
-          value: snapshot.retailReceivablesOutstanding,
-          color: DesignColors.info),
-      _MetricCard(
-          label: 'Other shops owe us',
-          value: snapshot.peerReceivablesOutstanding,
-          color: DesignColors.brand),
-      _MetricCard(
-          label: 'Net receivable', value: net, color: DesignColors.success),
-      _CountCard(overdue: overdue),
-    ]);
+    // A proper 2-column dashboard grid (Row of paired Expanded cards inside
+    // a Column) instead of one full-width card stacked under the next —
+    // the four related totals read as a single grouped panel, not a list.
+    return ListView(
+      padding: DesignSpacing.paddingScreen,
+      children: <Widget>[
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: _MetricCard(
+                  label: 'We owe suppliers',
+                  value: snapshot.supplierPayablesOutstanding,
+                  color: DesignColors.error,
+                ),
+              ),
+              const SizedBox(width: DesignSpacing.sm),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Customers owe us',
+                  value: snapshot.retailReceivablesOutstanding,
+                  color: DesignColors.info,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: _MetricCard(
+                  label: 'Other shops owe us',
+                  value: snapshot.peerReceivablesOutstanding,
+                  color: DesignColors.brand,
+                ),
+              ),
+              const SizedBox(width: DesignSpacing.sm),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Net receivable',
+                  value: net,
+                  color: DesignColors.success,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        _CountCard(overdue: overdue),
+      ],
+    );
   }
 }
 
@@ -705,11 +743,23 @@ class _MetricCard extends StatelessWidget {
           padding: DesignSpacing.paddingCard,
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(label, style: Theme.of(context).textTheme.labelLarge),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: DesignSpacing.xs),
-                Text(FinanceScreen.currencyFmt.format(value),
-                    style: DesignType.numeric(fontSize: 22, color: color)),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    FinanceScreen.currencyFmt.format(value),
+                    style: DesignType.numeric(fontSize: 20, color: color),
+                  ),
+                ),
               ])));
 }
 
@@ -749,32 +799,54 @@ class _LedgerCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Padding(
           padding: DesignSpacing.paddingCard,
-          child: Row(children: <Widget>[
-            Icon(icon, color: DesignColors.brand),
-            const SizedBox(width: DesignSpacing.md),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                  Text(title, style: Theme.of(context).textTheme.titleSmall),
-                  Text(subtitle),
-                  if (dueDate != null)
-                    Text(
-                        'Due ${DateFormat('d MMM y').format(dueDate!.toLocal())}',
-                        style: Theme.of(context).textTheme.labelSmall),
-                ])),
-            Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: <Widget>[
-                  Text(FinanceScreen.currencyFmt.format(value),
-                      style: DesignType.numeric(fontSize: 14)),
-                  if (action != null)
-                    SizedBox(
-                        height: DesignSpacing.huge,
-                        child: TextButton(
-                            onPressed: onAction, child: Text(action!))),
-                ]),
-          ])));
+          child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(icon, color: DesignColors.brand),
+                const SizedBox(width: DesignSpacing.md),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (dueDate != null)
+                        Text(
+                            'Due ${DateFormat('d MMM y').format(dueDate!.toLocal())}',
+                            style: Theme.of(context).textTheme.labelSmall),
+                    ])),
+                const SizedBox(width: DesignSpacing.sm),
+                SizedBox(
+                  width: 96,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(FinanceScreen.currencyFmt.format(value),
+                              style: DesignType.numeric(fontSize: 14)),
+                        ),
+                        if (action != null)
+                          SizedBox(
+                              height: DesignSpacing.huge,
+                              child: TextButton(
+                                  onPressed: onAction,
+                                  child: Text(action!,
+                                      overflow: TextOverflow.ellipsis))),
+                      ]),
+                ),
+              ])));
 }
 
 class _ShopCard extends StatelessWidget {

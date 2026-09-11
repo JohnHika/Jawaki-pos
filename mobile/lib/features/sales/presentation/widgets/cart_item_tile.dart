@@ -64,11 +64,39 @@ class CartItemTile extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    item.productName,
-                    style: Theme.of(context).textTheme.titleSmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.productName,
+                          style: Theme.of(context).textTheme.titleSmall,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Explicit remove control — swipe-to-dismiss removes
+                      // this single item too (see the Dismissible wrapper
+                      // above), but many users never discover a swipe
+                      // gesture. This icon is the same removeItem() call,
+                      // just a second, always-visible entry point.
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusSm),
+                            onTap: () => _confirmRemove(context, ref, item),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Theme.of(context).disabledColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   _buildDetailBlock(context),
@@ -116,6 +144,20 @@ class CartItemTile extends ConsumerWidget {
         originalPrice: item.unitPrice * item.quantity,
       ),
     );
+  }
+
+  Future<void> _confirmRemove(
+      BuildContext context, WidgetRef ref, CartItem item) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Remove Item',
+      message: 'Remove ${item.productName} from cart?',
+      confirmLabel: 'Remove',
+      confirmColor: DesignColors.error,
+    );
+    if (confirmed) {
+      ref.read(cartProvider.notifier).removeItem(item.productId);
+    }
   }
 
   /// Detailed breakdown shown under the product name: what unit it's
