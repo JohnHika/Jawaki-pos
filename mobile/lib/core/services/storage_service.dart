@@ -4,6 +4,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
+import '../../features/finance/domain/finance_models.dart';
 import 'lifecycle_lock_controller.dart';
 
 class StorageService implements LifecycleLockStorage {
@@ -35,6 +37,7 @@ class StorageService implements LifecycleLockStorage {
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
   static const String keyAuthLocked = 'auth_locked';
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
+  static const String keyFinanceSnapshotPrefix = 'finance_snapshot_v1';
   static const String keyHasSeenStaffTour = 'has_seen_staff_tour';
 
   Future<void> initialize() async {
@@ -261,6 +264,52 @@ class StorageService implements LifecycleLockStorage {
   }
 
   // Shared Preferences Methods (for non-sensitive data)
+
+  /// Stable, namespaced key for non-sensitive Finance snapshots. Components
+  /// are encoded so tenant or branch identifiers cannot collide with delimiters.
+  static String financeSnapshotKey(String tenantId, String branchId) =>
+      '$keyFinanceSnapshotPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}';
+
+  /// Reads a cached Finance snapshot without awaiting platform I/O. Malformed
+  /// values are treated as a cache miss so a corrupted preference never blocks
+  /// Finance from opening or forces an account to see another scope's data.
+  FinanceSnapshot? getFinanceSnapshot({
+    required String tenantId,
+    required String branchId,
+  }) {
+    if (!_initialized || _prefs == null) return null;
+    final raw = _prefs!.getString(financeSnapshotKey(tenantId, branchId));
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return FinanceSnapshot.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Persists one complete Finance snapshot as a single SharedPreferences JSON
+  /// value. Financial cache data deliberately never enters secure token storage.
+  Future<void> saveFinanceSnapshot({
+    required String tenantId,
+    required String branchId,
+    required FinanceSnapshot snapshot,
+  }) async {
+    _checkInitialized();
+    await _prefs!.setString(
+      financeSnapshotKey(tenantId, branchId),
+      jsonEncode(snapshot.toJson()),
+    );
+  }
+
+  Future<void> clearFinanceSnapshot({
+    required String tenantId,
+    required String branchId,
+  }) async {
+    _checkInitialized();
+    await _prefs!.remove(financeSnapshotKey(tenantId, branchId));
+  }
 
   Future<void> saveUser(Map<String, dynamic> user) async {
     _checkInitialized();

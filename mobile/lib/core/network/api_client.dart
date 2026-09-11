@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
+import '../../features/finance/domain/finance_models.dart';
+
 /// Verified workspace fields shared by the Google and email-OTP flows.
 /// This deliberately has no password field: the server creates owners only
 /// after it verifies an identity token or email ownership code.
@@ -937,6 +939,170 @@ class ApiClient {
     final response =
         await _dio.post('/suppliers/invoices/$invoiceId/payments', data: data);
     return response.data as Map<String, dynamic>;
+  }
+
+  // Finance endpoints
+  Future<FinanceSnapshot> getFinanceOverview(String branchId) async {
+    final response = await _dio.get(
+      '/finance/overview',
+      queryParameters: <String, dynamic>{'branchId': branchId},
+    );
+    return FinanceSnapshot.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
+  Future<List<FinancePayable>> getFinancePayables(
+    String branchId, {
+    String? status,
+  }) async {
+    final response = await _dio.get(
+      '/finance/payables',
+      queryParameters: <String, dynamic>{
+        'branchId': branchId,
+        if (status != null) 'status': status,
+      },
+    );
+    return (response.data as List)
+        .map((value) => FinancePayable.fromJson(
+            Map<String, dynamic>.from(value as Map)))
+        .toList();
+  }
+
+  Future<List<RetailReceivable>> getRetailReceivables(
+    String branchId, {
+    String? status,
+  }) async {
+    final response = await _dio.get(
+      '/finance/retail-receivables',
+      queryParameters: <String, dynamic>{
+        'branchId': branchId,
+        if (status != null) 'status': status,
+      },
+    );
+    return (response.data as List)
+        .map((value) => RetailReceivable.fromJson(
+            Map<String, dynamic>.from(value as Map)))
+        .toList();
+  }
+
+  Future<ReceivablePayment> recordRetailReceivablePayment({
+    required String receivableId,
+    required String branchId,
+    required double amount,
+    required String method,
+    String? reference,
+    String? notes,
+    String? offlineId,
+  }) async {
+    final response = await _dio.post(
+      '/finance/retail-receivables/$receivableId/payments',
+      data: <String, dynamic>{
+        'branchId': branchId,
+        'amount': amount,
+        'method': method,
+        if (reference != null) 'reference': reference,
+        if (notes != null) 'notes': notes,
+        if (offlineId != null) 'offlineId': offlineId,
+      },
+    );
+    return ReceivablePayment.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
+  Future<List<PeerDebtor>> getPeerDebtors() async {
+    final response = await _dio.get('/finance/peer-debtors');
+    return (response.data as List)
+        .map((value) =>
+            PeerDebtor.fromJson(Map<String, dynamic>.from(value as Map)))
+        .toList();
+  }
+
+  Future<PeerDebtor> createPeerDebtor({
+    required String name,
+    String? contactName,
+    String? phone,
+    String? email,
+    String? address,
+    String? notes,
+  }) async {
+    final response =
+        await _dio.post('/finance/peer-debtors', data: <String, dynamic>{
+      'name': name,
+      if (contactName != null) 'contactName': contactName,
+      if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
+      if (address != null) 'address': address,
+      if (notes != null) 'notes': notes,
+    });
+    return PeerDebtor.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<List<PeerReceivable>> getPeerReceivables(
+    String branchId, {
+    String? status,
+  }) async {
+    final response = await _dio.get(
+      '/finance/peer-receivables',
+      queryParameters: <String, dynamic>{
+        'branchId': branchId,
+        if (status != null) 'status': status,
+      },
+    );
+    return (response.data as List)
+        .map((value) => PeerReceivable.fromJson(
+            Map<String, dynamic>.from(value as Map)))
+        .toList();
+  }
+
+  Future<PeerReceivable> createPeerReceivable({
+    required String branchId,
+    required String debtorId,
+    required String description,
+    required double amount,
+    String? dueDate,
+    String? reference,
+    String? offlineId,
+  }) async {
+    final response =
+        await _dio.post('/finance/peer-receivables', data: <String, dynamic>{
+      'branchId': branchId,
+      'debtorId': debtorId,
+      'description': description,
+      'amount': amount,
+      if (dueDate != null) 'dueDate': dueDate,
+      if (reference != null) 'reference': reference,
+      if (offlineId != null) 'offlineId': offlineId,
+    });
+    return PeerReceivable.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
+  Future<ReceivablePayment> recordPeerReceivablePayment({
+    required String receivableId,
+    required String branchId,
+    required double amount,
+    required String method,
+    String? reference,
+    String? notes,
+    String? offlineId,
+  }) async {
+    final response = await _dio.post(
+      '/finance/peer-receivables/$receivableId/payments',
+      data: <String, dynamic>{
+        'branchId': branchId,
+        'amount': amount,
+        'method': method,
+        if (reference != null) 'reference': reference,
+        if (notes != null) 'notes': notes,
+        if (offlineId != null) 'offlineId': offlineId,
+      },
+    );
+    return ReceivablePayment.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
   }
 
   // Cash flow endpoints
