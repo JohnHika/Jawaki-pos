@@ -51,19 +51,24 @@ class EndOfDayPrompt {
     } catch (_) {
       return; // can't tell without hours; stay silent
     }
-    final settings = (branch['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+    final settings =
+        (branch['settings'] as Map?)?.cast<String, dynamic>() ?? {};
     final hours = (settings['operatingHours'] as Map?)?.cast<String, dynamic>();
     if (hours == null) return; // no hours configured -> no close-time prompt
 
     final days = (hours['days'] as Map?)?.cast<String, dynamic>() ?? {};
     final now = DateTime.now();
-    final todayKey = _dayKeys[now.weekday % 7]; // DateTime.weekday: Mon=1..Sun=7
+    final todayKey =
+        _dayKeys[now.weekday % 7]; // DateTime.weekday: Mon=1..Sun=7
     final day = (days[todayKey] as Map?)?.cast<String, dynamic>();
-    if (day == null || day['closed'] == true) return; // closed day -> nothing to close-prompt
+    if (day == null || day['closed'] == true) {
+      return; // closed day -> nothing to close-prompt
+    }
     final closeStr = (day['close'] ?? '').toString();
     final parts = closeStr.split(':');
     if (parts.length != 2) return;
-    final closeMinutes = (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+    final closeMinutes =
+        (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
     final nowMinutes = now.hour * 60 + now.minute;
     if (nowMinutes < closeMinutes) return; // not closing time yet
 
@@ -85,7 +90,8 @@ class EndOfDayPrompt {
     final goClose = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.event_available_rounded, color: DesignColors.accent),
+        icon: const Icon(Icons.event_available_rounded,
+            color: DesignColors.accent),
         title: const Text('Close the day?'),
         content: const Text(
           "You're past today's closing time and the day hasn't been closed yet. "

@@ -102,12 +102,14 @@ void main() {
       expect(snapshot.payables.single.supplierName, 'Fresh Farm');
       expect(snapshot.retailReceivables.single.payments.single.method, 'MPESA');
       expect(snapshot.peerReceivables.single.debtor.name, 'Neighbour Shop');
-      expect(FinanceSnapshot.fromJson(snapshot.toJson()).toJson(), snapshot.toJson());
+      expect(FinanceSnapshot.fromJson(snapshot.toJson()).toJson(),
+          snapshot.toJson());
     });
   });
 
   group('Finance snapshot cache', () {
-    test('isolates cached snapshots by tenant and branch and ignores invalid JSON',
+    test(
+        'isolates cached snapshots by tenant and branch and ignores invalid JSON',
         () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final storage = StorageService();
@@ -231,7 +233,8 @@ void main() {
   });
 }
 
-FinanceSnapshot _snapshot({required String branchId, required double payableTotal}) {
+FinanceSnapshot _snapshot(
+    {required String branchId, required double payableTotal}) {
   return FinanceSnapshot(
     branchId: branchId,
     supplierPayablesOutstanding: payableTotal,
@@ -244,7 +247,9 @@ FinanceSnapshot _snapshot({required String branchId, required double payableTota
 class _FakeFinanceApi extends ApiClient {
   _FakeFinanceApi({this.failRetail = false}) : super(Dio());
 
-  _FakeFinanceApi.withCompleters() : failRetail = false, super(Dio()) {
+  _FakeFinanceApi.withCompleters()
+      : failRetail = false,
+        super(Dio()) {
     _overviewCompleter = Completer<FinanceSnapshot>();
     _payablesCompleter = Completer<List<FinancePayable>>();
     _retailCompleter = Completer<List<RetailReceivable>>();

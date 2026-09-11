@@ -14,7 +14,8 @@ class FinanceSnapshot {
     List<PeerReceivable> peerReceivables = const <PeerReceivable>[],
     this.savedAt,
   })  : payables = List<FinancePayable>.unmodifiable(payables),
-        retailReceivables = List<RetailReceivable>.unmodifiable(retailReceivables),
+        retailReceivables =
+            List<RetailReceivable>.unmodifiable(retailReceivables),
         peerDebtors = List<PeerDebtor>.unmodifiable(peerDebtors),
         peerReceivables = List<PeerReceivable>.unmodifiable(peerReceivables);
 
@@ -28,7 +29,8 @@ class FinanceSnapshot {
   final List<PeerReceivable> peerReceivables;
   final DateTime? savedAt;
 
-  factory FinanceSnapshot.fromJson(Map<String, dynamic> json) => FinanceSnapshot(
+  factory FinanceSnapshot.fromJson(Map<String, dynamic> json) =>
+      FinanceSnapshot(
         branchId: _requiredString(json, 'branchId'),
         supplierPayablesOutstanding:
             _number(json['supplierPayablesOutstanding']),
@@ -39,7 +41,8 @@ class FinanceSnapshot {
         retailReceivables: _list(json['retailReceivables'])
             .map(RetailReceivable.fromJson)
             .toList(),
-        peerDebtors: _list(json['peerDebtors']).map(PeerDebtor.fromJson).toList(),
+        peerDebtors:
+            _list(json['peerDebtors']).map(PeerDebtor.fromJson).toList(),
         peerReceivables: _list(json['peerReceivables'])
             .map(PeerReceivable.fromJson)
             .toList(),
@@ -167,7 +170,9 @@ class FinancePayable {
       };
 
   @override
-  bool operator ==(Object other) => other is FinancePayable && toJson().toString() == other.toJson().toString();
+  bool operator ==(Object other) =>
+      other is FinancePayable &&
+      toJson().toString() == other.toJson().toString();
 
   @override
   int get hashCode => toJson().toString().hashCode;
@@ -213,7 +218,8 @@ class RetailReceivable {
       dueDate: _date(json['dueDate']),
       status: _requiredString(json, 'status'),
       createdAt: _date(json['createdAt']),
-      payments: _list(json['payments']).map(ReceivablePayment.fromJson).toList(),
+      payments:
+          _list(json['payments']).map(ReceivablePayment.fromJson).toList(),
     );
   }
 
@@ -234,7 +240,8 @@ class RetailReceivable {
 
   @override
   bool operator ==(Object other) =>
-      other is RetailReceivable && toJson().toString() == other.toJson().toString();
+      other is RetailReceivable &&
+      toJson().toString() == other.toJson().toString();
 
   @override
   int get hashCode => toJson().toString().hashCode;
@@ -296,7 +303,8 @@ class PeerDebtor {
       };
 
   @override
-  bool operator ==(Object other) => other is PeerDebtor && toJson().toString() == other.toJson().toString();
+  bool operator ==(Object other) =>
+      other is PeerDebtor && toJson().toString() == other.toJson().toString();
 
   @override
   int get hashCode => toJson().toString().hashCode;
@@ -337,7 +345,8 @@ class PeerReceivable {
         dueDate: _date(json['dueDate']),
         status: _requiredString(json, 'status'),
         createdAt: _date(json['createdAt']),
-        payments: _list(json['payments']).map(ReceivablePayment.fromJson).toList(),
+        payments:
+            _list(json['payments']).map(ReceivablePayment.fromJson).toList(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -354,7 +363,9 @@ class PeerReceivable {
       };
 
   @override
-  bool operator ==(Object other) => other is PeerReceivable && toJson().toString() == other.toJson().toString();
+  bool operator ==(Object other) =>
+      other is PeerReceivable &&
+      toJson().toString() == other.toJson().toString();
 
   @override
   int get hashCode => toJson().toString().hashCode;
@@ -406,7 +417,8 @@ class ReceivablePayment {
 
   @override
   bool operator ==(Object other) =>
-      other is ReceivablePayment && toJson().toString() == other.toJson().toString();
+      other is ReceivablePayment &&
+      toJson().toString() == other.toJson().toString();
 
   @override
   int get hashCode => toJson().toString().hashCode;

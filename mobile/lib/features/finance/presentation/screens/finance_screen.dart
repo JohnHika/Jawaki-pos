@@ -8,48 +8,18 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/connectivity_service.dart';
-import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
+import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
-import '../../../../core/widgets/motion.dart';
+import '../../domain/finance_models.dart';
+import '../providers/finance_hub_controller.dart';
 import 'invoice_review_screen.dart';
 
-/// Cash till vs credit — mirrors CashFundingSource on the backend.
-enum FundingSource { cashTill, creditSupplier }
-
-extension FundingSourceWireFormat on FundingSource {
-  String get wireName => switch (this) {
-        FundingSource.cashTill => 'CASH_TILL',
-        FundingSource.creditSupplier => 'CREDIT_SUPPLIER',
-      };
-
-  String get label => switch (this) {
-        FundingSource.cashTill => 'Cash till',
-        FundingSource.creditSupplier => 'Credit (pay later)',
-      };
-}
-
-final _supplierBalancesProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  try {
-    final debts = await getIt<ApiClient>().getSupplierDebts();
-    return debts.cast<Map<String, dynamic>>();
-  } catch (e) {
-    debugPrint('Finance: could not load supplier debts ($e)');
-    return [];
-  }
-});
-
 class FinanceScreen extends ConsumerStatefulWidget {
-  /// Optional single-item prefill, e.g. from tapping "Buy" on a restock
-  /// suggestion — opens the manual invoice dialog pre-populated instead of
-  /// making the user re-type what the suggestion already computed.
-  final RestockPrefill? prefill;
-
   const FinanceScreen({super.key, this.prefill});
 
+  final RestockPrefill? prefill;
   static final currencyFmt =
       NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
 
@@ -57,25 +27,24 @@ class FinanceScreen extends ConsumerStatefulWidget {
   ConsumerState<FinanceScreen> createState() => _FinanceScreenState();
 }
 
-/// Data carried from the Restock Suggestions screen into the Finance
-/// screen's manual invoice dialog.
 class RestockPrefill {
-  final String productName;
-  final double quantity;
-  final double unitCost;
-
   const RestockPrefill({
     required this.productName,
     required this.quantity,
     required this.unitCost,
   });
+
+  final String productName;
+  final double quantity;
+  final double unitCost;
 }
 
 class _FinanceScreenState extends ConsumerState<FinanceScreen> {
-  final _picker = ImagePicker();
-  final _ocr = SupplierReceiptOcrService();
+  final ImagePicker _picker = ImagePicker();
+  final SupplierReceiptOcrService _ocr = SupplierReceiptOcrService();
   bool _isScanning = false;
   bool _prefillHandled = false;
+  int _tab = 0;
 
   @override
   void didChangeDependencies() {
@@ -83,809 +52,777 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     if (!_prefillHandled && widget.prefill != null) {
       _prefillHandled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _showPrefilledInvoiceDialog(widget.prefill!);
+        if (mounted) _openPrefill(widget.prefill!);
       });
     }
   }
 
-  Future<void> _openInvoiceReview(SupplierReceiptScan scan) async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => InvoiceReviewScreen(scan: scan)),
-    );
-    if (saved == true) {
-      ref.invalidate(_supplierBalancesProvider);
-    }
-  }
-
-  Future<void> _showPrefilledInvoiceDialog(RestockPrefill prefill) async {
-    await _openInvoiceReview(
-      SupplierReceiptScan(
-        imagePath: '',
-        rawText: '',
-        suggestedSupplierName: '',
-        invoiceNumber: null,
-        totalAmount: prefill.quantity * prefill.unitCost,
-        items: [
-          SupplierReceiptLineItem(
-            name: prefill.productName,
-            quantity: prefill.quantity,
-            unit: 'piece',
-            unitCost: prefill.unitCost,
-            lineTotal: prefill.quantity * prefill.unitCost,
-            confidence: 1,
-            rawText: '',
-          ),
-        ],
-        summary: 'Prefilled from a restock suggestion.',
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final balancesAsync = ref.watch(_supplierBalancesProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hub = ref.watch(financeHubProvider);
+    final controller = ref.read(financeHubProvider.notifier);
+    final snapshot = hub.snapshot;
 
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Finance',
         showBackButton: false,
-        actions: [
-          IconButton(
-            tooltip: 'Cash Flow & End-of-Day',
+        actions: <Widget>[
+          _appBarAction(
+            tooltip: 'Cash Flow',
             icon: const Icon(Icons.point_of_sale_rounded),
             onPressed: () => context.push('/cash-flow'),
           ),
-          IconButton(
-            tooltip: _isScanning ? 'Scanning...' : 'Scan Receipt',
+          _appBarAction(
+            tooltip: _isScanning ? 'Scanning receipt' : 'Scan Receipt',
             icon: _isScanning
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
+                    width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.document_scanner_rounded),
             onPressed: _isScanning ? null : _pickAndScanReceipt,
           ),
-          IconButton(
-            tooltip: 'Refresh',
+          _appBarAction(
+            tooltip: 'Refresh Finance',
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.invalidate(_supplierBalancesProvider),
+            onPressed: hub.isRefreshing ? null : controller.refresh,
           ),
         ],
       ),
-      body: balancesAsync.when(
-        data: (suppliers) {
-          final totalOwed = suppliers.fold<double>(
-              0, (sum, s) => sum + ((s['totalOwed'] as num?)?.toDouble() ?? 0));
-          final totalPaid = suppliers.fold<double>(
-              0, (sum, s) => sum + ((s['totalPaid'] as num?)?.toDouble() ?? 0));
-          final totalInvoices = suppliers.fold<int>(
-              0, (sum, s) => sum + ((s['invoiceCount'] as int?) ?? 0));
-          final overdue = suppliers.fold<int>(
-              0, (sum, s) => sum + ((s['overdueCount'] as int?) ?? 0));
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(
-                DesignSpacing.lg,
-                DesignSpacing.md,
-                DesignSpacing.lg,
-                DesignSpacing.huge + DesignSpacing.massive - DesignSpacing.xs),
-            children: [
-              StaggeredItem(
-                itemKey: 'finance-metrics',
-                child: Row(
-                  children: [
-                    Expanded(
-                        child: MetricCard(
-                            title: 'Total Owed',
-                            value: FinanceScreen.currencyFmt.format(totalOwed),
-                            icon: Icons.trending_up_rounded,
-                            color: DesignColors.error)),
-                    const SizedBox(width: DesignSpacing.md),
-                    Expanded(
-                        child: MetricCard(
-                            title: 'Total Paid',
-                            value: FinanceScreen.currencyFmt.format(totalPaid),
-                            icon: Icons.check_circle_rounded,
-                            color: DesignColors.success)),
-                  ],
-                ),
+      body: SafeArea(
+        top: false,
+        child: snapshot == null
+            ? _NoSnapshotState(state: hub, onRetry: controller.refresh)
+            : Column(
+                children: <Widget>[
+                  _FinanceStatusBar(
+                    state: hub,
+                    onRetry: controller.refresh,
+                  ),
+                  _FinanceTabs(
+                      index: _tab,
+                      onChanged: (index) => setState(() => _tab = index)),
+                  Expanded(child: _tabBody(snapshot, controller)),
+                ],
               ),
-              const SizedBox(height: DesignSpacing.md),
-              StaggeredItem(
-                itemKey: 'finance-capture-panel',
-                index: 1,
-                child: _ReceiptCapturePanel(
-                  totalInvoices: totalInvoices,
-                  overdueCount: overdue,
-                  isScanning: _isScanning,
-                  onScan: _pickAndScanReceipt,
-                  onManual: _showManualInvoiceDialog,
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.xl),
-              SectionHeader(
-                title: 'Supplier Balances',
-                subtitle:
-                    '${suppliers.length} supplier${suppliers.length == 1 ? '' : 's'}',
-                icon: Icons.business_rounded,
-                trailing: StatusBadge(
-                  label:
-                      '${suppliers.where((s) => ((s['totalOwed'] as num?)?.toDouble() ?? 0) > 0).length} with debt',
-                  color: DesignColors.warning,
-                  isActive: true,
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              if (suppliers.isEmpty)
-                EmptyState(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'No Supplier Data',
-                  subtitle:
-                      'Scan a supplier receipt or enter an invoice to start tracking supplier debt.',
-                  actionLabel: 'Scan Receipt',
-                  onAction: _pickAndScanReceipt,
-                )
-              else
-                ...suppliers.asMap().entries.map((entry) => StaggeredItem(
-                      itemKey:
-                          'finance-supplier-${entry.value['id'] ?? entry.key}',
-                      index: 2 + entry.key,
-                      child: _SupplierBalanceCard(
-                        supplier: entry.value,
-                        onRecordPayment: (amount) => _recordPayment(
-                            entry.value['id'] as String,
-                            entry.value['name'] as String,
-                            amount),
-                        onViewInvoices: () => _showSupplierInvoices(
-                            entry.value['id'] as String,
-                            entry.value['name'] as String),
-                        isDark: isDark,
-                      ),
-                    )),
-            ],
-          );
-        },
-        loading: () => ListView(
-          padding: const EdgeInsets.fromLTRB(
-              DesignSpacing.lg,
-              DesignSpacing.md,
-              DesignSpacing.lg,
-              DesignSpacing.huge + DesignSpacing.massive - DesignSpacing.xs),
-          children: List.generate(
-              4,
-              (_) => const Padding(
-                    padding: EdgeInsets.only(bottom: DesignSpacing.sm + 2),
-                    child: ShimmerWidget(
-                        width: double.infinity,
-                        height: 100,
-                        borderRadius: DesignSpacing.radiusLg - 2),
-                  )),
-        ),
-        error: (e, _) => EmptyState(
-          icon: Icons.error_outline_rounded,
-          title: 'Error loading supplier data',
-          subtitle: 'Check your connection and try again.',
-          iconColor: DesignColors.error,
-          actionLabel: 'Retry',
-          onAction: () => ref.invalidate(_supplierBalancesProvider),
-        ),
       ),
     );
   }
+
+  Widget _tabBody(FinanceSnapshot snapshot, FinanceHubController controller) =>
+      switch (_tab) {
+        0 => _OverviewTab(snapshot: snapshot),
+        1 => _SupplierTab(
+            payables: snapshot.payables,
+            onScan: _pickAndScanReceipt,
+            onManual: _showManualInvoiceDialog,
+          ),
+        2 => _RetailTab(
+            receivables: snapshot.retailReceivables,
+            onCollect: (item) => _showCollectionSheet(
+              title: 'Collect from ${item.customerName ?? 'customer'}',
+              amount: item.outstandingAmount,
+              onSave: (amount, method, reference) =>
+                  controller.recordRetailCollection(
+                ReceivableCollectionRequest(
+                  receivableId: item.id,
+                  branchId: snapshot.branchId,
+                  amount: amount,
+                  method: method,
+                  reference: reference,
+                ),
+              ),
+            ),
+          ),
+        _ => _PeerTab(
+            snapshot: snapshot,
+            onAddShop: () => _showPeerShopSheet(controller),
+            onAddReceivable: () =>
+                _showPeerReceivableSheet(snapshot, controller),
+            onCollect: (item) => _showCollectionSheet(
+              title: 'Collect from ${item.debtor.name}',
+              amount: item.outstandingAmount,
+              onSave: (amount, method, reference) =>
+                  controller.recordPeerCollection(
+                ReceivableCollectionRequest(
+                  receivableId: item.id,
+                  branchId: snapshot.branchId,
+                  amount: amount,
+                  method: method,
+                  reference: reference,
+                ),
+              ),
+            ),
+          ),
+      };
+
+  Widget _appBarAction(
+          {required String tooltip,
+          required Widget icon,
+          VoidCallback? onPressed}) =>
+      SizedBox(
+        width: DesignSpacing.huge,
+        height: DesignSpacing.huge,
+        child: IconButton(tooltip: tooltip, icon: icon, onPressed: onPressed),
+      );
+
+  Future<void> _openPrefill(RestockPrefill prefill) => _openInvoiceReview(
+        SupplierReceiptScan(
+          imagePath: '',
+          rawText: '',
+          suggestedSupplierName: '',
+          invoiceNumber: null,
+          totalAmount: prefill.quantity * prefill.unitCost,
+          items: <SupplierReceiptLineItem>[
+            SupplierReceiptLineItem(
+              name: prefill.productName,
+              quantity: prefill.quantity,
+              unit: 'piece',
+              unitCost: prefill.unitCost,
+              lineTotal: prefill.quantity * prefill.unitCost,
+              confidence: 1,
+              rawText: '',
+            ),
+          ],
+          summary: 'Prefilled from a restock suggestion.',
+        ),
+      );
+
+  Future<void> _openInvoiceReview(SupplierReceiptScan scan) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => InvoiceReviewScreen(scan: scan)),
+    );
+    if (saved == true && mounted) {
+      await ref.read(financeHubProvider.notifier).refresh();
+    }
+  }
+
+  Future<void> _showManualInvoiceDialog() => _openInvoiceReview(
+        const SupplierReceiptScan(
+          imagePath: '',
+          rawText: '',
+          suggestedSupplierName: '',
+          invoiceNumber: null,
+          totalAmount: 0,
+          items: <SupplierReceiptLineItem>[],
+          summary: 'Manual supplier invoice.',
+        ),
+      );
 
   Future<void> _pickAndScanReceipt() async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-                leading: const Icon(Icons.photo_camera_rounded),
-                title: const Text('Take receipt photo'),
-                onTap: () => Navigator.pop(ctx, ImageSource.camera)),
-            ListTile(
-                leading: const Icon(Icons.photo_library_rounded),
-                title: const Text('Choose receipt image'),
-                onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
-          ],
-        ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Take receipt photo'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera)),
+          ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choose receipt image'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery)),
+        ]),
       ),
     );
     if (source == null || !mounted) return;
-
     final image = await _picker.pickImage(
         source: source, imageQuality: 88, maxWidth: 1600);
     if (image == null || !mounted) return;
-
     setState(() => _isScanning = true);
     try {
-      final isOnline = getIt<ConnectivityService>().isOnline;
-      if (!isOnline) {
-        // No network — vision scanning isn't possible at all, go straight
-        // to on-device OCR as before. The eventual offline save keeps
-        // imagePath as the local file path (the sync queue can't upload
-        // it either without connectivity).
-        final scan = await _ocr.scan(File(image.path));
-        if (!mounted) return;
-        await _openInvoiceReview(scan);
-        return;
-      }
-
-      final branchId = getIt<AuthService>().branchId;
-      String? uploadedUrl;
-      try {
-        final uploadResult = await getIt<ApiClient>().uploadImage(
-          filePath: image.path,
-          fileName: image.name,
-          type: 'supplier-invoice',
-        );
-        uploadedUrl = uploadResult['url'] as String?;
-      } catch (e) {
-        debugPrint('Finance: receipt upload failed, falling back to OCR ($e)');
-      }
-
-      if (uploadedUrl == null) {
-        // Upload itself failed (not a vision/gateway problem) — fall back
-        // to on-device OCR on the local file; imagePath stays local since
-        // there's no uploaded URL to use.
-        final scan = await _ocr.scan(File(image.path));
-        if (!mounted) return;
-        await _openInvoiceReview(scan);
-        return;
-      }
-
-      try {
-        final scan = await getIt<ReceiptVisionService>().scan(
-          imageUrl: uploadedUrl,
-          branchId: branchId,
-        );
-        if (!mounted) return;
-        await _openInvoiceReview(scan);
-      } on NotAReceiptException catch (e) {
-        if (!mounted) return;
-        await _showNotAReceiptSheet(e.reason);
-      } catch (e) {
-        // Vision scan unavailable (gateway down, no AI subscription, etc.)
-        // — fall back to on-device OCR, but keep the already-uploaded URL
-        // so the saved invoice's receiptImageUrl is still a real, viewable
-        // link instead of a local device path.
-        debugPrint('Finance: vision scan failed, falling back to OCR ($e)');
-        final ocrScan = await _ocr.scan(File(image.path));
-        if (!mounted) return;
-        await _openInvoiceReview(
-          SupplierReceiptScan(
-            imagePath: uploadedUrl,
-            rawText: ocrScan.rawText,
-            suggestedSupplierName: ocrScan.suggestedSupplierName,
-            invoiceNumber: ocrScan.invoiceNumber,
-            totalAmount: ocrScan.totalAmount,
-            items: ocrScan.items,
-            summary:
-                'AI scan unavailable — used basic text recognition instead. ${ocrScan.summary}',
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showGlassSnackBar(context, 'Receipt scan failed: $e',
-            icon: Icons.error_outline_rounded, color: DesignColors.error);
-      }
+      final scan = getIt<ConnectivityService>().isOnline
+          ? await getIt<ReceiptVisionService>().scan(
+              imageUrl: (await getIt<ApiClient>().uploadImage(
+                filePath: image.path,
+                fileName: image.name,
+                type: 'supplier-invoice',
+              ))['url'] as String,
+              branchId: ref.read(financeHubProvider).snapshot?.branchId ?? '',
+            )
+          : await _ocr.scan(File(image.path));
+      if (mounted) await _openInvoiceReview(scan);
+    } catch (_) {
+      final scan = await _ocr.scan(File(image.path));
+      if (mounted) await _openInvoiceReview(scan);
     } finally {
       if (mounted) setState(() => _isScanning = false);
     }
   }
 
-  Future<void> _showNotAReceiptSheet(String reason) async {
-    if (!mounted) return;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.xs,
-              DesignSpacing.xl, DesignSpacing.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.image_not_supported_rounded,
-                      color: DesignColors.warning),
-                  const SizedBox(width: DesignSpacing.sm + 2),
-                  Expanded(
-                    child: Text('This doesn\'t look like a receipt',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                        )),
-                  ),
-                ],
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              Text(reason, style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: DesignSpacing.lg),
-              ListTile(
-                  leading: const Icon(Icons.photo_camera_rounded),
-                  title: const Text('Try another photo'),
-                  onTap: () => Navigator.pop(ctx, 'retry')),
-              ListTile(
-                  leading: const Icon(Icons.edit_note_rounded),
-                  title: const Text('Enter manually'),
-                  onTap: () => Navigator.pop(ctx, 'manual')),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (!mounted) return;
-    if (action == 'retry') {
-      await _pickAndScanReceipt();
-    } else if (action == 'manual') {
-      await _showManualInvoiceDialog();
-    }
-  }
-
-  Future<void> _showManualInvoiceDialog() async {
-    await _openInvoiceReview(
-      const SupplierReceiptScan(
-        imagePath: '',
-        rawText: '',
-        suggestedSupplierName: '',
-        invoiceNumber: null,
-        totalAmount: 0,
-        items: [],
-        summary: 'Manual supplier invoice.',
-      ),
-    );
-  }
-
-  Future<void> _recordPayment(
-      String supplierId, String supplierName, double currentDebt) async {
-    final controller = TextEditingController(
-        text: currentDebt > 0 ? currentDebt.toStringAsFixed(0) : '');
-    final confirmed = await GlassBottomSheet.show<bool>(
-      context,
-      title: 'Pay $supplierName',
-      initialSize: 0.42,
-      maxSize: 0.6,
-      scrollable: true,
-      child: Builder(builder: (sheetContext) {
-        final sheetIsDark =
-            Theme.of(sheetContext).brightness == Brightness.dark;
-        final sheetSecondary = sheetIsDark
-            ? DesignColors.darkTextSecondary
-            : DesignColors.textSecondary;
-        // NO MediaQuery viewInsets here: GlassBottomSheet already lifts its
-        // content via its own AnimatedPadding keyed on the keyboard inset —
-        // adding this sheet's own would double-count it.
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.sm,
-              DesignSpacing.xl, DesignSpacing.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  'Current balance: ${FinanceScreen.currencyFmt.format(currentDebt)}',
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: sheetSecondary)),
-              const SizedBox(height: DesignSpacing.md),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                    labelText: 'Payment Amount (KES)',
-                    prefixIcon: const Icon(Icons.payments_outlined),
-                    border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd))),
-              ),
-              const SizedBox(height: DesignSpacing.xl),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(sheetContext, false),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: DesignSpacing.radiusMd + 2),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd)),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: DesignSpacing.md),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: () => Navigator.pop(sheetContext, true),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: DesignColors.success,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: DesignSpacing.radiusMd + 2),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd)),
-                      ),
-                      child: const Text('Record Payment'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      }),
-    );
-
-    if (confirmed == true && mounted) {
-      final amount = double.tryParse(controller.text) ?? 0;
-      if (amount > 0) {
-        try {
-          await _applyPaymentAcrossInvoices(supplierId, amount);
-          ref.invalidate(_supplierBalancesProvider);
-          if (mounted) {
-            showGlassSnackBar(context,
-                'Payment of ${FinanceScreen.currencyFmt.format(amount)} recorded',
-                icon: Icons.check_circle_rounded, color: DesignColors.success);
-          }
-        } catch (e) {
-          if (mounted) {
-            showGlassSnackBar(context, 'Could not record payment: $e',
-                icon: Icons.error_outline_rounded, color: DesignColors.error);
-          }
-        }
-      }
-    }
-  }
-
-  /// A supplier balance is the sum of several invoices, but a payment must
-  /// be recorded against one specific invoice server-side. Applies [amount]
-  /// oldest-invoice-first until it's exhausted, matching how the old
-  /// device-local screen always showed one aggregate balance per supplier
-  /// rather than per invoice.
-  Future<void> _applyPaymentAcrossInvoices(
-      String supplierId, double amount) async {
-    final invoices = await getIt<ApiClient>().getSupplierInvoices(supplierId);
-    final openInvoices = invoices
-        .cast<Map<String, dynamic>>()
-        .where((inv) => ((inv['dueAmount'] as num?)?.toDouble() ?? 0) > 0)
-        .toList()
-      ..sort((a, b) =>
-          (a['createdAt'] as String).compareTo(b['createdAt'] as String));
-
-    var remaining = amount;
-    for (final invoice in openInvoices) {
-      if (remaining <= 0) break;
-      final due = (invoice['dueAmount'] as num).toDouble();
-      final toApply = remaining < due ? remaining : due;
-      await getIt<ApiClient>().recordSupplierPayment(
-        invoice['id'] as String,
-        {'amount': toApply},
-      );
-      remaining -= toApply;
-    }
-  }
-
-  Future<void> _showSupplierInvoices(
-      String supplierId, String supplierName) async {
-    final invoices = (await getIt<ApiClient>().getSupplierInvoices(supplierId))
-        .cast<Map<String, dynamic>>();
-    if (!mounted) return;
+  Future<void> _showPeerShopSheet(FinanceHubController controller) async {
+    final name = TextEditingController();
+    final contact = TextEditingController();
+    String? error;
     await showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.65,
-        maxChildSize: 0.9,
-        builder: (_, controller) => ListView(
-          controller: controller,
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          children: [
-            Text(supplierName,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                )),
-            const SizedBox(height: 12),
-            if (invoices.isEmpty)
-              const EmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'No invoices yet',
-                  subtitle: 'Scanned supplier receipts will appear here.')
-            else
-              ...invoices.map((invoice) => ListCard(
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.receipt_long_rounded,
-                          color: DesignColors.brand, size: 20),
-                    ),
-                    title: (invoice['invoiceNumber'] as String?)?.isNotEmpty ==
-                            true
-                        ? invoice['invoiceNumber'] as String
-                        : 'Supplier invoice',
-                    subtitle:
-                        '${(invoice['items'] as List?)?.length ?? 0} item(s)',
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                            FinanceScreen.currencyFmt.format(
-                                (invoice['totalAmount'] as num).toDouble()),
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                        Text(invoice['status'] as String,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: DesignColors.textTertiary,
-                            )),
-                      ],
-                    ),
-                  )),
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => _SheetFrame(
+          title: 'Add other shop',
+          children: <Widget>[
+            TextField(
+                controller: name,
+                decoration:
+                    InputDecoration(labelText: 'Shop name', errorText: error)),
+            const SizedBox(height: DesignSpacing.md),
+            TextField(
+                controller: contact,
+                decoration:
+                    const InputDecoration(labelText: 'Contact (optional)')),
+            const SizedBox(height: DesignSpacing.xl),
+            _sheetButton('Add shop', () async {
+              try {
+                await controller.createPeerDebtor(
+                    name: name.text, contact: contact.text);
+                if (sheetContext.mounted) Navigator.pop(sheetContext);
+              } on FinanceFormException catch (e) {
+                setSheetState(() => error = e.message);
+              }
+            }),
           ],
         ),
       ),
     );
   }
+
+  Future<void> _showPeerReceivableSheet(
+      FinanceSnapshot snapshot, FinanceHubController controller) async {
+    final description = TextEditingController();
+    final amount = TextEditingController();
+    PeerDebtor? selected =
+        snapshot.peerDebtors.isEmpty ? null : snapshot.peerDebtors.first;
+    String? descriptionError;
+    String? amountError;
+    String? shopError;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => _SheetFrame(
+          title: 'Add receivable',
+          children: <Widget>[
+            DropdownButtonFormField<PeerDebtor>(
+              initialValue: selected,
+              decoration: InputDecoration(
+                  labelText: 'Other shop', errorText: shopError),
+              items: snapshot.peerDebtors
+                  .map((shop) =>
+                      DropdownMenuItem(value: shop, child: Text(shop.name)))
+                  .toList(),
+              onChanged: (value) => setSheetState(() => selected = value),
+            ),
+            const SizedBox(height: DesignSpacing.md),
+            TextField(
+                key: const Key('peer-description'),
+                controller: description,
+                decoration: InputDecoration(
+                    labelText: 'Description', errorText: descriptionError)),
+            const SizedBox(height: DesignSpacing.md),
+            TextField(
+                key: const Key('peer-amount'),
+                controller: amount,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                    labelText: 'Amount (KES)', errorText: amountError)),
+            const SizedBox(height: DesignSpacing.xl),
+            _sheetButton('Create receivable', () async {
+              final parsedAmount = double.tryParse(amount.text.trim()) ?? 0;
+              setSheetState(() {
+                shopError = selected == null ? 'Select a shop' : null;
+                descriptionError = description.text.trim().isEmpty
+                    ? 'Description is required'
+                    : null;
+                amountError = parsedAmount <= 0
+                    ? 'Amount must be greater than zero'
+                    : null;
+              });
+              if (shopError != null ||
+                  descriptionError != null ||
+                  amountError != null) {
+                return;
+              }
+              try {
+                await controller.createPeerReceivable(PeerReceivableRequest(
+                  branchId: snapshot.branchId,
+                  debtorId: selected!.id,
+                  description: description.text.trim(),
+                  amount: parsedAmount,
+                ));
+                if (sheetContext.mounted) Navigator.pop(sheetContext);
+              } on FinanceFormException catch (e) {
+                setSheetState(() => shopError = e.message);
+              }
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCollectionSheet({
+    required String title,
+    required double amount,
+    required Future<void> Function(
+            double amount, String method, String? reference)
+        onSave,
+  }) async {
+    final amountController =
+        TextEditingController(text: amount.toStringAsFixed(0));
+    final reference = TextEditingController();
+    String method = 'CASH';
+    String? error;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => _SheetFrame(
+          title: title,
+          children: <Widget>[
+            SegmentedButton<String>(
+              segments: const <ButtonSegment<String>>[
+                ButtonSegment(value: 'CASH', label: Text('Cash')),
+                ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
+                ButtonSegment(value: 'CARD', label: Text('Card')),
+              ],
+              selected: <String>{method},
+              onSelectionChanged: (value) =>
+                  setSheetState(() => method = value.first),
+            ),
+            const SizedBox(height: DesignSpacing.md),
+            TextField(
+                controller: amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                    labelText: 'Collected (KES)', errorText: error)),
+            const SizedBox(height: DesignSpacing.md),
+            TextField(
+                controller: reference,
+                decoration:
+                    const InputDecoration(labelText: 'Reference (optional)')),
+            const SizedBox(height: DesignSpacing.xl),
+            _sheetButton('Record collection', () async {
+              final parsed = double.tryParse(amountController.text) ?? 0;
+              if (parsed <= 0) {
+                setSheetState(() => error = 'Amount must be greater than zero');
+                return;
+              }
+              await onSave(parsed, method,
+                  reference.text.trim().isEmpty ? null : reference.text.trim());
+              if (sheetContext.mounted) Navigator.pop(sheetContext);
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetButton(String label, Future<void> Function() action) => SizedBox(
+        width: double.infinity,
+        height: DesignSpacing.huge,
+        child: FilledButton(onPressed: action, child: Text(label)),
+      );
 }
 
-class _ReceiptCapturePanel extends StatelessWidget {
-  final int totalInvoices;
-  final int overdueCount;
-  final bool isScanning;
+class _NoSnapshotState extends StatelessWidget {
+  const _NoSnapshotState({required this.state, required this.onRetry});
+  final FinanceHubState state;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.isRefreshing) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Center(
+        child: Padding(
+      padding: DesignSpacing.paddingScreen,
+      child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        const Icon(Icons.cloud_off_rounded,
+            color: DesignColors.error, size: 40),
+        const SizedBox(height: DesignSpacing.md),
+        Text(state.errorMessage ?? 'Couldn’t load Finance.',
+            textAlign: TextAlign.center),
+        const SizedBox(height: DesignSpacing.md),
+        SizedBox(
+            height: DesignSpacing.huge,
+            child:
+                FilledButton(onPressed: onRetry, child: const Text('Retry'))),
+      ]),
+    ));
+  }
+}
+
+class _FinanceStatusBar extends StatelessWidget {
+  const _FinanceStatusBar({required this.state, required this.onRetry});
+  final FinanceHubState state;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final savedAt = state.snapshot?.savedAt;
+    return Column(children: <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.lg, DesignSpacing.sm, DesignSpacing.lg, 0),
+        child: Row(children: <Widget>[
+          Icon(state.isRefreshing ? Icons.sync_rounded : Icons.history_rounded,
+              size: 16, color: DesignColors.textSecondary),
+          const SizedBox(width: DesignSpacing.xs),
+          Text(
+              state.isRefreshing
+                  ? 'Refreshing'
+                  : savedAt == null
+                      ? 'Saved figures'
+                      : 'Saved ${DateFormat('d MMM, HH:mm').format(savedAt.toLocal())}',
+              style: Theme.of(context).textTheme.labelSmall),
+        ]),
+      ),
+      if (state.errorMessage != null)
+        Container(
+          margin: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg, DesignSpacing.sm, DesignSpacing.lg, 0),
+          padding: const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
+          decoration: BoxDecoration(
+              color: DesignColors.warningSubtle,
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd)),
+          child: Row(children: <Widget>[
+            const Icon(Icons.wifi_off_rounded,
+                size: 18, color: DesignColors.warning),
+            const SizedBox(width: DesignSpacing.sm),
+            Expanded(
+                child: Text(state.errorMessage!,
+                    style: Theme.of(context).textTheme.labelSmall)),
+            TextButton(onPressed: onRetry, child: const Text('Retry')),
+          ]),
+        ),
+    ]);
+  }
+}
+
+class _FinanceTabs extends StatelessWidget {
+  const _FinanceTabs({required this.index, required this.onChanged});
+  final int index;
+  final ValueChanged<int> onChanged;
+  static const List<String> labels = <String>[
+    'Overview',
+    'Suppliers',
+    'Customer Credit',
+    'Other Shops'
+  ];
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
+            DesignSpacing.lg, DesignSpacing.sm),
+        child: Row(
+            children: List<Widget>.generate(
+                labels.length,
+                (i) => Padding(
+                      padding: EdgeInsets.only(
+                          right: i == labels.length - 1 ? 0 : DesignSpacing.sm),
+                      child: SizedBox(
+                          height: DesignSpacing.huge,
+                          child: ChoiceChip(
+                            label: Text(labels[i]),
+                            selected: index == i,
+                            onSelected: (_) => onChanged(i),
+                          )),
+                    ))),
+      );
+}
+
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({required this.snapshot});
+  final FinanceSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final overdue = <DateTime?>[
+      ...snapshot.payables.map((item) => item.dueDate),
+      ...snapshot.retailReceivables.map((item) => item.dueDate),
+      ...snapshot.peerReceivables.map((item) => item.dueDate),
+    ]
+        .where((date) =>
+            date?.isBefore(DateTime(now.year, now.month, now.day)) ?? false)
+        .length;
+    final net = snapshot.retailReceivablesOutstanding +
+        snapshot.peerReceivablesOutstanding;
+    return ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
+      _MetricCard(
+          label: 'We owe suppliers',
+          value: snapshot.supplierPayablesOutstanding,
+          color: DesignColors.error),
+      _MetricCard(
+          label: 'Customers owe us',
+          value: snapshot.retailReceivablesOutstanding,
+          color: DesignColors.info),
+      _MetricCard(
+          label: 'Other shops owe us',
+          value: snapshot.peerReceivablesOutstanding,
+          color: DesignColors.brand),
+      _MetricCard(
+          label: 'Net receivable', value: net, color: DesignColors.success),
+      _CountCard(overdue: overdue),
+    ]);
+  }
+}
+
+class _SupplierTab extends StatelessWidget {
+  const _SupplierTab(
+      {required this.payables, required this.onScan, required this.onManual});
+  final List<FinancePayable> payables;
   final VoidCallback onScan;
   final VoidCallback onManual;
-  final bool isDark;
-
-  const _ReceiptCapturePanel(
-      {required this.totalInvoices,
-      required this.overdueCount,
-      required this.isScanning,
-      required this.onScan,
-      required this.onManual,
-      required this.isDark});
 
   @override
-  Widget build(BuildContext context) {
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-
-    return Container(
-      padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
-      decoration:
-          BoxDecoration(color: surface, border: Border.all(color: border)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                      color: DesignColors.brand.withValues(alpha: 0.1),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd)),
-                  child: const Icon(Icons.document_scanner_rounded,
-                      color: DesignColors.brand)),
-              const SizedBox(width: DesignSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Supplier Receipt Intake',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: titleColor,
-                        )),
-                    Text(
-                        '$totalInvoices invoice${totalInvoices == 1 ? '' : 's'} tracked, $overdueCount overdue',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall!
-                            .copyWith(color: secondaryColor)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: DesignSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                  child: GradientButton(
-                      label: isScanning ? 'Scanning...' : 'Scan',
-                      icon: Icons.document_scanner_rounded,
-                      onPressed: isScanning ? null : onScan,
-                      // 42 was below the 44px minimum tap target; 48 puts the
-                      // primary capture action on the DesignSpacing.huge grid.
-                      height: DesignSpacing.huge)),
-              const SizedBox(width: DesignSpacing.sm + 2),
-              Expanded(
-                  child: OutlinedButton.icon(
-                      onPressed: onManual,
-                      icon: const Icon(Icons.edit_note_rounded),
-                      label: const Text('Manual'))),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
+        Row(children: <Widget>[
+          Expanded(
+              child: SizedBox(
+                  height: DesignSpacing.huge,
+                  child: FilledButton.icon(
+                      onPressed: onScan,
+                      icon: const Icon(Icons.document_scanner_rounded),
+                      label: const Text('Scan Receipt')))),
+          const SizedBox(width: DesignSpacing.sm),
+          SizedBox(
+              height: DesignSpacing.huge,
+              child: OutlinedButton(
+                  onPressed: onManual, child: const Text('Manual'))),
+        ]),
+        const SizedBox(height: DesignSpacing.lg),
+        if (payables.isEmpty)
+          const _EmptyLedger(
+              message: 'No supplier payables yet. Scan a receipt to begin.')
+        else
+          ...payables.map((item) => _LedgerCard(
+                title: item.supplierName,
+                subtitle: item.invoiceNumber ?? 'Supplier invoice',
+                value: item.outstandingAmount,
+                dueDate: item.dueDate,
+                icon: Icons.business_rounded,
+              )),
+      ]);
 }
 
-class _SupplierBalanceCard extends StatelessWidget {
-  final Map<String, dynamic> supplier;
-  final void Function(double amount) onRecordPayment;
-  final VoidCallback onViewInvoices;
-  final bool isDark;
-
-  const _SupplierBalanceCard(
-      {required this.supplier,
-      required this.onRecordPayment,
-      required this.onViewInvoices,
-      required this.isDark});
+class _RetailTab extends StatelessWidget {
+  const _RetailTab({required this.receivables, required this.onCollect});
+  final List<RetailReceivable> receivables;
+  final ValueChanged<RetailReceivable> onCollect;
 
   @override
-  Widget build(BuildContext context) {
-    final totalOwed = ((supplier['totalOwed'] as num?)?.toDouble() ?? 0);
-    final totalPaid = ((supplier['totalPaid'] as num?)?.toDouble() ?? 0);
-    final totalInvoiced =
-        ((supplier['totalInvoiced'] as num?)?.toDouble() ?? 0);
-    final invoices = (supplier['invoiceCount'] as int?) ?? 0;
-    final overdue = (supplier['overdueCount'] as int?) ?? 0;
-    final lastPayment = supplier['lastPaymentDate'] as String?;
-    final percentage = totalInvoiced > 0
-        ? (totalPaid / totalInvoiced * 100).clamp(0, 100).toDouble()
-        : 0.0;
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final tertiaryColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+  Widget build(BuildContext context) =>
+      ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
+        if (receivables.isEmpty)
+          const _EmptyLedger(message: 'No customer credit is outstanding.')
+        else
+          ...receivables.map((item) => _LedgerCard(
+                title: item.receiptNumber ?? 'Receipt',
+                subtitle: item.customerName ?? 'Customer',
+                value: item.outstandingAmount,
+                dueDate: item.dueDate,
+                icon: Icons.person_rounded,
+                action: 'Collect',
+                onAction: () => onCollect(item),
+              )),
+      ]);
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
-      child: Container(
-        padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
-        decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border)),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                        color: DesignColors.brand.withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.sm + 2),
-                        border: Border.all(
-                            color: DesignColors.brand.withValues(alpha: 0.15))),
-                    child: const Icon(Icons.business_rounded,
-                        color: DesignColors.brand, size: 20)),
-                const SizedBox(width: DesignSpacing.md),
-                Expanded(
-                  child: Column(
+class _PeerTab extends StatelessWidget {
+  const _PeerTab(
+      {required this.snapshot,
+      required this.onAddShop,
+      required this.onAddReceivable,
+      required this.onCollect});
+  final FinanceSnapshot snapshot;
+  final VoidCallback onAddShop;
+  final VoidCallback onAddReceivable;
+  final ValueChanged<PeerReceivable> onCollect;
+
+  @override
+  Widget build(BuildContext context) =>
+      ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
+        Row(children: <Widget>[
+          Expanded(
+              child: SizedBox(
+                  height: DesignSpacing.huge,
+                  child: OutlinedButton(
+                      onPressed: onAddShop, child: const Text('Add shop')))),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+              child: SizedBox(
+                  height: DesignSpacing.huge,
+                  child: FilledButton(
+                      onPressed: onAddReceivable,
+                      child: const Text('Add receivable')))),
+        ]),
+        const SizedBox(height: DesignSpacing.lg),
+        Text('Other shops', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: DesignSpacing.sm),
+        if (snapshot.peerDebtors.isEmpty)
+          const _EmptyLedger(message: 'No other shops added yet.')
+        else
+          ...snapshot.peerDebtors.map((shop) => _ShopCard(shop: shop)),
+        const SizedBox(height: DesignSpacing.lg),
+        Text('Receivables', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: DesignSpacing.sm),
+        if (snapshot.peerReceivables.isEmpty)
+          const _EmptyLedger(message: 'No other-shop receivables yet.')
+        else
+          ...snapshot.peerReceivables.map((item) => _LedgerCard(
+                title: item.debtor.name,
+                subtitle: item.description,
+                value: item.outstandingAmount,
+                dueDate: item.dueDate,
+                icon: Icons.storefront_rounded,
+                action: 'Collect',
+                onAction: () => onCollect(item),
+              )),
+      ]);
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard(
+      {required this.label, required this.value, required this.color});
+  final String label;
+  final double value;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Card(
+      child: Padding(
+          padding: DesignSpacing.paddingCard,
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(label, style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: DesignSpacing.xs),
+                Text(FinanceScreen.currencyFmt.format(value),
+                    style: DesignType.numeric(fontSize: 22, color: color)),
+              ])));
+}
+
+class _CountCard extends StatelessWidget {
+  const _CountCard({required this.overdue});
+  final int overdue;
+  @override
+  Widget build(BuildContext context) => Card(
+      child: ListTile(
+          minTileHeight: DesignSpacing.huge,
+          leading:
+              const Icon(Icons.event_busy_rounded, color: DesignColors.warning),
+          title: const Text('Overdue'),
+          trailing: Text('$overdue',
+              style: DesignType.numeric(
+                  fontSize: 22, color: DesignColors.warning))));
+}
+
+class _LedgerCard extends StatelessWidget {
+  const _LedgerCard(
+      {required this.title,
+      required this.subtitle,
+      required this.value,
+      required this.dueDate,
+      required this.icon,
+      this.action,
+      this.onAction});
+  final String title;
+  final String subtitle;
+  final double value;
+  final DateTime? dueDate;
+  final IconData icon;
+  final String? action;
+  final VoidCallback? onAction;
+  @override
+  Widget build(BuildContext context) => Card(
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+      child: Padding(
+          padding: DesignSpacing.paddingCard,
+          child: Row(children: <Widget>[
+            Icon(icon, color: DesignColors.brand),
+            const SizedBox(width: DesignSpacing.md),
+            Expanded(
+                child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(supplier['name'] as String,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
-                          )),
-                      const SizedBox(height: 2),
-                      Wrap(
-                        spacing: DesignSpacing.sm + 2,
-                        runSpacing: 2,
-                        children: [
-                          Text(
-                              'Owed: ${FinanceScreen.currencyFmt.format(totalOwed)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall!
-                                  .copyWith(
-                                      color: totalOwed > 0
-                                          ? DesignColors.error
-                                          : DesignColors.success,
-                                      fontWeight: FontWeight.w600)),
-                          Text(
-                              'Paid: ${FinanceScreen.currencyFmt.format(totalPaid)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall!
-                                  .copyWith(color: tertiaryColor)),
-                          Text('$invoices invoice${invoices == 1 ? '' : 's'}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall!
-                                  .copyWith(color: tertiaryColor)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'invoices') onViewInvoices();
-                    if (value == 'pay') onRecordPayment(totalOwed);
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                        value: 'invoices', child: Text('View invoices')),
-                    if (totalOwed > 0)
-                      const PopupMenuItem(
-                          value: 'pay', child: Text('Record payment')),
-                  ],
-                ),
-              ],
-            ),
-            if (totalInvoiced > 0) ...[
-              const SizedBox(height: DesignSpacing.sm + 2),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(DesignSpacing.xs),
-                child: LinearProgressIndicator(
-                    value: percentage / 100,
-                    backgroundColor: border,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                        DesignColors.success),
-                    minHeight: 6),
-              ),
-              const SizedBox(height: DesignSpacing.sm - 2),
-              Row(
-                children: [
-                  Text('${percentage.toStringAsFixed(0)}% paid',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: tertiaryColor,
-                      )),
-                  if (overdue > 0) ...[
-                    const SizedBox(width: 8),
-                    Text('$overdue overdue',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: DesignColors.error,
-                            fontWeight: FontWeight.w700,
-                        )),
-                  ],
-                  const Spacer(),
-                  if (lastPayment != null)
-                    Flexible(
-                      child: Text(
-                        'Last: $lastPayment',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.end,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: tertiaryColor,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ],
+                    children: <Widget>[
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  Text(subtitle),
+                  if (dueDate != null)
+                    Text(
+                        'Due ${DateFormat('d MMM y').format(dueDate!.toLocal())}',
+                        style: Theme.of(context).textTheme.labelSmall),
+                ])),
+            Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text(FinanceScreen.currencyFmt.format(value),
+                      style: DesignType.numeric(fontSize: 14)),
+                  if (action != null)
+                    SizedBox(
+                        height: DesignSpacing.huge,
+                        child: TextButton(
+                            onPressed: onAction, child: Text(action!))),
+                ]),
+          ])));
+}
+
+class _ShopCard extends StatelessWidget {
+  const _ShopCard({required this.shop});
+  final PeerDebtor shop;
+  @override
+  Widget build(BuildContext context) => Card(
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+      child: ListTile(
+          minTileHeight: DesignSpacing.huge,
+          leading: const Icon(Icons.store_rounded, color: DesignColors.brand),
+          title: Text(shop.name),
+          subtitle: shop.phone == null ? null : Text(shop.phone!)));
+}
+
+class _EmptyLedger extends StatelessWidget {
+  const _EmptyLedger({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.all(DesignSpacing.xl),
+      child: Text(message, textAlign: TextAlign.center));
+}
+
+class _SheetFrame extends StatelessWidget {
+  const _SheetFrame({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) => SafeArea(
+          child: Padding(
+        padding: EdgeInsets.fromLTRB(
+            DesignSpacing.xl,
+            DesignSpacing.sm,
+            DesignSpacing.xl,
+            MediaQuery.viewInsetsOf(context).bottom + DesignSpacing.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: SingleChildScrollView(
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(title, style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: DesignSpacing.lg),
+                  ...children
+                ]),
+          ),
         ),
-      ),
-    );
-  }
+      ));
 }
