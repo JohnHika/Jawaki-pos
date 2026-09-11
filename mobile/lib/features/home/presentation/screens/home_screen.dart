@@ -421,55 +421,63 @@ class _NavItemWidget extends ConsumerWidget {
     // meant to be found by shape alone, not just by color when active.
     if (isPrimary) {
       final tenantLogoUrl = ref.watch(tenantIdentityProvider).logoUrl;
-      return GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.topCenter,
-          children: [
-            Positioned(
-              top: -14,
-              child: AnimatedContainer(
-                duration: DesignAnimation.fast,
-                curve: DesignAnimation.smooth,
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? DesignColors.accent
-                      : (isDark
-                          ? DesignColors.darkSurfaceElevated
-                          : DesignColors.surfaceMuted),
-                  borderRadius: BorderRadius.circular(16),
-                  border: isSelected
-                      ? null
-                      : Border.all(
-                          color: isDark
-                              ? DesignColors.darkBorder
-                              : DesignColors.surfaceBorder,
-                          width: 1.2,
-                        ),
-                ),
-                child: Center(
-                  child: AxonAiIcon(
-                    tenantLogoUrl: tenantLogoUrl,
-                    size: 28,
+      return Semantics(
+        button: true,
+        label: 'AI assistant',
+        selected: isSelected,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                Positioned(
+                  top: -14,
+                  child: AnimatedContainer(
+                    duration: DesignAnimation.fast,
+                    curve: DesignAnimation.smooth,
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? DesignColors.accent
+                          : (isDark
+                              ? DesignColors.darkSurfaceElevated
+                              : DesignColors.surfaceMuted),
+                      borderRadius: BorderRadius.circular(16),
+                      border: isSelected
+                          ? null
+                          : Border.all(
+                              color: isDark
+                                  ? DesignColors.darkBorder
+                                  : DesignColors.surfaceBorder,
+                              width: 1.2,
+                            ),
+                    ),
+                    child: Center(
+                      child: AxonAiIcon(
+                        tenantLogoUrl: tenantLogoUrl,
+                        size: 28,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 42),
+                  child: Text(item.label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                        color: isSelected ? DesignColors.accent : inactiveColor,
+                      )),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 42),
-              child: Text(item.label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                    color: isSelected ? DesignColors.accent : inactiveColor,
-                  )),
-            ),
-          ],
+          ),
         ),
       );
     }
