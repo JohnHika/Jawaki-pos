@@ -18,7 +18,6 @@ import '../services/print_queue_service.dart';
 import '../services/notification_service.dart';
 import '../services/receipt_vision_service.dart';
 import '../services/feature_announcement_service.dart';
-import '../../features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../../features/billing/domain/entitlement_service.dart';
 import '../../features/team/data/services/invitation_cache_service.dart';
 
@@ -163,13 +162,6 @@ Future<void> configureDependencies() async {
     await featureAnnouncementService.initialize();
     getIt.registerSingleton<FeatureAnnouncementService>(featureAnnouncementService);
     debugPrint('[DI] FeatureAnnouncementService registered');
-
-    // ============================================
-    // STEP 10: AI Billing Service
-    // ============================================
-    debugPrint('[DI] Registering AiBillingService...');
-    getIt.registerSingleton<AiBillingService>(AiBillingService());
-    debugPrint('[DI] AiBillingService registered');
 
     // ============================================
     // STEP 10b: Entitlement Service (offline signed billing cache)

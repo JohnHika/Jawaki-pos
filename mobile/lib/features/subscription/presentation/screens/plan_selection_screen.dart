@@ -7,217 +7,14 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../domain/subscription_plans.dart';
 
-/// Represents a subscription plan option.
-class SubscriptionPlan {
-  final String id;
-  final String name;
-  final String tagline;
-  final double priceKes;
-  final List<PlanFeature> features;
-  final bool isPopular;
+/// One-time setup fee (KES) charged during onboarding, before the 7-day
+/// trial starts. Mirrors the backend onboarding fee — change both together.
+const double _setupFeeKes = 35000;
 
-  const SubscriptionPlan({
-    required this.id,
-    required this.name,
-    required this.tagline,
-    required this.priceKes,
-    required this.features,
-    this.isPopular = false,
-  });
-}
-
-class PlanFeature {
-  final String text;
-  final bool includedInCore;
-  final bool includedInEnterprise;
-
-  const PlanFeature({
-    required this.text,
-    this.includedInCore = false,
-    this.includedInEnterprise = false,
-  });
-}
-
-/// Rich feature catalog used across plan selection and settings.
-const kPlanFeatures = [
-  // Sales & POS
-  PlanFeature(
-    text: 'Unlimited sales transactions',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Offline POS mode',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Multi-currency pricing',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  // Inventory
-  PlanFeature(
-    text: 'Real-time stock tracking',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Low-stock alerts',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Stock requests & transfers',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Multi-branch inventory transfers',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Supplier receipt OCR',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  // Branches & Staff
-  PlanFeature(
-    text: 'Up to 3 branches',
-    includedInCore: true,
-    includedInEnterprise: false,
-  ),
-  PlanFeature(
-    text: 'Up to 10 staff accounts',
-    includedInCore: true,
-    includedInEnterprise: false,
-  ),
-  PlanFeature(
-    text: 'Up to 10 branches',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Up to 50 staff accounts',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Role-based permissions',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Staff performance reports',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  // Reports & AI
-  PlanFeature(
-    text: 'Daily sales reports',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Advanced analytics dashboard',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Custom reports & data export',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'AI business insights',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'AI fraud detection',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'AI supply-chain auto-reorder',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  // Customer & Marketing
-  PlanFeature(
-    text: 'Customer 360 profiles',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'WhatsApp promotions & campaigns',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Supplier & WhatsApp bot management',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  // Support
-  PlanFeature(
-    text: 'Email support',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-  PlanFeature(
-    text: 'Priority phone & WhatsApp support',
-    includedInCore: false,
-    includedInEnterprise: true,
-  ),
-  // Trial
-  PlanFeature(
-    text: '7-day free trial',
-    includedInCore: true,
-    includedInEnterprise: true,
-  ),
-];
-
-/// Plan metadata used for the top cards.
-const kAvailablePlans = [
-  SubscriptionPlan(
-    id: 'core',
-    name: 'CORE',
-    tagline: 'Everything a single-location business needs',
-    priceKes: 3200,
-    features: [
-      PlanFeature(text: 'Up to 3 branches', includedInCore: true),
-      PlanFeature(text: 'Up to 10 staff accounts', includedInCore: true),
-      PlanFeature(text: 'Basic sales & inventory', includedInCore: true),
-      PlanFeature(text: 'Daily sales reports', includedInCore: true),
-      PlanFeature(text: 'Email support', includedInCore: true),
-      PlanFeature(text: '7-day free trial', includedInCore: true),
-    ],
-  ),
-  SubscriptionPlan(
-    id: 'enterprise',
-    name: 'ENTERPRISE',
-    tagline: 'Power for multi-branch growth & AI decisions',
-    priceKes: 5000,
-    isPopular: true,
-    features: [
-      PlanFeature(text: 'Up to 10 branches', includedInEnterprise: true),
-      PlanFeature(text: 'Up to 50 staff accounts', includedInEnterprise: true),
-      PlanFeature(
-          text: 'Advanced inventory & branch transfers',
-          includedInEnterprise: true),
-      PlanFeature(
-          text: 'Analytics dashboard & forecasting',
-          includedInEnterprise: true),
-      PlanFeature(text: 'AI-powered insights', includedInEnterprise: true),
-      PlanFeature(
-          text: 'Priority phone & email support', includedInEnterprise: true),
-      PlanFeature(text: '7-day free trial', includedInEnterprise: true),
-    ],
-  ),
-];
+/// "KSh 35,000" — [formatKes] digits with the KSh prefix used in prose copy.
+String _setupFeeKsh() => formatKes(_setupFeeKes).replaceFirst('KES ', 'KSh ');
 
 class PlanSelectionScreen extends ConsumerStatefulWidget {
   const PlanSelectionScreen({super.key, this.companyName});
@@ -245,7 +42,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     });
 
     try {
-      await _apiClient.changeSubscriptionPlan(planId: _selectedPlanId!);
+      // Backend `VALID_PLANS` are uppercase (TRIAL/CORE/BUSINESS/ENTERPRISE)
+      // and changePlan() does not normalize case — send the uppercase id or
+      // the backend rejects it with NotFoundException.
+      await _apiClient.changeSubscriptionPlan(
+        planId: _selectedPlanId!.toUpperCase(),
+      );
 
       if (!mounted) return;
 
@@ -351,7 +153,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'A one-time KSh 35,000 setup fee applies before your free trial begins. Cancel anytime during the trial.',
+                    'A one-time ${_setupFeeKsh()} setup fee applies before your free trial begins. Cancel anytime during the trial.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: DesignColors.darkTextTertiary,
@@ -529,12 +331,21 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  'KES ${plan.priceKes.toStringAsFixed(0)}',
-                  style: DesignType.numeric(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    color: DesignColors.darkTextPrimary,
+                // Shrink the price (never overflow) when the card is narrow —
+                // 'KES 10,000' at 30px needs the full row width on small phones.
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      formatKes(plan.priceKes),
+                      maxLines: 1,
+                      style: DesignType.numeric(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        color: DesignColors.darkTextPrimary,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -620,7 +431,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'KSh 35,000 gets your business fully onboarded before your trial starts.',
+                  '${_setupFeeKsh()} gets your business fully onboarded before your trial starts.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: DesignColors.darkTextSecondary,
                       height: 1.35,
@@ -630,7 +441,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             ),
           ),
           Text(
-            'KES 35,000',
+            formatKes(_setupFeeKes),
             style: DesignType.numeric(
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -670,7 +481,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
           ),
           child: Column(
             children: [
-              // Header row
+              // Header row — feature-name column + one column per plan.
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 decoration: const BoxDecoration(
@@ -685,7 +496,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      flex: 3,
+                      flex: 4,
                       child: Text(
                         'Feature',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -695,32 +506,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         ),
                       ),
                     ),
-                    Expanded(
-                      flex: 2,
-                      child: Center(
-                        child: Text(
-                          'CORE',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: DesignColors.darkTextPrimary,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.8,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Center(
-                        child: Text(
-                          'ENTERPRISE',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: DesignColors.accent,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.8,
-                          ),
-                        ),
-                      ),
-                    ),
+                    _buildPlanColumnHeader('CORE', DesignColors.darkTextPrimary),
+                    _buildPlanColumnHeader('BUSINESS', DesignColors.accent),
+                    _buildPlanColumnHeader('ENTERPRISE', DesignColors.brand),
                   ],
                 ),
               ),
@@ -729,6 +517,43 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Centered plan-name cell for the comparison-table header. [FittedBox]
+  /// keeps 'ENTERPRISE' inside its narrow column on phone widths instead of
+  /// overflowing the row.
+  Widget _buildPlanColumnHeader(String name, Color color) {
+    return Expanded(
+      flex: 2,
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            name,
+            maxLines: 1,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One centered check/remove cell in a plan column.
+  Widget _buildComparisonCell(bool included) {
+    return Expanded(
+      flex: 2,
+      child: Center(
+        child: included
+            ? const Icon(Icons.check_circle_rounded,
+                color: DesignColors.success, size: 20)
+            : const Icon(Icons.remove_rounded,
+                color: DesignColors.darkTextTertiary, size: 18),
+      ),
     );
   }
 
@@ -744,7 +569,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       child: Row(
         children: [
           Expanded(
-            flex: 3,
+            flex: 4,
             child: Text(
               feature.text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -753,26 +578,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               ),
             ),
           ),
-          Expanded(
-            flex: 2,
-            child: Center(
-              child: feature.includedInCore
-                  ? const Icon(Icons.check_circle_rounded,
-                      color: DesignColors.success, size: 20)
-                  : const Icon(Icons.remove_rounded,
-                      color: DesignColors.darkTextTertiary, size: 18),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Center(
-              child: feature.includedInEnterprise
-                  ? const Icon(Icons.check_circle_rounded,
-                      color: DesignColors.success, size: 20)
-                  : const Icon(Icons.remove_rounded,
-                      color: DesignColors.darkTextTertiary, size: 18),
-            ),
-          ),
+          _buildComparisonCell(feature.includedInCore),
+          _buildComparisonCell(feature.includedInBusiness),
+          _buildComparisonCell(feature.includedInEnterprise),
         ],
       ),
     );

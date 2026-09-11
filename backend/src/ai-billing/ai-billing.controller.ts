@@ -2,7 +2,6 @@ import {
   Controller,
   Post,
   Get,
-  Body,
   Param,
   Req,
   Headers,
@@ -17,11 +16,6 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { AiBillingService } from './ai-billing.service';
 import { PrismaService } from '../common/prisma/prisma.service';
-import {
-  SubscribeDto,
-  VerifySmsDto,
-  InitializePaystackPaymentDto,
-} from './dto/subscribe.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -70,55 +64,12 @@ export class AiBillingController {
     return { canUse };
   }
 
-  /** Submit M-Pesa code (manual entry) */
-  @Post('submit-payment')
-  @UseGuards(JwtAuthGuard)
-  async submitPayment(
-    @CurrentUser('tenantId') tenantId: string,
-    @Body() dto: SubscribeDto,
-  ) {
-    await this.assertBranchInTenant(tenantId, dto.branchId);
-    return this.billingService.submitPayment(
-      dto.branchId,
-      dto.mpesaCode,
-      dto.senderPhone,
-      dto.smsRaw,
-    );
-  }
-
-  /** Auto-verify from SMS content */
-  @Post('verify-sms')
-  @UseGuards(JwtAuthGuard)
-  async verifyFromSms(
-    @CurrentUser('tenantId') tenantId: string,
-    @Body() dto: VerifySmsDto,
-  ) {
-    await this.assertBranchInTenant(tenantId, dto.branchId);
-    return this.billingService.verifyFromSms(
-      dto.branchId,
-      dto.mpesaCode,
-      dto.amount,
-      dto.recipient,
-    );
-  }
-
-  /** Start a Paystack card checkout for a subscription */
-  @Post('paystack/initialize')
-  @UseGuards(JwtAuthGuard)
-  async initializePaystackPayment(
-    @CurrentUser('tenantId') tenantId: string,
-    @Body() dto: InitializePaystackPaymentDto,
-  ) {
-    await this.assertBranchInTenant(tenantId, dto.branchId);
-    return this.billingService.initializePaystackPayment(dto.branchId, dto.email);
-  }
-
   /**
-   * Paystack webhook — activates (or renews) a subscription once a card
-   * charge succeeds. Verifies the `x-paystack-signature` header against
-   * the raw request body before trusting the payload, since this endpoint
-   * has no other auth and anyone who knew the URL could otherwise forge a
-   * "payment succeeded" event.
+   * Paystack webhook — dormant. The separate AI subscription that this
+   * webhook activated no longer exists (AI is included in every plan), but
+   * the endpoint is kept so any stray webhook deliveries are acknowledged
+   * instead of erroring. Verifies the `x-paystack-signature` header against
+   * the raw request body before trusting the payload.
    */
   @Post('paystack/webhook')
   @HttpCode(HttpStatus.OK)

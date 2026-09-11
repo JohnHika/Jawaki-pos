@@ -47,7 +47,7 @@ describe('PlatformAdminService', () => {
               { subscriptionStatus: 'TRIAL', _count: 3 },
               { subscriptionStatus: 'PAST_DUE', _count: 1 },
             ]),
-            // 2 CORE (3200 each) + 1 ENTERPRISE (5000) => MRR 11400
+            // 2 CORE (3200 each) + 1 ENTERPRISE (10000) => MRR 16400
             findMany: jest.fn().mockResolvedValue([
               { plan: 'CORE' },
               { plan: 'CORE' },
@@ -72,8 +72,8 @@ describe('PlatformAdminService', () => {
 
       const result = await service.getDashboard();
 
-      expect(result.mrrKes).toBe(11400);
-      expect(result.arrKes).toBe(11400 * 12);
+      expect(result.mrrKes).toBe(16400);
+      expect(result.arrKes).toBe(16400 * 12);
       expect(result.tenants).toEqual({
         ACTIVE: 2,
         TRIAL: 3,
@@ -119,7 +119,9 @@ describe('PlatformAdminService', () => {
 
   describe('extendTenant', () => {
     it('pushes currentPeriodEnd forward from the current end and writes an audit record', async () => {
-      const currentEnd = new Date('2026-09-10T00:00:00Z');
+      // Future-dated so the service extends from the existing period end
+      // (a fixed calendar date here would rot once the clock passes it).
+      const currentEnd = new Date(Date.now() + 10 * 86_400_000);
       const { service, prisma, auditService } = buildService({
         prisma: {
           tenant: {

@@ -9,6 +9,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../subscription/domain/subscription_plans.dart';
 import '../../domain/billing_entitlement.dart';
 import '../providers/entitlement_provider.dart';
 
@@ -421,8 +422,8 @@ class _SubscriptionBillingScreenState
           if (entitlement.maxBranches != null)
             _buildInfoRow(
               Icons.store_rounded,
-              'Up to ${entitlement.maxBranches} branches'
-              '${entitlement.maxUsers != null ? ' · ${entitlement.maxUsers} users' : ''}',
+              '${formatLimit(entitlement.maxBranches)} branches'
+              '${entitlement.maxUsers != null ? ' · ${formatLimit(entitlement.maxUsers)} users' : ''}',
             ),
           if (entitlement.state == EntitlementState.grace) ...[
             const SizedBox(height: DesignSpacing.sm),
@@ -825,8 +826,7 @@ class _SubscriptionBillingScreenState
     return _planPrice(plan);
   }
 
-  num _planPrice(String plan) =>
-      plan.toUpperCase() == 'ENTERPRISE' ? 5000 : 3200;
+  num _planPrice(String plan) => planPriceKes(plan);
 
   String _formatDate(String iso) {
     try {
@@ -884,7 +884,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
     super.dispose();
   }
 
-  num get _amount => widget.monthlyAmount ?? 3200;
+  num get _amount => widget.monthlyAmount ?? planPriceKes('core');
 
   Future<void> _requestStkPush() async {
     final phone = _phoneController.text.trim();

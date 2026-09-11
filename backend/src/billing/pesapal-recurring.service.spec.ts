@@ -156,10 +156,22 @@ describe("PesapalRecurringService.startCardSubscription", () => {
 
     const payload = pesapal.buildRecurringOrderRequest.mock.calls[0][0];
     expect(payload.billingCycle).toBe("YEARLY");
-    expect(payload.amount).toBe(60_000); // ENTERPRISE 5000 × 12
+    expect(payload.amount).toBe(120_000); // ENTERPRISE 10000 × 12
     const submitted = pesapal.submitOrderRequest.mock.calls[0][0];
     expect(submitted.subscription_details.frequency).toBe("YEARLY");
-    expect(result.amount).toBe(60_000);
+    expect(result.amount).toBe(120_000);
+  });
+
+  it("accepts the BUSINESS plan and charges its monthly price", async () => {
+    prisma.subscriptionCardToken.findUnique.mockResolvedValue(null);
+    const service = makeService(prisma, pesapal);
+
+    const result = await service.startCardSubscription("tenant-1", "BUSINESS", "MONTHLY");
+
+    const payload = pesapal.buildRecurringOrderRequest.mock.calls[0][0];
+    expect(payload.amount).toBe(6500); // BUSINESS monthly
+    expect(result.plan).toBe("BUSINESS");
+    expect(result.amount).toBe(6500);
   });
 
   it("does not stack a second live subscription for the same plan/cycle", async () => {

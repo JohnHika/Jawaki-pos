@@ -54,7 +54,7 @@ export class AiBillingService {
       return {
         hasSubscription: false,
         status: null,
-        message: `Subscribe for KES ${this.SUBSCRIPTION_PRICE.toFixed(0)}/month to use the AI assistant.`,
+        message: "The AI assistant is included in every Axon POS plan.",
       };
     }
 
@@ -71,21 +71,34 @@ export class AiBillingService {
     return this.formatSubscription(sub);
   }
 
-  /** Check if a branch can use AI */
+  /**
+   * Check if a branch can use the AI assistant.
+   *
+   * AI is included in every Axon POS plan (CORE, BUSINESS and ENTERPRISE) —
+   * there is no separate AI subscription, add-on price, or taste window.
+   * This replaces the old per-branch AiSubscription gating that sold the
+   * assistant as a standalone KES 1,500/month subscription. TRIAL tenants
+   * (or anything without a recognized paid plan) do not get AI access.
+   */
   async canUseAi(branchId: string): Promise<boolean> {
     if (this.isBillingDisabled()) {
       return true;
     }
 
-    const sub = await this.prisma.aiSubscription.findUnique({
-      where: { branchId },
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { tenantId: true },
     });
-    if (!sub) return false;
+    if (!branch) return false;
 
-    const now = new Date();
-    return (
-      sub.status === "ACTIVE" && !!sub.expiresAt && sub.expiresAt > now
-    );
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: branch.tenantId },
+      select: { plan: true },
+    });
+    if (!tenant) return false;
+
+    const plan = (tenant.plan ?? "TRIAL").toUpperCase();
+    return plan === "CORE" || plan === "BUSINESS" || plan === "ENTERPRISE";
   }
 
   /** Submit M-Pesa code for verification */

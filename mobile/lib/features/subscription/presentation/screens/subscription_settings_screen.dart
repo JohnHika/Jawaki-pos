@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../domain/subscription_plans.dart';
 
 /// Status badge colors for subscription state.
 Color _statusColor(String? status) {
@@ -109,12 +110,11 @@ class _SubscriptionSettingsScreenState
     }
   }
 
-  // Future<void> _changePlan(String planId) async {
-  //   ...
-  // }
-
   void _showChangePlanDialog() {
-    final currentPlanId = _plan?['planId'] as String? ?? 'core';
+    // Backend returns the plan uppercase ('CORE'); the catalog ids are
+    // lowercase ('core') — compare case-insensitively throughout.
+    final currentPlanId =
+        (_plan?['plan'] as String? ?? 'core').toLowerCase();
 
     String? selectedPlanId;
 
@@ -122,6 +122,7 @@ class _SubscriptionSettingsScreenState
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
+          final targetId = selectedPlanId ?? currentPlanId;
           return Theme(
             data: Theme.of(dialogContext).copyWith(
               splashFactory: InkRipple.splashFactory,
@@ -129,7 +130,7 @@ class _SubscriptionSettingsScreenState
             child: AlertDialog(
               backgroundColor: DesignColors.darkSurfaceElevated,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
                 side: const BorderSide(color: DesignColors.darkBorder),
               ),
               title: const Text(
@@ -145,28 +146,22 @@ class _SubscriptionSettingsScreenState
                   Text(
                     'Select a new plan. Changes take effect immediately.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DesignColors.darkTextSecondary,
+                          color: DesignColors.darkTextSecondary,
+                        ),
+                  ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  for (final (index, plan) in kAvailablePlans.indexed) ...[
+                    _PlanOptionTile(
+                      name: plan.name,
+                      price: '${formatKes(plan.priceKes)}/mo',
+                      isSelected: selectedPlanId == plan.id,
+                      isCurrent: currentPlanId == plan.id,
+                      onTap: () =>
+                          setDialogState(() => selectedPlanId = plan.id),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  // CORE plan option
-                  _PlanOptionTile(
-                    name: 'CORE',
-                    price: 'KES 3,200/mo',
-                    isSelected: selectedPlanId == 'core',
-                    isCurrent: currentPlanId == 'core',
-                    onTap: () => setDialogState(() => selectedPlanId = 'core'),
-                  ),
-                  const SizedBox(height: 8),
-                  // ENTERPRISE plan option
-                  _PlanOptionTile(
-                    name: 'ENTERPRISE',
-                    price: 'KES 5,000/mo',
-                    isSelected: selectedPlanId == 'enterprise',
-                    isCurrent: currentPlanId == 'enterprise',
-                    onTap: () =>
-                        setDialogState(() => selectedPlanId = 'enterprise'),
-                  ),
+                    if (index != kAvailablePlans.length - 1)
+                      const SizedBox(height: DesignSpacing.sm),
+                  ],
                 ],
               ),
               actions: [
@@ -177,20 +172,23 @@ class _SubscriptionSettingsScreenState
                   child: const Text('Cancel'),
                 ),
                 GradientButton(
-                  label:
-                      'Change to ${selectedPlanId == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
+                  label: 'Change to ${planDisplayName(targetId)}',
                   expanded: false,
                   height: DesignSpacing.xl + 24,
                   borderRadius: DesignSpacing.radiusMd,
                   onPressed: () async {
-                    final target = selectedPlanId ?? currentPlanId;
+                    final target = targetId;
                     if (target == currentPlanId) {
                       Navigator.pop(dialogContext);
                       return;
                     }
                     setState(() => _isChangingPlan = true);
                     try {
-                      await _apiClient.changeSubscriptionPlan(planId: target);
+                      // Backend VALID_PLANS are uppercase and matched with a
+                      // strict includes() — always send the uppercase id.
+                      await _apiClient.changeSubscriptionPlan(
+                        planId: target.toUpperCase(),
+                      );
                       if (!dialogContext.mounted) return;
                       Navigator.pop(dialogContext);
                       if (!mounted) return;
@@ -199,7 +197,7 @@ class _SubscriptionSettingsScreenState
                       if (!context.mounted) return;
                       showGlassSnackBar(
                         context,
-                        'Plan changed to ${target == 'enterprise' ? 'ENTERPRISE' : 'CORE'}',
+                        'Plan changed to ${planDisplayName(target)}',
                         icon: Icons.check_circle_rounded,
                         color: DesignColors.success,
                       );
@@ -267,21 +265,26 @@ class _SubscriptionSettingsScreenState
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          padding: const EdgeInsets.fromLTRB(
+            DesignSpacing.lg,
+            DesignSpacing.sm,
+            DesignSpacing.lg,
+            DesignSpacing.xxxl,
+          ),
           children: [
             // ── Current Plan Card ──
-             _buildCurrentPlanCard(),
+            _buildCurrentPlanCard(),
             const SizedBox(height: DesignSpacing.xl),
 
             // ── Change Plan Button ──
             if (!_isLoadingPlan && _plan != null) ...[
-               GradientButton(
-                  label: _isChangingPlan ? 'Changing plan…' : 'Change Plan',
-                  icon: Icons.swap_horiz_rounded,
-                  onPressed: _isChangingPlan ? null : _showChangePlanDialog,
-                  height: DesignSpacing.xxl + 28,
-                  borderRadius: DesignSpacing.radiusXl,
-                ),
+              GradientButton(
+                label: _isChangingPlan ? 'Changing plan…' : 'Change Plan',
+                icon: Icons.swap_horiz_rounded,
+                onPressed: _isChangingPlan ? null : _showChangePlanDialog,
+                height: DesignSpacing.xl + 28,
+                borderRadius: DesignSpacing.radiusXl,
+              ),
               const SizedBox(height: DesignSpacing.xxl),
             ],
 
@@ -293,7 +296,7 @@ class _SubscriptionSettingsScreenState
 
             // ── What's included in your plan ──
             if (!_isLoadingPlan && _plan != null) ...[
-               _buildFeatureBreakdownCard(),
+              _buildFeatureBreakdownCard(),
               const SizedBox(height: DesignSpacing.xxl),
             ],
 
@@ -301,12 +304,7 @@ class _SubscriptionSettingsScreenState
             const SettingsGroupLabel('Invoice History'),
             const SizedBox(height: DesignSpacing.sm),
             if (_isLoadingInvoices)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(DesignSpacing.xxl),
-                  child: CircularProgressIndicator(),
-                ),
-              )
+              const _InvoiceSkeletonList()
             else if (_invoices.isEmpty)
               _buildEmptyInvoices()
             else
@@ -319,27 +317,22 @@ class _SubscriptionSettingsScreenState
 
   Widget _buildCurrentPlanCard() {
     if (_isLoadingPlan) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(40),
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const _CurrentPlanSkeleton();
     }
 
     if (_plan == null) {
       return Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
           color: DesignColors.darkSurface.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(color: DesignColors.darkBorder),
         ),
         child: const Column(
           children: [
             Icon(Icons.error_outline_rounded,
                 color: DesignColors.darkTextTertiary, size: 40),
-            SizedBox(height: 12),
+            SizedBox(height: DesignSpacing.md),
             Text(
               'Could not load subscription details',
               style: TextStyle(color: DesignColors.darkTextSecondary),
@@ -354,11 +347,10 @@ class _SubscriptionSettingsScreenState
     final nextBilling = _plan?['currentPeriodEnd'] as String?;
     final trialEnds = _plan?['currentPeriodEnd'] as String?;
     final isTrial = status.toUpperCase() == 'TRIAL';
-    final isEnterprise = planName.toUpperCase() == 'ENTERPRISE';
-    final price = isEnterprise ? 'KES 5,000' : 'KES 3,200';
+    final price = formatKes(planPriceKes(planName));
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -368,7 +360,7 @@ class _SubscriptionSettingsScreenState
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(
           color: DesignColors.brand.withValues(alpha: 0.45),
         ),
@@ -384,7 +376,7 @@ class _SubscriptionSettingsScreenState
                 height: 44,
                 decoration: BoxDecoration(
                   color: DesignColors.brand.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
                 child: const Icon(
                   Icons.subscriptions_rounded,
@@ -392,7 +384,7 @@ class _SubscriptionSettingsScreenState
                   size: 24,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,18 +392,20 @@ class _SubscriptionSettingsScreenState
                     Text(
                       planName,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: DesignColors.darkTextPrimary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0,
-                      ),
+                            color: DesignColors.darkTextPrimary,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                          ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: DesignSpacing.xs),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                          horizontal: DesignSpacing.sm,
+                          vertical: DesignSpacing.xs),
                       decoration: BoxDecoration(
                         color: _statusColor(status).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusFull),
                         border: Border.all(
                           color: _statusColor(status).withValues(alpha: 0.35),
                         ),
@@ -419,10 +413,10 @@ class _SubscriptionSettingsScreenState
                       child: Text(
                         _statusLabel(status),
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: _statusColor(status),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                        ),
+                              color: _statusColor(status),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.4,
+                            ),
                       ),
                     ),
                   ],
@@ -430,7 +424,7 @@ class _SubscriptionSettingsScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: DesignSpacing.xl),
           // Price row
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -443,24 +437,25 @@ class _SubscriptionSettingsScreenState
                   color: DesignColors.darkTextPrimary,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: DesignSpacing.sm),
               Padding(
-                padding: const EdgeInsets.only(bottom: 3),
+                padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
                 child: Text(
                   '/month',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: DesignColors.darkTextTertiary,
-                  ),
+                        color: DesignColors.darkTextTertiary,
+                      ),
                 ),
               ),
               const Spacer(),
               // Setup fee badge
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.sm, vertical: DesignSpacing.xs),
                 decoration: BoxDecoration(
                   color: DesignColors.accent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusFull),
                   border: Border.all(
                     color: DesignColors.accent.withValues(alpha: 0.25),
                   ),
@@ -468,20 +463,20 @@ class _SubscriptionSettingsScreenState
                 child: Text(
                   'KES 35,000 setup',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: DesignColors.accent,
-                      fontWeight: FontWeight.w700,
-                  ),
+                        color: DesignColors.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           // Divider
           Container(
             height: 1,
             color: DesignColors.darkBorder.withValues(alpha: 0.6),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignSpacing.lg),
           // Trial / billing info
           if (isTrial && trialEnds != null) ...[
             _buildInfoRow(
@@ -509,15 +504,17 @@ class _SubscriptionSettingsScreenState
 
   Widget _buildInfoRow(IconData icon, String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         children: [
           Icon(icon, color: DesignColors.darkTextSecondary, size: 16),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: DesignColors.darkTextSecondary,
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: DesignColors.darkTextSecondary,
+                  ),
             ),
           ),
         ],
@@ -534,11 +531,11 @@ class _SubscriptionSettingsScreenState
     final description = invoice['description'] as String? ?? 'Subscription';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+      padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.darkBorder),
       ),
       child: Row(
@@ -548,7 +545,7 @@ class _SubscriptionSettingsScreenState
             height: 36,
             decoration: BoxDecoration(
               color: DesignColors.darkSurfaceElevated,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
             child: const Icon(
               Icons.receipt_long_rounded,
@@ -556,7 +553,7 @@ class _SubscriptionSettingsScreenState
               size: 18,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -564,18 +561,18 @@ class _SubscriptionSettingsScreenState
                 Text(
                   description,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: DesignColors.darkTextPrimary,
-                      fontWeight: FontWeight.w600,
-                  ),
+                        color: DesignColors.darkTextPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: DesignSpacing.xs),
                 Text(
                   date.isNotEmpty ? _formatDate(date) : '',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: DesignColors.darkTextTertiary,
-                  ),
+                        color: DesignColors.darkTextTertiary,
+                      ),
                 ),
               ],
             ),
@@ -591,20 +588,22 @@ class _SubscriptionSettingsScreenState
                   color: DesignColors.darkTextPrimary,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: DesignSpacing.xs),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.xs, vertical: DesignSpacing.xs),
                 decoration: BoxDecoration(
                   color: _statusColor(status).withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusFull),
                 ),
                 child: Text(
                   status.toUpperCase(),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: _statusColor(status),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.3,
-                  ),
+                        color: _statusColor(status),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                      ),
                 ),
               ),
             ],
@@ -616,30 +615,30 @@ class _SubscriptionSettingsScreenState
 
   Widget _buildEmptyInvoices() {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(DesignSpacing.xxl),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.darkBorder),
       ),
       child: Column(
         children: [
           const Icon(Icons.receipt_long_outlined,
               color: DesignColors.darkTextTertiary, size: 36),
-          const SizedBox(height: 10),
+          const SizedBox(height: DesignSpacing.md),
           Text(
             'No invoices yet',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: DesignColors.darkTextSecondary,
-            ),
+                  color: DesignColors.darkTextSecondary,
+                ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: DesignSpacing.xs),
           Text(
             'Invoices will appear after your first billing cycle.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: DesignColors.darkTextTertiary,
-            ),
+                  color: DesignColors.darkTextTertiary,
+                ),
           ),
         ],
       ),
@@ -648,10 +647,10 @@ class _SubscriptionSettingsScreenState
 
   Widget _buildErrorCard(String message) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
         color: DesignColors.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(color: DesignColors.error.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -659,11 +658,32 @@ class _SubscriptionSettingsScreenState
         children: [
           const Icon(Icons.error_outline_rounded,
               color: DesignColors.error, size: 20),
-          const SizedBox(width: 10),
+          const SizedBox(width: DesignSpacing.md),
           Expanded(
-            child: Text(message,
-                style:
-                    const TextStyle(color: DesignColors.error, height: 1.35)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(message,
+                    style: const TextStyle(
+                        color: DesignColors.error, height: 1.35)),
+                const SizedBox(height: DesignSpacing.xs),
+                // Recovery path: the fetch only runs from initState, so
+                // without this the only way out of the error is leaving
+                // the screen.
+                TextButton.icon(
+                  onPressed: _isLoadingPlan ? null : _loadData,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Try again'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: DesignColors.error,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.sm),
+                    minimumSize: const Size(64, DesignSpacing.huge),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -686,90 +706,64 @@ class _SubscriptionSettingsScreenState
     return amount.toStringAsFixed(2);
   }
 
+  /// Grouped list of everything the current plan includes, sourced from the
+  /// shared plan catalog so this card can never drift from the plan ladder.
   Widget _buildFeatureBreakdownCard() {
     final planName = _plan?['plan'] as String? ?? 'CORE';
+    final features = planById(planName)?.features ?? const <PlanFeature>[];
+
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(DesignSpacing.lg),
       decoration: BoxDecoration(
         color: DesignColors.darkSurface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(color: DesignColors.darkBorder),
       ),
-      child: Text(
-        'What\u2019s included in $planName',
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: DesignColors.darkTextPrimary,
-            fontWeight: FontWeight.w800,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'What\u2019s included in $planName',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: DesignColors.darkTextPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          if (features.isNotEmpty) ...[
+            const SizedBox(height: DesignSpacing.md),
+            for (final (index, feature) in features.indexed) ...[
+              _buildFeatureRow(feature),
+              if (index != features.length - 1)
+                const SizedBox(height: DesignSpacing.sm),
+            ],
+          ],
+        ],
       ),
     );
   }
 
-  // Widget _buildFeatureGroup(_FeatureItem group, bool isEnterprise) {
-  //   return Padding(
-  //     padding: const EdgeInsets.only(bottom: 18),
-  //     child: Column(
-  //       crossAxisAlignment: CrossAxisAlignment.start,
-  //       children: [
-  //         Row(
-  //           children: [
-  //             Icon(group.icon, color: DesignColors.accent, size: 18),
-  //             const SizedBox(width: 8),
-  //             Text(
-  //               group.category,
-  //               style: const TextStyle(
-  //                 color: DesignColors.darkTextPrimary,
-  //                 fontWeight: FontWeight.w700,
-  //                 fontSize: 13,
-  //                 letterSpacing: 0.4,
-  //               ),
-  //             ),
-  //           ],
-  //         ),
-  //         const SizedBox(height: 10),
-  //         ...group.items.map(
-  //           (item) => Padding(
-  //             padding: const EdgeInsets.only(bottom: 8),
-  //             child: Row(
-  //               crossAxisAlignment: CrossAxisAlignment.start,
-  //               children: [
-  //                 Icon(
-  //                   _isIncluded(item, isEnterprise)
-  //                       ? Icons.check_circle_rounded
-  //                       : Icons.cancel_rounded,
-  //                   color: _isIncluded(item, isEnterprise)
-  //                       ? DesignColors.success
-  //                       : DesignColors.error.withValues(alpha: 0.6),
-  //                   size: 18,
-  //                 ),
-  //                 const SizedBox(width: 10),
-  //                 Expanded(
-  //                   child: Text(
-  //                     item.text,
-  //                     style: TextStyle(
-  //                       color: _isIncluded(item, isEnterprise)
-  //                           ? DesignColors.darkTextSecondary
-  //                           : DesignColors.darkTextTertiary,
-  //                       fontSize: 13,
-  //                       height: 1.35,
-  //                       decoration: _isIncluded(item, isEnterprise)
-  //                           ? null
-  //                           : TextDecoration.lineThrough,
-  //                     ),
-  //                   ),
-  //                 ),
-  //               ],
-  //             ),
-  //           ),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
-
-  // bool _isIncluded(_FeatureRow item, bool isEnterprise) {
-  //   return isEnterprise ? item.includedInEnterprise : item.includedInCore;
-  // }
+  Widget _buildFeatureRow(PlanFeature feature) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.check_circle_rounded,
+          color: DesignColors.success,
+          size: 18,
+        ),
+        const SizedBox(width: DesignSpacing.sm),
+        Expanded(
+          child: Text(
+            feature.text,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: DesignColors.darkTextSecondary,
+                  height: 1.35,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// A selectable plan option tile used in the change-plan dialog.
@@ -815,66 +809,198 @@ class _PlanOptionTile extends StatelessWidget {
             ),
           ),
           child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        name,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: DesignColors.darkTextPrimary,
-                            fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (isCurrent) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: DesignColors.darkTextTertiary
-                                .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'CURRENT',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: DesignColors.darkTextTertiary,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          name,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: DesignColors.darkTextPrimary,
                                 fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        if (isCurrent) ...[
+                          const SizedBox(width: DesignSpacing.sm),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: DesignSpacing.xs,
+                                vertical: DesignSpacing.xs),
+                            decoration: BoxDecoration(
+                              color: DesignColors.darkTextTertiary
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(
+                                  DesignSpacing.radiusFull),
+                            ),
+                            child: Text(
+                              'CURRENT',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: DesignColors.darkTextTertiary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    price,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DesignColors.darkTextSecondary,
                     ),
+                    const SizedBox(height: DesignSpacing.xs),
+                    Text(
+                      price,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: DesignColors.darkTextSecondary,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected)
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: const BoxDecoration(
+                    color: DesignColors.brand,
+                    shape: BoxShape.circle,
                   ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Skeleton mirroring the real current-plan card anatomy (icon badge, plan
+/// name + status chip, price line, meta rows) so the reveal doesn't jump
+/// when data lands. ShimmerWidget already stops under reduced motion.
+class _CurrentPlanSkeleton extends StatelessWidget {
+  const _CurrentPlanSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.xl),
+      decoration: BoxDecoration(
+        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+        border: Border.all(color: DesignColors.darkBorder),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ShimmerWidget.circular(size: 44),
+              SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ShimmerWidget(
+                        width: 120,
+                        height: 16,
+                        borderRadius: DesignSpacing.xs),
+                    SizedBox(height: DesignSpacing.sm),
+                    ShimmerWidget(
+                        width: 72,
+                        height: 18,
+                        borderRadius: DesignSpacing.radiusFull),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: DesignSpacing.xl),
+          ShimmerWidget(
+              width: 170, height: 28, borderRadius: DesignSpacing.radiusSm),
+          SizedBox(height: DesignSpacing.lg),
+          ShimmerWidget(
+              width: double.infinity,
+              height: 1,
+              borderRadius: DesignSpacing.xs),
+          SizedBox(height: DesignSpacing.lg),
+          ShimmerWidget(
+              width: 210, height: 12, borderRadius: DesignSpacing.xs),
+          SizedBox(height: DesignSpacing.sm),
+          ShimmerWidget(
+              width: 180, height: 12, borderRadius: DesignSpacing.xs),
+        ],
+      ),
+    );
+  }
+}
+
+/// Skeleton for the invoice history list — same card radius/padding/margins
+/// as the real rows so the reveal doesn't jump.
+class _InvoiceSkeletonList extends StatelessWidget {
+  const _InvoiceSkeletonList();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        3,
+        (_) => Container(
+          margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+          padding: const EdgeInsets.all(DesignSpacing.md),
+          decoration: BoxDecoration(
+            color: DesignColors.darkSurface.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(color: DesignColors.darkBorder),
+          ),
+          child: const Row(
+            children: [
+              ShimmerWidget(
+                  width: 36,
+                  height: 36,
+                  borderRadius: DesignSpacing.radiusMd),
+              SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ShimmerWidget(
+                        width: 140,
+                        height: 12,
+                        borderRadius: DesignSpacing.xs),
+                    SizedBox(height: DesignSpacing.sm),
+                    ShimmerWidget(
+                        width: 80,
+                        height: 10,
+                        borderRadius: DesignSpacing.xs),
+                  ],
+                ),
+              ),
+              SizedBox(width: DesignSpacing.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  ShimmerWidget(
+                      width: 64,
+                      height: 14,
+                      borderRadius: DesignSpacing.xs),
+                  SizedBox(height: DesignSpacing.sm),
+                  ShimmerWidget(
+                      width: 48,
+                      height: 12,
+                      borderRadius: DesignSpacing.radiusFull),
                 ],
               ),
-            ),
-            if (isSelected)
-              Container(
-                width: 22,
-                height: 22,
-                decoration: const BoxDecoration(
-                  color: DesignColors.brand,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_rounded,
-                  color: Colors.white,
-                  size: 14,
-                ),
-              ),
-          ],
+            ],
           ),
         ),
       ),

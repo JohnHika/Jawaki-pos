@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:axon_pos/features/ai-billing/presentation/services/ai_billing_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 
-/// Landing screen shown when a branch tries to use the AI assistant
-/// without an active subscription. There is no free trial — this screen
-/// explains what the assistant does and leads straight into payment.
-class AiTrialScreen extends StatelessWidget {
+/// Upgrade screen shown when the AI assistant is not available on the
+/// tenant's current plan (TRIAL / not yet activated). AI is included in
+/// every Axon POS plan (Core, Business and Enterprise) — there is nothing
+/// to subscribe to or pay for here; the user just needs an active plan.
+class AiUpgradeScreen extends StatelessWidget {
   final String branchId;
   final String branchName;
-  final VoidCallback onSubscribe;
+  final VoidCallback onViewPlans;
 
-  const AiTrialScreen({
+  const AiUpgradeScreen({
     super.key,
     required this.branchId,
     required this.branchName,
-    required this.onSubscribe,
+    required this.onViewPlans,
   });
 
   @override
@@ -30,7 +30,7 @@ class AiTrialScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 StaggeredItem(
-                  itemKey: 'trial-mark',
+                  itemKey: 'upgrade-mark',
                   index: 0,
                   child: Container(
                     width: 100,
@@ -57,7 +57,9 @@ class AiTrialScreen extends StatelessWidget {
                 const SizedBox(height: DesignSpacing.md),
 
                 const Text(
-                  'Get instant insights, product recommendations, and business analytics powered by AI.',
+                  'The AI assistant is included in every Axon POS plan — Core, '
+                  'Business and Enterprise. Activate your plan to get instant '
+                  'insights, product recommendations, and business analytics.',
                   style: TextStyle(
                     color: DesignColors.textSecondary,
                     fontSize: 14,
@@ -85,7 +87,7 @@ class AiTrialScreen extends StatelessWidget {
                 const SizedBox(height: DesignSpacing.xxxl),
 
                 StaggeredItem(
-                  itemKey: 'trial-pricing',
+                  itemKey: 'upgrade-plan-card',
                   index: 1,
                   child: GlassCard(
                     padding: const EdgeInsets.all(DesignSpacing.xl),
@@ -101,7 +103,7 @@ class AiTrialScreen extends StatelessWidget {
                                 color: DesignColors.brand, size: 24),
                             const SizedBox(width: DesignSpacing.sm),
                             Text(
-                              'KES ${AiBillingService.subscriptionPrice.toStringAsFixed(0)}/month',
+                              'Included in every plan',
                               style: DesignType.numeric(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -112,7 +114,9 @@ class AiTrialScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: DesignSpacing.sm),
                         const Text(
-                          'Subscribe with a card for automatic monthly renewal, or pay via M-Pesa.',
+                          'Core, Business and Enterprise all include the AI '
+                          'assistant. No separate AI subscription, no add-on '
+                          'charge.',
                           style: TextStyle(
                             color: DesignColors.textSecondary,
                             fontSize: 13,
@@ -121,9 +125,9 @@ class AiTrialScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: DesignSpacing.lg),
                         GradientButton(
-                          label: 'Subscribe Now',
+                          label: 'View Plans',
                           icon: Icons.workspace_premium,
-                          onPressed: onSubscribe,
+                          onPressed: onViewPlans,
                           height: DesignSpacing.xl + 28,
                           borderRadius: DesignSpacing.radiusMd,
                         ),

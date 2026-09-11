@@ -69,9 +69,9 @@ describe('SubscriptionController (e2e)', () => {
   });
 
   describe('POST /v1/subscription/change-plan', () => {
-    it('switches from CORE to ENTERPRISE', async () => {
+    it('switches from CORE to BUSINESS', async () => {
       subscriptionService.changePlan.mockResolvedValue({
-        plan: 'ENTERPRISE',
+        plan: 'BUSINESS',
         subscriptionStatus: 'ACTIVE',
         maxBranches: 10,
         maxUsers: 50,
@@ -80,16 +80,16 @@ describe('SubscriptionController (e2e)', () => {
       const { body } = await request(app.getHttpServer())
         .post('/api/v1/subscription/change-plan')
         .set('Authorization', 'Bearer fake-jwt')
-        .send({ plan: 'ENTERPRISE' })
+        .send({ plan: 'BUSINESS' })
         .expect(201);
 
       expect(body).toEqual({
-        plan: 'ENTERPRISE',
+        plan: 'BUSINESS',
         subscriptionStatus: 'ACTIVE',
         maxBranches: 10,
         maxUsers: 50,
       });
-      expect(subscriptionService.changePlan).toHaveBeenCalledWith(expect.anything(), 'ENTERPRISE');
+      expect(subscriptionService.changePlan).toHaveBeenCalledWith(expect.anything(), 'BUSINESS');
     });
 
     it('rejects a non-ADMIN user with 403', async () => {

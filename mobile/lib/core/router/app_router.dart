@@ -49,8 +49,7 @@ import '../../features/finance/presentation/screens/cash_reconciliation_screen.d
 import '../../features/finance/presentation/screens/end_of_day_screen.dart';
 import '../../features/inventory/presentation/screens/restock_suggestions_screen.dart';
 import '../../features/ai/presentation/screens/ai_chat_screen.dart';
-import '../../features/ai-billing/presentation/screens/ai_trial_screen.dart';
-import '../../features/ai-billing/presentation/screens/ai_subscribe_screen.dart';
+import '../../features/ai-billing/presentation/screens/ai_upgrade_screen.dart';
 import '../../features/users/presentation/screens/user_management_screen.dart';
 import '../../features/users/presentation/screens/role_editor_screen.dart';
 import '../../features/users/presentation/screens/user_permission_override_screen.dart';
@@ -550,30 +549,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AiChatScreen(),
           ),
 
-          // AI Subscription Landing Screen (shown when a branch is unpaid)
+          // AI upgrade screen (shown when the tenant's plan doesn't include AI)
           GoRoute(
-            path: '/ai/trial',
-            name: 'ai-trial',
+            path: '/ai/upgrade',
+            name: 'ai-upgrade',
             builder: (context, state) {
               final branchId = state.extra as String;
-              return AiTrialScreen(
+              return AiUpgradeScreen(
                 branchId: branchId,
                 branchName: '', // Not used anymore
-                onSubscribe: () =>
-                    context.push('/ai/subscribe', extra: branchId),
-              );
-            },
-          ),
-
-          // AI Subscribe Screen
-          GoRoute(
-            path: '/ai/subscribe',
-            name: 'ai-subscribe',
-            builder: (context, state) {
-              final branchId = state.extra as String;
-              return AiSubscribeScreen(
-                branchId: branchId,
-                branchName: '', // Not used anymore
+                onViewPlans: () => context.push('/settings/subscription'),
               );
             },
           ),

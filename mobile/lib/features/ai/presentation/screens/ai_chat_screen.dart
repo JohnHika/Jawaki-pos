@@ -213,7 +213,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       _maybeStoreChart(result);
     } on AiSubscriptionRequiredException {
       if (mounted) {
-        context.push('/ai/trial', extra: _aiService.branchId);
+        context.push('/ai/upgrade', extra: _aiService.branchId);
       }
     }
 
@@ -292,7 +292,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       _maybeStoreChart(result);
     } on AiSubscriptionRequiredException {
       if (mounted) {
-        context.push('/ai/trial', extra: _aiService.branchId);
+        context.push('/ai/upgrade', extra: _aiService.branchId);
       }
     }
 
@@ -385,7 +385,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       await _aiService.regenerateLast();
     } on AiSubscriptionRequiredException {
       if (mounted) {
-        context.push('/ai/trial', extra: _aiService.branchId);
+        context.push('/ai/upgrade', extra: _aiService.branchId);
       }
     }
 

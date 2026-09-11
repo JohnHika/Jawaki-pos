@@ -1427,11 +1427,18 @@ class ApiClient {
   }
 
   /// Change the subscription plan (upgrade/downgrade).
+  ///
+  /// The plan id is sent under BOTH `plan` and `planId` keys: the backend
+  /// controller reads `@Body('plan')` while other callers historically sent
+  /// `planId`, so sending both works regardless of which key is read.
+  /// Ids must be uppercase (TRIAL/CORE/BUSINESS/ENTERPRISE) — the backend
+  /// validates against `VALID_PLANS` without case normalization.
   /// POST /api/v1/subscription/change-plan
   Future<Map<String, dynamic>> changeSubscriptionPlan({
     required String planId,
   }) async {
     final response = await _dio.post('/subscription/change-plan', data: {
+      'plan': planId,
       'planId': planId,
     });
     return response.data as Map<String, dynamic>;

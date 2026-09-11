@@ -36,7 +36,7 @@ export class SubscriptionController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(LegacyUserRole.ADMIN)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Change the subscription plan (TRIAL/CORE/ENTERPRISE)' })
+  @ApiOperation({ summary: 'Change the subscription plan (TRIAL/CORE/BUSINESS/ENTERPRISE)' })
   changePlan(@Req() req: any, @Body('plan') plan: string) {
     return this.subscriptionService.changePlan(req.user.tenantId, plan);
   }

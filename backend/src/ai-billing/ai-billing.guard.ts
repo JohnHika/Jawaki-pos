@@ -31,10 +31,13 @@ export class AiAccessGuard implements CanActivate {
 
     const canUse = await this.billingService.canUseAi(branchId);
     if (!canUse) {
-      this.logger.warn(`Branch ${branchId} does not have active AI subscription`);
+      this.logger.warn(
+        `Branch ${branchId} cannot use AI (tenant plan does not include it)`,
+      );
       throw new HttpException(
         {
-          message: 'This branch needs an active AI subscription to use the assistant.',
+          message:
+            'AI is included in every Axon plan. Activate a plan to use the AI assistant.',
           code: 'AI_SUBSCRIPTION_REQUIRED',
         },
         HttpStatus.PAYMENT_REQUIRED,
