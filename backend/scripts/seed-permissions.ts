@@ -141,6 +141,11 @@ const PERMISSIONS: PermissionDef[] = [
   { key: 'suppliers.invoices_create', feature: 'suppliers', action: 'invoices_create', label: 'Record a supplier invoice' },
   { key: 'suppliers.payments_record', feature: 'suppliers', action: 'payments_record', label: 'Record a supplier payment' },
 
+  // ---- finance ----
+  { key: 'finance.view', feature: 'finance', action: 'view', label: 'View branch finance ledgers and overview' },
+  { key: 'finance.manage_payables', feature: 'finance', action: 'manage_payables', label: 'Manage supplier payables' },
+  { key: 'finance.manage_receivables', feature: 'finance', action: 'manage_receivables', label: 'Create and collect retail or peer receivables' },
+
   // ---- expenses ----
   { key: 'expenses.view', feature: 'expenses', action: 'view', label: 'View expenses' },
   { key: 'expenses.create', feature: 'expenses', action: 'create', label: 'Create an expense' },
@@ -239,6 +244,7 @@ const CASHIER_KEYS = [
   'cash_ledger.view', 'cash_reconciliation.view',
   'expenses.view', 'expenses.create',
   'suppliers.view', 'suppliers.debts_view', 'suppliers.invoices_view',
+  'finance.view',
   'ai.chat', 'ai.chat_web_enhanced', 'ai.cognitive_analyze', 'ai.cognitive_monitor', 'ai.cognitive_advisor', 'ai.set_model',
   'ai_billing.view_status', 'ai_billing.submit_payment',
   'app_updates.check',
@@ -261,6 +267,7 @@ const SUPERVISOR_EXTRA_KEYS = [
   'reporting.payment_breakdown', 'reporting.inventory_report',
   'cash_reconciliation.create',
   'suppliers.invoices_create', 'suppliers.payments_record',
+  'finance.manage_payables', 'finance.manage_receivables',
 ];
 
 const MANAGER_EXTRA_KEYS = [

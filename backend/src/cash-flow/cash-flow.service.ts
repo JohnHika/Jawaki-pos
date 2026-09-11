@@ -139,14 +139,17 @@ export class CashFlowService {
       });
       const runningBalance = last ? Number(last.balanceAfter) : 0;
       const salesCashIn = await this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay);
+      const receivableCollections = await this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay);
 
       return {
         mode,
         availableCash: runningBalance,
-        todaysCashIn: salesCashIn,
+        todaysCashIn: salesCashIn + receivableCollections,
         todaysCashOut,
         breakdown: {
           runningBalance,
+          salesCashIn,
+          receivableCollections,
           restockOut,
           expenseOut,
           manualAdjustment,
@@ -176,12 +179,13 @@ export class CashFlowService {
 
     // CASH_ONLY (default)
     const salesCashIn = await this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay);
+    const receivableCollections = await this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay);
     return {
       mode,
-      availableCash: salesCashIn - todaysCashOut,
-      todaysCashIn: salesCashIn,
+      availableCash: salesCashIn + receivableCollections - todaysCashOut,
+      todaysCashIn: salesCashIn + receivableCollections,
       todaysCashOut,
-      breakdown: { salesCashIn, restockOut, expenseOut, manualAdjustment },
+      breakdown: { salesCashIn, receivableCollections, restockOut, expenseOut, manualAdjustment },
     };
   }
 

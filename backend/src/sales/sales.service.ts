@@ -9,6 +9,7 @@ import { RedisService } from '../common/redis/redis.service';
 import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
 import { CashFlowService } from '../cash-flow/cash-flow.service';
 import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
+import { FinanceService } from '../finance/finance.service';
 import {
   CreateSaleDto,
   CreateRefundDto,
@@ -23,6 +24,7 @@ export class SalesService {
     private prisma: PrismaService,
     private redisService: RedisService,
     private cashFlowService: CashFlowService,
+    private financeService: FinanceService,
   ) {}
 
   async createSale(userId: string, tenantId: string, dto: CreateSaleDto) {
@@ -145,10 +147,17 @@ export class SalesService {
       throw new BadRequestException('Paid amount is less than total');
     }
 
-    // For credit sales, store the outstanding balance in metadata
-    const outstandingBalance = dto.paymentMethod === PaymentMethod.CREDIT
-      ? totalAmount - paidAmount
-      : 0;
+    // A credit obligation is derived server-side from the receipt's payment
+    // representation. Clients never provide a receivable balance. For SPLIT,
+    // only the explicit CREDIT tender becomes debt; cash/M-Pesa/card tenders
+    // remain settled sale components.
+    const creditPortion = dto.paymentMethod === PaymentMethod.SPLIT
+      ? (dto.tenders ?? [])
+          .filter((tender) => tender.method === PaymentMethod.CREDIT)
+          .reduce((sum, tender) => sum + tender.amount, 0)
+      : dto.paymentMethod === PaymentMethod.CREDIT
+        ? Math.max(totalAmount - paidAmount, 0)
+        : 0;
 
     // Generate receipt number
     const receiptNumber = await this.generateReceiptNumber(dto.branchId);
@@ -260,9 +269,7 @@ export class SalesService {
           paymentMethod: dto.paymentMethod,
           notes: dto.notes,
           offlineId: dto.offlineId,
-          metadata: outstandingBalance > 0
-            ? { outstandingBalance, dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() }
-            : {},
+          metadata: {},
           items: {
             create: saleItems,
           },
@@ -275,6 +282,23 @@ export class SalesService {
         },
       });
 
+      // Retail credit is a first-class obligation linked to this immutable
+      // receipt, written on this same transaction as stock and sale rows.
+      if (creditPortion > 0) {
+        await this.financeService.createRetailReceivableForSale(tx, {
+          tenantId,
+          branchId: dto.branchId,
+          saleId: newSale.id,
+          customerId: dto.customerId,
+          originalAmount: creditPortion,
+          dueDate: dto.creditDueDate
+            ? new Date(dto.creditDueDate)
+            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          offlineId: dto.offlineId,
+          createdById: userId,
+        });
+      }
+
       // Split sales get one Payment row per tender so the breakdown
       // (how much was cash vs M-Pesa vs card) survives past the top-level
       // Sale.paymentMethod=SPLIT, which on its own can't represent that.
@@ -285,7 +309,9 @@ export class SalesService {
             saleId: newSale.id,
             method: tender.method,
             amount: tender.amount,
-            status: PaymentStatus.COMPLETED,
+            status: tender.method === PaymentMethod.CREDIT
+              ? PaymentStatus.PENDING
+              : PaymentStatus.COMPLETED,
             transactionId: tender.reference,
             paidAt: new Date(),
           })),

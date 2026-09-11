@@ -10,6 +10,7 @@ export enum CashFlowMode {
 
 export enum CashEntryType {
   SALE_CASH_IN = 'SALE_CASH_IN',
+  RECEIVABLE_COLLECTION_IN = 'RECEIVABLE_COLLECTION_IN',
   RESTOCK_OUT = 'RESTOCK_OUT',
   EXPENSE_OUT = 'EXPENSE_OUT',
   MANUAL_ADJUSTMENT = 'MANUAL_ADJUSTMENT',
@@ -67,6 +68,7 @@ export class AvailableCashResponseDto {
   breakdown: {
     salesCashIn?: number;
     allRevenue?: number;
+    receivableCollections?: number;
     restockOut: number;
     expenseOut: number;
     manualAdjustment: number;

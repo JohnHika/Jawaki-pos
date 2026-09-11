@@ -55,6 +55,9 @@ model Tenant {
   subscriptionInvoices SubscriptionInvoice[]
   paymentClaims        SubscriptionPaymentClaim[]
   subscriptionCardToken SubscriptionCardToken?
+  retailReceivables     RetailReceivable[]
+  peerDebtors           PeerDebtor[]
+  peerReceivables       PeerReceivable[]
 
   @@map("tenants")
 }
@@ -172,6 +175,8 @@ model Branch {
   manualPaymentRequests ManualPaymentRequest[]
   aiSubscription        AiSubscription?
   supplierInvoices      SupplierInvoice[]
+  retailReceivables     RetailReceivable[]
+  peerReceivables       PeerReceivable[]
   cashSettings          BranchCashSettings?
   cashLedgerEntries     CashLedgerEntry[]
   cashReconciliations   CashReconciliation[]
@@ -314,6 +319,10 @@ model User {
   ownedOnboarding            TenantOnboarding[]       @relation("OnboardingOwner")
   createdStaffInvitations    TenantStaffInvitation[]  @relation("StaffInvitationCreator")
   subscriptionInvoices       SubscriptionInvoice[]
+  retailReceivablesCreated   RetailReceivable[] @relation("RetailReceivableCreatedBy")
+  retailReceivablePayments   RetailReceivablePayment[] @relation("RetailReceivablePaymentCreatedBy")
+  peerReceivablesCreated     PeerReceivable[] @relation("PeerReceivableCreatedBy")
+  peerReceivablePayments     PeerReceivablePayment[] @relation("PeerReceivablePaymentCreatedBy")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -864,6 +873,7 @@ model Sale {
   payments             Payment[]
   refunds              Refund[]
   manualPaymentRequest ManualPaymentRequest?
+  retailReceivable     RetailReceivable?
 
   @@index([branchId, createdAt])
   @@index([receiptNumber])
@@ -920,9 +930,150 @@ model Customer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sales Sale[]
+  sales              Sale[]
+  retailReceivables   RetailReceivable[]
 
   @@map("customers")
+}
+
+// ==================== FINANCE: RECEIVABLES ====================
+
+enum ReceivableStatus {
+  OPEN
+  PARTIAL
+  PAID
+  WRITTEN_OFF
+}
+
+enum ReceivablePaymentMethod {
+  CASH
+  MPESA
+  CARD
+}
+
+/// Immutable retail credit obligation created with a CREDIT or SPLIT sale.
+/// The balance is server-maintained exclusively through payment allocations.
+model RetailReceivable {
+  id                String             @id @default(uuid())
+  tenantId          String
+  branchId          String
+  saleId            String             @unique
+  customerId        String?
+  originalAmount    Decimal            @db.Decimal(12, 2)
+  outstandingAmount Decimal            @db.Decimal(12, 2)
+  dueDate           DateTime?
+  status            ReceivableStatus   @default(OPEN)
+  offlineId         String?            @unique
+  createdById       String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  sale      Sale      @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy User      @relation("RetailReceivableCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  payments  RetailReceivablePayment[]
+
+  @@index([tenantId, branchId, status, dueDate])
+  @@index([tenantId, customerId])
+  @@map("retail_receivables")
+}
+
+/// One allocation of a received amount to a single retail obligation.
+model RetailReceivablePayment {
+  id            String                   @id @default(uuid())
+  receivableId  String
+  tenantId      String
+  branchId      String
+  amount        Decimal                  @db.Decimal(12, 2)
+  method        ReceivablePaymentMethod
+  reference     String?
+  notes         String?
+  offlineId     String?                  @unique
+  createdById   String
+  paidAt        DateTime                 @default(now())
+  createdAt     DateTime                 @default(now())
+
+  receivable RetailReceivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  createdBy  User             @relation("RetailReceivablePaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, paidAt])
+  @@index([receivableId, paidAt])
+  @@map("retail_receivable_payments")
+}
+
+/// Tenant-owned peer/local-shop counterparty. Name is canonical within a tenant.
+model PeerDebtor {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receivables PeerReceivable[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("peer_debtors")
+}
+
+/// A B2B receivable owed by another local/peer shop.
+model PeerReceivable {
+  id                String             @id @default(uuid())
+  tenantId          String
+  branchId          String
+  debtorId          String
+  reference         String?
+  description       String
+  originalAmount    Decimal            @db.Decimal(12, 2)
+  outstandingAmount Decimal            @db.Decimal(12, 2)
+  dueDate           DateTime?
+  status            ReceivableStatus   @default(OPEN)
+  offlineId         String?            @unique
+  createdById       String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  debtor    PeerDebtor @relation(fields: [debtorId], references: [id], onDelete: Restrict)
+  createdBy User       @relation("PeerReceivableCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  payments  PeerReceivablePayment[]
+
+  @@index([tenantId, branchId, status, dueDate])
+  @@index([tenantId, debtorId])
+  @@map("peer_receivables")
+}
+
+/// One allocation of a received amount to a B2B peer receivable.
+model PeerReceivablePayment {
+  id            String                   @id @default(uuid())
+  receivableId  String
+  tenantId      String
+  branchId      String
+  amount        Decimal                  @db.Decimal(12, 2)
+  method        ReceivablePaymentMethod
+  reference     String?
+  notes         String?
+  offlineId     String?                  @unique
+  createdById   String
+  paidAt        DateTime                 @default(now())
+  createdAt     DateTime                 @default(now())
+
+  receivable PeerReceivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  createdBy  User           @relation("PeerReceivablePaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, branchId, paidAt])
+  @@index([receivableId, paidAt])
+  @@map("peer_receivable_payments")
 }
 
 // ==================== PAYMENTS ====================
@@ -1535,6 +1686,7 @@ enum CashFlowMode {
 
 enum CashEntryType {
   SALE_CASH_IN
+  RECEIVABLE_COLLECTION_IN
   RESTOCK_OUT
   EXPENSE_OUT
   MANUAL_ADJUSTMENT

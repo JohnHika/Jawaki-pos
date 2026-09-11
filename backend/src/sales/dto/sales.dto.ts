@@ -127,6 +127,11 @@ export class CreateSaleDto {
   @Type(() => Number)
   paidAmount?: number;
 
+  @ApiPropertyOptional({ description: 'Due date for the unpaid credit balance' })
+  @IsOptional()
+  @IsDateString({}, { message: 'Credit due date must be a valid ISO 8601 date' })
+  creditDueDate?: string;
+
   @ApiPropertyOptional({
     type: [SaleTenderDto],
     description: 'Required when paymentMethod is SPLIT — the individual payment components, which must sum to at least the total',
