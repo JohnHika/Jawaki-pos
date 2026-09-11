@@ -77,7 +77,7 @@ class SubscriptionExpiryToast extends StatelessWidget {
               children: [
                 Text(
                   _title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: DesignColors.warning,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,

@@ -59,11 +59,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         activeIcon: Icons.point_of_sale_rounded,
         label: 'POS',
         path: '/'));
+    // AI is a primary working surface, not an add-on hidden in More.
+    // Customers remains available from More so the main bar stays focused on
+    // the daily workflow: Dashboard, POS, AI, then the user's next tool.
     items.add(_NavItem(
-        icon: Icons.people_outlined,
-        activeIcon: Icons.people_rounded,
-        label: 'Customers',
-        path: '/customers'));
+        icon: Icons.auto_awesome_outlined,
+        activeIcon: Icons.auto_awesome_rounded,
+        label: 'AI',
+        path: '/ai'));
     if (perms.canSeeProducts) {
       items.add(_NavItem(
           icon: Icons.inventory_2_outlined,
@@ -71,6 +74,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Products',
           path: '/products'));
     }
+    // Customers stays one tap away from More after AI takes its visible slot.
+    items.add(_NavItem(
+        icon: Icons.people_outlined,
+        activeIcon: Icons.people_rounded,
+        label: 'Customers',
+        path: '/customers'));
     if (perms.canSeeInventory) {
       items.add(_NavItem(
           icon: Icons.warehouse_outlined,
@@ -103,13 +112,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Finance',
           path: '/finance'));
     }
-    // AI is a supporting capability rather than the primary POS destination;
-    // keep it available from More without displacing Dashboard or Payments.
-    items.add(_NavItem(
-        icon: Icons.auto_awesome_outlined,
-        activeIcon: Icons.auto_awesome_rounded,
-        label: 'AI',
-        path: '/ai'));
     return items;
   }
 
@@ -353,7 +355,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: _NavItemWidget(
                         item: item,
                         isSelected: isSelected,
-                        isPrimary: item.path == '/ai' && idx == 0,
+                        isPrimary: item.path == '/ai',
                         onTap: () => context.go(item.path),
                         isDark: isDark),
                   ));

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:axon_pos/core/auth/app_roles.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/connectivity_service.dart';
+import 'package:axon_pos/core/theme/axon_ai_icon.dart';
+import 'package:axon_pos/core/providers/tenant_provider.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:axon_pos/features/billing/domain/billing_entitlement.dart';
 import 'package:axon_pos/features/billing/presentation/providers/entitlement_provider.dart';
@@ -41,6 +43,19 @@ void main() {
       await _exerciseNavigation(tester, harness);
     });
   }
+
+  testWidgets('AI replaces Customers in the primary bottom navigation',
+      (tester) async {
+    await _pumpHome(tester, entitlement: _active);
+
+    expect(find.text('AI').hitTestable(), findsOneWidget);
+    expect(find.byType(AxonAiIcon), findsOneWidget);
+    expect(find.text('Customers'), findsNothing);
+
+    await tester.tap(find.byKey(HomeNavKeys.more));
+    await tester.pumpAndSettle();
+    expect(find.text('Customers').hitTestable(), findsOneWidget);
+  });
 
   testWidgets(
       'restricted banner preserves layout through navigation and dismissal',
@@ -144,6 +159,7 @@ Future<_HomeHarness> _pumpHome(
       permissionsProvider.overrideWithValue(
         RolePermissions(const ['products.view', 'sales.create']),
       ),
+      tenantIdentityProvider.overrideWithValue(TenantIdentity.empty),
       // Start in the specified resolved branch, avoiding a transient loading
       // branch masking the restricted host's own flex-constraint regression.
       entitlementProvider.overrideWith((ref) => entitlement),
