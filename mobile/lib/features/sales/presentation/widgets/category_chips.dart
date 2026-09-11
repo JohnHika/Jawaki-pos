@@ -49,10 +49,9 @@ class CategoryChips extends ConsumerWidget {
               label: category['name'] as String,
               isSelected: selectedId == category['id'],
               icon: null,
-              color: category['color'] != null
-                  ? Color(int.parse(
-                      (category['color'] as String).replaceFirst('#', '0xFF')))
-                  : null,
+              // The categories table has no color column; the old
+              // category['color'] parse was dead code that always
+              // returned null and fell through to brand anyway.
               onTap: () => ref.read(selectedCategoryProvider.notifier).state =
                   category['id'] as String?,
             );
@@ -82,21 +81,19 @@ class CategoryChips extends ConsumerWidget {
 class _CategoryChip extends StatelessWidget {
   final String label;
   final bool isSelected;
-  final Color? color;
   final IconData? icon;
   final VoidCallback onTap;
 
   const _CategoryChip({
     required this.label,
     required this.isSelected,
-    this.color,
     this.icon,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final chipColor = color ?? DesignColors.brand;
+    const chipColor = DesignColors.brand;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(

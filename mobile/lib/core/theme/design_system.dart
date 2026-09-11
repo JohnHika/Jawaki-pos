@@ -309,10 +309,17 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Base colors sit just above the page/surface colors so placeholders
+    // read as "skeleton", not as solid accent-colored pills (the old
+    // #1A2744 blue read as a filled button against the near-black bg).
     final base = widget.baseColor ??
-        (isDark ? const Color(0xFF1A2744) : const Color(0xFFE2E8F0));
+        (isDark
+            ? DesignColors.darkSurfaceElevated
+            : const Color(0xFFE2E8F0));
     final highlight = widget.highlightColor ??
-        (isDark ? const Color(0xFF243556) : const Color(0xFFF1F5F9));
+        (isDark
+            ? DesignColors.darkBorder
+            : const Color(0xFFF1F5F9));
 
     return AnimatedBuilder(
       animation: _animation,
