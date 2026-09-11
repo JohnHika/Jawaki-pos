@@ -71,16 +71,25 @@ class _UpdateDialog extends StatelessWidget {
               ],
             ),
             const SizedBox(height: DesignSpacing.lg),
-            Row(
-              children: [
-                StatusBadge(
-                  label: update.displayVersion,
-                  color: DesignColors.accent,
-                ),
-              ],
+            UpdateReleaseMeta(
+              releaseName: update.releaseName,
+              version: update.latestVersion,
+              buildNumber: update.buildNumber,
+              publishedAt: update.publishedAt,
             ),
             if (update.releaseNotes.trim().isNotEmpty) ...[
               const SizedBox(height: DesignSpacing.md),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Recent changes',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.sm),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 160),
                 child: SingleChildScrollView(
@@ -193,16 +202,25 @@ class UpdateAvailableCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: DesignSpacing.lg),
-                    Row(
-                      children: [
-                        StatusBadge(
-                          label: update.displayVersion,
-                          color: DesignColors.accent,
-                        ),
-                      ],
+                    UpdateReleaseMeta(
+                      releaseName: update.releaseName,
+                      version: update.latestVersion,
+                      buildNumber: update.buildNumber,
+                      publishedAt: update.publishedAt,
                     ),
                     if (update.releaseNotes.trim().isNotEmpty) ...[
                       const SizedBox(height: DesignSpacing.md),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Recent changes',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                color: textPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(height: DesignSpacing.sm),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 160),
                         child: SingleChildScrollView(

@@ -54,6 +54,124 @@ List<String> _splitLongSentence(String text) {
   return cleaned.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 }
 
+/// Compact release metadata block used by update notices. The build number
+/// remains available for support/debugging, but it is secondary to the
+/// release name, publication date, and the actual change list.
+class UpdateReleaseMeta extends StatelessWidget {
+  const UpdateReleaseMeta({
+    super.key,
+    required this.releaseName,
+    required this.version,
+    required this.buildNumber,
+    required this.publishedAt,
+  });
+
+  final String? releaseName;
+  final String version;
+  final int? buildNumber;
+  final DateTime? publishedAt;
+
+  String _publishedLabel() {
+    final date = publishedAt;
+    if (date == null) return 'Release date not provided';
+    final local = date.toLocal();
+    return 'Released ${local.day} ${_month(local.month)} ${local.year}';
+  }
+
+  String _month(int month) => const [
+        '',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ][month];
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final title = releaseName?.trim().isNotEmpty == true
+        ? releaseName!.trim()
+        : version;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final tertiary =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: DesignColors.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+            ),
+            child: const Icon(Icons.new_releases_rounded,
+                color: DesignColors.accent, size: 21),
+          ),
+          const SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _publishedLabel(),
+                  style: TextStyle(color: secondary, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'BUILD ${buildNumber?.toString() ?? '—'}',
+                style: DesignType.numeric(
+                  fontSize: 11,
+                  color: tertiary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                version,
+                style: TextStyle(color: tertiary, fontSize: 11),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Renders a list of categorized release notes with icons.
 class CategorizedNotes extends StatelessWidget {
   const CategorizedNotes({super.key, required this.releaseNotes});

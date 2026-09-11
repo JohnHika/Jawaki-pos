@@ -33,7 +33,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
 
   ApiClient get _apiClient => getIt<ApiClient>();
 
-  Future<void> _startFreeTrial() async {
+  Future<void> _continueWithPlan() async {
     if (_selectedPlanId == null) return;
 
     setState(() {
@@ -116,8 +116,8 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   const SizedBox(height: 10),
                   Text(
                     widget.companyName == null || widget.companyName!.isEmpty
-                        ? 'Start with a 7-day free trial. No subscription charges until your trial ends.'
-                        : '${widget.companyName} is ready. Pick a plan to start your 7-day free trial.',
+                        ? 'Your 7-day trial is active. Choose the plan that should continue after the trial ends.'
+                        : '${widget.companyName} is activated. Choose the plan that should continue after your 7-day trial.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: DesignColors.darkTextSecondary,
                         height: 1.45,
@@ -142,18 +142,18 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   ],
                   GradientButton(
                     label: _isSubmitting
-                        ? 'Starting your free trial…'
-                        : 'Start 7-Day Free Trial',
+                        ? 'Saving your plan…'
+                        : 'Continue with this plan',
                     icon: Icons.rocket_launch_rounded,
                     onPressed: _selectedPlanId != null && !_isSubmitting
-                        ? _startFreeTrial
+                        ? _continueWithPlan
                         : null,
                     height: 58,
                     borderRadius: 16,
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'A one-time ${_setupFeeKsh()} setup fee applies before your free trial begins. Cancel anytime during the trial.',
+                    'The KSh 35,000 activation payment is complete. Your first 7 days are free; monthly billing begins when the trial ends.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: DesignColors.darkTextTertiary,
@@ -264,7 +264,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 10,
+                        runSpacing: 4,
                         children: [
                           Text(
                             plan.name,
@@ -274,8 +277,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                                 letterSpacing: 1.2,
                             ),
                           ),
-                          if (plan.isPopular) ...[
-                            const SizedBox(width: 10),
+                          if (plan.isPopular)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
@@ -297,7 +299,6 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                                 ),
                               ),
                             ),
-                          ],
                         ],
                       ),
                       const SizedBox(height: 4),

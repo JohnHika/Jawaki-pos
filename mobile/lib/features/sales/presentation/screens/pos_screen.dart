@@ -400,28 +400,28 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: DesignSpacing.sm),
-                const Text('Customer',
-                    style: TextStyle(
-                        fontSize: DesignSpacing.xl, fontWeight: FontWeight.w700)),
-                const SizedBox(height: DesignSpacing.xs),
-                Text('Set or search for a customer',
-                    style: TextStyle(
-                        fontSize: DesignType.chatBody - 1,
-                        color: secondaryColor)),
+                Text(
+                  'Search an existing customer or create a new one',
+                  style: TextStyle(
+                      fontSize: DesignType.chatBody - 1,
+                      color: secondaryColor),
+                ),
                 const SizedBox(height: DesignSpacing.md + 2),
                 TextField(
                   controller: nameCtrl,
                   autofocus: true,
                   textCapitalization: TextCapitalization.words,
                   decoration: InputDecoration(
-                      labelText: 'Name',
-                      prefixIcon:
-                          const Icon(Icons.person_outline_rounded, size: 20),
-                      border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
-                          borderSide: BorderSide.none),
-                      filled: true),
+                    labelText: 'Customer or shop name',
+                    hintText: 'Start typing a name',
+                    prefixIcon:
+                        const Icon(Icons.person_outline_rounded, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    filled: true,
+                  ),
                   onChanged: (_) => setSheet(() {}),
                 ),
                 const SizedBox(height: DesignSpacing.md - 2),
@@ -429,13 +429,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
-                      labelText: 'Phone',
-                      prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-                      border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusMd),
-                          borderSide: BorderSide.none),
-                      filled: true),
+                    labelText: 'Phone number (optional)',
+                    hintText: '07xx xxx xxx',
+                    prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    filled: true,
+                  ),
                   onChanged: (_) => setSheet(() {}),
                 ),
                 if (nameCtrl.text.trim().length >= 2)
@@ -444,16 +446,32 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     builder: (_, snap) {
                       final customers = snap.data ?? [];
                       if (customers.isEmpty) return const SizedBox.shrink();
-                      return ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 224),
+                      return Container(
+                        margin: const EdgeInsets.only(top: DesignSpacing.sm),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: DesignSpacing.xs),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).brightness == Brightness.dark
+                              ? DesignColors.darkSurfaceElevated
+                              : DesignColors.surfaceSubtle,
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                          border: Border.all(
+                            color: Theme.of(ctx).brightness == Brightness.dark
+                                ? DesignColors.darkBorder
+                                : DesignColors.surfaceBorder,
+                          ),
+                        ),
                         child: ListView.builder(
                           shrinkWrap: true,
                           physics: const ClampingScrollPhysics(),
                           primary: false,
                           itemCount: customers.length,
                           itemBuilder: (_, i) => ListTile(
-                            dense: true,
+                            minTileHeight: 52,
                             leading: CircleAvatar(
+                                backgroundColor: DesignColors.accent
+                                    .withValues(alpha: 0.12),
                                 child: Text((customers[i]['name'] as String)[0]
                                     .toUpperCase())),
                             title: Text(customers[i]['name'] as String),
@@ -478,15 +496,15 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                             ref
                                 .read(cartProvider.notifier)
                                 .setCustomer(null, customerName: null);
-                            Navigator.pop(context);
+                            Navigator.pop(ctx);
                           },
-                          child: const Text('Remove'))),
+                          child: const Text('Clear customer'))),
                   const SizedBox(width: DesignSpacing.md - 2),
                   Expanded(
                       flex: 2,
                       child: GradientButton(
-                          label: 'Set',
-                          onPressed: nameCtrl.text.isEmpty
+                          label: 'Create & select',
+                          onPressed: nameCtrl.text.trim().isEmpty
                               ? null
                               : () async {
                                   final id = await db.insertOrGetCustomer(

@@ -120,4 +120,10 @@ class RolePermissions {
   bool get canManageRoles            => has('roles.view');
   bool get canAssignRoles            => has('permissions.assign_role');
   bool get canOverrideUserPermissions => has('permissions.override_user');
+
+  /// True only for the Admin display role (see [AppRole.fromPermissions]).
+  /// Used to gate surfaces that must be strictly admin-only regardless of
+  /// which individual permission keys a non-admin role happens to hold
+  /// (e.g. the dashboard's End of Day card).
+  bool get isAdmin => role == AppRole.admin;
 }

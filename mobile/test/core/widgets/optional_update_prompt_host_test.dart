@@ -95,10 +95,11 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text("You're up to date"), findsOneWidget);
+      expect(find.text("What's new in Axon POS"), findsOneWidget);
+      expect(find.text('Recent changes'), findsOneWidget);
       expect(updateService.installedNoticeConsumeCount, 1);
 
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Continue to sign in'));
       await tester.pumpAndSettle();
 
       updateService.setInstalledNotice(

@@ -438,7 +438,7 @@ class ReportsScreen extends ConsumerWidget {
                       );
                     }
                     final total = data.fold<double>(
-                        0, (a, d) => a + (d['totalAmount'] as double));
+                        0, (a, d) => a + ((d['totalAmount'] as num?)?.toDouble() ?? 0));
                     final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
@@ -447,7 +447,8 @@ class ReportsScreen extends ConsumerWidget {
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
                         final d = data[i];
-                        final amount = d['totalAmount'] as double;
+                        final amount =
+                            ((d['totalAmount'] as num?)?.toDouble() ?? 0);
                         final pct = total > 0 ? (amount / total * 100) : 0.0;
                         final color =
                             _paymentColor(d['paymentMethod'] as String);
@@ -625,7 +626,7 @@ class ReportsScreen extends ConsumerWidget {
                       );
                     }
                     final total = data.fold<double>(
-                        0, (a, d) => a + (d['totalRevenue'] as double));
+                        0, (a, d) => a + ((d['totalRevenue'] as num?)?.toDouble() ?? 0));
                     final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
@@ -634,7 +635,8 @@ class ReportsScreen extends ConsumerWidget {
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
                         final d = data[i];
-                        final revenue = d['totalRevenue'] as double;
+                        final revenue =
+                            ((d['totalRevenue'] as num?)?.toDouble() ?? 0);
                         final pct = total > 0 ? (revenue / total * 100) : 0.0;
                         final colors = [
                           DesignColors.brand,
@@ -813,8 +815,10 @@ class ReportsScreen extends ConsumerWidget {
                       itemCount: data.length,
                       itemBuilder: (ctx, i) {
                         final d = data[i];
-                        final stock = d['stock'] as int;
-                        final minStock = d['minStock'] as int;
+                        final stock =
+                            ((d['stock'] as num?)?.toDouble() ?? 0).round();
+                        final minStock =
+                            ((d['minStock'] as num?)?.toDouble() ?? 0).round();
                         final isLow = stock <= minStock && minStock > 0;
                         final isOut = stock == 0;
                         final statusColor = isOut

@@ -100,8 +100,8 @@ void main() {
       expect(find.text('KES 35,000'), findsOneWidget);
 
       // Action button
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
-      expect(find.text('Start 7-Day Free Trial'), findsOneWidget);
+      await _scrollTo(tester, find.text('Continue with this plan'));
+      expect(find.text('Continue with this plan'), findsOneWidget);
     });
 
     testWidgets('shows CORE plan features', (tester) async {
@@ -196,7 +196,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down to reveal the button
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
+      await _scrollTo(tester, find.text('Continue with this plan'));
 
       // The button should be present but disabled (no plan selected yet)
       final button = tester.widget<GradientButton>(
@@ -215,7 +215,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down to reveal the button
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
+      await _scrollTo(tester, find.text('Continue with this plan'));
 
       // Button should now be enabled
       final button = tester.widget<GradientButton>(
@@ -234,8 +234,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down and tap the trial button
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
-      await tester.tap(find.text('Start 7-Day Free Trial'));
+      await _scrollTo(tester, find.text('Continue with this plan'));
+      await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
 
       // Should navigate to owner-welcome
@@ -258,8 +258,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down and tap the trial button
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
-      await tester.tap(find.text('Start 7-Day Free Trial'));
+      await _scrollTo(tester, find.text('Continue with this plan'));
+      await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
 
       expect(find.text('Owner Welcome'), findsOneWidget);
@@ -278,8 +278,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down and tap the trial button
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
-      await tester.tap(find.text('Start 7-Day Free Trial'));
+      await _scrollTo(tester, find.text('Continue with this plan'));
+      await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
 
       // Error should be shown
@@ -374,7 +374,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('KES 10,000'), findsOneWidget);
 
-      await _scrollTo(tester, find.text('Start 7-Day Free Trial'));
+      await _scrollTo(tester, find.text('Continue with this plan'));
       expect(tester.takeException(), isNull);
 
       // Bottom: the three-column comparison table.
@@ -407,7 +407,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('My Shop is ready'),
+        find.textContaining('My Shop is activated'),
         findsOneWidget,
       );
     });

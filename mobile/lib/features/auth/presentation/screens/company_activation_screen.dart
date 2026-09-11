@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,12 +23,16 @@ class CompanyActivationScreen extends ConsumerStatefulWidget {
 }
 
 class _CompanyActivationScreenState
-    extends ConsumerState<CompanyActivationScreen> {
+    extends ConsumerState<CompanyActivationScreen>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _status;
   bool _isLoading = true;
   bool _isStartingCheckout = false;
   bool _isVerifying = false;
+  bool _awaitingCheckoutReturn = false;
   String? _error;
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _activationLinkSubscription;
 
   ApiClient get _apiClient => getIt<ApiClient>();
   AuthService get _authService => getIt<AuthService>();
@@ -33,7 +40,62 @@ class _CompanyActivationScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _activationLinkSubscription = _appLinks.uriLinkStream.listen(
+      _handleActivationLink,
+      onError: (_) {},
+    );
+    unawaited(_readInitialActivationLink());
     _loadStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_activationLinkSubscription?.cancel());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _awaitingCheckoutReturn &&
+        !_isVerifying &&
+        _status?['reference'] is String) {
+      _awaitingCheckoutReturn = false;
+      unawaited(_verifyPayment(automatic: true));
+    }
+  }
+
+  Future<void> _readInitialActivationLink() async {
+    try {
+      final uri = await _appLinks.getInitialLink();
+      if (uri != null) await _handleActivationLink(uri);
+    } catch (_) {
+      // Missing initial links are normal on a regular app launch.
+    }
+  }
+
+  Future<void> _handleActivationLink(Uri uri) async {
+    if (!mounted ||
+        uri.scheme != 'axonpos' ||
+        uri.host != 'payment' ||
+        uri.path != '/activation') {
+      return;
+    }
+    final reference = uri.queryParameters['reference']?.trim();
+    if (reference == null || reference.isEmpty) return;
+
+    // Never trust a callback URI as proof of payment. Refresh the server-side
+    // attempt first, then verify only the reference belonging to this tenant.
+    await _loadStatus();
+    if (!mounted || _status?['reference']?.toString() != reference) {
+      setState(() =>
+          _error = 'This payment link does not match the current workspace.');
+      return;
+    }
+    _awaitingCheckoutReturn = false;
+    await _verifyPayment(automatic: true);
   }
 
   Future<void> _loadStatus() async {
@@ -78,6 +140,7 @@ class _CompanyActivationScreenState
       setState(() {
         _status = status;
         _isStartingCheckout = false;
+        _awaitingCheckoutReturn = true;
       });
     } catch (error) {
       if (!mounted) return;
@@ -88,8 +151,9 @@ class _CompanyActivationScreenState
     }
   }
 
-  Future<void> _verifyPayment() async {
-    final reference = _status?['reference'] as String?;
+  Future<void> _verifyPayment({bool automatic = false}) async {
+    if (_isVerifying) return;
+    final reference = _status?['reference']?.toString();
     if (reference == null || reference.isEmpty) {
       await _startCheckout();
       return;
@@ -103,9 +167,14 @@ class _CompanyActivationScreenState
       final status = await _apiClient.verifyTenantActivationPayment(reference);
       final isActive = status['status'] == 'ACTIVE';
       if (!isActive) {
-        throw Exception(
-          'Payment is still being confirmed. Please wait a moment and try again.',
-        );
+        if (!mounted) return;
+        setState(() {
+          _isVerifying = false;
+          _error = automatic
+              ? 'Payment is still being confirmed. Tap check status again in a moment.'
+              : 'Payment is still being confirmed. Please wait a moment and try again.';
+        });
+        return;
       }
       await _authService.updateTenantSession({
         'activationStatus': 'ACTIVE',
@@ -131,7 +200,7 @@ class _CompanyActivationScreenState
       return 'Secure checkout is not available on the server yet. Please contact Axon support before attempting payment.';
     }
     if (text.contains('402')) {
-      return 'Complete the KSh 50,000 activation payment to continue.';
+      return 'Complete the KSh 35,000 activation payment to continue.';
     }
     return text.replaceFirst('Exception: ', '').trim().isEmpty
         ? 'We could not load the activation payment. Please try again.'
@@ -217,7 +286,7 @@ class _CompanyActivationScreenState
                           ? 'Opening secure checkout…'
                           : hasCheckout
                               ? 'Open payment checkout again'
-                              : 'Pay KSh 50,000 to activate',
+                              : 'Pay KSh 35,000 to activate',
                       icon: Icons.lock_rounded,
                       onPressed: _isStartingCheckout ? null : _startCheckout,
                       height: 58,
@@ -362,7 +431,7 @@ class _CompanyActivationScreenState
             ),
           ),
           Text(
-            'KSh 50,000',
+            'KSh 35,000',
             style: DesignType.numeric(
               color: DesignColors.darkTextPrimary,
               fontWeight: FontWeight.w900,

@@ -214,14 +214,14 @@ class AuthController extends StateNotifier<AuthState> {
     return false;
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool allDevices = false}) async {
     state = state.copyWith(isLoading: true);
     try {
       await getIt<NotificationService>().unregisterToken();
     } catch (_) {
       // Non-fatal — a stale token just goes unused until it expires.
     }
-    await _authService.logout();
+    await _authService.logout(allDevices: allDevices);
     state = const AuthState();
   }
 

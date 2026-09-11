@@ -347,14 +347,15 @@ class _PaymentAnalyticsScreenState
             ..._paymentMethodBreakdown.map((payment) {
               final method = payment['paymentMethod'] ?? 'Unknown';
               final count = payment['count'] ?? 0;
-              final total = payment['totalAmount'] ?? 0.0;
+              final total =
+                  (payment['totalAmount'] as num?)?.toDouble() ?? 0;
               final color = _getPaymentMethodColor(method);
               final grandTotal = _paymentMethodBreakdown.fold<double>(
                 0,
-                (sum, p) => sum + ((p['totalAmount'] ?? 0) as double),
+                (sum, p) =>
+                    sum + ((p['totalAmount'] as num?)?.toDouble() ?? 0),
               );
-              final share =
-                  grandTotal > 0 ? (total as double) / grandTotal : 0.0;
+              final share = grandTotal > 0 ? total / grandTotal : 0.0;
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: DesignSpacing.xl),
@@ -560,12 +561,13 @@ class _PaymentAnalyticsScreenState
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: (_transactionTrends.isNotEmpty
-                              ? (_transactionTrends
-                                  .map((e) => e['totalAmount'])
-                                  .reduce((a, b) => a > b ? a : b) as int)
-                              : 1000)
-                          .toDouble() /
-                      5,
+                          ? _transactionTrends
+                              .map((e) =>
+                                  (e['totalAmount'] as num?)?.toDouble() ?? 0)
+                              .reduce((a, b) => a > b ? a : b)
+                          : 1000)
+                      .toDouble() /
+                  5,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(color: border, strokeWidth: 1);
                   },
@@ -621,12 +623,15 @@ class _PaymentAnalyticsScreenState
           else
             ..._peakHours.map((hour) {
               final hourNum = hour['hour'] ?? 0;
-              final count = hour['transactionCount'] ?? 0;
-              final total = hour['totalAmount'] ?? 0.0;
+              final count =
+                  (hour['transactionCount'] as num?)?.toInt() ?? 0;
+              final total =
+                  (hour['totalAmount'] as num?)?.toDouble() ?? 0;
               final color = _getPeakHourColor(hourNum);
               final totalTraffic = _peakHours.fold<int>(
                 0,
-                (sum, h) => sum + ((h['transactionCount'] ?? 0) as int),
+                (sum, h) =>
+                    sum + ((h['transactionCount'] as num?)?.toInt() ?? 0),
               );
               final trafficShare =
                   totalTraffic > 0 ? (count / totalTraffic * 100) : 0.0;

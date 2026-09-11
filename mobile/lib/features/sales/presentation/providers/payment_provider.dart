@@ -395,13 +395,18 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
-    const supportedTenders = {'CASH', 'CREDIT'};
+    // MPESA sits alongside CASH and CREDIT as an always-available split
+    // tender (a standalone MPESA sale already works without any digital
+    // -payments flag — only PesaPal/TouristTap are gated behind
+    // _verifiedDigitalPaymentsEnabled, and that gate carries through here
+    // unchanged for anything else).
+    const supportedTenders = {'CASH', 'CREDIT', 'MPESA'};
     if (!_verifiedDigitalPaymentsEnabled &&
         tenders.any((tender) => !supportedTenders.contains(tender.method))) {
       state = state.copyWith(
         isProcessing: false,
         error:
-            'Split payments can only use cash and debt until digital payment verification is enabled.',
+            'Split payments can only use cash, M-Pesa and debt until digital payment verification is enabled.',
       );
       return null;
     }
@@ -427,7 +432,63 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       return null;
     }
 
+    final mpesaTenders = tenders.where((t) => t.method == 'MPESA').toList();
+    if (mpesaTenders.isNotEmpty && !_connectivity.isOnline) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'The M-Pesa portion of a split payment requires internet connection',
+      );
+      return null;
+    }
+
     try {
+      // Charge every M-Pesa tender FIRST, before the sale is created — a
+      // failed/declined STK push must never leave a half-created sale
+      // behind. Each confirmed tender's reference becomes the checkout
+      // request id, matching the standalone M-Pesa payment path.
+      var resolvedTenders = tenders;
+      if (mpesaTenders.isNotEmpty) {
+        final confirmed = <PaymentTender>[];
+        for (final tender in tenders) {
+          if (tender.method != 'MPESA') {
+            confirmed.add(tender);
+            continue;
+          }
+          final phone = tender.reference;
+          if (phone == null || phone.isEmpty) {
+            state = state.copyWith(
+              isProcessing: false,
+              error: 'Enter the M-Pesa phone number for the split payment',
+            );
+            return null;
+          }
+          String formattedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+          if (formattedPhone.startsWith('0')) {
+            formattedPhone = '254${formattedPhone.substring(1)}';
+          } else if (!formattedPhone.startsWith('254')) {
+            formattedPhone = '254$formattedPhone';
+          }
+          final response = await _apiClient.initiateMpesaPayment({
+            'amount': tender.amount,
+            'phoneNumber': formattedPhone,
+            'reference': 'POS-SPLIT-${DateTime.now().millisecondsSinceEpoch}',
+            'description': 'POS Split Sale',
+          });
+          final checkoutRequestId = response['checkout_request_id'];
+          final pollError = await _pollMpesaStatus(checkoutRequestId);
+          if (pollError != null) {
+            state = state.copyWith(isProcessing: false, error: pollError);
+            return null;
+          }
+          confirmed.add(PaymentTender(
+            method: 'MPESA',
+            amount: tender.amount,
+            reference: checkoutRequestId,
+          ));
+        }
+        resolvedTenders = confirmed;
+      }
+
       final saleId = _uuid.v4();
       final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -436,7 +497,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // single external transaction id, reusing the field rather than
       // adding a dedicated column/migration for what's still a single
       // nullable string slot everywhere else.
-      final tendersJson = jsonEncode(tenders.map((t) => t.toJson()).toList());
+      final tendersJson =
+          jsonEncode(resolvedTenders.map((t) => t.toJson()).toList());
 
       await _createLocalSale(
         saleId: saleId,
@@ -454,7 +516,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
 
       await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
-          tenders, customerId);
+          resolvedTenders, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;

@@ -83,6 +83,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final creditAmountCtrl = TextEditingController();
     DateTime? firstDueDate;
     bool isSaving = false;
+    String? saveError;
 
     GlassBottomSheet.show(
       context,
@@ -166,63 +167,131 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text(
-                    'Credit sale (optional)',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: tertiaryColor,
-                        letterSpacing: 0.4,
+                  Container(
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? DesignColors.darkSurfaceElevated
+                          : DesignColors.surfaceSubtle,
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                      border: Border.all(
+                        color: isDark
+                            ? DesignColors.darkBorder
+                            : DesignColors.surfaceBorder,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: DesignColors.accent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusSm),
+                              ),
+                              child: const Icon(Icons.credit_score_rounded,
+                                  color: DesignColors.accent, size: 18),
+                            ),
+                            const SizedBox(width: DesignSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                'Credit sale (optional)',
+                                style: Theme.of(sheetContext)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: titleColor,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: DesignSpacing.xs),
+                        Text(
+                          'If they are taking stock today and paying later, record the amount and due date.',
+                          style: Theme.of(sheetContext)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: secondaryColor),
+                        ),
+                        const SizedBox(height: DesignSpacing.md),
+                        TextFormField(
+                          controller: creditAmountCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Amount owed',
+                            prefixText: 'KES ',
+                            prefixIcon: Icon(Icons.request_quote_outlined),
+                          ),
+                          validator: (v) {
+                            final amount =
+                                double.tryParse(v?.trim() ?? '') ?? 0;
+                            if (amount < 0) return 'Amount cannot be negative';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: DesignSpacing.md),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: sheetContext,
+                              initialDate:
+                                  DateTime.now().add(const Duration(days: 1)),
+                              firstDate: DateTime.now(),
+                              lastDate:
+                                  DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) {
+                              setSheetState(() => firstDueDate = picked);
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'First payment due',
+                              prefixIcon: Icon(Icons.event_outlined),
+                            ),
+                            child: Text(
+                              firstDueDate == null
+                                  ? 'Select a date'
+                                  : '${firstDueDate!.day}/${firstDueDate!.month}/${firstDueDate!.year}',
+                              style: TextStyle(
+                                color: firstDueDate == null
+                                    ? tertiaryColor
+                                    : titleColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Record what this customer owes right now if they\'re taking stock today and paying later.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: secondaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: creditAmountCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Amount owed',
-                      prefixText: 'KES ',
-                      prefixIcon: Icon(Icons.request_quote_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: sheetContext,
-                        initialDate:
-                            DateTime.now().add(const Duration(days: 1)),
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) {
-                        setSheetState(() => firstDueDate = picked);
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'First payment due',
-                        prefixIcon: Icon(Icons.event_outlined),
+                  if (saveError != null) ...[
+                    const SizedBox(height: DesignSpacing.md),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(DesignSpacing.md),
+                      decoration: BoxDecoration(
+                        color: DesignColors.error.withValues(alpha: 0.08),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        border: Border.all(
+                            color: DesignColors.error.withValues(alpha: 0.25)),
                       ),
                       child: Text(
-                        firstDueDate == null
-                            ? 'Select a date'
-                            : '${firstDueDate!.day}/${firstDueDate!.month}/${firstDueDate!.year}',
-                        style: TextStyle(
-                          color:
-                              firstDueDate == null ? tertiaryColor : titleColor,
-                        ),
+                        saveError!,
+                        style: const TextStyle(
+                            color: DesignColors.error, fontSize: 12),
                       ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 24),
                   GradientButton(
                     label: 'Save Customer',
@@ -231,63 +300,84 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         ? null
                         : () async {
                             if (!formKey.currentState!.validate()) return;
-                            setSheetState(() => isSaving = true);
+                            setSheetState(() {
+                              isSaving = true;
+                              saveError = null;
+                            });
                             final db = getIt<AppDatabase>();
                             final creditAmount =
                                 double.tryParse(creditAmountCtrl.text.trim()) ??
                                     0;
-                            final customerId = await db.insertOrGetCustomer(
-                              DateTime.now().millisecondsSinceEpoch.toString(),
-                              nameCtrl.text.trim(),
-                              phone: phoneCtrl.text.trim(),
-                              location: locationCtrl.text.trim(),
-                              notes: notesCtrl.text.trim(),
-                              initialBalance: creditAmount,
-                            );
-                            // Queue customer for cross-device sync so
-                            // other devices in the same branch see this
-                            // customer too.
+                            if (creditAmount > 0 && firstDueDate == null) {
+                              setSheetState(() {
+                                isSaving = false;
+                                saveError =
+                                    'Select the first payment due date for this credit sale';
+                              });
+                              return;
+                            }
                             try {
-                              final syncService = getIt<SyncService>();
-                              final storage = getIt<StorageService>();
-                              final auth = getIt<AuthService>();
-                              await syncService.queueSyncItem(
-                                tableName: 'customers',
-                                recordId: customerId,
-                                action: SyncAction.create,
-                                eventType: SyncEventType.customerCreated,
-                                data: {
-                                  'id': customerId,
-                                  'name': nameCtrl.text.trim(),
-                                  'phone': phoneCtrl.text.trim(),
-                                  'address': locationCtrl.text.trim(),
-                                  'notes': notesCtrl.text.trim(),
-                                },
-                                deviceId: storage.getDeviceId() ?? '',
-                                userId: auth.userId ?? '',
+                              final customerId = await db.insertOrGetCustomer(
+                                DateTime.now().millisecondsSinceEpoch.toString(),
+                                nameCtrl.text.trim(),
+                                phone: phoneCtrl.text.trim(),
+                                location: locationCtrl.text.trim(),
+                                notes: notesCtrl.text.trim(),
+                                initialBalance: creditAmount,
+                              );
+                              // Queue customer for cross-device sync so
+                              // other devices in the same branch see this
+                              // customer too.
+                              try {
+                                final syncService = getIt<SyncService>();
+                                final storage = getIt<StorageService>();
+                                final auth = getIt<AuthService>();
+                                await syncService.queueSyncItem(
+                                  tableName: 'customers',
+                                  recordId: customerId,
+                                  action: SyncAction.create,
+                                  eventType: SyncEventType.customerCreated,
+                                  data: {
+                                    'id': customerId,
+                                    'name': nameCtrl.text.trim(),
+                                    'phone': phoneCtrl.text.trim(),
+                                    'address': locationCtrl.text.trim(),
+                                    'notes': notesCtrl.text.trim(),
+                                  },
+                                  deviceId: storage.getDeviceId() ?? '',
+                                  userId: auth.userId ?? '',
+                                );
+                              } catch (_) {
+                                // Non-fatal: local customer is still saved;
+                                // the periodic sync will retry.
+                              }
+                              if (creditAmount > 0 && firstDueDate != null) {
+                                await db.addCustomerInstallment(
+                                  customerId,
+                                  creditAmount,
+                                  firstDueDate!,
+                                  note: 'Initial credit sale',
+                                );
+                              }
+                              if (!sheetContext.mounted) return;
+                              Navigator.of(sheetContext).pop();
+                              _loadCustomers();
+                              if (!mounted) return;
+                              showGlassSnackBar(
+                                context,
+                                '${nameCtrl.text.trim()} added',
+                                icon: Icons.check_circle_rounded,
+                                color: DesignColors.success,
                               );
                             } catch (_) {
-                              // Non-fatal: local customer is still saved;
-                              // the periodic sync will retry.
+                              if (sheetContext.mounted) {
+                                setSheetState(() {
+                                  isSaving = false;
+                                  saveError =
+                                      'Could not save this customer. Please try again.';
+                                });
+                              }
                             }
-                            if (creditAmount > 0 && firstDueDate != null) {
-                              await db.addCustomerInstallment(
-                                customerId,
-                                creditAmount,
-                                firstDueDate!,
-                                note: 'Initial credit sale',
-                              );
-                            }
-                            if (!sheetContext.mounted) return;
-                            Navigator.of(sheetContext).pop();
-                            _loadCustomers();
-                            if (!mounted) return;
-                            showGlassSnackBar(
-                              context,
-                              '${nameCtrl.text.trim()} added',
-                              icon: Icons.check_circle_rounded,
-                              color: DesignColors.success,
-                            );
                           },
                   ),
                 ],
@@ -334,18 +424,23 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: Material(
                   color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   child: InkWell(
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusMd),
                     onTap: () {
                       setState(() => _showDebtOnly = true);
                       _loadCustomers();
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                          horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
                         color: DesignColors.error.withValues(alpha: 0.08),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
-                            color: DesignColors.error.withValues(alpha: 0.4)),
+                            color: DesignColors.error.withValues(alpha: 0.3)),
                       ),
                       child: Row(
                         children: [
@@ -487,17 +582,23 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: Material(
                                       color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(
+                                          DesignSpacing.radiusMd),
                                       child: InkWell(
+                                        borderRadius: BorderRadius.circular(
+                                            DesignSpacing.radiusMd),
                                         onTap: () => context
                                             .push('/customers/${c['id']}'),
                                         child: Container(
-                                          padding: const EdgeInsets.all(12),
+                                          padding: const EdgeInsets.all(14),
                                           decoration: BoxDecoration(
                                             color: surface,
+                                            borderRadius: BorderRadius.circular(
+                                                DesignSpacing.radiusMd),
                                             border: Border.all(
                                               color: balance > 0
                                                   ? DesignColors.error
-                                                      .withValues(alpha: 0.4)
+                                                      .withValues(alpha: 0.35)
                                                   : border,
                                             ),
                                           ),

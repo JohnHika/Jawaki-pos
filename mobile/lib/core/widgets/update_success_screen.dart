@@ -33,8 +33,10 @@ class UpdateSuccessScreen extends StatelessWidget {
     return Material(
       color: DesignColors.darkBg,
       child: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: DesignSpacing.md),
+          child: Center(
+            child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: Padding(
               padding: const EdgeInsets.symmetric(
@@ -48,7 +50,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                   const _SuccessMark(),
                   const SizedBox(height: DesignSpacing.xxl),
                   Text(
-                    "You're up to date",
+                    'What\'s new in Axon POS',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: DesignColors.darkTextPrimary,
@@ -65,52 +67,75 @@ class UpdateSuccessScreen extends StatelessWidget {
                         curve: Curves.easeOutCubic,
                       ),
                   const SizedBox(height: DesignSpacing.sm),
-                  Center(
-                    child: StatusBadge(
-                      label: update.displayVersion,
-                      color: DesignColors.success,
+                  Text(
+                    'Your update is installed and ready. Here are the latest changes.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: DesignColors.darkTextSecondary,
+                          height: 1.45,
+                        ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 350.ms, delay: 300.ms),
+                  const SizedBox(height: DesignSpacing.xl),
+                  UpdateReleaseMeta(
+                    releaseName: update.releaseName,
+                    version: update.latestVersion,
+                    buildNumber: update.buildNumber,
+                    publishedAt: update.publishedAt,
+                  )
+                      .animate()
+                      .fadeIn(duration: 400.ms, delay: 350.ms)
+                      .slideY(
+                        begin: 0.08,
+                        end: 0.0,
+                        duration: 400.ms,
+                        delay: 350.ms,
+                        curve: Curves.easeOutCubic,
+                      ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  GlassCard(
+                    padding: const EdgeInsets.all(DesignSpacing.xl),
+                    borderRadius: DesignSpacing.radiusLg,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Recent changes',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                color: DesignColors.darkTextPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: DesignSpacing.md),
+                        if (notes.isNotEmpty)
+                          CategorizedNotes(releaseNotes: update.releaseNotes)
+                        else
+                          const Text(
+                            'Release notes were not published for this build.',
+                            style: TextStyle(
+                              color: DesignColors.darkTextSecondary,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                      ],
                     ),
                   )
                       .animate()
-                      .fadeIn(duration: 350.ms, delay: 350.ms)
-                      .scale(
-                        begin: const Offset(0.85, 0.85),
-                        end: const Offset(1.0, 1.0),
-                        duration: 400.ms,
-                        delay: 350.ms,
-                        curve: Curves.easeOutBack,
-                      ),
-                  if (notes.isNotEmpty) ...[
-                    const SizedBox(height: DesignSpacing.xxl),
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: GlassCard(
-                          padding: const EdgeInsets.all(DesignSpacing.xl),
-                          borderRadius: DesignSpacing.radiusLg,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "What's new",
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelLarge
-                                    ?.copyWith(
-                                      color: DesignColors.darkTextPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                              const SizedBox(height: DesignSpacing.md),
-                              CategorizedNotes(releaseNotes: update.releaseNotes),
-                            ],
-                          ),
-                        ).animate().fadeIn(duration: 500.ms, delay: 450.ms),
-                      ),
-                    ),
-                  ],
+                      .fadeIn(duration: 500.ms, delay: 450.ms),
                   const SizedBox(height: DesignSpacing.xxl),
+                  Text(
+                    'For security, you have been signed out. Sign in again to continue.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: DesignColors.darkTextTertiary,
+                          height: 1.4,
+                        ),
+                  ),
+                  const SizedBox(height: DesignSpacing.md),
                   SettingsPrimaryButton(
-                    label: 'Continue',
+                    label: 'Continue to sign in',
                     onPressed: onDismiss,
                   ).animate().fadeIn(duration: 350.ms, delay: 600.ms).slideY(
                         begin: 0.2,
@@ -125,7 +150,8 @@ class UpdateSuccessScreen extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

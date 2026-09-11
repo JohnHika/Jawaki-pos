@@ -84,7 +84,7 @@ export class TenantActivationService {
         amountKes: AXON_STARTUP_FEE_KES,
         reference,
         metadata: { product: ACTIVATION_PRODUCT, tenantId, userId, companyName: tenant.name, attemptId: attempt.id },
-        callbackUrl: this.configService.get<string>('PAYSTACK_ACTIVATION_CALLBACK_URL'),
+        callbackUrl: this.activationCallbackUrl(),
       });
       const updated = await this.prisma.tenantActivationAttempt.update({
         where: { id: attempt.id },
@@ -122,6 +122,8 @@ export class TenantActivationService {
     if (!attempt) throw new NotFoundException('Activation payment reference not found');
 
     const paidAt = new Date();
+    const trialEndsAt = new Date(paidAt);
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7);
     const updatedAttempt = await this.prisma.tenantActivationAttempt.update({
       where: { id: attempt.id },
       data: { status: 'PAID', verifiedAt: paidAt, providerResponse: charge as any },
@@ -133,12 +135,37 @@ export class TenantActivationService {
       data: {
         activationStatus: 'ACTIVE', isActive: true, activationAmount: AXON_STARTUP_FEE_KES,
         activationReference: reference, activationProvider: 'PAYSTACK', activationPaidAt: paidAt,
-        plan: 'CORE', subscriptionStatus: 'ACTIVE', setupFeePaidAt: paidAt,
-        maxBranches: 3, maxUsers: 10,
+        // Activation unlocks the workspace and starts a real seven-day trial.
+        // Plan selection later replaces TRIAL with the chosen paid tier while
+        // preserving this period end; the renewal cron then creates the first
+        // monthly invoice when the trial expires.
+        plan: 'TRIAL', subscriptionStatus: 'TRIAL',
+        currentPeriodStart: paidAt, currentPeriodEnd: trialEndsAt,
+        setupFeePaidAt: paidAt, maxBranches: 1, maxUsers: 3,
       },
       select: { activationStatus: true, activationAmount: true, activationPaidAt: true },
     });
     return this.formatStatus(tenant, updatedAttempt);
+  }
+
+  private activationCallbackUrl(): string | undefined {
+    const explicit = this.configService
+      .get<string>('PAYSTACK_ACTIVATION_CALLBACK_URL')
+      ?.trim();
+    if (explicit) return explicit;
+
+    const publicBase = [
+      this.configService.get<string>('PUBLIC_API_URL'),
+      this.configService.get<string>('API_PUBLIC_URL'),
+      this.configService.get<string>('RENDER_EXTERNAL_URL'),
+    ].find((value) => value?.trim());
+    if (!publicBase) return undefined;
+
+    const normalized = publicBase.trim().replace(/\/+$/, '');
+    const apiPrefix = normalized.endsWith('/api/v1')
+        ? normalized
+        : `${normalized}/api/v1`;
+    return `${apiPrefix}/tenant-activation/paystack/callback`;
   }
 
   private formatStatus(tenant: any, attempt: any) {

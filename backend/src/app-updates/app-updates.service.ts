@@ -24,6 +24,15 @@ type AndroidUpdateManifest = {
   updateSources?: UpdateSource[];
 };
 
+const defaultAndroidReleaseNotes = `What's new in this release
+
+- Checkout: clearer cart totals and a cleaner payment experience, including M-Pesa in split payments with STK confirmation.
+- Customers: faster customer search and a clearer add-customer form with credit-sale details and due-date validation.
+- Reports: payment and inventory reports now reflow cleanly on phones and handle numeric data consistently.
+- Subscription: activation is KES 35,000, followed by a seven-day trial and monthly billing after the trial.
+- Updates: release notes now show the actual recent changes, and installing an update requires a fresh sign-in.
+`.trim();
+
 @Injectable()
 export class AppUpdatesService {
   private readonly logger = new Logger(AppUpdatesService.name);
@@ -92,6 +101,19 @@ export class AppUpdatesService {
     };
   }
 
+  private selectReleaseNotes(...candidates: Array<string | null | undefined>): string {
+    for (const candidate of candidates) {
+      const notes = candidate?.trim() || "";
+      if (notes && !this.isBuildOnlyReleaseNotes(notes)) return notes;
+    }
+    return defaultAndroidReleaseNotes;
+  }
+
+  private isBuildOnlyReleaseNotes(notes: string): boolean {
+    return /\bbuild\s*[:#-]?\s*\d+\b/i.test(notes) &&
+      !/\b(added|fixed|improved|updated|new|support|checkout|customer|report|subscription|payment|security)\b/i.test(notes);
+  }
+
   private buildLocalAndroidManifest(): AndroidUpdateManifest {
     const latestVersion = this.config.get<string>(
       "ANDROID_APP_LATEST_VERSION",
@@ -127,7 +149,9 @@ export class AppUpdatesService {
         "ANDROID_APP_APK_URL",
         "/api/v1/app-updates/android/download",
       ),
-      releaseNotes: this.config.get<string>("ANDROID_APP_RELEASE_NOTES", ""),
+      releaseNotes: this.selectReleaseNotes(
+        this.config.get<string>("ANDROID_APP_RELEASE_NOTES", ""),
+      ),
       publishedAt: this.config.get<string>("ANDROID_APP_PUBLISHED_AT") || null,
       updateSources: manifestUrl
         ? [
@@ -172,9 +196,10 @@ export class AppUpdatesService {
         fallbackManifest.forceUpdate,
       ),
       apkUrl: this.readString(remoteManifest.apkUrl) || fallbackManifest.apkUrl,
-      releaseNotes:
-        this.readString(remoteManifest.releaseNotes) ||
+      releaseNotes: this.selectReleaseNotes(
+        this.readString(remoteManifest.releaseNotes),
         fallbackManifest.releaseNotes,
+      ),
       publishedAt:
         this.readString(remoteManifest.publishedAt) ||
         fallbackManifest.publishedAt,
@@ -288,8 +313,10 @@ export class AppUpdatesService {
       minSupportedBuildNumber: fallbackManifest.minSupportedBuildNumber,
       forceUpdate: fallbackManifest.forceUpdate,
       apkUrl,
-      releaseNotes:
-        this.readString(release.body) || fallbackManifest.releaseNotes,
+      releaseNotes: this.selectReleaseNotes(
+        this.readString(release.body),
+        fallbackManifest.releaseNotes,
+      ),
       publishedAt:
         this.readString(release.published_at) || fallbackManifest.publishedAt,
       updateSources: this.buildUpdateSources(null, apkUrl),

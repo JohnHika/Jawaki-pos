@@ -105,7 +105,13 @@ describe('SubscriptionService', () => {
 
       expect(prisma.tenant.findUnique).toHaveBeenCalledWith({
         where: { id: 'tenant-1' },
-        select: { id: true },
+        select: {
+          id: true,
+          subscriptionStatus: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          activationStatus: true,
+        },
       });
       expect(prisma.tenant.update).toHaveBeenCalledWith({
         where: { id: 'tenant-1' },
@@ -137,6 +143,44 @@ describe('SubscriptionService', () => {
       expect(updateArgs.data.currentPeriodEnd.getTime()).toBeGreaterThan(updateArgs.data.currentPeriodStart.getTime());
     });
 
+    it('preserves the active seven-day trial when the owner chooses a plan', async () => {
+      const trialStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const trialEnd = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
+      const { service, prisma } = buildService({
+        prisma: {
+          tenant: {
+            findUnique: jest.fn().mockResolvedValue({
+              id: 'tenant-trial',
+              subscriptionStatus: 'TRIAL',
+              currentPeriodStart: trialStart,
+              currentPeriodEnd: trialEnd,
+              activationStatus: 'ACTIVE',
+            }),
+            update: jest.fn().mockResolvedValue({
+              plan: 'BUSINESS',
+              subscriptionStatus: 'TRIAL',
+              currentPeriodStart: trialStart,
+              currentPeriodEnd: trialEnd,
+              maxBranches: 10,
+              maxUsers: 50,
+            }),
+          },
+        },
+      });
+
+      await service.changePlan('tenant-trial', 'BUSINESS');
+
+      expect(prisma.tenant.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            plan: 'BUSINESS',
+            subscriptionStatus: 'TRIAL',
+            currentPeriodStart: trialStart,
+            currentPeriodEnd: trialEnd,
+          }),
+        }),
+      );
+    });
     it('switches a tenant to ENTERPRISE with unlimited branch and user limits', async () => {
       const { service, prisma } = buildService({
         prisma: {

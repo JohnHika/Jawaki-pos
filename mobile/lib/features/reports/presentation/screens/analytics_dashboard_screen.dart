@@ -143,17 +143,34 @@ class _AnalyticsDashboardScreenState
                     ),
                     const SizedBox(height: DesignSpacing.xxl),
 
-                    // Top Products & Payment Methods Row
+                    // Top Products & Payment Methods — side-by-side on
+                    // tablets, stacked on phones so the payment panel never
+                    // becomes a clipped sliver.
                     StaggeredItem(
                       itemKey: 'analytics-top-payments',
                       index: 2,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(flex: 2, child: _buildTopProducts(isDark)),
-                          const SizedBox(width: DesignSpacing.lg),
-                          Expanded(child: _buildPaymentMethods(isDark)),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final topProducts = _buildTopProducts(isDark);
+                          final payments = _buildPaymentMethods(isDark);
+                          if (constraints.maxWidth < 680) {
+                            return Column(
+                              children: [
+                                topProducts,
+                                const SizedBox(height: DesignSpacing.xxl),
+                                payments,
+                              ],
+                            );
+                          }
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 2, child: topProducts),
+                              const SizedBox(width: DesignSpacing.lg),
+                              Expanded(child: payments),
+                            ],
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: DesignSpacing.xxl),
@@ -628,12 +645,16 @@ class _AnalyticsDashboardScreenState
             ..._salesByPayment.map((payment) {
               final method = payment['paymentMethod'] ?? 'Unknown';
               final count = payment['count'] ?? 0;
-              final total = payment['totalAmount'] ?? 0.0;
+              final total =
+                  (payment['totalAmount'] as num?)?.toDouble() ?? 0;
               final color = _getPaymentMethodColor(method);
-              final totalBreakdown = (_salesByPayment.isNotEmpty
+              final totalBreakdown = _salesByPayment.isNotEmpty
                   ? _salesByPayment.fold<double>(
-                      0, (sum, p) => sum + ((p['totalAmount'] ?? 0) as double))
-                  : 1);
+                      0,
+                      (sum, p) =>
+                          sum + ((p['totalAmount'] as num?)?.toDouble() ?? 0),
+                    )
+                  : 1.0;
               final percentage = totalBreakdown;
               final percent = (total / percentage * 100).toStringAsFixed(1);
 
@@ -750,11 +771,13 @@ class _AnalyticsDashboardScreenState
           else
             ..._salesByCategory.map((category) {
               final catName = category['categoryName'] ?? 'Unknown';
-              final total = (category['totalRevenue'] ?? 0.0) as double;
+              final total =
+                  (category['totalRevenue'] as num?)?.toDouble() ?? 0;
               final color = _getCategoryColor(catName);
               final grandTotal = _salesByCategory.fold<double>(
                 0,
-                (sum, c) => sum + ((c['totalRevenue'] ?? 0) as double),
+                (sum, c) =>
+                    sum + ((c['totalRevenue'] as num?)?.toDouble() ?? 0),
               );
               final share = grandTotal > 0 ? total / grandTotal : 0.0;
 
@@ -867,9 +890,11 @@ class _AnalyticsDashboardScreenState
                   maxY: (_hourlySales.isNotEmpty
                               ? _hourlySales.fold<double>(
                                   0,
-                                  (sum, e) => (e['totalAmount'] ?? 0) > sum
-                                      ? (e['totalAmount'] ?? 0) as double
-                                      : sum)
+                                  (sum, e) {
+                                    final amount =
+                                        (e['totalAmount'] as num?)?.toDouble() ?? 0;
+                                    return amount > sum ? amount : sum;
+                                  })
                               : 1000)
                           .toDouble() *
                       1.2,

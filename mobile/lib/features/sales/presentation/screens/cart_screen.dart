@@ -169,9 +169,11 @@ class CartScreen extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                     DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.lg),
+                // The total is already shown prominently in the summary card
+                // right above this button — repeating it here read as three
+                // redundant copies of the same price on one screen.
                 child: GradientButton(
-                  label:
-                      'Proceed to Payment - KES ${cart.total.toStringAsFixed(0)}',
+                  label: 'Proceed to Payment',
                   icon: Icons.payment_rounded,
                   onPressed: () => context.push('/payment'),
                   height: 56,
@@ -207,42 +209,79 @@ class CartScreen extends ConsumerWidget {
           isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
       child: Column(
         children: [
-          _buildSummaryRow(
-              context, 'Subtotal', 'KES ${cart.subtotal.toStringAsFixed(0)}'),
-          const SizedBox(height: DesignSpacing.sm),
-          if (cart.discount > 0) ...[
-            _buildSummaryRow(context, 'Discount',
-                '- KES ${cart.discount.toStringAsFixed(0)}',
-                valueColor: DesignColors.success),
+          // Subtotal only earns its own line when something actually moves
+          // it away from the final total (a discount or tax applied). When
+          // there's neither, "Subtotal" and "Total" are the same number —
+          // showing both is redundant and reads like an unfinished screen.
+          if (cart.discount > 0 ||
+              (getIt<AuthService>().showTaxOnReceipt &&
+                  getIt<AuthService>().taxRatePercent > 0)) ...[
+            _buildSummaryRow(context, 'Subtotal',
+                'KES ${cart.subtotal.toStringAsFixed(0)}'),
             const SizedBox(height: DesignSpacing.sm),
+            if (cart.discount > 0) ...[
+              _buildSummaryRow(context, 'Discount',
+                  '- KES ${cart.discount.toStringAsFixed(0)}',
+                  valueColor: DesignColors.success),
+              const SizedBox(height: DesignSpacing.sm),
+            ],
+            if (getIt<AuthService>().showTaxOnReceipt &&
+                getIt<AuthService>().taxRatePercent > 0) ...[
+              _buildSummaryRow(
+                context,
+                'Tax (${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}%)',
+                'KES ${cart.tax.toStringAsFixed(0)}',
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+            ],
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: DesignSpacing.md),
+              child: Divider(
+                height: 1,
+                color: isDark
+                    ? DesignColors.darkBorder
+                    : DesignColors.surfaceBorder,
+              ),
+            ),
           ],
-          if (getIt<AuthService>().showTaxOnReceipt &&
-              getIt<AuthService>().taxRatePercent > 0) ...[
-            _buildSummaryRow(
-              context,
-              'Tax (${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}%)',
-              'KES ${cart.tax.toStringAsFixed(0)}',
-            ),
-            const SizedBox(height: DesignSpacing.sm),
-          ],
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: DesignSpacing.md),
-            child: Divider(
-              height: 1,
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-            ),
-          ),
-          _buildSummaryRow(
-            context,
-            'Total',
-            'KES ${cart.total.toStringAsFixed(0)}',
-            isBold: true,
-            valueStyle: DesignType.numeric(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: DesignColors.accent,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Total due',
+                    style: TextStyle(
+                      fontSize: DesignType.chatBody,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${cart.itemCount} item${cart.itemCount == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: DesignType.chatSecondary,
+                      color: isDark
+                          ? DesignColors.darkTextTertiary
+                          : DesignColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                'KES ${cart.total.toStringAsFixed(0)}',
+                style: DesignType.numeric(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: DesignColors.accent,
+                ),
+              ),
+            ],
           ),
         ],
       ),

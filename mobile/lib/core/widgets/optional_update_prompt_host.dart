@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../di/injection.dart';
+import '../services/auth_service.dart';
 import '../services/update_check_service.dart';
 import 'update_available_dialog.dart';
 import 'update_success_screen.dart';
@@ -32,6 +34,7 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
   String? _shownInstalledNoticeThisLaunch;
   AppUpdateInfo? _visibleOptionalUpdate;
   AppUpdateInfo? _visibleSuccessNotice;
+  bool _forcedFreshLoginAfterUpdate = false;
 
   @override
   void initState() {
@@ -99,6 +102,23 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
 
     final due = await widget.updateService.consumeInstalledUpdateNoticeIfDue();
     if (due == null || !mounted) return;
+
+    // Every device that installs a new APK must establish a fresh session.
+    // Revoke this account's refresh tokens on the server when possible, then
+    // always clear the local session (AuthService is deliberately fail-soft
+    // for offline relaunches). This prevents an old session from surviving a
+    // release while still allowing the What's New screen to be read.
+    if (!_forcedFreshLoginAfterUpdate) {
+      _forcedFreshLoginAfterUpdate = true;
+      try {
+        await getIt<AuthService>().logout(allDevices: true);
+      } catch (_) {
+        // AuthService already clears locally on API failure; this guard keeps
+        // the update notice usable if storage itself is temporarily unhappy.
+      }
+    }
+
+    if (!mounted) return;
     setState(() => _visibleSuccessNotice = due);
   }
 

@@ -212,7 +212,7 @@ class SettingsScreen extends ConsumerWidget {
           ],
 
           // ── Account ──
-          const SettingsGroupLabel('Account'),
+          const SettingsGroupLabel('Your account'),
           GroupedCard(children: [
             SettingsRow(
               icon: Icons.lock_rounded,
@@ -236,9 +236,16 @@ class SettingsScreen extends ConsumerWidget {
             ),
             SettingsRow(
               icon: Icons.logout_rounded,
-              title: 'Logout',
+              title: 'Log out',
               isDestructive: true,
               onTap: () => _showLogoutDialog(context, ref),
+            ),
+            SettingsRow(
+              icon: Icons.devices_rounded,
+              title: 'Log out everywhere',
+              subtitle: 'Sign out on all phones and browsers',
+              isDestructive: true,
+              onTap: () => _showLogoutDialog(context, ref, allDevices: true),
             ),
           ]),
 
@@ -359,22 +366,26 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context, WidgetRef ref) async {
+  void _showLogoutDialog(BuildContext context, WidgetRef ref,
+      {bool allDevices = false}) async {
     // Capture the settings screen context BEFORE the async gap, since the
     // dialog's own context is disposed as soon as it closes.
     final settingsContext = context;
 
     final confirmed = await showConfirmDialog(
       context,
-      title: 'Logout',
-      message:
-          'Are you sure you want to logout? Any unsynced data will be saved locally.',
-      confirmLabel: 'Logout',
+      title: allDevices ? 'Log out everywhere' : 'Log out',
+      message: allDevices
+          ? 'This will sign out your account on every phone and browser. Any unsynced data will remain saved locally on this device.'
+          : 'Are you sure you want to log out? Any unsynced data will be saved locally.',
+      confirmLabel: allDevices ? 'Log out everywhere' : 'Log out',
       confirmColor: DesignColors.error,
     );
     if (!confirmed) return;
 
-    await ref.read(authControllerProvider.notifier).logout();
+    await ref
+        .read(authControllerProvider.notifier)
+        .logout(allDevices: allDevices);
     if (settingsContext.mounted) {
       settingsContext.go('/login');
     }

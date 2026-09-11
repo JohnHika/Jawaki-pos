@@ -20,7 +20,7 @@ model Tenant {
   logoPublicId String?
   isActive     Boolean  @default(true)
   activationStatus String @default("PENDING")
-  activationAmount Decimal @default(50000.00) @db.Decimal(12, 2)
+  activationAmount Decimal @default(35000.00) @db.Decimal(12, 2)
   activationReference String? @unique
   activationProvider String?
   activationAuthorizationUrl String?

@@ -2,10 +2,12 @@ import {
   Controller,
   Get,
   Headers,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
   Post,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
@@ -36,7 +38,7 @@ export class TenantActivationController {
   @Post('paystack/initialize')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Initialize the one-time KES 1,500 company activation checkout' })
+  @ApiOperation({ summary: 'Initialize the one-time KES 35,000 company activation checkout' })
   initialize(@Req() req: any, @Headers('idempotency-key') idempotencyKey?: string) {
     return this.activationService.initialize(
       req.user.tenantId,
@@ -44,6 +46,22 @@ export class TenantActivationController {
       req.user.email,
       idempotencyKey,
     );
+  }
+
+  @Get('paystack/callback')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @ApiOperation({ summary: 'Return a completed Paystack checkout to the Axon app' })
+  callback(@Query('reference') reference?: string) {
+    const encodedReference = encodeURIComponent(reference?.trim() ?? '');
+    const appUrl = `axonpos://payment/activation?reference=${encodedReference}`;
+    return `<!doctype html>
+<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Return to Axon POS</title></head>
+<body style="font-family:system-ui,sans-serif;padding:32px;text-align:center">
+<h1>Payment received</h1>
+<p>Returning you to Axon POS to verify your payment securely.</p>
+<p><a href="${appUrl}">Return to Axon POS</a></p>
+<script>window.location.replace(${JSON.stringify(appUrl)});</script>
+</body></html>`;
   }
 
   @Get('paystack/verify/:reference')

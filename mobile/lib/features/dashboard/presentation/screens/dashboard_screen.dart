@@ -8,6 +8,7 @@ import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
@@ -33,6 +34,19 @@ final _todaysCostProvider = FutureProvider.autoDispose<double>((ref) async {
   final branchId = getIt<AuthService>().branchId;
   if (branchId == null) return 0.0;
   return getIt<AppDatabase>().getTodaysTotalPurchases(branchId);
+});
+
+/// Today's end-of-day close status for the dashboard's admin-only card —
+/// null result means "not closed yet"; the underlying getDailyClose(...)
+/// already distinguishes that from a load failure via its own exception.
+final _eodStatusProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  final branchId = getIt<AuthService>().branchId;
+  if (branchId == null) return null;
+  final now = DateTime.now();
+  final today =
+      '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  return getIt<ApiClient>().getDailyClose(branchId, date: today);
 });
 
 /// Real AI-generated brief for the dashboard, replacing the previous
@@ -140,6 +154,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     ref.invalidate(_recentSalesProvider);
     ref.invalidate(_todaysCostProvider);
     ref.invalidate(_aiDailyBriefProvider);
+    ref.invalidate(_eodStatusProvider);
     if (mounted) setState(() {}); // refresh the header date too
   }
 
@@ -168,6 +183,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           IconButton(
             icon: const Icon(Icons.share_rounded),
             onPressed: () => _shareDashboardReport(context, ref),
+          ),
+          IconButton(
+            tooltip: 'Log out',
+            icon: const Icon(Icons.logout_rounded),
+            onPressed: () => _showDashboardLogoutDialog(context, ref),
           ),
         ],
       ),
@@ -227,6 +247,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               // Staff invite nudge — persistent across sessions until
               // at least one staff invitation is accepted.
               const StaffInviteNudge(),
+
+              // End of Day — admin-only. Previously this lived only inside
+              // Finance › Cash Flow, several taps deep; admins asked for it
+              // to be reachable straight from the dashboard too. Staff
+              // never see this card at all (canCloseEndOfDay is itself
+              // sales.close_end_of_day, but the dashboard entry point is
+              // additionally gated on the Admin role so a store manager who
+              // was individually granted the permission still doesn't see
+              // it duplicated here — only Finance stays their route).
+              if (ref.watch(permissionsProvider).isAdmin) ...[
+                _buildEndOfDayCard(context, ref),
+                const SizedBox(height: DesignSpacing.xl),
+              ],
 
               // Summary Cards - Using Wrap+LayoutBuilder to prevent overflow in Column
               summaryAsync.when(
@@ -634,6 +667,134 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
+  Widget _buildEndOfDayCard(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final closeAsync = ref.watch(_eodStatusProvider);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        onTap: () => context.push('/cash-flow/end-of-day'),
+        child: Container(
+          padding: const EdgeInsets.all(DesignSpacing.lg),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(color: border),
+          ),
+          child: closeAsync.when(
+            loading: () => Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: DesignSpacing.md),
+                Expanded(
+                  child: Text(
+                    'Checking today\'s close status…',
+                    style: TextStyle(color: secondaryColor),
+                  ),
+                ),
+              ],
+            ),
+            error: (_, __) => _buildEodCardContent(
+              title: 'End of Day',
+              subtitle: 'Review today\'s sales and count the till',
+              status: 'Review',
+              statusColor: DesignColors.warning,
+              titleColor: titleColor,
+              secondaryColor: secondaryColor,
+            ),
+            data: (close) => close == null
+                ? _buildEodCardContent(
+                    title: 'End of Day',
+                    subtitle: 'Today is open — review sales and count the till',
+                    status: 'Open',
+                    statusColor: DesignColors.accent,
+                    titleColor: titleColor,
+                    secondaryColor: secondaryColor,
+                  )
+                : _buildEodCardContent(
+                    title: 'End of Day',
+                    subtitle: 'Today\'s close is complete — view the summary',
+                    status: 'Closed',
+                    statusColor: DesignColors.success,
+                    titleColor: titleColor,
+                    secondaryColor: secondaryColor,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEodCardContent({
+    required String title,
+    required String subtitle,
+    required String status,
+    required Color statusColor,
+    required Color titleColor,
+    required Color secondaryColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            border: Border.all(color: statusColor.withValues(alpha: 0.25)),
+          ),
+          child: Icon(
+            status == 'Closed'
+                ? Icons.lock_rounded
+                : Icons.event_available_rounded,
+            color: statusColor,
+            size: 22,
+          ),
+        ),
+        const SizedBox(width: DesignSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.xs),
+              Text(
+                subtitle,
+                style: TextStyle(color: secondaryColor, fontSize: 12),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: DesignSpacing.sm),
+        StatusBadge(label: status, color: statusColor),
+        const SizedBox(width: DesignSpacing.xs),
+        Icon(Icons.chevron_right_rounded, color: secondaryColor, size: 20),
+      ],
+    );
+  }
+
   Widget _buildCostAndProfitCard(
     BuildContext context,
     WidgetRef ref,
@@ -805,6 +966,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (saved == true) {
       ref.invalidate(_todaysCostProvider);
     }
+  }
+
+  Future<void> _showDashboardLogoutDialog(
+      BuildContext context, WidgetRef ref) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Log out',
+      message:
+          'Are you sure you want to log out? Any unsynced data will remain saved locally.',
+      confirmLabel: 'Log out',
+      confirmColor: DesignColors.error,
+    );
+    if (!confirmed || !context.mounted) return;
+
+    await ref.read(authControllerProvider.notifier).logout();
   }
 
   Future<void> _shareDashboardReport(

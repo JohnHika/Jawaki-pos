@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../services/update_check_service.dart';
+import 'release_notes.dart';
 import '../theme/design_system.dart';
 
 /// Full-screen, non-dismissible update prompt — shown whenever
@@ -245,6 +246,13 @@ class _UpdateSummary extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          UpdateReleaseMeta(
+            releaseName: update.releaseName,
+            version: update.latestVersion,
+            buildNumber: update.buildNumber,
+            publishedAt: update.publishedAt,
+          ),
+          const SizedBox(height: DesignSpacing.lg),
           Row(
             children: [
               Expanded(

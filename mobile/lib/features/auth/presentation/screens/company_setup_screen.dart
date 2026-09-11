@@ -75,6 +75,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   String? _challengeId;
+  String? _verifiedGoogleEmail;
   _VerificationMode _verificationMode = _VerificationMode.google;
 
   @override
@@ -105,7 +106,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           code: _branchCodeController.text.trim().toUpperCase(),
           address: _optional(_branchAddressController),
           phone: _optional(_branchPhoneController),
-          email: _emailController.text.trim(),
+          email: _verificationMode == _VerificationMode.google &&
+                  _verifiedGoogleEmail != null
+              ? _verifiedGoogleEmail!
+              : _emailController.text.trim(),
         ),
       );
 
@@ -124,6 +128,16 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       final account =
           await GoogleSignIn(serverClientId: googleWebClientId).signIn();
       if (account == null) return;
+      final verifiedEmail = account.email.trim();
+      if (verifiedEmail.isEmpty) {
+        throw StateError('Google did not return an email address');
+      }
+      if (mounted) {
+        setState(() {
+          _verifiedGoogleEmail = verifiedEmail;
+          _emailController.text = verifiedEmail;
+        });
+      }
       final idToken = (await account.authentication).idToken;
       if (idToken == null || idToken.isEmpty) {
         throw StateError('Google did not return an identity token');
@@ -142,6 +156,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   Future<void> _requestEmailOtp() async {
     if (_isLoading) return;
+    if (_emailValidator(_emailController.text) != null) {
+      _showError('Enter the owner email you can access to receive a code.');
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -362,11 +380,18 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             const SizedBox(height: 16),
             _field(
               _emailController,
-              label: 'Owner email',
-              hint: 'owner@business.com',
+              label: 'Owner email (only for email-code verification)',
+              hint: 'Google supplies this after sign-in',
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
-              validator: _emailValidator,
+              validator: (value) {
+                final email = value?.trim() ?? '';
+                if (email.isEmpty &&
+                    _verificationMode == _VerificationMode.google) {
+                  return null;
+                }
+                return _emailValidator(value);
+              },
             ),
           ],
         );
@@ -434,8 +459,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           _VerificationCard(
             icon: Icons.verified_user_outlined,
             title: 'Google verification',
-            subtitle:
-                'Recommended — Google verifies your identity before workspace creation.',
+            subtitle: _verifiedGoogleEmail == null
+                ? 'Recommended — Google verifies your identity before workspace creation.'
+                : 'Verified Google account: $_verifiedGoogleEmail',
             child: GradientButton(
               label: 'Verify with Google & create workspace',
               icon: Icons.g_mobiledata_rounded,

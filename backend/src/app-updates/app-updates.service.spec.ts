@@ -90,6 +90,38 @@ describe("AppUpdatesService", () => {
     });
   });
 
+  it("replaces build-only remote notes with a concrete change list", async () => {
+    jest.spyOn(axios, "get").mockResolvedValue({
+      data: {
+        latestVersion: "1.0.5",
+        releaseName: "Axon POS 1.0.5",
+        buildNumber: 2005,
+        forceUpdate: false,
+        apkUrl: "https://pub.example.r2.dev/releases/1.0.5/app-release.apk",
+        releaseNotes: "Axon POS 1.0.5 was published as build 2005.",
+      },
+    } as never);
+
+    const service = new AppUpdatesService(
+      createConfigService({
+        ANDROID_APP_MANIFEST_URL:
+          "https://pub.example.r2.dev/android/latest.json",
+        ANDROID_APP_LATEST_VERSION: "1.0.4",
+        ANDROID_APP_BUILD_NUMBER: "2004",
+        ANDROID_APP_APK_URL: "https://downloads.example.com/app-release.apk",
+        ANDROID_APP_RELEASE_NOTES: "Build 2004 was published.",
+        ANDROID_APP_GITHUB_RELEASES_URL: "none",
+      }),
+    );
+
+    const result = await service.getLatestAndroidUpdate();
+
+    expect(result.releaseNotes).toContain("Checkout:");
+    expect(result.releaseNotes).toContain("M-Pesa");
+    expect(result.releaseNotes).toContain("seven-day trial");
+  });
+
+
   it("falls back to the local env manifest when the remote manifest fetch fails", async () => {
     jest.spyOn(axios, "get").mockRejectedValue(new Error("network down"));
 

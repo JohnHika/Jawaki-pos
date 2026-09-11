@@ -126,21 +126,35 @@ export class SubscriptionService {
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true },
+      select: {
+        id: true,
+        subscriptionStatus: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        activationStatus: true,
+      },
     });
     if (!tenant) throw new NotFoundException('Company not found');
 
     const plan = PLAN_PRICING[newPlan];
     const now = new Date();
-    const periodEnd = new Date(now);
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    const isActiveTrial =
+      tenant.subscriptionStatus === 'TRIAL' &&
+      tenant.currentPeriodEnd != null &&
+      tenant.currentPeriodEnd.getTime() > now.getTime();
+    const periodStart = isActiveTrial
+        ? tenant.currentPeriodStart ?? now
+        : now;
+    const periodEnd = isActiveTrial
+        ? tenant.currentPeriodEnd!
+        : this.addMonth(now);
 
     return this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
         plan: newPlan,
-        subscriptionStatus: 'ACTIVE',
-        currentPeriodStart: now,
+        subscriptionStatus: isActiveTrial ? 'TRIAL' : 'ACTIVE',
+        currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
         maxBranches: plan.features.maxBranches,
         maxUsers: plan.features.maxUsers,
@@ -154,6 +168,12 @@ export class SubscriptionService {
         maxUsers: true,
       },
     });
+  }
+
+  private addMonth(date: Date) {
+    const result = new Date(date);
+    result.setMonth(result.getMonth() + 1);
+    return result;
   }
 
   async listInvoices(tenantId: string) {

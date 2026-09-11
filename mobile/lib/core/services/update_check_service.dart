@@ -406,7 +406,7 @@ class UpdateCheckService extends ChangeNotifier {
   /// OptionalUpdatePromptHost), so this service stays UI-free.
   Future<AppUpdateInfo?> consumeInstalledUpdateNoticeIfDue() async {
     final update = _installedUpdateNotice;
-    if (update == null || update.releaseNotes.trim().isEmpty) return null;
+    if (update == null) return null;
 
     final prefs = await SharedPreferences.getInstance();
     final noticeKey = update.noticeKey;
@@ -429,7 +429,6 @@ class UpdateCheckService extends ChangeNotifier {
   /// actually take effect"), since displayVersion/noticeKey may be a
   /// human-readable release name rather than the raw installed version.
   Future<void> _persistPendingInstalledNotice(AppUpdateInfo update) async {
-    if (update.releaseNotes.trim().isEmpty) return;
     final buildNumber = update.buildNumber;
     if (buildNumber == null) return;
     final prefs = await SharedPreferences.getInstance();
@@ -458,9 +457,7 @@ class UpdateCheckService extends ChangeNotifier {
     await prefs.remove(_pendingNoticeReleaseNotesKey);
 
     final currentBuildNumber = _currentBuildNumber(currentVersion);
-    if (currentBuildNumber == null ||
-        pendingBuild != currentBuildNumber ||
-        pendingNotes.trim().isEmpty) {
+    if (currentBuildNumber == null || pendingBuild != currentBuildNumber) {
       return;
     }
 

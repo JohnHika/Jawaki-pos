@@ -59,6 +59,14 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Paystack callback handoff. The backend callback page opens
+                 this URI; Flutter verifies the reference before navigation. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="axonpos" android:host="payment" />
+            </intent-filter>
         </activity>
         <!-- FileProvider required for Android 7+ so we can share downloaded APKs
              with the system package installer using a content:// URI. -->

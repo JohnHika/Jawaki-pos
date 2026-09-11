@@ -168,7 +168,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               icon: Icons.money_rounded,
               title: 'Cash',
               subtitle: 'Pay with cash',
-              color: DesignColors.cash,
+              color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.cash,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.cash),
             ),
@@ -179,7 +179,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               icon: Icons.phone_android_rounded,
               title: 'M-Pesa',
               subtitle: 'Pay via M-Pesa STK Push',
-              color: DesignColors.mpesa,
+              color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
               onTap: () =>
                   setState(() => _selectedMethod = PaymentMethod.mpesa),
@@ -203,7 +203,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               icon: Icons.account_balance_wallet_outlined,
               title: 'Add to Debt',
               subtitle: 'Customer pays later — requires a customer',
-              color: DesignColors.error,
+              color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.debt,
               onTap: () => setState(() => _selectedMethod = PaymentMethod.debt),
             ),
@@ -214,7 +214,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               icon: Icons.call_split_rounded,
               title: 'Split Payment',
               subtitle: 'Part cash, part M-Pesa, part debt',
-              color: DesignColors.warning,
+              color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.split,
               onTap: () =>
                   setState(() => _selectedMethod = PaymentMethod.split),
@@ -433,12 +433,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
-  /// Collects one or more tenders (method + amount) that together must
-  /// cover the sale total. Returns null if the user cancels.
+  /// Collects one or more tenders (method + amount, plus phone for M-Pesa)
+  /// that together must cover the sale total. Returns null if cancelled.
   Future<List<PaymentTender>?> _showSplitPaymentSheet(double total) async {
     final rows = <_TenderRow>[
       _TenderRow(method: 'CASH', amountController: TextEditingController()),
-      _TenderRow(method: 'CASH', amountController: TextEditingController()),
+      _TenderRow(method: 'MPESA', amountController: TextEditingController()),
     ];
 
     final confirmed = await showModalBottomSheet<bool>(
@@ -453,6 +453,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               (sum, r) =>
                   sum + (double.tryParse(r.amountController.text) ?? 0));
           final remaining = total - entered;
+          final phoneMissing = rows.any((r) =>
+              r.method == 'MPESA' &&
+              (double.tryParse(r.amountController.text) ?? 0) > 0 &&
+              r.phoneController.text.trim().length < 9);
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -476,61 +480,116 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             ? DesignColors.darkTextSecondary
                             : DesignColors.textSecondary)),
                 const SizedBox(height: DesignSpacing.lg),
-                ...rows.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final row = entry.value;
-                  return Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: DesignSpacing.md - 2),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: row.method,
-                            decoration:
-                                const InputDecoration(labelText: 'Method'),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: 'CASH', child: Text('Cash')),
-                              DropdownMenuItem(
-                                  value: 'CREDIT', child: Text('Debt (owed)')),
+                ConstrainedBox(
+                  constraints:
+                      BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: rows.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final row = entry.value;
+                        final isMpesa = row.method == 'MPESA';
+                        return Container(
+                          margin: const EdgeInsets.only(
+                              bottom: DesignSpacing.md - 2),
+                          padding: const EdgeInsets.all(DesignSpacing.md),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? DesignColors.darkSurfaceElevated
+                                : DesignColors.surfaceSubtle,
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: DropdownButtonFormField<String>(
+                                      initialValue: row.method,
+                                      decoration: const InputDecoration(
+                                          labelText: 'Method',
+                                          border: InputBorder.none),
+                                      items: const [
+                                        DropdownMenuItem(
+                                            value: 'CASH',
+                                            child: Text('Cash')),
+                                        DropdownMenuItem(
+                                            value: 'MPESA',
+                                            child: Text('M-Pesa')),
+                                        DropdownMenuItem(
+                                            value: 'CREDIT',
+                                            child: Text('Debt (owed)')),
+                                      ],
+                                      onChanged: (v) => setSheetState(
+                                          () => row.method = v ?? row.method),
+                                    ),
+                                  ),
+                                  const SizedBox(width: DesignSpacing.md - 2),
+                                  Expanded(
+                                    flex: 3,
+                                    child: TextField(
+                                      controller: row.amountController,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                              decimal: true),
+                                      decoration: const InputDecoration(
+                                          labelText: 'Amount (KES)',
+                                          border: InputBorder.none),
+                                      onChanged: (_) => setSheetState(() {}),
+                                    ),
+                                  ),
+                                  if (rows.length > 1)
+                                    // 48px min hit target (default IconButton
+                                    // constraints) with a Material ripple —
+                                    // the raw icon was a sub-44 tap target
+                                    // for a destructive action.
+                                    IconButton(
+                                      tooltip: 'Remove',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                          minWidth: 48, minHeight: 48),
+                                      onPressed: () => setSheetState(
+                                          () => rows.removeAt(index)),
+                                      icon: const Icon(
+                                          Icons.remove_circle_outline_rounded,
+                                          color: DesignColors.error),
+                                    ),
+                                ],
+                              ),
+                              if (isMpesa) ...[
+                                const SizedBox(height: DesignSpacing.sm),
+                                TextField(
+                                  controller: row.phoneController,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: InputDecoration(
+                                    labelText: 'M-Pesa phone number',
+                                    hintText: '0712345678',
+                                    prefixIcon: const Icon(
+                                        Icons.phone_android_rounded,
+                                        size: 18),
+                                    filled: true,
+                                    fillColor: isDark
+                                        ? DesignColors.darkSurface
+                                        : Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(
+                                          DesignSpacing.radiusSm),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                  onChanged: (_) => setSheetState(() {}),
+                                ),
+                              ],
                             ],
-                            onChanged: (v) => setSheetState(
-                                () => row.method = v ?? row.method),
                           ),
-                        ),
-                        const SizedBox(width: DesignSpacing.md - 2),
-                        Expanded(
-                          flex: 3,
-                          child: TextField(
-                            controller: row.amountController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
-                            decoration: const InputDecoration(
-                                labelText: 'Amount (KES)'),
-                            onChanged: (_) => setSheetState(() {}),
-                          ),
-                        ),
-                        if (rows.length > 1)
-                          // 48px min hit target (default IconButton constraints)
-                          // with a Material ripple - the raw icon was a sub-44
-                          // tap target for a destructive action.
-                          IconButton(
-                            tooltip: 'Remove',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                                minWidth: 48, minHeight: 48),
-                            onPressed: () =>
-                                setSheetState(() => rows.removeAt(index)),
-                            icon: const Icon(
-                                Icons.remove_circle_outline_rounded,
-                                color: DesignColors.error),
-                          ),
-                      ],
+                        );
+                      }).toList(),
                     ),
-                  );
-                }),
+                  ),
+                ),
                 TextButton.icon(
                   onPressed: () => setSheetState(() => rows.add(_TenderRow(
                       method: 'CASH',
@@ -566,7 +625,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: remaining > 0.01
+                    onPressed: (remaining > 0.01 || phoneMissing)
                         ? null
                         : () => Navigator.pop(sheetContext, true),
                     child: const Text('Confirm Split'),
@@ -586,6 +645,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         .map((r) => PaymentTender(
               method: r.method,
               amount: double.parse(r.amountController.text),
+              reference:
+                  r.method == 'MPESA' ? r.phoneController.text.trim() : null,
             ))
         .toList();
   }
@@ -594,6 +655,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 class _TenderRow {
   String method;
   final TextEditingController amountController;
+  final TextEditingController phoneController = TextEditingController();
 
   _TenderRow({required this.method, required this.amountController});
 }
