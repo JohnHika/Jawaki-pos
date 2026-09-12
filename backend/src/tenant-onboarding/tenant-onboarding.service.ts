@@ -1,4 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { LegacyUserRole } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { EmailOtpService } from '../identity/email-otp.service';
@@ -89,9 +91,21 @@ export class TenantOnboardingService {
     });
     if (!consumed.consumed) throw new UnauthorizedException('Invalid or expired invitation');
 
+    const setupToken = randomBytes(32).toString('base64url');
+    const credentialSetupTokenHash = createHash('sha256')
+      .update(setupToken)
+      .digest('hex');
+    const credentialSetupExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
     return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.tenantStaffInvitation.updateMany({
-        where: { id: invite.id, status: 'PENDING', acceptedAt: null }, data: { status: 'ACCEPTED', acceptedAt: new Date() },
+        where: { id: invite.id, status: 'PENDING', acceptedAt: null },
+        data: {
+          status: 'ACCEPTED',
+          acceptedAt: new Date(),
+          credentialSetupTokenHash,
+          credentialSetupExpiresAt,
+        },
       });
       if (!claimed.count) throw new UnauthorizedException('Invalid or expired invitation');
       const existing = await tx.user.findFirst({ where: { tenantId: invite.tenantId, email: invite.email }, select: { id: true } });
@@ -104,8 +118,76 @@ export class TenantOnboardingService {
         },
       });
       await tx.userRole.create({ data: { userId: user.id, roleId: invite.roleId } });
-      return { accepted: true };
+      return { accepted: true, setupToken, credentialSetupExpiresAt };
     });
+  }
+
+  async completeInvitationCredentials(
+    invitationId: string,
+    dto: { setupToken: string; password: string; pin: string },
+  ) {
+    const invite = await this.prisma.tenantStaffInvitation.findUnique({
+      where: { id: invitationId },
+      select: {
+        id: true,
+        tenantId: true,
+        email: true,
+        status: true,
+        credentialSetupTokenHash: true,
+        credentialSetupExpiresAt: true,
+      },
+    });
+    const suppliedHash = createHash('sha256').update(dto.setupToken).digest('hex');
+    const storedHash = invite?.credentialSetupTokenHash;
+    const tokenMatches = storedHash != null &&
+        timingSafeEqual(Buffer.from(storedHash), Buffer.from(suppliedHash));
+    if (
+      !invite ||
+      invite.status !== 'ACCEPTED' ||
+      !invite.credentialSetupExpiresAt ||
+      invite.credentialSetupExpiresAt <= new Date() ||
+      !tokenMatches
+    ) {
+      throw new UnauthorizedException('This account setup link is invalid or has expired');
+    }
+
+    const [passwordHash, pinHash] = await Promise.all([
+      bcrypt.hash(dto.password, 12),
+      bcrypt.hash(dto.pin, 12),
+    ]);
+
+    const completed = await this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.tenantStaffInvitation.updateMany({
+        where: {
+          id: invite.id,
+          status: 'ACCEPTED',
+          credentialSetupTokenHash: suppliedHash,
+          credentialSetupExpiresAt: { gt: new Date() },
+        },
+        data: {
+          credentialSetupTokenHash: null,
+          credentialSetupExpiresAt: null,
+        },
+      });
+      if (!consumed.count) {
+        throw new UnauthorizedException('This account setup link is invalid or has expired');
+      }
+
+      const user = await tx.user.findFirst({
+        where: { tenantId: invite.tenantId, email: invite.email, passwordHash: null },
+        select: { id: true },
+      });
+      if (!user) {
+        throw new ConflictException('This staff account has already been completed');
+      }
+      await tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash, pin: pinHash },
+      });
+      return { completed: true, email: invite.email };
+    });
+
+    return completed;
   }
 
   private async assertOwnerOrPermission(actor: Actor, requiredPermission: string) {

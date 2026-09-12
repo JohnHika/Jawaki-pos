@@ -73,6 +73,22 @@ export class BillingController {
     );
   }
 
+  @Get('claims')
+  @UseGuards(RolesGuard)
+  @Roles(LegacyUserRole.ADMIN)
+  @ApiOperation({ summary: 'List manual M-Pesa payment claims awaiting review (owner only)' })
+  listClaims(@Req() req: any) {
+    return this.prisma.subscriptionPaymentClaim.findMany({
+      where: { tenantId: req.user.tenantId, status: 'PENDING' },
+      include: {
+        invoice: {
+          select: { id: true, plan: true, amount: true, currency: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   @Post('claims/:id/confirm')
   @UseGuards(RolesGuard)
   @Roles(LegacyUserRole.ADMIN)

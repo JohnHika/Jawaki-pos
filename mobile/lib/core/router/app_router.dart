@@ -10,7 +10,6 @@ import '../../features/auth/presentation/screens/company_setup_screen.dart';
 import '../../features/auth/presentation/screens/owner_welcome_screen.dart';
 import '../../features/auth/presentation/screens/company_activation_screen.dart';
 import '../../features/subscription/presentation/screens/plan_selection_screen.dart';
-import '../../features/subscription/presentation/screens/subscription_settings_screen.dart';
 import '../../features/team/presentation/screens/invite_staff_screen.dart';
 import '../../features/team/presentation/screens/invitation_list_screen.dart';
 import '../../features/team/presentation/screens/accept_invite_screen.dart';
@@ -104,10 +103,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isLocked = authService.isLocked;
       final path = state.matchedLocation;
 
-      // Setup routes (company-choice, company-setup) are always accessible
+      // Setup routes (company-choice, company-setup) are always accessible.
+      // Plan selection is a POST-activation, authenticated step (the user
+      // already has a session by the time activation completes) and is
+      // deliberately NOT included here — folding it in would let the
+      // "logged-in user on a setup route" rule below immediately bounce
+      // them back to the dashboard before they can choose a plan.
       final isSetupRoute =
-          path == '/company-choice' || path == '/company-setup' || path == '/plan-selection';
+          path == '/company-choice' || path == '/company-setup';
       final isActivationRoute = path == '/activation';
+      final isInviteRoute =
+          path == '/accept-invite' || path == '/set-password-after-invite';
 
       // Login routes
       final isLoginRoute = path == '/login' || path == '/pin-login';
@@ -121,8 +127,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // If user is not logged in (and not merely locked)
       if (!isLoggedIn) {
-        // Allow setup and login routes
-        if (isSetupRoute || isLoginRoute) {
+        // Allow setup, login, and staff-invite acceptance routes even when
+        // signed out — an invitee has no session yet by definition.
+        // Plan selection always requires an active session by the time it
+        // is reached (activation itself needs one), so it is intentionally
+        // not allowed here — an unauthenticated visit falls through to the
+        // company-choice redirect below like any other protected route.
+        if (isSetupRoute || isLoginRoute || isInviteRoute) {
           return null;
         }
         // Redirect all others to company-choice
@@ -142,6 +153,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // case that runs once before the user ever reaches the real POS
       // screen unguided. The tour itself sets hasSeenStaffTour(true) when
       // it finishes/is skipped, so this only ever fires once per device.
+      // Plan selection is deliberately excluded (see isSetupRoute above).
       if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
         final canSeeDashboard = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
@@ -169,6 +181,37 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // overview and remains reachable for every signed-in role.
         if (path == '/reports' && !perms.canSeeReports) {
           return '/';
+        }
+        // Operating hours, roles, and per-user permission overrides are
+        // branch/user-management actions — only reachable directly (deep
+        // link, bookmark, restored nav state) by someone who actually holds
+        // the relevant capability. The Settings menu itself already hides
+        // these entries from everyone else; this closes the direct-route
+        // gap flagged in the settings audit.
+        if (path == '/settings/operating-hours' && !perms.canManageBranches) {
+          return '/settings';
+        }
+        if ((path == '/users/roles' ||
+                path.startsWith('/users/roles/')) &&
+            !perms.canManageRoles) {
+          return '/users';
+        }
+        if (path.startsWith('/users/') &&
+            path.endsWith('/permissions') &&
+            !perms.canOverrideUserPermissions) {
+          return '/users';
+        }
+        // Billing/plan management is currently enforced backend-side as
+        // legacy-ADMIN-only (see billing.controller.ts, subscription
+        // controller). Mirror that at the route level so a non-admin deep
+        // link lands somewhere useful instead of a screen full of actions
+        // that will 403.
+        if (path == '/billing') {
+          final legacyRole =
+              authService.currentUser?['role']?.toString().toUpperCase();
+          if (legacyRole != 'ADMIN') {
+            return '/settings';
+          }
         }
       }
 
@@ -211,7 +254,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/set-password-after-invite',
         name: 'set-password-after-invite',
-        builder: (context, state) => const SetPasswordAfterInviteScreen(),
+        builder: (context, state) {
+          final extra = state.extra as Map<String, String>? ?? {};
+          return SetPasswordAfterInviteScreen(
+            invitationId: extra['invitationId'] ?? '',
+            setupToken: extra['setupToken'] ?? '',
+          );
+        },
       ),
       GoRoute(
         path: '/activation',
@@ -432,11 +481,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const SettingsScreen(),
           ),
 
-          // Subscription Settings Screen
+          // Legacy route: redirects into the consolidated Plan & Billing
+          // screen. Kept (rather than deleted) so old deep links/bookmarks
+          // and any external links still resolve somewhere sensible.
           GoRoute(
             path: '/settings/subscription',
             name: 'subscription-settings',
-            builder: (context, state) => const SubscriptionSettingsScreen(),
+            redirect: (context, state) => '/billing',
           ),
 
           // Subscription & Billing Screen (Settings → Subscription & Billing)
@@ -558,7 +609,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return AiUpgradeScreen(
                 branchId: branchId,
                 branchName: '', // Not used anymore
-                onViewPlans: () => context.push('/settings/subscription'),
+                onViewPlans: () => context.push('/billing'),
               );
             },
           ),

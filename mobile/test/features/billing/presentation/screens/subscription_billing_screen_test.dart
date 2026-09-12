@@ -181,6 +181,8 @@ void main() {
 
       expect(find.text('Auto-Renew'), findsOneWidget);
 
+      await tester.ensureVisible(find.byType(Switch));
+      await tester.pumpAndSettle();
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
 
@@ -221,18 +223,33 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
+      // Entitlement card is at the top of the list and shows the plan
+      // price before any scrolling.
+      expect(find.text('KES 3,200'), findsOneWidget);
+
       // Status chips and the M-Pesa reference render inside the invoice
-      // list; scroll the invoice section into view if it's offscreen.
+      // list; scroll the invoice section into view — the added Plan and
+      // Renewal sections push it below the fold in the test viewport,
+      // which also scrolls the entitlement card (and its price) out of
+      // the built widget tree.
+      await tester.scrollUntilVisible(
+        find.text('PAID'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('PAID'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('PENDING'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.pumpAndSettle();
       expect(find.text('PENDING'), findsOneWidget);
       expect(find.textContaining('QGH7XY92K1'), findsOneWidget);
-      // Entitlement card + two invoice rows all show the plan price.
-      expect(find.text('KES 3,200'), findsNWidgets(3));
+      // Both invoice rows show the plan price (entitlement card is
+      // scrolled out of view by this point).
+      expect(find.text('KES 3,200'), findsNWidgets(2));
     });
   });
 }

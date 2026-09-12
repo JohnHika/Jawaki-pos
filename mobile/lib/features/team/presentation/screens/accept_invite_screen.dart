@@ -45,15 +45,24 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
 
     setState(() => _isSubmitting = true);
     try {
-      await _auth.acceptStaffInvitation(
+      final result = await _auth.acceptStaffInvitation(
         invitationId: widget.invitationId,
         challengeId: widget.challengeId,
         code: _codeController.text.trim(),
       );
+      final setupToken = result['setupToken']?.toString();
+      if (setupToken == null || setupToken.isEmpty) {
+        throw StateError('The invitation was accepted but account setup could not start.');
+      }
       if (!mounted) return;
 
-      // Navigate to set-password/PIN screen on success
-      context.pushReplacement('/set-password-after-invite');
+      context.pushReplacement(
+        '/set-password-after-invite',
+        extra: {
+          'invitationId': widget.invitationId,
+          'setupToken': setupToken,
+        },
+      );
     } catch (e) {
       if (!mounted) return;
       showGlassSnackBar(

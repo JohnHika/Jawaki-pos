@@ -47,13 +47,12 @@ class PinLoginScreen extends ConsumerStatefulWidget {
 class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     with TickerProviderStateMixin {
   String _pin = '';
-  static const int _pinLength = 4;
+  static const int _minPinLength = 4;
+  static const int _maxPinLength = 6;
 
   late AnimationController _pulseController;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
-  late AnimationController _scaleController;
-  late Animation<double> _scaleAnimation;
 
   bool _showError = false;
   String _errorMessage = '';
@@ -62,16 +61,24 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _appVersion = '';
 
   void _onNumberPressed(String number) {
-    if (_pin.length >= _pinLength) return;
+    if (_pin.length >= _maxPinLength) return;
 
     setState(() {
       _pin += number;
       _showError = false;
     });
+  }
 
-    if (_pin.length == _pinLength) {
-      _handlePinLogin();
+  void _submitPin() {
+    if (_pin.length < _minPinLength) {
+      setState(() {
+        _showError = true;
+        _errorMessage = 'Enter at least 4 digits to continue.';
+      });
+      _shakeController.forward(from: 0);
+      return;
     }
+    _handlePinLogin();
   }
 
   void _onBackspacePressed() {
@@ -179,14 +186,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
 
-    _scaleController = AnimationController(
-      duration: DesignAnimation.fast,
-      vsync: this,
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
-    );
-
     _pulseController.repeat(reverse: true);
   }
 
@@ -286,7 +285,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   void dispose() {
     _pulseController.dispose();
     _shakeController.dispose();
-    _scaleController.dispose();
     super.dispose();
   }
 
@@ -295,7 +293,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final authState = ref.watch(authControllerProvider);
     final size = MediaQuery.of(context).size;
     final isSmallScreen = size.height < 800;
-    final buttonSize = isSmallScreen ? 54.0 : 64.0;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -387,7 +384,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 StaggeredItem(
                   itemKey: 'pin-numpad',
                   index: 2,
-                  child: _buildNumberPad(isSmallScreen, buttonSize),
+                  child: _buildNumberPad(isSmallScreen),
                 ),
 
                 SizedBox(
@@ -463,7 +460,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ),
         const SizedBox(height: 10),
         Text(
-          'Enter your 4-digit PIN for this workspace',
+          'Enter your 4–6 digit PIN for this workspace',
           style: TextStyle(
             fontSize: 13,
             color: Colors.white.withValues(alpha: 0.68),
@@ -537,98 +534,136 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final outerMargin = isSmallScreen ? DesignSpacing.sm : DesignSpacing.lg;
     final horizontalPadding =
         isSmallScreen ? DesignSpacing.md : DesignSpacing.lg;
-    final dotGap = isSmallScreen ? 4.0 : 6.0;
+    final slotGap = isSmallScreen ? 5.0 : 8.0;
     final availableWidth =
         screenWidth - 40 - (outerMargin * 2) - (horizontalPadding * 2);
-    final dotSize =
-        ((availableWidth - (dotGap * (_pinLength - 1))) / _pinLength)
-            .clamp(38.0, isSmallScreen ? 48.0 : 56.0)
+    final slotWidth =
+        ((availableWidth - (slotGap * (_maxPinLength - 1))) / _maxPinLength)
+            .clamp(38.0, isSmallScreen ? 48.0 : 54.0)
             .toDouble();
+    final isReady = _pin.length >= _minPinLength;
 
-    return GlassCard(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg,
+    return AnimatedBuilder(
+      animation: _shakeAnimation,
+      builder: (context, child) => Transform.translate(
+        offset: Offset(
+          _shakeAnimation.value * 14 *
+              (_shakeAnimation.value < 0.5 ? 1 : -1),
+          0,
+        ),
+        child: child,
       ),
-      margin: EdgeInsets.symmetric(horizontal: outerMargin),
-      blur: 20,
-      tint: Colors.white.withValues(alpha: 0.06),
-      borderColor: _showError
-          ? DesignColors.error.withValues(alpha: 0.4)
-          : Colors.white.withValues(alpha: 0.1),
-      borderRadius: DesignSpacing.radiusXl,
-      child: AnimatedBuilder(
-        animation: _shakeAnimation,
-        builder: (context, child) {
-          return Transform.translate(
-            offset: Offset(
-              _shakeAnimation.value *
-                  16 *
-                  (_shakeAnimation.value < 0.5 ? 1 : -1),
-              0,
-            ),
-            child: child,
-          );
-        },
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(_pinLength, (index) {
-            final isFilled = index < _pin.length;
-            final isCurrentlyEntering = index == _pin.length;
-
-            return Container(
-              margin: EdgeInsets.only(
-                right: index == _pinLength - 1 ? 0 : dotGap,
-              ),
-              child: AnimatedContainer(
-                duration: DesignAnimation.fast,
-                curve: Curves.easeOut,
-                width: dotSize,
-                height: dotSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isFilled
-                      ? DesignColors.accent
-                      : isCurrentlyEntering
-                          ? Colors.white.withValues(alpha: 0.15)
-                          : Colors.white.withValues(alpha: 0.06),
-                  border: Border.all(
-                    color: isFilled
-                        ? DesignColors.accent
-                        : isCurrentlyEntering
-                            ? DesignColors.accent.withValues(alpha: 0.5)
-                            : Colors.white.withValues(alpha: 0.15),
-                    width: isCurrentlyEntering ? 2.0 : 1.5,
+      child: GlassCard(
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg,
+        ),
+        margin: EdgeInsets.symmetric(horizontal: outerMargin),
+        blur: 24,
+        tint: Colors.white.withValues(alpha: 0.055),
+        borderColor: _showError
+            ? DesignColors.error.withValues(alpha: 0.48)
+            : isReady
+                ? DesignColors.accent.withValues(alpha: 0.46)
+                : Colors.white.withValues(alpha: 0.12),
+        borderRadius: DesignSpacing.radiusXl,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_maxPinLength, (index) {
+                final isFilled = index < _pin.length;
+                final isActive = index == _pin.length && _pin.length < _maxPinLength;
+                return Padding(
+                  padding: EdgeInsets.only(
+                    right: index == _maxPinLength - 1 ? 0 : slotGap,
                   ),
-                  boxShadow: isFilled
-                      ? [
-                          BoxShadow(
-                            color: DesignColors.accent.withValues(alpha: 0.3),
-                            blurRadius: 12,
-                            spreadRadius: 1,
-                          ),
-                        ]
-                      : null,
+                  child: AnimatedScale(
+                    duration: DesignAnimation.fast,
+                    curve: Curves.easeOutBack,
+                    scale: isFilled ? 1 : (isActive ? 1.03 : 0.96),
+                    child: AnimatedContainer(
+                      duration: DesignAnimation.fast,
+                      curve: Curves.easeOutCubic,
+                      width: slotWidth,
+                      height: isSmallScreen ? 46 : 52,
+                      decoration: BoxDecoration(
+                        gradient: isFilled
+                            ? const LinearGradient(
+                                colors: [DesignColors.brand, DesignColors.accent],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: isFilled
+                            ? null
+                            : isActive
+                                ? Colors.white.withValues(alpha: 0.12)
+                                : Colors.white.withValues(alpha: 0.045),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isFilled
+                              ? DesignColors.accent.withValues(alpha: 0.9)
+                              : isActive
+                                  ? DesignColors.accent.withValues(alpha: 0.7)
+                                  : Colors.white.withValues(alpha: 0.1),
+                          width: isActive ? 1.6 : 1,
+                        ),
+                        boxShadow: isFilled
+                            ? [
+                                BoxShadow(
+                                  color: DesignColors.accent.withValues(alpha: 0.24),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: AnimatedSwitcher(
+                        duration: DesignAnimation.fast,
+                        switchInCurve: Curves.easeOutBack,
+                        child: isFilled
+                            ? const Icon(
+                                Icons.circle_rounded,
+                                key: ValueKey('filled'),
+                                color: Colors.white,
+                                size: 13,
+                              )
+                            : Text(
+                                '${index + 1}',
+                                key: ValueKey('empty-$index'),
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.28),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: DesignSpacing.md),
+            AnimatedSwitcher(
+              duration: DesignAnimation.fast,
+              child: Text(
+                isReady
+                    ? 'Ready to unlock'
+                    : '${_pin.length} of 4–6 digits',
+                key: ValueKey(isReady),
+                style: TextStyle(
+                  color: isReady
+                      ? DesignColors.accent
+                      : Colors.white.withValues(alpha: 0.56),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
                 ),
-                child: isFilled
-                    ? const Icon(
-                        Icons.circle_rounded,
-                        size: 14,
-                        color: Colors.white,
-                      )
-                    : isCurrentlyEntering
-                        ? Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: DesignColors.accent.withValues(alpha: 0.6),
-                            ),
-                          )
-                        : null,
               ),
-            );
-          }),
+            ),
+          ],
         ),
       ),
     );
@@ -673,72 +708,142 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     );
   }
 
-  Widget _buildNumberPad(bool isSmallScreen, double buttonSize) {
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Row 1: 1 2 3
-          _buildNumberPadRow(isSmallScreen, buttonSize, ['1', '2', '3']),
-          const SizedBox(height: DesignSpacing.md),
+  Widget _buildNumberPad(bool isSmallScreen) {
+    final isReady = _pin.length >= _minPinLength;
+    final isLoading = ref.watch(authControllerProvider).isLoading;
+    final keyWidth = isSmallScreen ? 76.0 : 86.0;
+    final keyHeight = isSmallScreen ? 52.0 : 60.0;
 
-          // Row 2: 4 5 6
-          _buildNumberPadRow(isSmallScreen, buttonSize, ['4', '5', '6']),
-          const SizedBox(height: DesignSpacing.md),
-
-          // Row 3: 7 8 9
-          _buildNumberPadRow(isSmallScreen, buttonSize, ['7', '8', '9']),
-          const SizedBox(height: DesignSpacing.md),
-
-          // Row 4: clear 0 backspace
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildActionButton(
-                icon: Icons.clear_all_rounded,
-                onTap: _onClearPressed,
-                size: buttonSize,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildNumberPadRow(keyWidth, keyHeight, ['1', '2', '3']),
+        const SizedBox(height: DesignSpacing.sm),
+        _buildNumberPadRow(keyWidth, keyHeight, ['4', '5', '6']),
+        const SizedBox(height: DesignSpacing.sm),
+        _buildNumberPadRow(keyWidth, keyHeight, ['7', '8', '9']),
+        const SizedBox(height: DesignSpacing.sm),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildActionButton(
+              icon: Icons.clear_all_rounded,
+              tooltip: 'Clear PIN',
+              onTap: _onClearPressed,
+              width: keyWidth,
+              height: keyHeight,
+            ),
+            const SizedBox(width: DesignSpacing.sm),
+            _buildNumberButton('0', keyWidth, keyHeight),
+            const SizedBox(width: DesignSpacing.sm),
+            _buildActionButton(
+              icon: Icons.backspace_outlined,
+              tooltip: 'Delete digit',
+              onTap: _onBackspacePressed,
+              width: keyWidth,
+              height: keyHeight,
+            ),
+          ],
+        ),
+        const SizedBox(height: DesignSpacing.lg),
+        Semantics(
+          label: 'Unlock workspace',
+          button: true,
+          child: AnimatedContainer(
+            duration: DesignAnimation.fast,
+            curve: Curves.easeOutCubic,
+            width: (keyWidth * 3) + (DesignSpacing.sm * 2),
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: isReady
+                  ? const LinearGradient(
+                      colors: [DesignColors.brand, DesignColors.accent],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    )
+                  : null,
+              color: isReady ? null : Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isReady
+                    ? DesignColors.accent.withValues(alpha: 0.7)
+                    : Colors.white.withValues(alpha: 0.12),
               ),
-              const SizedBox(width: DesignSpacing.md),
-              _buildNumberButton('0', isSmallScreen, buttonSize),
-              const SizedBox(width: DesignSpacing.md),
-              _buildActionButton(
-                icon: Icons.backspace_outlined,
-                onTap: _onBackspacePressed,
-                size: buttonSize,
+              boxShadow: isReady
+                  ? [
+                      BoxShadow(
+                        color: DesignColors.accent.withValues(alpha: 0.26),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: isReady && !isLoading ? _submitPin : null,
+                borderRadius: BorderRadius.circular(16),
+                child: Center(
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lock_open_rounded,
+                              color: isReady
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.35),
+                              size: 20,
+                            ),
+                            const SizedBox(width: DesignSpacing.sm),
+                            Text(
+                              'Unlock workspace',
+                              style: TextStyle(
+                                color: isReady
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.35),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
-            ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildNumberPadRow(
-    bool isSmallScreen,
-    double buttonSize,
+    double keyWidth,
+    double keyHeight,
     List<String> digits,
   ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: digits
           .map((digit) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.sm),
-                child: _buildNumberButton(digit, isSmallScreen, buttonSize),
+                padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
+                child: _buildNumberButton(digit, keyWidth, keyHeight),
               ))
           .toList(),
     );
   }
 
-  Widget _buildNumberButton(
-    String digit,
-    bool isSmallScreen,
-    double size,
-  ) {
+  Widget _buildNumberButton(String digit, double width, double height) {
     final isLoading = ref.watch(authControllerProvider).isLoading;
-    final fontSize = isSmallScreen ? 22.0 : 26.0;
-
     return Semantics(
       label: 'PIN digit $digit',
       button: true,
@@ -746,34 +851,21 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         color: Colors.transparent,
         child: InkWell(
           onTap: isLoading ? null : () => _onNumberPressed(digit),
-          onTapDown: isLoading ? null : (_) => _scaleController.forward(),
-          onTapUp: isLoading ? null : (_) => _scaleController.reverse(),
-          onTapCancel: () => _scaleController.reverse(),
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: size,
-            height: size,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            width: width,
+            height: height,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.08),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.15),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: DesignSpacing.sm,
-                  offset: const Offset(0, DesignSpacing.xs),
-                ),
-              ],
+              color: Colors.white.withValues(alpha: 0.075),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             ),
             child: Center(
               child: Text(
                 digit,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w600,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
               ),
@@ -786,34 +878,33 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
 
   Widget _buildActionButton({
     required IconData icon,
+    required String tooltip,
     required VoidCallback onTap,
-    required double size,
+    required double width,
+    required double height,
   }) {
     final isLoading = ref.watch(authControllerProvider).isLoading;
-
     return Semantics(
+      label: tooltip,
       button: true,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: isLoading ? null : onTap,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: size,
-            height: size,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            width: width,
+            height: height,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.05),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.1),
-                width: 1,
-              ),
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
             ),
             child: Center(
               child: Icon(
                 icon,
-                color: Colors.white.withValues(alpha: 0.6),
-                size: size * 0.35,
+                color: Colors.white.withValues(alpha: 0.68),
+                size: 21,
               ),
             ),
           ),

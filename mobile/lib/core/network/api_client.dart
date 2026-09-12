@@ -187,6 +187,23 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> completeStaffInvitationCredentials({
+    required String invitationId,
+    required String setupToken,
+    required String password,
+    required String pin,
+  }) async {
+    final response = await _dio.post(
+      '/tenant-onboarding/staff-invitations/$invitationId/complete-credentials',
+      data: {
+        'setupToken': setupToken,
+        'password': password,
+        'pin': pin,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> acceptStaffInvitation({
     required String invitationId,
     required String challengeId,
@@ -1487,6 +1504,13 @@ class ApiClient {
       if (amount != null) 'amount': amount,
     });
     return response.data as Map<String, dynamic>;
+  }
+
+  /// ADMIN: list manual M-Pesa payment claims awaiting review.
+  /// GET /api/v1/billing/claims
+  Future<List<dynamic>> getPendingSubscriptionPaymentClaims() async {
+    final response = await _dio.get('/billing/claims');
+    return response.data as List<dynamic>;
   }
 
   /// ADMIN: confirm or reject a manual payment claim.

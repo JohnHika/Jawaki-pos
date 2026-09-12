@@ -81,16 +81,20 @@ class _SubscriptionBillingScreenState
   BillingEntitlement? _entitlement;
   Map<String, dynamic>? _settings;
   List<dynamic> _invoices = [];
+  List<dynamic> _pendingClaims = [];
   bool _isLoadingEntitlement = true;
   bool _isLoadingInvoices = true;
+  bool _isLoadingClaims = false;
+  bool _isChangingPlan = false;
   String? _error;
+  String? _claimsError;
 
   bool get _isAdmin {
     final forced = SubscriptionBillingScreen.overrideIsAdmin;
     if (forced != null) return forced;
     final user = getIt<AuthService>().currentUser;
     final role = user?['role']?.toString().toUpperCase();
-    return role == 'ADMIN' || role == 'OWNER';
+    return role == 'ADMIN';
   }
 
   @override
@@ -101,7 +105,9 @@ class _SubscriptionBillingScreenState
 
   Future<void> _loadData() async {
     await Future.wait([_loadEntitlement(), _loadInvoices()]);
-    if (_isAdmin) await _loadSettings();
+    if (_isAdmin) {
+      await Future.wait([_loadSettings(), _loadClaims()]);
+    }
   }
 
   Future<void> _loadEntitlement() async {
@@ -151,6 +157,27 @@ class _SubscriptionBillingScreenState
     }
   }
 
+  Future<void> _loadClaims() async {
+    setState(() {
+      _isLoadingClaims = true;
+      _claimsError = null;
+    });
+    try {
+      final claims = await _apiClient.getPendingSubscriptionPaymentClaims();
+      if (!mounted) return;
+      setState(() {
+        _pendingClaims = claims;
+        _isLoadingClaims = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingClaims = false;
+        _claimsError = _friendlyError(error);
+      });
+    }
+  }
+
   ApiClient get _apiClient => getIt<ApiClient>();
 
   String _friendlyError(Object error) {
@@ -176,6 +203,150 @@ class _SubscriptionBillingScreenState
     return cleaned.isEmpty ? 'Something went wrong.' : cleaned;
   }
 
+  void _showChangePlanSheet() {
+    final currentPlan = (_entitlement?.plan ?? 'CORE').toLowerCase();
+    String selectedPlan = currentPlan == 'trial' ? 'core' : currentPlan;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                DesignSpacing.xl, DesignSpacing.lg, DesignSpacing.xl, DesignSpacing.xxl,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: DesignColors.darkBorder,
+                        borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  Text(
+                    'Choose your plan',
+                    style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                          color: DesignColors.darkTextPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: DesignSpacing.xs),
+                  Text(
+                    'Your selected plan takes effect now. If you are in your free trial, the trial end date stays the same.',
+                    style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                          color: DesignColors.darkTextSecondary,
+                          height: 1.35,
+                        ),
+                  ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  for (final plan in kAvailablePlans) ...[
+                    _PlanRadioTile(
+                      name: plan.name,
+                      priceLabel: '${formatKes(plan.priceKes)}/month · ${plan.tagline}',
+                      isSelected: selectedPlan == plan.id,
+                      onTap: _isChangingPlan
+                          ? null
+                          : () => setSheetState(() => selectedPlan = plan.id),
+                    ),
+                    if (plan != kAvailablePlans.last)
+                      const Divider(color: DesignColors.darkBorder, height: 1),
+                  ],
+                  const SizedBox(height: DesignSpacing.lg),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SettingsPrimaryButton(
+                      label: _isChangingPlan
+                          ? 'Saving plan…'
+                          : 'Continue with ${planDisplayName(selectedPlan)}',
+                      isLoading: _isChangingPlan,
+                      onPressed: selectedPlan == currentPlan || _isChangingPlan
+                          ? null
+                          : () async {
+                              setState(() => _isChangingPlan = true);
+                              try {
+                                await _apiClient.changeSubscriptionPlan(
+                                  planId: selectedPlan.toUpperCase(),
+                                );
+                                if (!mounted || !sheetContext.mounted) return;
+                                Navigator.of(sheetContext).pop();
+                                await _loadData();
+                                if (!mounted) return;
+                                showGlassSnackBar(
+                                  context,
+                                  'Plan updated to ${planDisplayName(selectedPlan)}',
+                                  icon: Icons.check_circle_rounded,
+                                  color: DesignColors.success,
+                                );
+                              } catch (error) {
+                                if (!mounted) return;
+                                showGlassSnackBar(
+                                  context,
+                                  _friendlyError(error),
+                                  icon: Icons.error_outline_rounded,
+                                  color: DesignColors.error,
+                                );
+                              } finally {
+                                if (mounted) setState(() => _isChangingPlan = false);
+                              }
+                            },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reviewClaim(Map<String, dynamic> claim, bool approve) async {
+    final code = claim['mpesaCode']?.toString() ?? 'this payment';
+    final confirmed = await showConfirmDialog(
+      context,
+      title: approve ? 'Confirm payment' : 'Reject payment',
+      message: approve
+          ? 'Confirm $code after checking it in your M-Pesa statement. This will activate the new billing period.'
+          : 'Reject $code. The subscription will remain unpaid.',
+      confirmLabel: approve ? 'Confirm payment' : 'Reject',
+      confirmColor: approve ? DesignColors.success : DesignColors.error,
+    );
+    if (!confirmed) return;
+
+    try {
+      await _apiClient.confirmPaymentClaim(claim['id'].toString(), approve);
+      await _loadData();
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        approve ? 'Payment confirmed and subscription renewed' : 'Payment claim rejected',
+        icon: approve ? Icons.check_circle_rounded : Icons.cancel_outlined,
+        color: approve ? DesignColors.success : DesignColors.warning,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        _friendlyError(error),
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -187,7 +358,7 @@ class _SubscriptionBillingScreenState
         appBar: AppBar(
           backgroundColor: DesignColors.darkBg,
           title: const Text(
-            'Subscription & Billing',
+            'Plan & Billing',
             style: TextStyle(
               color: DesignColors.darkTextPrimary,
               fontWeight: FontWeight.w800,
@@ -221,7 +392,14 @@ class _SubscriptionBillingScreenState
                 itemKey: 'billing-entitlement',
                 child: _buildEntitlementCard(),
               ),
-              const SizedBox(height: DesignSpacing.xl),
+              if (_isAdmin) ...[
+                const SettingsGroupLabel('Plan'),
+                const SizedBox(height: DesignSpacing.sm),
+                _buildManagePlanTile(),
+                const SizedBox(height: DesignSpacing.xl),
+              ],
+              const SettingsGroupLabel('Renewal'),
+              const SizedBox(height: DesignSpacing.sm),
               StaggeredItem(
                 itemKey: 'billing-pay-cta',
                 index: 1,
@@ -234,6 +412,8 @@ class _SubscriptionBillingScreenState
                   index: 2,
                   child: _buildAutoRenewTile(),
                 ),
+                const SizedBox(height: DesignSpacing.xl),
+                _buildPendingClaimsSection(),
                 const SizedBox(height: DesignSpacing.xxl),
               ],
               const SettingsGroupLabel('Invoice History'),
@@ -535,6 +715,156 @@ class _SubscriptionBillingScreenState
     );
   }
 
+  Widget _buildManagePlanTile() {
+    final plan = _entitlement?.plan ?? 'CORE';
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: DesignColors.darkBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: DesignColors.brand.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            ),
+            child: const Icon(Icons.tune_rounded, color: DesignColors.brand, size: 20),
+          ),
+          const SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Manage plan',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: DesignColors.darkTextPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: DesignSpacing.xs),
+                Text(
+                  '${planDisplayName(plan)} · compare features or change your tier',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DesignColors.darkTextSecondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: _isChangingPlan ? null : _showChangePlanSheet,
+            child: const Text('Change'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingClaimsSection() {
+    if (_isLoadingClaims) {
+      return const Padding(
+        padding: EdgeInsets.all(DesignSpacing.lg),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_claimsError != null) {
+      return Container(
+        padding: const EdgeInsets.all(DesignSpacing.md),
+        decoration: BoxDecoration(
+          color: DesignColors.error.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          border: Border.all(color: DesignColors.error.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline_rounded, color: DesignColors.error),
+            const SizedBox(width: DesignSpacing.sm),
+            Expanded(
+              child: Text(
+                _claimsError!,
+                style: const TextStyle(color: DesignColors.error),
+              ),
+            ),
+            TextButton(onPressed: _loadClaims, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    if (_pendingClaims.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SettingsGroupLabel('Payments to review'),
+        const SizedBox(height: DesignSpacing.sm),
+        ..._pendingClaims.map((rawClaim) {
+          final claim = Map<String, dynamic>.from(rawClaim as Map);
+          final amount = (claim['amount'] as num?) ??
+              ((claim['invoice'] as Map?)?['amount'] as num?) ??
+              0;
+          final plan = ((claim['invoice'] as Map?)?['plan']?.toString() ?? 'Subscription');
+          return Container(
+            margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
+            padding: const EdgeInsets.all(DesignSpacing.md),
+            decoration: BoxDecoration(
+              color: DesignColors.warning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+              border: Border.all(color: DesignColors.warning.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${claim['mpesaCode'] ?? 'M-Pesa payment'} · ${formatKes(amount)}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: DesignColors.darkTextPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: DesignSpacing.xs),
+                Text(
+                  '$plan renewal — verify the code in your M-Pesa statement before approving.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DesignColors.darkTextSecondary,
+                      ),
+                ),
+                const SizedBox(height: DesignSpacing.sm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _reviewClaim(claim, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: DesignColors.error,
+                          side: const BorderSide(color: DesignColors.error),
+                          minimumSize: const Size(0, 44),
+                        ),
+                        child: const Text('Reject'),
+                      ),
+                    ),
+                    const SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: SettingsPrimaryButton(
+                        label: 'Confirm',
+                        onPressed: () => _reviewClaim(claim, true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   // ── Actions ─────────────────────────────────────────────────────────
 
   Widget _buildPayWithMpesaButton() {
@@ -627,6 +957,7 @@ class _SubscriptionBillingScreenState
         onSubmitted: () {
           _loadEntitlement();
           _loadInvoices();
+          if (_isAdmin) _loadClaims();
         },
       ),
     );
@@ -853,6 +1184,69 @@ Color statusColor(String? status) => _statusColor(status);
 //  PAY WITH M-PESA SHEET — two steps: invoice summary → code entry
 // ═══════════════════════════════════════════════════════════════════
 
+/// A single selectable plan row inside the change-plan sheet. Deliberately
+/// a plain tappable Container rather than RadioListTile — Flutter 3.32+
+/// deprecated RadioListTile's groupValue/onChanged in favor of an ancestor
+/// RadioGroup, which is unnecessary ceremony for one simple sheet-local
+/// selection like this.
+class _PlanRadioTile extends StatelessWidget {
+  const _PlanRadioTile({
+    required this.name,
+    required this.priceLabel,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String name;
+  final String priceLabel;
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: DesignSpacing.sm),
+          child: Row(
+            children: [
+              Icon(
+                isSelected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: isSelected
+                    ? DesignColors.accent
+                    : DesignColors.darkTextTertiary,
+              ),
+              const SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: DesignColors.darkTextPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      priceLabel,
+                      style: const TextStyle(color: DesignColors.darkTextSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PayWithMpesaSheet extends ConsumerStatefulWidget {
   const _PayWithMpesaSheet({
     required this.onSubmitted,
@@ -872,40 +1266,16 @@ class _PayWithMpesaSheet extends ConsumerStatefulWidget {
 
 class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
   final _codeController = TextEditingController();
-  final _phoneController = TextEditingController();
   bool _isSubmitting = false;
   String? _error;
-  bool _stkRequested = false;
 
   @override
   void dispose() {
     _codeController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
   num get _amount => widget.monthlyAmount ?? planPriceKes('core');
-
-  Future<void> _requestStkPush() async {
-    final phone = _phoneController.text.trim();
-    if (phone.length < 9) {
-      setState(() => _error = 'Enter the M-Pesa phone number to charge');
-      return;
-    }
-    setState(() {
-      _isSubmitting = true;
-      _error = null;
-    });
-    // The backend fires the STK push against the billing phone on file
-    // (auto-charge path). Here we only surface instructions — the actual
-    // charge lands as an invoice claim the admin/payment webhook confirms.
-    await Future<void>.delayed(DesignAnimation.normal);
-    if (!mounted) return;
-    setState(() {
-      _isSubmitting = false;
-      _stkRequested = true;
-    });
-  }
 
   Future<void> _submitCode() async {
     final code = _codeController.text.trim().toUpperCase();
@@ -1016,9 +1386,8 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               ),
               const SizedBox(height: DesignSpacing.lg),
 
-              // Option A: STK push to the number entered
               Text(
-                'OPTION 1 — STK PUSH',
+                'PAY VIA PAYBILL, THEN ENTER THE CONFIRMATION CODE',
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: DesignColors.darkTextTertiary,
                   fontWeight: FontWeight.w700,
@@ -1026,48 +1395,14 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
                 ),
               ),
               const SizedBox(height: DesignSpacing.sm),
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'M-Pesa phone number',
-                  hintText: '07XX XXX XXX',
-                  prefixIcon: Icon(Icons.phone_android_rounded),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              if (_stkRequested)
-                Text(
-                  'STK push sent — check your phone and enter your PIN. '
-                  'Then confirm below with the M-Pesa code if asked.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: DesignColors.success,
-                    height: 1.35,
-                  ),
-                )
-              else
-                SizedBox(
-                  width: double.infinity,
-                  child: SettingsPrimaryButton(
-                    label: 'Send STK Push',
-                    isLoading: _isSubmitting,
-                    onPressed: _requestStkPush,
-                    color: DesignColors.mpesa,
-                  ),
-                ),
-              const SizedBox(height: DesignSpacing.xl),
-
-              // Option B: manual paybill code entry
               Text(
-                'OPTION 2 — PAID VIA PAYBILL? ENTER CODE',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: DesignColors.darkTextTertiary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
+                'Automatic STK prompts only run on your renewal date when Auto-Renew is enabled. For an immediate manual payment, use the Paybill details above.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: DesignColors.darkTextSecondary,
+                  height: 1.35,
                 ),
               ),
-              const SizedBox(height: DesignSpacing.sm),
+              const SizedBox(height: DesignSpacing.lg),
               TextField(
                 controller: _codeController,
                 textCapitalization: TextCapitalization.characters,

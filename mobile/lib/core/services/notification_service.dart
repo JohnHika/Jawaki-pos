@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../network/api_client.dart';
 import 'storage_service.dart';
@@ -25,6 +26,26 @@ class NotificationService {
   final StorageService _storage;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
+
+  // Category preference keys — settings_screen.dart's _SettingsKeys class
+  // references these directly (single source of truth) so both agree on
+  // where these live.
+  static const String keyNotifySales = 'setting_notify_sales';
+  static const String keyNotifyInventory = 'setting_notify_inventory';
+  static const String keyNotifySync = 'setting_notify_sync';
+
+  /// Maps a push's `data.type` (set server-side — see
+  /// backend NotificationsService/PushNotificationPayload callers) to the
+  /// local category preference that gates it. Unrecognized/missing types
+  /// are never silently dropped — they fall through to "always show".
+  static const Map<String, String> _categoryByType = {
+    'stock_request_resolved': keyNotifyInventory,
+    'low_stock_alert': keyNotifyInventory,
+    'restock_suggestion': keyNotifyInventory,
+    'eod_reminder': keyNotifySync,
+    'sync_failed': keyNotifySync,
+    'sale_completed': keyNotifySales,
+  };
 
   static const _defaultChannel = AndroidNotificationChannel(
     'axon_pos_default_channel',
@@ -130,9 +151,11 @@ class NotificationService {
     }
   }
 
-  void _showForegroundNotification(RemoteMessage message) {
+  void _showForegroundNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
+
+    if (!await _isCategoryEnabled(message.data['type'])) return;
 
     _localNotifications.show(
       notification.hashCode,
@@ -148,5 +171,17 @@ class NotificationService {
         ),
       ),
     );
+  }
+
+  /// Whether the user's in-app category preference allows this push to be
+  /// shown. An unmapped/missing `type` always returns true (fail-open —
+  /// only explicitly categorized pushes can be muted). Defaults to enabled
+  /// when no preference has been saved yet, matching the Settings screen's
+  /// own `?? true` defaults.
+  Future<bool> _isCategoryEnabled(String? type) async {
+    final prefKey = _categoryByType[type];
+    if (prefKey == null) return true;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(prefKey) ?? true;
   }
 }

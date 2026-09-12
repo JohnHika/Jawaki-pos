@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 
@@ -13,7 +13,14 @@ import '../../../../core/widgets/motion.dart';
 /// After both are set successfully, the user is navigated to the main POS
 /// screen (or login if they need to re-authenticate with their new PIN).
 class SetPasswordAfterInviteScreen extends StatefulWidget {
-  const SetPasswordAfterInviteScreen({super.key});
+  const SetPasswordAfterInviteScreen({
+    super.key,
+    required this.invitationId,
+    required this.setupToken,
+  });
+
+  final String invitationId;
+  final String setupToken;
 
   @override
   State<SetPasswordAfterInviteScreen> createState() =>
@@ -34,7 +41,6 @@ class _SetPasswordAfterInviteScreenState
   bool _obscureConfirmPin = true;
   bool _isSubmitting = false;
 
-  AuthService get _auth => getIt<AuthService>();
   ApiClient get _api => getIt<ApiClient>();
 
   @override
@@ -51,26 +57,20 @@ class _SetPasswordAfterInviteScreenState
 
     setState(() => _isSubmitting = true);
     try {
-      // 1. Set the password via the auth service
-      // The backend expects a password set call. Since there's no dedicated
-      // setPassword on AuthService, we use the ApiClient's setPin for PIN
-      // and rely on the fact that after acceptStaffInvitation the user
-      // session is established. We set the PIN first.
-      await _api.setPin(_pinController.text.trim());
-
-      // 2. Set the local PIN for quick unlock
-      await _auth.setLocalPin(_pinController.text.trim());
+      await _api.completeStaffInvitationCredentials(
+        invitationId: widget.invitationId,
+        setupToken: widget.setupToken,
+        password: _passwordController.text,
+        pin: _pinController.text,
+      );
 
       if (!mounted) return;
-
       showGlassSnackBar(
         context,
-        'Account set up successfully! You can now sign in.',
+        'Account secured. Sign in with your new email and PIN.',
         icon: Icons.check_circle_outline_rounded,
         color: DesignColors.success,
       );
-
-      // Navigate to login so the user can sign in with their new credentials
       context.go('/login');
     } catch (e) {
       if (!mounted) return;
@@ -274,7 +274,7 @@ class _SetPasswordAfterInviteScreenState
 
               // ── PIN section ──
               const Text(
-                'PIN (4 digits)',
+                'PIN (4–6 digits)',
                 style: TextStyle(
                   color: DesignColors.darkTextSecondary,
                   fontSize: 12,
@@ -286,16 +286,15 @@ class _SetPasswordAfterInviteScreenState
                 controller: _pinController,
                 obscureText: _obscurePin,
                 keyboardType: TextInputType.number,
-                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 6,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
+                  final trimmed = value?.trim() ?? '';
+                  if (trimmed.isEmpty) {
                     return 'Please enter a PIN';
                   }
-                  if (value.trim().length != 4) {
-                    return 'PIN must be exactly 4 digits';
-                  }
-                  if (!RegExp(r'^\d{4}$').hasMatch(value.trim())) {
-                    return 'PIN must contain only digits';
+                  if (!RegExp(r'^\d{4,6}$').hasMatch(trimmed)) {
+                    return 'PIN must be 4–6 digits';
                   }
                   return null;
                 },
@@ -353,7 +352,8 @@ class _SetPasswordAfterInviteScreenState
                 controller: _confirmPinController,
                 obscureText: _obscureConfirmPin,
                 keyboardType: TextInputType.number,
-                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 6,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please confirm your PIN';

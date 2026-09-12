@@ -175,23 +175,43 @@ export class AuthService {
       },
     });
 
-    // Find user with matching PIN
+    // Find every user whose stored PIN hash matches. setPin now enforces
+    // tenant-wide PIN uniqueness going forward, but accounts created before
+    // that check existed could still collide — checking every candidate
+    // (instead of returning on the first match) lets a leftover collision
+    // be refused explicitly rather than silently signing in as whichever
+    // user happened to be scanned first.
+    const matches: (typeof userBranches)[number][] = [];
     for (const ub of userBranches) {
       if (ub.user.pin && ub.user.isActive && ub.user.tenant.isActive) {
         const isPinValid = await bcrypt.compare(pinLoginDto.pin, ub.user.pin);
-        if (isPinValid) {
-          await this.prisma.user.update({
-            where: { id: ub.user.id },
-            data: { lastLoginAt: new Date() },
-          });
-          await this.auditService.record({
-            userId: ub.user.id,
-            action: 'LOGIN',
-            entityType: 'session',
-          });
-          return this.generateTokens(ub.user, branchId, pinLoginDto.deviceId);
-        }
+        if (isPinValid) matches.push(ub);
       }
+    }
+
+    if (matches.length > 1) {
+      this.logger.error(
+        `PIN collision detected for branch ${branchId}: ${matches.length} accounts share a PIN (${matches
+          .map((m) => m.user.id)
+          .join(', ')}). Refusing PIN login until an admin resets one.`,
+      );
+      throw new UnauthorizedException(
+        'This PIN matches more than one staff account. Please sign in with email and password, then set a new PIN.',
+      );
+    }
+
+    if (matches.length === 1) {
+      const matched = matches[0].user;
+      await this.prisma.user.update({
+        where: { id: matched.id },
+        data: { lastLoginAt: new Date() },
+      });
+      await this.auditService.record({
+        userId: matched.id,
+        action: 'LOGIN',
+        entityType: 'session',
+      });
+      return this.generateTokens(matched, branchId, pinLoginDto.deviceId);
     }
 
     throw new UnauthorizedException('Invalid PIN');
@@ -390,7 +410,30 @@ export class AuthService {
   }
 
   async setPin(userId: string, dto: SetPinDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { tenantId: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    // PIN login (see loginWithPin below) resolves a user by scanning every
+    // account in a branch and testing each stored hash — it cannot safely
+    // disambiguate two accounts that share a PIN. Enforcing uniqueness
+    // tenant-wide here (not just per-branch) is what actually prevents that
+    // ambiguity, since a single user can belong to more than one branch.
     const pinHash = await bcrypt.hash(dto.pin, 12);
+    const candidates = await this.prisma.user.findMany({
+      where: { tenantId: user.tenantId, isActive: true, pin: { not: null }, id: { not: userId } },
+      select: { id: true, pin: true },
+    });
+    for (const candidate of candidates) {
+      if (candidate.pin && (await bcrypt.compare(dto.pin, candidate.pin))) {
+        throw new ConflictException(
+          'This PIN is already used by another staff member in this company. Choose a different PIN.',
+        );
+      }
+    }
+
     await this.prisma.user.update({
       where: { id: userId },
       data: { pin: pinHash },

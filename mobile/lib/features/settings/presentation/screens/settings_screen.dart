@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -34,9 +35,9 @@ class _SettingsKeys {
   static const printerName = PrinterSettingsKeys.printerName;
   static const printerMacAddress = PrinterSettingsKeys.printerMacAddress;
   static const paperWidth = PrinterSettingsKeys.paperWidth;
-  static const notifySales = 'setting_notify_sales';
-  static const notifyInventory = 'setting_notify_inventory';
-  static const notifySync = 'setting_notify_sync';
+  static const notifySales = NotificationService.keyNotifySales;
+  static const notifyInventory = NotificationService.keyNotifyInventory;
+  static const notifySync = NotificationService.keyNotifySync;
 }
 
 String _initialFor(dynamic nameOrEmail) {
@@ -64,6 +65,16 @@ class SettingsScreen extends ConsumerWidget {
         perms.canConfigurePrinter ||
         perms.canConfigureNotifications ||
         perms.canSeeAppearance;
+    final legacyRole = user?['role']?.toString().toUpperCase() ?? '';
+    // The billing and plan APIs intentionally enforce the legacy ADMIN role
+    // today. Keep the menu honest until those endpoints are fully migrated to
+    // granular permission keys.
+    final isBillingAdmin = legacyRole == 'ADMIN';
+    final hasBusinessSection = isBillingAdmin ||
+        perms.canManageUsers ||
+        perms.canManageBranches ||
+        perms.canExportData ||
+        perms.canSeeAuditTrail;
 
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
@@ -162,9 +173,75 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 28),
 
-          // ── Preferences ──
+          // ── Business (role-aware) ──
+          if (hasBusinessSection) ...[
+            const SettingsGroupLabel('Business'),
+            GroupedCard(children: [
+              if (isBillingAdmin)
+                SettingsRow(
+                  icon: Icons.receipt_long_rounded,
+                  iconColor: DesignColors.accent,
+                  title: 'Plan & Billing',
+                  subtitle: 'Plan, renewal, M-Pesa payments & invoices',
+                  onTap: () => context.push('/billing'),
+                ),
+              if (perms.canManageUsers)
+                SettingsRow(
+                  icon: Icons.people_rounded,
+                  title: 'Team & Access',
+                  subtitle: 'Staff, roles & permissions',
+                  onTap: () => context.push('/users'),
+                ),
+              if (perms.canManageBranches)
+                SettingsRow(
+                  icon: Icons.store_rounded,
+                  title: 'Branches',
+                  subtitle: 'Store locations and operating hours',
+                  onTap: () => _showBranchManagement(context),
+                ),
+              if (perms.canManageBranches)
+                SettingsRow(
+                  icon: Icons.schedule_rounded,
+                  title: 'Operating Hours',
+                  subtitle: 'Set open and close times per day',
+                  onTap: () => context.push('/settings/operating-hours'),
+                ),
+              if (isBillingAdmin)
+                SettingsRow(
+                  icon: Icons.percent_rounded,
+                  title: 'Tax & Receipts',
+                  subtitle: getIt<AuthService>().taxRatePercent > 0
+                      ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% tax on sales'
+                      : 'Set tax and receipt display',
+                  onTap: () => _showTaxRateDialog(context, ref),
+                ),
+              if (isBillingAdmin)
+                SettingsRow(
+                  icon: Icons.image_rounded,
+                  title: 'Business Logo',
+                  subtitle: 'Update your storefront identity',
+                  onTap: () => _showLogoDialog(context, ref),
+                ),
+              if (perms.canExportData)
+                SettingsRow(
+                  icon: Icons.download_rounded,
+                  title: 'Data Export',
+                  subtitle: 'Export sales, inventory and products',
+                  onTap: () => _showDataExport(context, ref),
+                ),
+              if (perms.canSeeAuditTrail)
+                SettingsRow(
+                  icon: Icons.history_rounded,
+                  title: 'Audit Trail',
+                  subtitle: 'Review system activity',
+                  onTap: () => _showAuditTrail(context),
+                ),
+            ]),
+          ],
+
+          // ── App & devices ──
           if (hasPreferencesSection) ...[
-            const SettingsGroupLabel('Preferences'),
+            const SettingsGroupLabel('App & devices'),
             GroupedCard(children: [
               if (perms.canConfigureSync)
                 FutureBuilder(
@@ -190,8 +267,8 @@ class SettingsScreen extends ConsumerWidget {
               if (perms.canConfigurePrinter)
                 SettingsRow(
                   icon: Icons.print_rounded,
-                  title: 'Printer Settings',
-                  subtitle: 'Configure receipt printer',
+                  title: 'Receipts & printers',
+                  subtitle: 'Configure receipts and printer connection',
                   onTap: () => _showPrinterSettings(context),
                 ),
               if (perms.canConfigureNotifications)
@@ -211,32 +288,35 @@ class SettingsScreen extends ConsumerWidget {
             ]),
           ],
 
-          // ── Account ──
-          const SettingsGroupLabel('Your account'),
+          // ── Account & security ──
+          const SettingsGroupLabel('Account & security'),
           GroupedCard(children: [
             SettingsRow(
               icon: Icons.lock_rounded,
               iconColor: DesignColors.accent,
-              title: 'Change PIN',
-              subtitle: 'Update your quick login PIN',
+              title: 'Quick unlock PIN',
+              subtitle: '4–6 digits for this device and workspace login',
               onTap: () => _showChangePinDialog(context),
             ),
             SettingsRow(
               icon: Icons.wifi_off_rounded,
-              title: 'Offline Access PIN',
-              subtitle:
-                  'Set a PIN to log in when a phone is acting as the server without internet',
+              title: 'Offline server PIN',
+              subtitle: 'Use your account on a phone acting as the local server',
               onTap: () => _showOfflineAccessPinDialog(context),
             ),
             SettingsRow(
               icon: Icons.security_rounded,
-              title: 'Security',
-              subtitle: 'Biometrics & auto-lock',
+              title: 'Device security',
+              subtitle: 'Biometrics and automatic lock',
               onTap: () => _showSecuritySettings(context),
             ),
+          ]),
+          const SettingsGroupLabel('Session'),
+          GroupedCard(children: [
             SettingsRow(
               icon: Icons.logout_rounded,
-              title: 'Log out',
+              title: 'Log out from this device',
+              subtitle: 'Your unsynced data remains saved here',
               isDestructive: true,
               onTap: () => _showLogoutDialog(context, ref),
             ),
@@ -284,72 +364,6 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
           ]),
-
-          // ── Administration (admin-only) ──
-          if (perms.canManageUsers) ...[
-            const SettingsGroupLabel('Administration'),
-            GroupedCard(children: [
-              SettingsRow(
-                icon: Icons.subscriptions_rounded,
-                iconColor: DesignColors.accent,
-                title: 'Subscription',
-                subtitle: 'View plan, change plan & invoices',
-                onTap: () => context.push('/settings/subscription'),
-              ),
-              SettingsRow(
-                icon: Icons.receipt_long_rounded,
-                title: 'Subscription & Billing',
-                subtitle: 'Pay with M-Pesa, auto-renew & billing history',
-                onTap: () => context.push('/billing'),
-              ),
-              SettingsRow(
-                icon: Icons.people_rounded,
-                title: 'User Management',
-                subtitle: 'Manage staff, roles & permissions',
-                onTap: () => context.push('/users'),
-              ),
-              SettingsRow(
-                icon: Icons.store_rounded,
-                title: 'Branch Management',
-                subtitle: 'Manage store locations',
-                onTap: () => _showBranchManagement(context),
-              ),
-              SettingsRow(
-                icon: Icons.percent_rounded,
-                title: 'Tax Rate',
-                subtitle: getIt<AuthService>().taxRatePercent > 0
-                    ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% applied to every sale'
-                    : 'No tax applied to sales',
-                onTap: () => _showTaxRateDialog(context, ref),
-              ),
-              SettingsRow(
-                icon: Icons.image_rounded,
-                title: 'Company Logo',
-                subtitle: 'Update your logo, or trace it into a crisp SVG',
-                onTap: () => _showLogoDialog(context, ref),
-              ),
-              SettingsRow(
-                icon: Icons.schedule_rounded,
-                title: 'Operating Hours',
-                subtitle: 'Set open & close times per day',
-                onTap: () => context.push('/settings/operating-hours'),
-              ),
-              if (perms.canExportData)
-                SettingsRow(
-                  icon: Icons.download_rounded,
-                  title: 'Data Export',
-                  subtitle: 'Export sales & reports',
-                  onTap: () => _showDataExport(context, ref),
-                ),
-              if (perms.canSeeAuditTrail)
-                SettingsRow(
-                  icon: Icons.history_rounded,
-                  title: 'Audit Trail',
-                  subtitle: 'View system activity log',
-                  onTap: () => _showAuditTrail(context),
-                ),
-            ]),
-          ],
 
           const SizedBox(height: 12),
           Center(
@@ -587,7 +601,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  // ===== CHANGE PIN =====
+  // ===== QUICK UNLOCK PIN =====
+  // This credential has two deliberate consumers: the secure, local unlock
+  // hash for this device and the authenticated account PIN used by a fresh
+  // workspace login. The server update must succeed first so the two never
+  // silently diverge.
   void _showChangePinDialog(BuildContext context) async {
     final storage = getIt<StorageService>();
     final hasExistingPin = await storage.hasLocalPinSet();
@@ -597,132 +615,165 @@ class SettingsScreen extends ConsumerWidget {
     final newPinController = TextEditingController();
     final confirmPinController = TextEditingController();
     String? error;
+    bool isSaving = false;
+    final pinFormatters = [FilteringTextInputFormatter.digitsOnly];
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) {
-          return SettingsDialog(
-            title: hasExistingPin ? 'Change PIN' : 'Set Quick-Unlock PIN',
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (hasExistingPin) ...[
-                  TextField(
-                    controller: currentPinController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 4,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Current PIN',
-                      hintText: '****',
-                      counterText: '',
+        builder: (dialogContext, setDialogState) => SettingsDialog(
+          title: hasExistingPin ? 'Change quick unlock PIN' : 'Set quick unlock PIN',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasExistingPin
+                    ? 'Use 4–6 digits. Your current PIN confirms this device before the account PIN is updated.'
+                    : 'Use 4–6 digits. This creates a secure unlock on this device and your workspace quick-login PIN.',
+                style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(dialogContext).brightness == Brightness.dark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                      height: 1.35,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                ] else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: DesignSpacing.md),
-                    child: Text(
-                      'This PIN unlocks the app quickly without needing a '
-                      'network connection.',
-                      style: Theme.of(dialogContext).textTheme.bodySmall,
-                    ),
-                  ),
+              ),
+              const SizedBox(height: DesignSpacing.lg),
+              if (hasExistingPin) ...[
                 TextField(
-                  controller: newPinController,
+                  controller: currentPinController,
                   keyboardType: TextInputType.number,
-                  maxLength: 4,
+                  inputFormatters: pinFormatters,
+                  maxLength: 6,
                   obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   decoration: const InputDecoration(
-                    labelText: 'New PIN',
-                    hintText: '****',
+                    labelText: 'Current device PIN',
+                    hintText: '4–6 digits',
                     counterText: '',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmPinController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm New PIN',
-                    hintText: '****',
-                    counterText: '',
-                  ),
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(error!,
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: DesignColors.error)),
-                ],
+                const SizedBox(height: DesignSpacing.md),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
-                child: const Text('Cancel'),
+              TextField(
+                controller: newPinController,
+                keyboardType: TextInputType.number,
+                inputFormatters: pinFormatters,
+                maxLength: 6,
+                obscureText: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'New PIN',
+                  hintText: '4–6 digits',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.key_rounded),
+                  border: OutlineInputBorder(),
+                ),
               ),
-              SettingsPrimaryButton(
-                label: 'Change PIN',
-                onPressed: () async {
-                  final newPin = newPinController.text;
-                  final confirmPin = confirmPinController.text;
-
-                  if (hasExistingPin) {
-                    final currentPin = currentPinController.text;
-                    if (currentPin.length != 4) {
-                      setDialogState(
-                          () => error = 'Enter your current 4-digit PIN');
-                      return;
-                    }
-                    final isCorrect = await storage.verifyLocalPin(currentPin);
-                    if (!isCorrect) {
-                      setDialogState(() => error = 'Current PIN is incorrect');
-                      return;
-                    }
-                  }
-                  if (newPin.length != 4) {
-                    setDialogState(() => error = 'New PIN must be 4 digits');
-                    return;
-                  }
-                  if (newPin != confirmPin) {
-                    setDialogState(() => error = 'PINs do not match');
-                    return;
-                  }
-
-                  await storage.setLocalPin(newPin);
-
-                  // Also push the PIN to the server so it works via the
-                  // network fallback on a device that has never stored a
-                  // local PIN hash (e.g. a fresh install, or a different
-                  // device for the same account) — without this, only the
-                  // device where the PIN was set could ever unlock with it.
-                  var serverSyncFailed = false;
-                  try {
-                    await getIt<ApiClient>().setPin(newPin);
-                  } catch (_) {
-                    serverSyncFailed = true;
-                  }
-
-                  if (!context.mounted || !dialogContext.mounted) return;
-                  Navigator.pop(dialogContext);
-                  _showSnack(
-                    context,
-                    serverSyncFailed
-                        ? 'PIN changed on this device. Reconnect to sync it to your account.'
-                        : 'PIN changed successfully',
-                  );
-                },
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                controller: confirmPinController,
+                keyboardType: TextInputType.number,
+                inputFormatters: pinFormatters,
+                maxLength: 6,
+                obscureText: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                onSubmitted: (_) {},
+                decoration: const InputDecoration(
+                  labelText: 'Confirm new PIN',
+                  hintText: 'Enter it again',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.verified_user_outlined),
+                  border: OutlineInputBorder(),
+                ),
               ),
+              if (error != null) ...[
+                const SizedBox(height: DesignSpacing.md),
+                Text(
+                  error!,
+                  style: Theme.of(dialogContext)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: DesignColors.error),
+                ),
+              ],
             ],
-          );
-        },
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+              style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+              child: const Text('Cancel'),
+            ),
+            SettingsPrimaryButton(
+              label: 'Save PIN',
+              isLoading: isSaving,
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final currentPin = currentPinController.text;
+                      final newPin = newPinController.text;
+                      final confirmPin = confirmPinController.text;
+                      final validPin = RegExp(r'^\d{4,6}$');
+
+                      if (hasExistingPin) {
+                        if (!validPin.hasMatch(currentPin)) {
+                          setDialogState(() => error = 'Enter your current 4–6 digit device PIN');
+                          return;
+                        }
+                        final isCorrect = await storage.verifyLocalPin(currentPin);
+                        if (!isCorrect) {
+                          setDialogState(() => error = 'That current device PIN is incorrect');
+                          return;
+                        }
+                      }
+                      if (!validPin.hasMatch(newPin)) {
+                        setDialogState(() => error = 'PIN must contain 4–6 digits only');
+                        return;
+                      }
+                      if (newPin != confirmPin) {
+                        setDialogState(() => error = 'The two PIN entries do not match');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        isSaving = true;
+                        error = null;
+                      });
+                      try {
+                        // Update the authenticated account first. If this is
+                        // unavailable (including phone-server mode), leave the
+                        // existing local PIN intact instead of creating a
+                        // credential mismatch that can never auto-sync.
+                        await getIt<ApiClient>().setPin(newPin);
+                        await storage.setLocalPin(newPin);
+                        if (!context.mounted || !dialogContext.mounted) return;
+                        Navigator.pop(dialogContext);
+                        _showSnack(context, 'Quick unlock PIN updated on this device and your account');
+                      } on DioException catch (e) {
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          isSaving = false;
+                          error = e.response?.statusCode == 404
+                              ? 'Connect to the Axon cloud before changing your account PIN. Local phone-server mode cannot update it.'
+                              : 'Could not update your account PIN. Check your connection and try again.';
+                        });
+                      } catch (_) {
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          isSaving = false;
+                          error = 'Could not update your PIN. Please try again.';
+                        });
+                      }
+                    },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -737,13 +788,14 @@ class SettingsScreen extends ConsumerWidget {
     final confirmPinController = TextEditingController();
     String? error;
     bool isSaving = false;
+    final pinFormatters = [FilteringTextInputFormatter.digitsOnly];
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           return SettingsDialog(
-            title: 'Offline Access PIN',
+            title: 'Offline server PIN',
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -759,24 +811,34 @@ class SettingsScreen extends ConsumerWidget {
                 TextField(
                   controller: pinController,
                   keyboardType: TextInputType.number,
+                  inputFormatters: pinFormatters,
                   maxLength: 6,
                   obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   decoration: const InputDecoration(
-                    labelText: 'Offline Access PIN',
-                    hintText: '4-6 digits',
+                    labelText: 'Offline server PIN',
+                    hintText: '4–6 digits',
                     counterText: '',
+                    prefixIcon: Icon(Icons.wifi_off_rounded),
+                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: confirmPinController,
                   keyboardType: TextInputType.number,
+                  inputFormatters: pinFormatters,
                   maxLength: 6,
                   obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   decoration: const InputDecoration(
-                    labelText: 'Confirm PIN',
-                    hintText: '4-6 digits',
+                    labelText: 'Confirm offline server PIN',
+                    hintText: 'Enter it again',
                     counterText: '',
+                    prefixIcon: Icon(Icons.verified_user_outlined),
+                    border: OutlineInputBorder(),
                   ),
                 ),
                 if (error != null) ...[

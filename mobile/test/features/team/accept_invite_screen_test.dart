@@ -54,7 +54,7 @@ class _SpyAuthService extends AuthService {
       'challengeId': challengeId,
       'code': code,
     };
-    return {'accepted': true};
+    return {'accepted': true, 'setupToken': 'test-setup-token'};
   }
 }
 
