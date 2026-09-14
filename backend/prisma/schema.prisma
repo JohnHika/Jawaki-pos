@@ -844,6 +844,7 @@ enum PaymentMethod {
   TOURISTTAP
   CREDIT
   SPLIT
+  MANUAL
 }
 
 model Sale {
