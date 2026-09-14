@@ -204,7 +204,7 @@ export class SalesService {
         await tx.$queryRaw`
           SELECT id
           FROM stock_batches
-          WHERE stock_id = ${stock.id}
+          WHERE "stockId" = ${stock.id}
           FOR UPDATE
         `;
         const batches = await tx.stockBatch.findMany({
