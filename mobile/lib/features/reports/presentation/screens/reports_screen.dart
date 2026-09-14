@@ -323,8 +323,8 @@ class ReportsScreen extends ConsumerWidget {
                         title: 'No sales in this period',
                       );
                     }
-                    final totalRevenue =
-                        sales.fold<double>(0, (a, s) => a + s.total);
+                    final totalRevenue = sales.fold<double>(
+                        0, (a, s) => a + ((s['totalAmount'] as num?)?.toDouble() ?? 0));
                     final isDark = Theme.of(ctx).brightness == Brightness.dark;
                     final titleColor = isDark
                         ? DesignColors.darkTextPrimary
@@ -361,6 +361,11 @@ class ReportsScreen extends ConsumerWidget {
                             // scroll rebuilds from replaying the entrance.
                             itemBuilder: (ctx, i) {
                               final sale = sales[i];
+                              final saleTotal =
+                                  (sale['totalAmount'] as num?)?.toDouble() ?? 0;
+                              final saleCreatedAt = DateTime.tryParse(
+                                      sale['createdAt']?.toString() ?? '') ??
+                                  DateTime.now();
                               final saleRow = ListCard(
                                 leading: CircleAvatar(
                                   backgroundColor:
@@ -368,17 +373,17 @@ class ReportsScreen extends ConsumerWidget {
                                   child: const Icon(Icons.receipt_rounded,
                                       color: DesignColors.brand, size: 18),
                                 ),
-                                title: sale.receiptNumber,
+                                title: sale['receiptNumber']?.toString() ?? '',
                                 subtitle:
-                                    '${sale.paymentMethod}  ${DateFormat('d MMM, hh:mm a').format(sale.createdAt)}',
-                                trailing: Text(_currencyFmt.format(sale.total),
+                                    '${sale['paymentMethod']}  ${DateFormat('d MMM, hh:mm a').format(saleCreatedAt)}',
+                                trailing: Text(_currencyFmt.format(saleTotal),
                                     style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: titleColor)),
                               );
                               if (i >= 12) return saleRow;
                               return StaggeredItem(
-                                itemKey: 'sales-sheet-${sale.id}',
+                                itemKey: 'sales-sheet-${sale['id']}',
                                 index: i,
                                 child: saleRow,
                               );

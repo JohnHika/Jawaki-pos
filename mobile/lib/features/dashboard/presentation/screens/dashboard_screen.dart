@@ -174,6 +174,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ),
         actions: [
           IconButton(
+            tooltip: 'Browse a previous day',
+            icon: const Icon(Icons.calendar_month_rounded),
+            onPressed: () => _openDayPicker(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               ref.invalidate(_dashboardSummaryProvider);
@@ -981,6 +986,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (!confirmed || !context.mounted) return;
 
     await ref.read(authControllerProvider.notifier).logout();
+  }
+
+  /// Calendar icon in the dashboard app bar: pick any past date and open
+  /// that day's real backend-sourced sales + an AI brief for it. Restricted
+  /// to today-or-earlier — there's nothing to browse in the future.
+  Future<void> _openDayPicker(BuildContext context) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _shownDay,
+      firstDate: DateTime(now.year - 3),
+      lastDate: _todayDate(),
+      helpText: 'View a previous day',
+    );
+    if (picked == null || !context.mounted) return;
+    context.push('/dashboard/day/${DateFormat('yyyy-MM-dd').format(picked)}');
   }
 
   Future<void> _shareDashboardReport(

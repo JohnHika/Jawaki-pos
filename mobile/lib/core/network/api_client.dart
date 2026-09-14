@@ -927,6 +927,94 @@ class ApiClient {
     return response.data;
   }
 
+  /// Shared query params for the reporting endpoints below: an explicit
+  /// [startDate]/[endDate] pair takes precedence; otherwise falls back to
+  /// backend-side [period] resolution (TODAY/THIS_WEEK/etc).
+  Map<String, dynamic> _reportFilterParams({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+  }) =>
+      {
+        if (startDate != null) 'startDate': startDate,
+        if (endDate != null) 'endDate': endDate,
+        if (period != null) 'period': period,
+        if (branchId != null) 'branchId': branchId,
+      };
+
+  Future<List<dynamic>> getCategorySalesReport({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+  }) async {
+    final response = await _dio.get('/reports/categories',
+        queryParameters: _reportFilterParams(
+            startDate: startDate,
+            endDate: endDate,
+            period: period,
+            branchId: branchId));
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getCashierPerformanceReport({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+  }) async {
+    final response = await _dio.get('/reports/cashiers',
+        queryParameters: _reportFilterParams(
+            startDate: startDate,
+            endDate: endDate,
+            period: period,
+            branchId: branchId));
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getPaymentMethodReport({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+  }) async {
+    final response = await _dio.get('/reports/payments',
+        queryParameters: _reportFilterParams(
+            startDate: startDate,
+            endDate: endDate,
+            period: period,
+            branchId: branchId));
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getTopProductsReport({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+    int? limit,
+  }) async {
+    final response = await _dio.get('/reports/products/top', queryParameters: {
+      ..._reportFilterParams(
+          startDate: startDate,
+          endDate: endDate,
+          period: period,
+          branchId: branchId),
+      if (limit != null) 'limit': limit,
+    });
+    return response.data as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getInventoryReportSummary({
+    String? branchId,
+  }) async {
+    final response = await _dio.get('/reports/inventory', queryParameters: {
+      if (branchId != null) 'branchId': branchId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   // Supplier endpoints
   Future<List<dynamic>> getSuppliers() async {
     final response = await _dio.get('/suppliers');

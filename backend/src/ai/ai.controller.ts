@@ -1,9 +1,10 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards, Request, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, UseGuards, Request, NotFoundException, BadRequestException } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { AiWebService } from './ai-web.service';
 import { AiCognitiveService } from './ai-cognitive.service';
 import { AiConversationService } from './ai-conversation.service';
 import { AiMemoryService } from './ai-memory.service';
+import { AiDailyBriefTask } from './ai-daily-brief.task';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ScanReceiptDto } from './dto/receipt-scan.dto';
 import { VisionChatRequestDto } from './dto/vision-chat.dto';
@@ -22,6 +23,7 @@ export class AiController {
     private readonly conversations: AiConversationService,
     private readonly memories: AiMemoryService,
     private readonly prisma: PrismaService,
+    private readonly dailyBriefTask: AiDailyBriefTask,
   ) {}
 
   @Get('chat')
@@ -323,34 +325,65 @@ export class AiController {
   }
 
   // Pre-generated once daily by AiDailyBriefTask — near-instant read for
-  // the dashboard's "AI Brief" card. Returns null content when the cron
-  // hasn't produced one yet for today (new tenant, or ran before this
-  // branch subscribed); the mobile app falls back to a live /ai/chat call
-  // in that case.
+  // the dashboard's "AI Brief" card and the sales-calendar's per-day view.
+  // Returns cached content when it exists (today/yesterday via the nightly
+  // cron, or any date already generated on-demand once). For any other
+  // date without a cached row, generates it live now and caches the result
+  // so a second tap on the same calendar day is instant.
   @Get('daily-brief')
   @UseGuards(JwtAuthGuard, AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async getDailyBrief(
     @Query('branchId') branchId: string,
+    @Query('date') dateParam: string | undefined,
     @Request() req: any,
   ) {
     // Tenant-scope the brief read: without this, anyone who knows (or
     // enumerates) a subscribed branchId reads that shop's business brief.
     const tenantId = req.user?.tenantId as string | undefined;
+    let tenantName: string | undefined;
     if (tenantId && branchId) {
       const branch = await this.prisma.branch.findFirst({
         where: { id: branchId, tenantId },
-        select: { id: true },
+        select: { id: true, tenant: { select: { name: true } } },
       });
       if (!branch) throw new NotFoundException('Branch not found');
+      tenantName = branch.tenant?.name;
     }
 
-    const today = new Date();
-    const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const dateStr = dateParam || new Date().toISOString().split('T')[0];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      throw new BadRequestException('date must be in YYYY-MM-DD format');
+    }
+    const date = new Date(`${dateStr}T00:00:00.000Z`);
+    // Reject an unparseable calendar date (e.g. 2026-13-40) — `new Date`
+    // silently rolls invalid components forward instead of throwing.
+    if (Number.isNaN(date.getTime()) || date.toISOString().split('T')[0] !== dateStr) {
+      throw new BadRequestException('date is not a valid calendar date');
+    }
 
-    const brief = await this.prisma.dailyBrief.findUnique({
+    let brief = await this.prisma.dailyBrief.findUnique({
       where: { branchId_date: { branchId, date } },
     });
+
+    // Never auto-generate for a date whose data is still incomplete: the
+    // current day is genuinely in progress, so a "brief" now would freeze
+    // a partial snapshot and mislead rather than inform. Only backfill
+    // for a real PAST date the nightly cron hasn't reached yet.
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (!brief && tenantId && tenantName && dateStr < todayStr) {
+      try {
+        brief = await this.dailyBriefTask.generateBriefForBranch(
+          branchId,
+          tenantId,
+          tenantName,
+          dateStr,
+        );
+      } catch {
+        // Best-effort: fall through to the null-content response below
+        // rather than fail the whole request over a live-model hiccup.
+      }
+    }
 
     return {
       success: true,

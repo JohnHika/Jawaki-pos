@@ -19,6 +19,7 @@ import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/billing/presentation/screens/subscription_billing_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
+import '../../features/dashboard/presentation/screens/day_summary_screen.dart';
 import '../../features/sales/presentation/screens/pos_screen.dart';
 import '../../features/sales/presentation/screens/cart_screen.dart';
 import '../../features/sales/presentation/screens/payment_screen.dart';
@@ -309,6 +310,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     currentRevenue: extra['currentRevenue'] as double,
                     currentCost: extra['currentCost'] as double,
                   );
+                },
+              ),
+              GoRoute(
+                path: 'day/:date',
+                name: 'day-summary',
+                builder: (context, state) {
+                  final dateStr = state.pathParameters['date']!;
+                  return DaySummaryScreen(date: DateTime.parse(dateStr));
                 },
               ),
             ],

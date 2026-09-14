@@ -522,24 +522,35 @@ class AiChatService {
   /// [_messages] (the real chat history), since it's a background,
   /// dashboard-driven read rather than something the user asked in chat.
   ///
-  /// Tries the pre-generated nightly brief first (near-instant, produced by
-  /// the backend cron) and only falls back to a live `/ai/chat` call when
-  /// none exists yet for today (e.g. a brand new tenant, or the cron
-  /// hasn't run yet this morning).
-  Future<String?> fetchDailyBrief() async {
-    final pregenerated = await _fetchPregeneratedBrief();
+  /// [date] is an optional "YYYY-MM-DD" for the sales-calendar's per-day
+  /// view; omitted (or today's date) means the dashboard's own "AI Brief"
+  /// card. Tries the pre-generated/on-demand backend brief first
+  /// (near-instant when cached, or generated fresh for a past date) and
+  /// only falls back to a live `/ai/chat` call about *today's* on-device
+  /// data when no date was requested — that fallback would be wrong for a
+  /// past date, since it always describes the current moment, not the
+  /// date the user asked about.
+  Future<String?> fetchDailyBrief({String? date}) async {
+    final pregenerated = await _fetchPregeneratedBrief(date: date);
     if (pregenerated != null) return pregenerated;
+    if (date != null) return null;
     return _fetchLiveBrief();
   }
 
-  Future<String?> _fetchPregeneratedBrief() async {
+  Future<String?> _fetchPregeneratedBrief({String? date}) async {
     try {
+      final uri = Uri.parse('$_baseUrl/ai/daily-brief').replace(
+        queryParameters: {
+          'branchId': branchId,
+          if (date != null) 'date': date,
+        },
+      );
       final response = await http
-          .get(
-            Uri.parse('$_baseUrl/ai/daily-brief?branchId=$branchId'),
-            headers: _headers(json: false),
-          )
-          .timeout(const Duration(seconds: 8));
+          .get(uri, headers: _headers(json: false))
+          // On-demand generation for a past date runs a real model call
+          // server-side, so it needs more headroom than the near-instant
+          // cached-read path used for today's dashboard card.
+          .timeout(Duration(seconds: date != null ? 25 : 8));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

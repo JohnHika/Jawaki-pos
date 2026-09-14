@@ -4,7 +4,6 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { ReportingService } from '../reporting/reporting.service';
 import { AiService } from './ai.service';
 import { AiSubscriptionStatus } from '@prisma/client';
-import { ReportPeriod } from '../reporting/dto/reporting.dto';
 
 /**
  * Runs once a day, before typical store open, and pre-generates a short
@@ -37,10 +36,15 @@ export class AiDailyBriefTask {
 
     for (const subscription of activeSubscriptions) {
       try {
+        const yesterday = new Date();
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
         await this.generateBriefForBranch(
           subscription.branchId,
           subscription.branch.tenantId,
           subscription.branch.tenant.name,
+          yesterdayStr,
         );
         succeeded++;
       } catch (error: any) {
@@ -54,19 +58,34 @@ export class AiDailyBriefTask {
     this.logger.log(`Daily briefs done: ${succeeded} succeeded, ${failed} failed`);
   }
 
-  private async generateBriefForBranch(
+  /**
+   * Generates (and caches into DailyBrief) a short business brief for a
+   * specific branch and calendar date. Shared by the nightly cron (always
+   * called with yesterday's date) and the dashboard's on-demand
+   * "brief for this date" read for a date the cron never covered.
+   */
+  async generateBriefForBranch(
     branchId: string,
     tenantId: string,
     companyName: string,
+    dateStr: string,
   ) {
     const summary = await this.reportingService.getDashboardSummary(tenantId, {
-      period: ReportPeriod.YESTERDAY,
+      startDate: dateStr,
+      endDate: dateStr,
       branchId,
+    });
+
+    const isToday = dateStr === new Date().toISOString().split('T')[0];
+    const dateLabel = new Date(`${dateStr}T00:00:00.000Z`).toLocaleDateString('en-KE', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
     });
 
     const result = await this.aiService.chat({
       user_question:
-        "Give me a short 2-3 sentence brief on yesterday's business performance and one concrete suggestion for today. " +
+        `Give me a short 2-3 sentence brief on ${isToday ? "today's" : `${dateLabel}'s`} business performance and one concrete suggestion. ` +
         'This will be shown in a narrow mobile card, so if you need to list specific items, use a short ' +
         'bullet list (max 3 items, one line each) instead of a markdown table.',
       context: 'general',
@@ -77,7 +96,7 @@ export class AiDailyBriefTask {
         business_type: 'retail',
         company: companyName,
         branch: branchId,
-        time_range: 'yesterday',
+        time_range: dateStr,
       },
       data_context: {
         total_sales: summary.sales.totalRevenue,
@@ -98,14 +117,13 @@ export class AiDailyBriefTask {
     // tool_access is never set on this request, so the agent tool-calling
     // path never engages and the result is always a plain reply.
     if (result.kind !== 'reply') {
-      this.logger.warn(`Daily brief for branch ${branchId} got unexpected result kind: ${result.kind}`);
-      return;
+      this.logger.warn(`Brief for branch ${branchId} (${dateStr}) got unexpected result kind: ${result.kind}`);
+      return null;
     }
 
-    const today = new Date();
-    const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const date = new Date(`${dateStr}T00:00:00.000Z`);
 
-    await this.prisma.dailyBrief.upsert({
+    return this.prisma.dailyBrief.upsert({
       where: { branchId_date: { branchId, date } },
       create: { branchId, date, content: result.reply, model: result.model },
       update: { content: result.reply, model: result.model },
