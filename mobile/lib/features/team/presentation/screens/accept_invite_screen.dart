@@ -82,23 +82,9 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
-        appBar: AppBar(
-          backgroundColor: DesignColors.darkSurface,
-          leading: IconButton(tooltip: 'Back', 
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: DesignColors.darkTextPrimary),
-            onPressed: () => context.pop(),
-          ),
-          title: const Text(
-            'Accept Invitation',
-            style: TextStyle(
-              color: DesignColors.darkTextPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          elevation: 0,
-          scrolledUnderElevation: 1,
+        backgroundColor: context.themed(DesignColors.darkBg),
+        appBar: const BrandedAppBar(
+          title: 'Accept Invitation',
         ),
         body: SafeArea(
           top: false,
@@ -106,7 +92,7 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
             // Keyboard-safe: lift the form above the keyboard.
             padding: EdgeInsets.fromLTRB(
               DesignSpacing.xl,
-              DesignSpacing.sm,
+              DesignSpacing.xl,
               DesignSpacing.xl,
               DesignSpacing.xxxl + MediaQuery.viewInsetsOf(context).bottom,
             ),
@@ -116,29 +102,29 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header
-                  const StaggeredItem(
+                  StaggeredItem(
                     itemKey: 'invite-header',
                     index: 0,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.mail_lock_rounded,
+                        const Icon(Icons.mail_lock_rounded,
                             color: DesignColors.brand, size: 40),
-                        SizedBox(height: DesignSpacing.md),
+                        const SizedBox(height: DesignSpacing.md),
                         Text(
                           'Enter your invitation code',
                           style: TextStyle(
-                            color: DesignColors.darkTextPrimary,
+                            color: context.themed(DesignColors.darkTextPrimary),
                             fontSize: 24,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        SizedBox(height: DesignSpacing.sm + 2),
+                        const SizedBox(height: DesignSpacing.sm + 2),
                         Text(
                           'A verification code was sent to your email. '
                           'Enter it below to accept the invitation and join your team.',
                           style: TextStyle(
-                            color: DesignColors.darkTextSecondary,
+                            color: context.themed(DesignColors.darkTextSecondary),
                             height: 1.4,
                           ),
                         ),
@@ -162,8 +148,8 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
                     keyboardType: TextInputType.text,
                     textCapitalization: TextCapitalization.none,
                     autocorrect: false,
-                    style: const TextStyle(
-                      color: DesignColors.darkTextPrimary,
+                    style: TextStyle(
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 4,
@@ -172,30 +158,30 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
                     decoration: InputDecoration(
                       labelText: 'Verification code',
                       labelStyle:
-                          const TextStyle(color: DesignColors.darkTextSecondary),
+                          TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
                       hintText: '000000',
                       hintStyle: TextStyle(
                         color:
-                            DesignColors.darkTextTertiary.withValues(alpha: 0.5),
+                            context.themed(DesignColors.darkTextTertiary).withValues(alpha: 0.5),
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 4,
                       ),
-                      prefixIcon: const Icon(Icons.pin_outlined,
-                          color: DesignColors.darkTextSecondary),
+                      prefixIcon: Icon(Icons.pin_outlined,
+                          color: context.themed(DesignColors.darkTextSecondary)),
                       filled: true,
-                      fillColor: DesignColors.darkSurfaceElevated,
+                      fillColor: context.themed(DesignColors.darkSurfaceElevated),
                       border: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide:
-                            const BorderSide(color: DesignColors.darkBorder),
+                            BorderSide(color: context.themed(DesignColors.darkBorder)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide:
-                            const BorderSide(color: DesignColors.darkBorder),
+                            BorderSide(color: context.themed(DesignColors.darkBorder)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius:

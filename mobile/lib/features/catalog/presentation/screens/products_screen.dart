@@ -352,12 +352,22 @@ class ProductsScreen extends ConsumerWidget {
                                     0,
                                     DesignSpacing.lg,
                                     DesignSpacing.xxl),
+                                // Photo cards need the tall shape; without any
+                                // photos the same card left a big empty block
+                                // under the price, so size it to its content.
                                 gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                    SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 2,
                                   crossAxisSpacing: DesignSpacing.sm + 2,
                                   mainAxisSpacing: DesignSpacing.sm + 2,
                                   childAspectRatio: 0.72,
+                                  // Fixed row height for photo-less cards: image
+                                  // header + a two-line name + category + price,
+                                  // so nothing is left empty below the price.
+                                  mainAxisExtent: filtered.any((p) =>
+                                          (p.imageUrl ?? '').trim().isNotEmpty)
+                                      ? null
+                                      : 158,
                                 ),
                                 itemCount: filtered.length,
                                 // First-mount entrance: each card fades/rises
@@ -728,7 +738,9 @@ class _ProductGridCard extends ConsumerWidget {
                 children: [
                   _ProductImage(
                     imageUrl: product.imageUrl,
-                    height: 112,
+                    // A photo-less card gets a slim header instead of a tall
+                    // empty image block.
+                    height: (product.imageUrl ?? '').trim().isEmpty ? 52 : 112,
                     borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(DesignSpacing.radiusLg)),
                     isDark: isDark,
@@ -747,7 +759,12 @@ class _ProductGridCard extends ConsumerWidget {
                   ),
                 ],
               ),
-              Padding(
+              // Expanded + Spacer: the card fills its grid cell, the name and
+              // category sit at the top and price/stock anchor to the bottom, so
+              // spare height can never show up as an empty block under the price
+              // and a long two-line name can never overflow.
+              Expanded(
+                child: Padding(
                 padding: const EdgeInsets.fromLTRB(DesignSpacing.md,
                     DesignSpacing.sm, DesignSpacing.sm, DesignSpacing.md),
                 child: Column(
@@ -771,7 +788,7 @@ class _ProductGridCard extends ConsumerWidget {
                             .textTheme
                             .labelSmall
                             ?.copyWith(color: secondaryColor)),
-                    const SizedBox(height: DesignSpacing.sm - 1),
+                    const Spacer(),
                     Row(
                       children: [
                         Expanded(
@@ -798,6 +815,7 @@ class _ProductGridCard extends ConsumerWidget {
                     ),
                   ],
                 ),
+              ),
               ),
             ],
           ),

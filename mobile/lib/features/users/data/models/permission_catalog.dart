@@ -44,11 +44,18 @@ class PermissionFeatureGroup {
     );
   }
 
-  /// Human-friendly section heading, e.g. "cash_flow" -> "Cash Flow".
+  /// Human-friendly section heading, e.g. "cash_flow" -> "Cash Flow",
+  /// "ai_billing" -> "AI Billing".
   String get displayName => feature
       .split('_')
-      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .map((w) => _acronyms.contains(w)
+          ? w.toUpperCase()
+          : w.isEmpty
+              ? w
+              : '${w[0].toUpperCase()}${w.substring(1)}')
       .join(' ');
+
+  static const _acronyms = {'ai', 'pos', 'api', 'kra'};
 }
 
 List<PermissionFeatureGroup> parsePermissionCatalog(List<dynamic> raw) {

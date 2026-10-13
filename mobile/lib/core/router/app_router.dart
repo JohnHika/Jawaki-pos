@@ -308,6 +308,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'profit-adjustment',
                 name: 'profit-adjustment',
+                // Needs the figures handed over by the dashboard; a bare link
+                // (no extra) would otherwise crash on the cast below.
+                redirect: (context, state) =>
+                    state.extra is Map<String, dynamic> ? null : '/dashboard',
                 builder: (context, state) {
                   final extra = state.extra as Map<String, dynamic>;
                   return ProfitAdjustmentScreen(
@@ -626,7 +630,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/ai/upgrade',
             name: 'ai-upgrade',
             builder: (context, state) {
-              final branchId = state.extra as String;
+              final branchId = state.extra as String? ?? '';
               return AiUpgradeScreen(
                 branchId: branchId,
                 branchName: '', // Not used anymore

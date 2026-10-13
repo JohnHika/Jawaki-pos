@@ -75,7 +75,6 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? DesignColors.darkBg : DesignColors.surface;
-    final surface = isDark ? DesignColors.darkSurface : Colors.white;
     final textPrimary =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final textSecondary =
@@ -83,29 +82,16 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: surface,
-        leading: IconButton(tooltip: 'Back', 
-          icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-          onPressed: () => context.pop(),
-        ),
-        title: Text(
-          'Invitations',
-          style: TextStyle(
-            color: textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        actions: [
+      appBar: BrandedAppBar(
+          title: 'Invitations',
+          actions: [
           IconButton(
             tooltip: 'Refresh',
             icon: Icon(Icons.refresh_rounded, color: textSecondary),
             onPressed: () => _load(showCacheFirst: false),
           ),
         ],
-        elevation: 0,
-        scrolledUnderElevation: 1,
-      ),
+        ),
       body: _buildBody(isDark, textPrimary, textSecondary),
     );
   }

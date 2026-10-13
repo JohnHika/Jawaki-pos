@@ -87,31 +87,17 @@ class _SetPasswordAfterInviteScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: DesignColors.darkBg,
-      appBar: AppBar(
-        backgroundColor: DesignColors.darkSurface,
-        leading: IconButton(tooltip: 'Back', 
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: DesignColors.darkTextPrimary),
-          onPressed: () => context.pop(),
+      backgroundColor: context.themed(DesignColors.darkBg),
+      appBar: const BrandedAppBar(
+          title: 'Set up your account',
         ),
-        title: const Text(
-          'Set up your account',
-          style: TextStyle(
-            color: DesignColors.darkTextPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        elevation: 0,
-        scrolledUnderElevation: 1,
-      ),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
           // Keyboard-safe: lift the form above the keyboard.
           padding: EdgeInsets.fromLTRB(
             DesignSpacing.xl,
-            DesignSpacing.sm,
+            DesignSpacing.xl,
             DesignSpacing.xl,
             DesignSpacing.xxxl + MediaQuery.viewInsetsOf(context).bottom,
           ),
@@ -121,29 +107,29 @@ class _SetPasswordAfterInviteScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header
-                const StaggeredItem(
+                StaggeredItem(
                   itemKey: 'setup-header',
                   index: 0,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.lock_outline_rounded,
+                      const Icon(Icons.lock_outline_rounded,
                           color: DesignColors.brand, size: 40),
-                      SizedBox(height: DesignSpacing.md),
+                      const SizedBox(height: DesignSpacing.md),
                       Text(
                         'Create your password and PIN',
                         style: TextStyle(
-                          color: DesignColors.darkTextPrimary,
+                          color: context.themed(DesignColors.darkTextPrimary),
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      SizedBox(height: DesignSpacing.sm + 2),
+                      const SizedBox(height: DesignSpacing.sm + 2),
                       Text(
                         'Your invitation has been accepted. Set a password and a '
                         '4-digit PIN to secure your account and enable quick sign-in.',
                         style: TextStyle(
-                          color: DesignColors.darkTextSecondary,
+                          color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.4,
                         ),
                       ),
@@ -153,10 +139,10 @@ class _SetPasswordAfterInviteScreenState
                 const SizedBox(height: DesignSpacing.xxl),
 
                 // ── Password section ──
-                const Text(
+                Text(
                   'Password',
                   style: TextStyle(
-                    color: DesignColors.darkTextSecondary,
+                    color: context.themed(DesignColors.darkTextSecondary),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -174,34 +160,34 @@ class _SetPasswordAfterInviteScreenState
                   }
                   return null;
                 },
-                style: const TextStyle(color: DesignColors.darkTextPrimary),
+                style: TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
                 decoration: InputDecoration(
                   labelText: 'Password',
                   labelStyle:
-                      const TextStyle(color: DesignColors.darkTextSecondary),
-                  prefixIcon: const Icon(Icons.lock_outline_rounded,
-                      color: DesignColors.darkTextSecondary),
+                      TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+                  prefixIcon: Icon(Icons.lock_outline_rounded,
+                      color: context.themed(DesignColors.darkTextSecondary)),
                   suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
-                      color: DesignColors.darkTextTertiary,
+                      color: context.themed(DesignColors.darkTextTertiary),
                     ),
                     onPressed: () =>
                         setState(() => _obscurePassword = !_obscurePassword),
                   ),
                   filled: true,
-                  fillColor: DesignColors.darkSurfaceElevated,
+                  fillColor: context.themed(DesignColors.darkSurfaceElevated),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -229,34 +215,34 @@ class _SetPasswordAfterInviteScreenState
                   }
                   return null;
                 },
-                style: const TextStyle(color: DesignColors.darkTextPrimary),
+                style: TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
                 decoration: InputDecoration(
                   labelText: 'Confirm password',
                   labelStyle:
-                      const TextStyle(color: DesignColors.darkTextSecondary),
-                  prefixIcon: const Icon(Icons.lock_outline_rounded,
-                      color: DesignColors.darkTextSecondary),
+                      TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+                  prefixIcon: Icon(Icons.lock_outline_rounded,
+                      color: context.themed(DesignColors.darkTextSecondary)),
                   suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscureConfirmPassword
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
-                      color: DesignColors.darkTextTertiary,
+                      color: context.themed(DesignColors.darkTextTertiary),
                     ),
                     onPressed: () => setState(
                         () => _obscureConfirmPassword = !_obscureConfirmPassword),
                   ),
                   filled: true,
-                  fillColor: DesignColors.darkSurfaceElevated,
+                  fillColor: context.themed(DesignColors.darkSurfaceElevated),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -273,10 +259,10 @@ class _SetPasswordAfterInviteScreenState
               const SizedBox(height: DesignSpacing.xxl),
 
               // ── PIN section ──
-              const Text(
+              Text(
                 'PIN (4–6 digits)',
                 style: TextStyle(
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -298,8 +284,8 @@ class _SetPasswordAfterInviteScreenState
                   }
                   return null;
                 },
-                style: const TextStyle(
-                  color: DesignColors.darkTextPrimary,
+                style: TextStyle(
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 6,
@@ -308,31 +294,31 @@ class _SetPasswordAfterInviteScreenState
                 decoration: InputDecoration(
                   labelText: 'PIN',
                   labelStyle:
-                      const TextStyle(color: DesignColors.darkTextSecondary),
-                  prefixIcon: const Icon(Icons.pin_outlined,
-                      color: DesignColors.darkTextSecondary),
+                      TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+                  prefixIcon: Icon(Icons.pin_outlined,
+                      color: context.themed(DesignColors.darkTextSecondary)),
                   suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscurePin
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
-                      color: DesignColors.darkTextTertiary,
+                      color: context.themed(DesignColors.darkTextTertiary),
                     ),
                     onPressed: () =>
                         setState(() => _obscurePin = !_obscurePin),
                   ),
                   counterText: '',
                   filled: true,
-                  fillColor: DesignColors.darkSurfaceElevated,
+                  fillColor: context.themed(DesignColors.darkSurfaceElevated),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -363,8 +349,8 @@ class _SetPasswordAfterInviteScreenState
                   }
                   return null;
                 },
-                style: const TextStyle(
-                  color: DesignColors.darkTextPrimary,
+                style: TextStyle(
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 6,
@@ -373,31 +359,31 @@ class _SetPasswordAfterInviteScreenState
                 decoration: InputDecoration(
                   labelText: 'Confirm PIN',
                   labelStyle:
-                      const TextStyle(color: DesignColors.darkTextSecondary),
-                  prefixIcon: const Icon(Icons.pin_outlined,
-                      color: DesignColors.darkTextSecondary),
+                      TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+                  prefixIcon: Icon(Icons.pin_outlined,
+                      color: context.themed(DesignColors.darkTextSecondary)),
                   suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscureConfirmPin
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
-                      color: DesignColors.darkTextTertiary,
+                      color: context.themed(DesignColors.darkTextTertiary),
                     ),
                     onPressed: () => setState(
                         () => _obscureConfirmPin = !_obscureConfirmPin),
                   ),
                   counterText: '',
                   filled: true,
-                  fillColor: DesignColors.darkSurfaceElevated,
+                  fillColor: context.themed(DesignColors.darkSurfaceElevated),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     borderSide:
-                        const BorderSide(color: DesignColors.darkBorder),
+                        BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),

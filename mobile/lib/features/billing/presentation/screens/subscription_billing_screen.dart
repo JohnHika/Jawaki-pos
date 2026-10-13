@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
@@ -31,7 +30,7 @@ Color _statusColor(String? status) {
     case 'REJECTED':
       return DesignColors.error;
     default:
-      return DesignColors.darkTextTertiary;
+      return DesignColors.textTertiary;
   }
 }
 
@@ -230,7 +229,7 @@ class _SubscriptionBillingScreenState
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: DesignColors.darkBorder,
+                        color: context.themed(DesignColors.darkBorder),
                         borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
                       ),
                     ),
@@ -239,7 +238,7 @@ class _SubscriptionBillingScreenState
                   Text(
                     'Choose your plan',
                     style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                          color: DesignColors.darkTextPrimary,
+                          color: context.themed(DesignColors.darkTextPrimary),
                           fontWeight: FontWeight.w800,
                         ),
                   ),
@@ -247,7 +246,7 @@ class _SubscriptionBillingScreenState
                   Text(
                     'Your selected plan takes effect now. If you are in your free trial, the trial end date stays the same.',
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                          color: DesignColors.darkTextSecondary,
+                          color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.35,
                         ),
                   ),
@@ -262,7 +261,7 @@ class _SubscriptionBillingScreenState
                           : () => setSheetState(() => selectedPlan = plan.id),
                     ),
                     if (plan != kAvailablePlans.last)
-                      const Divider(color: DesignColors.darkBorder, height: 1),
+                      Divider(color: context.themed(DesignColors.darkBorder), height: 1),
                   ],
                   const SizedBox(height: DesignSpacing.lg),
                   SizedBox(
@@ -354,21 +353,9 @@ class _SubscriptionBillingScreenState
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
-        appBar: AppBar(
-          backgroundColor: DesignColors.darkBg,
-          title: const Text(
-            'Plan & Billing',
-            style: TextStyle(
-              color: DesignColors.darkTextPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          leading: IconButton(tooltip: 'Back', 
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: DesignColors.darkTextPrimary),
-            onPressed: () => context.pop(),
-          ),
+        backgroundColor: context.themed(DesignColors.darkBg),
+        appBar: const BrandedAppBar(
+          title: 'Plan & Billing',
         ),
         body: RefreshIndicator(
           onRefresh: _loadData,
@@ -376,7 +363,7 @@ class _SubscriptionBillingScreenState
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
               DesignSpacing.lg,
-              DesignSpacing.sm,
+              DesignSpacing.md,
               DesignSpacing.lg,
               DesignSpacing.xxxl,
             ),
@@ -392,6 +379,7 @@ class _SubscriptionBillingScreenState
                 itemKey: 'billing-entitlement',
                 child: _buildEntitlementCard(),
               ),
+              const SizedBox(height: DesignSpacing.xl),
               if (_isAdmin) ...[
                 const SettingsGroupLabel('Plan'),
                 const SizedBox(height: DesignSpacing.sm),
@@ -461,19 +449,19 @@ class _SubscriptionBillingScreenState
       return Container(
         padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
-          color: DesignColors.darkSurface.withValues(alpha: 0.82),
+          color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-          border: Border.all(color: DesignColors.darkBorder),
+          border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
         child: Column(
           children: [
-            const Icon(Icons.error_outline_rounded,
-                color: DesignColors.darkTextTertiary, size: 40),
+            Icon(Icons.error_outline_rounded,
+                color: context.themed(DesignColors.darkTextTertiary), size: 40),
             const SizedBox(height: DesignSpacing.md),
             Text(
               'Could not load subscription details',
               style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: DesignColors.darkTextSecondary),
+                  ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
             ),
           ],
         ),
@@ -490,7 +478,7 @@ class _SubscriptionBillingScreenState
         gradient: LinearGradient(
           colors: [
             DesignColors.brand.withValues(alpha: 0.14),
-            DesignColors.darkSurfaceElevated,
+            context.themed(DesignColors.darkSurfaceElevated),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -527,7 +515,7 @@ class _SubscriptionBillingScreenState
                     Text(
                       entitlement.plan.toUpperCase(),
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: DesignColors.darkTextPrimary,
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1.0,
                       ),
@@ -569,7 +557,7 @@ class _SubscriptionBillingScreenState
                 style: DesignType.numeric(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                 ),
               ),
               const SizedBox(width: DesignSpacing.sm),
@@ -578,7 +566,7 @@ class _SubscriptionBillingScreenState
                 child: Text(
                   '/month',
                   style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: DesignColors.darkTextTertiary),
+                      ?.copyWith(color: context.themed(DesignColors.darkTextTertiary)),
                 ),
               ),
             ],
@@ -586,7 +574,7 @@ class _SubscriptionBillingScreenState
           const SizedBox(height: DesignSpacing.lg),
           Container(
             height: 1,
-            color: DesignColors.darkBorder.withValues(alpha: 0.6),
+            color: context.themed(DesignColors.darkBorder).withValues(alpha: 0.6),
           ),
           const SizedBox(height: DesignSpacing.lg),
           // Next payment + days remaining
@@ -623,13 +611,13 @@ class _SubscriptionBillingScreenState
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         children: [
-          Icon(icon, color: DesignColors.darkTextSecondary, size: 16),
+          Icon(icon, color: context.themed(DesignColors.darkTextSecondary), size: 16),
           const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
               text,
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: DesignColors.darkTextSecondary),
+                  ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
             ),
           ),
         ],
@@ -686,7 +674,7 @@ class _SubscriptionBillingScreenState
             Text(
               'DAYS REMAINING',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: DesignColors.darkTextTertiary,
+                color: context.themed(DesignColors.darkTextTertiary),
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.6,
               ),
@@ -707,7 +695,7 @@ class _SubscriptionBillingScreenState
           child: LinearProgressIndicator(
             value: fraction,
             minHeight: 6,
-            backgroundColor: DesignColors.darkBorder,
+            backgroundColor: context.themed(DesignColors.darkBorder),
             valueColor: AlwaysStoppedAnimation<Color>(color),
           ),
         ),
@@ -720,9 +708,9 @@ class _SubscriptionBillingScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Row(
         children: [
@@ -743,7 +731,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   'Manage plan',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: DesignColors.darkTextPrimary,
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w700,
                       ),
                 ),
@@ -751,7 +739,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   '${planDisplayName(plan)} · compare features or change your tier',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DesignColors.darkTextSecondary,
+                        color: context.themed(DesignColors.darkTextSecondary),
                       ),
                 ),
               ],
@@ -823,7 +811,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   '${claim['mpesaCode'] ?? 'M-Pesa payment'} · ${formatKes(amount)}',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: DesignColors.darkTextPrimary,
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w800,
                       ),
                 ),
@@ -831,7 +819,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   '$plan renewal — verify the code in your M-Pesa statement before approving.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DesignColors.darkTextSecondary,
+                        color: context.themed(DesignColors.darkTextSecondary),
                       ),
                 ),
                 const SizedBox(height: DesignSpacing.sm),
@@ -885,9 +873,9 @@ class _SubscriptionBillingScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Row(
         children: [
@@ -912,7 +900,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   'Auto-Renew',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: DesignColors.darkTextPrimary,
+                    color: context.themed(DesignColors.darkTextPrimary),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -924,7 +912,7 @@ class _SubscriptionBillingScreenState
                           : 'On — $phone')
                       : 'Off — pay manually each month',
                   style: theme.textTheme.bodySmall
-                      ?.copyWith(color: DesignColors.darkTextSecondary),
+                      ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
                 ),
               ],
             ),
@@ -1000,9 +988,9 @@ class _SubscriptionBillingScreenState
       margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Row(
         children: [
@@ -1010,12 +998,12 @@ class _SubscriptionBillingScreenState
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: DesignColors.darkSurfaceElevated,
+              color: context.themed(DesignColors.darkSurfaceElevated),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.receipt_long_rounded,
-              color: DesignColors.darkTextSecondary,
+              color: context.themed(DesignColors.darkTextSecondary),
               size: 18,
             ),
           ),
@@ -1027,7 +1015,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   description,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: DesignColors.darkTextPrimary,
+                    color: context.themed(DesignColors.darkTextPrimary),
                     fontWeight: FontWeight.w600,
                   ),
                   maxLines: 1,
@@ -1037,7 +1025,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   date.isNotEmpty ? _formatDate(date) : '',
                   style: theme.textTheme.bodySmall
-                      ?.copyWith(color: DesignColors.darkTextTertiary),
+                      ?.copyWith(color: context.themed(DesignColors.darkTextTertiary)),
                 ),
                 if (reference != null && reference.isNotEmpty) ...[
                   const SizedBox(height: DesignSpacing.xs),
@@ -1061,7 +1049,7 @@ class _SubscriptionBillingScreenState
                 style: DesignType.numeric(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                 ),
               ),
               const SizedBox(height: DesignSpacing.xs),
@@ -1093,26 +1081,26 @@ class _SubscriptionBillingScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xxl),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Column(
         children: [
-          const Icon(Icons.receipt_long_outlined,
-              color: DesignColors.darkTextTertiary, size: 36),
+          Icon(Icons.receipt_long_outlined,
+              color: context.themed(DesignColors.darkTextTertiary), size: 36),
           const SizedBox(height: DesignSpacing.md),
           Text(
             'No invoices yet',
             style: theme.textTheme.bodyMedium
-                ?.copyWith(color: DesignColors.darkTextSecondary),
+                ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
           ),
           const SizedBox(height: DesignSpacing.xs),
           Text(
             'Invoices appear at each monthly renewal.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: DesignColors.darkTextTertiary),
+                ?.copyWith(color: context.themed(DesignColors.darkTextTertiary)),
           ),
         ],
       ),
@@ -1218,7 +1206,7 @@ class _PlanRadioTile extends StatelessWidget {
                     : Icons.radio_button_unchecked_rounded,
                 color: isSelected
                     ? DesignColors.accent
-                    : DesignColors.darkTextTertiary,
+                    : context.themed(DesignColors.darkTextTertiary),
               ),
               const SizedBox(width: DesignSpacing.md),
               Expanded(
@@ -1227,14 +1215,14 @@ class _PlanRadioTile extends StatelessWidget {
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
-                        color: DesignColors.darkTextPrimary,
+                      style: TextStyle(
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Text(
                       priceLabel,
-                      style: const TextStyle(color: DesignColors.darkTextSecondary),
+                      style: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
                     ),
                   ],
                 ),
@@ -1344,7 +1332,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: DesignColors.darkBorder,
+                    color: context.themed(DesignColors.darkBorder),
                     borderRadius: BorderRadius.circular(DesignSpacing.xs),
                   ),
                 ),
@@ -1353,7 +1341,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               Text(
                 'Pay with M-Pesa',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1361,7 +1349,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               Text(
                 'Renew your subscription via M-Pesa',
                 style: theme.textTheme.bodySmall
-                    ?.copyWith(color: DesignColors.darkTextSecondary),
+                    ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
               ),
               const SizedBox(height: DesignSpacing.xl),
 
@@ -1369,9 +1357,9 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               Container(
                 padding: DesignSpacing.paddingCard,
                 decoration: BoxDecoration(
-                  color: DesignColors.darkSurfaceElevated,
+                  color: context.themed(DesignColors.darkSurfaceElevated),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                  border: Border.all(color: DesignColors.darkBorder),
+                  border: Border.all(color: context.themed(DesignColors.darkBorder)),
                 ),
                 child: Column(
                   children: [
@@ -1389,7 +1377,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               Text(
                 'PAY VIA PAYBILL, THEN ENTER THE CONFIRMATION CODE',
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: DesignColors.darkTextTertiary,
+                  color: context.themed(DesignColors.darkTextTertiary),
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.6,
                 ),
@@ -1398,7 +1386,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               Text(
                 'Automatic STK prompts only run on your renewal date when Auto-Renew is enabled. For an immediate manual payment, use the Paybill details above.',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                   height: 1.35,
                 ),
               ),
@@ -1418,7 +1406,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
                 'The code is recorded as a pending claim until an admin '
                 'confirms the payment.',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: DesignColors.darkTextTertiary,
+                  color: context.themed(DesignColors.darkTextTertiary),
                   height: 1.35,
                 ),
               ),
@@ -1456,12 +1444,12 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
           Text(
             label,
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: DesignColors.darkTextSecondary),
+                ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
           ),
           Text(
             value,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: DesignColors.darkTextPrimary,
+              color: context.themed(DesignColors.darkTextPrimary),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1561,7 +1549,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: DesignColors.darkBorder,
+                    color: context.themed(DesignColors.darkBorder),
                     borderRadius: BorderRadius.circular(DesignSpacing.xs),
                   ),
                 ),
@@ -1570,7 +1558,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
               Text(
                 'Set up Auto-Renew',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1579,7 +1567,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                 'We STK push the plan price to this number each month when '
                 'the subscription renews.',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                   height: 1.35,
                 ),
               ),
@@ -1588,9 +1576,9 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
                 decoration: BoxDecoration(
-                  color: DesignColors.darkSurfaceElevated,
+                  color: context.themed(DesignColors.darkSurfaceElevated),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                  border: Border.all(color: DesignColors.darkBorder),
+                  border: Border.all(color: context.themed(DesignColors.darkBorder)),
                 ),
                 // Material wrapper so the tile paints its ink/background on
                 // this Material instead of one hidden behind the decorated
@@ -1604,7 +1592,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                     title: Text(
                       'Auto-renew subscription',
                       style: theme.textTheme.titleSmall
-                          ?.copyWith(color: DesignColors.darkTextPrimary),
+                          ?.copyWith(color: context.themed(DesignColors.darkTextPrimary)),
                     ),
                     onChanged: (v) => setState(() => _autoRenew = v),
                   ),

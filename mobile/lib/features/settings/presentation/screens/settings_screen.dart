@@ -550,6 +550,7 @@ class SettingsScreen extends ConsumerWidget {
                 iconColor:
                     currentMode == ThemeMode.light ? DesignColors.accent : null,
                 title: 'Light Mode',
+                showChevron: false,
                 trailing: currentMode == ThemeMode.light
                     ? const Icon(Icons.check_circle_rounded,
                         color: DesignColors.accent)
@@ -566,6 +567,7 @@ class SettingsScreen extends ConsumerWidget {
                 iconColor:
                     currentMode == ThemeMode.dark ? DesignColors.accent : null,
                 title: 'Dark Mode',
+                showChevron: false,
                 trailing: currentMode == ThemeMode.dark
                     ? const Icon(Icons.check_circle_rounded,
                         color: DesignColors.accent)
@@ -583,6 +585,7 @@ class SettingsScreen extends ConsumerWidget {
                     ? DesignColors.accent
                     : null,
                 title: 'System Default',
+                showChevron: false,
                 subtitle: 'Follow device theme',
                 trailing: currentMode == ThemeMode.system
                     ? const Icon(Icons.check_circle_rounded,

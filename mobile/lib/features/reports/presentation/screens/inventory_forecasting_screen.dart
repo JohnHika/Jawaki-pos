@@ -8,6 +8,11 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
+import 'package:intl/intl.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../../core/utils/format.dart';
+import '../../domain/analytics_mapping.dart';
 
 class InventoryForecastingScreen extends ConsumerStatefulWidget {
   const InventoryForecastingScreen({super.key});
@@ -40,26 +45,40 @@ class _InventoryForecastingScreenState
       // Load low stock items
       _lowStockItems = await database.getLowStockProducts();
 
-      // Load fast moving items (top sellers)
       final now = DateTime.now();
-      final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-      final endOfWeek = startOfWeek.add(const Duration(days: 7));
-
-      _fastMovingItems = await database.getTopProducts(
-        startOfWeek,
-        endOfWeek,
-        limit: 10,
-      );
-
-      // Load slow moving items
-      _slowMovingItems = await database.getSlowMovingProducts(
-        startOfWeek,
-        endOfWeek,
-        limit: 10,
-      );
-
-      // Load real trailing sales-velocity data
-      _forecastData = await _loadDailySalesVelocity();
+      try {
+        // Sales figures come from the server so a second phone or fresh install
+        // sees the shop's real history; this device's records are the fallback.
+        final api = getIt<ApiClient>();
+        final branchId = getIt<AuthService>().branchId;
+        final iso = DateFormat('yyyy-MM-dd');
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        final results = await Future.wait<Object?>([
+          api.getTopProductsReport(
+              startDate: iso.format(monday),
+              endDate: iso.format(now),
+              branchId: branchId,
+              limit: 100),
+          api.getSalesTrendReport(
+              startDate: iso.format(now.subtract(const Duration(days: 6))),
+              endDate: iso.format(now),
+              branchId: branchId,
+              groupBy: 'DAY'),
+        ]);
+        final ranking = topProductsFromServer(results[0]);
+        _fastMovingItems = ranking.take(10).toList();
+        _slowMovingItems = slowestFromRanking(ranking);
+        _forecastData = weeklyVelocityFromServer(results[1], now);
+      } catch (e) {
+        if (!kReleaseMode) debugPrint('Forecast server load failed, using local: $e');
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+        _fastMovingItems =
+            await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
+        _slowMovingItems =
+            await database.getSlowMovingProducts(startOfWeek, endOfWeek, limit: 10);
+        _forecastData = await _loadDailySalesVelocity();
+      }
 
       setState(() => _isLoading = false);
     } catch (e) {
@@ -303,7 +322,14 @@ class _InventoryForecastingScreenState
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
+                      // Reserve room for the label; without it the top tick
+                      // squeezed to one character wide and wrapped vertically.
+                      reservedSize: 32,
                       getTitlesWidget: (value, meta) {
+                        // Hide the uneven tick fl_chart adds at the very top.
+                        if (value == meta.max && value % 5 != 0) {
+                          return const SizedBox.shrink();
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
@@ -447,7 +473,7 @@ class _InventoryForecastingScreenState
                       ),
                     ),
                     Text(
-                      isOut ? 'Out of Stock' : '$quantity left',
+                      isOut ? 'Out of Stock' : '${quantity is num ? (quantity == quantity.roundToDouble() ? quantity.toInt() : quantity) : quantity} left',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           color:
@@ -561,7 +587,7 @@ class _InventoryForecastingScreenState
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
-                            '${product['totalRevenue']?.toStringAsFixed(0) ?? 0} revenue',
+                            '${formatMoney(product['totalRevenue'])} sold',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: secondaryColor,
                             ),
@@ -570,7 +596,7 @@ class _InventoryForecastingScreenState
                       ),
                     ),
                     StatusBadge(
-                      label: '$qty units',
+                      label: countLabel(qty, 'unit'),
                       color: DesignColors.success,
                     ),
                   ],
@@ -661,7 +687,7 @@ class _InventoryForecastingScreenState
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
-                            '${product['totalRevenue']?.toStringAsFixed(0) ?? 0} revenue',
+                            '${formatMoney(product['totalRevenue'])} sold',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: secondaryColor,
                             ),
@@ -670,7 +696,7 @@ class _InventoryForecastingScreenState
                       ),
                     ),
                     StatusBadge(
-                      label: '$qty units',
+                      label: countLabel(qty, 'unit'),
                       color: DesignColors.accent,
                     ),
                   ],

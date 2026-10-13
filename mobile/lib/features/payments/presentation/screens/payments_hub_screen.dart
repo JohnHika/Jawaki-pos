@@ -358,22 +358,30 @@ class _PaymentMethodBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md, vertical: DesignSpacing.md - 3),
       decoration: BoxDecoration(
-        color: DesignColors.surfaceMuted,
+        color: isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted,
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        border: Border.all(color: DesignColors.surfaceBorder),
+        border: Border.all(
+            color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: DesignColors.textSecondary),
+          Icon(icon,
+              size: 16,
+              color: isDark
+                  ? DesignColors.darkTextSecondary
+                  : DesignColors.textSecondary),
           const SizedBox(width: DesignSpacing.sm - 1),
           Text(
             method,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: DesignColors.textPrimary,
+              color: isDark
+                  ? DesignColors.darkTextPrimary
+                  : DesignColors.textPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),

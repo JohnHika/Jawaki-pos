@@ -179,6 +179,8 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
+      // Below the fold on the small test viewport, so bring it into view.
+      await tester.scrollUntilVisible(find.text('Auto-Renew'), 200);
       expect(find.text('Auto-Renew'), findsOneWidget);
 
       await tester.ensureVisible(find.byType(Switch));

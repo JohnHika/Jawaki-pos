@@ -515,7 +515,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ChoiceChip(
                     label: const Text('All customers'),
                     visualDensity: VisualDensity.compact,
-                    labelStyle: Theme.of(context).textTheme.bodySmall,
+                    labelStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface),
                     selected: !_showDebtOnly,
                     onSelected: (_) {
                       setState(() => _showDebtOnly = false);
@@ -528,7 +529,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     avatar: const Icon(Icons.account_balance_wallet_outlined,
                         size: 16),
                     visualDensity: VisualDensity.compact,
-                    labelStyle: Theme.of(context).textTheme.bodySmall,
+                    labelStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface),
                     selected: _showDebtOnly,
                     selectedColor: DesignColors.error.withValues(alpha: 0.15),
                     onSelected: (_) {

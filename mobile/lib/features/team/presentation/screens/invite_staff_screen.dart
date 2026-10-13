@@ -124,23 +124,9 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
-        appBar: AppBar(
-          backgroundColor: DesignColors.darkSurface,
-          leading: IconButton(tooltip: 'Back', 
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: DesignColors.darkTextPrimary),
-            onPressed: () => context.pop(),
-          ),
-          title: const Text(
-            'Invite Staff',
-            style: TextStyle(
-              color: DesignColors.darkTextPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          elevation: 0,
-          scrolledUnderElevation: 1,
+        backgroundColor: context.themed(DesignColors.darkBg),
+        appBar: const BrandedAppBar(
+          title: 'Invite Staff',
         ),
         body: _buildBody(),
       ),
@@ -172,19 +158,19 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
             const Icon(Icons.cloud_off_outlined,
                 color: DesignColors.warning, size: 48),
             const SizedBox(height: DesignSpacing.lg),
-            const Text(
+            Text(
               'Could not load roles and branches',
               style: TextStyle(
-                color: DesignColors.darkTextPrimary,
+                color: context.themed(DesignColors.darkTextPrimary),
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: DesignSpacing.sm),
-            const Text(
+            Text(
               'Please check your connection and try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: DesignColors.darkTextSecondary),
+              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
             ),
             const SizedBox(height: DesignSpacing.xl),
             GradientButton(
@@ -210,19 +196,19 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
             const Icon(Icons.info_outline_rounded,
                 color: DesignColors.warning, size: 48),
             const SizedBox(height: DesignSpacing.lg),
-            const Text(
+            Text(
               'Setup required',
               style: TextStyle(
-                color: DesignColors.darkTextPrimary,
+                color: context.themed(DesignColors.darkTextPrimary),
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: DesignSpacing.sm),
-            const Text(
+            Text(
               'Add at least one role and one active branch before inviting staff.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: DesignColors.darkTextSecondary),
+              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
             ),
             const SizedBox(height: DesignSpacing.xl),
             GradientButton(
@@ -245,7 +231,7 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         DesignSpacing.xl,
-        DesignSpacing.sm,
+        DesignSpacing.xl,
         DesignSpacing.xl,
         MediaQuery.viewInsetsOf(context).bottom + DesignSpacing.xxl,
       ),
@@ -257,27 +243,27 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
             // Header — first-mount entrance: each field block fades/rises in
             // once, staggered (see StaggeredItem). Keys are stable, so
             // validation re-renders never replay the choreography.
-            const StaggeredItem(
+            StaggeredItem(
               itemKey: 'invite-header',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.person_add_alt_1_rounded,
+                  const Icon(Icons.person_add_alt_1_rounded,
                       color: DesignColors.brand, size: 40),
-                  SizedBox(height: DesignSpacing.md),
+                  const SizedBox(height: DesignSpacing.md),
                   Text(
                     'Invite a team member',
                     style: TextStyle(
-                      color: DesignColors.darkTextPrimary,
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  SizedBox(height: DesignSpacing.sm - 2),
+                  const SizedBox(height: DesignSpacing.sm - 2),
                   Text(
                     'Their email will receive a time-limited verification code to accept the invitation.',
                     style: TextStyle(
-                      color: DesignColors.darkTextSecondary,
+                      color: context.themed(DesignColors.darkTextSecondary),
                       height: 1.4,
                     ),
                   ),
@@ -382,20 +368,20 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
       controller: controller,
       validator: validator,
       keyboardType: keyboardType,
-      style: const TextStyle(color: DesignColors.darkTextPrimary),
+      style: TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: DesignColors.darkTextSecondary),
-        prefixIcon: Icon(icon, color: DesignColors.darkTextSecondary),
+        labelStyle: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+        prefixIcon: Icon(icon, color: context.themed(DesignColors.darkTextSecondary)),
         filled: true,
-        fillColor: DesignColors.darkSurfaceElevated,
+        fillColor: context.themed(DesignColors.darkSurfaceElevated),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          borderSide: const BorderSide(color: DesignColors.darkBorder),
+          borderSide: BorderSide(color: context.themed(DesignColors.darkBorder)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          borderSide: const BorderSide(color: DesignColors.darkBorder),
+          borderSide: BorderSide(color: context.themed(DesignColors.darkBorder)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -418,24 +404,24 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
     return DropdownButtonFormField<String>(
       initialValue: value,
       onChanged: onChanged,
-      dropdownColor: DesignColors.darkSurfaceElevated,
-      style: const TextStyle(color: DesignColors.darkTextPrimary),
+      dropdownColor: context.themed(DesignColors.darkSurfaceElevated),
+      style: TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: DesignColors.darkTextSecondary),
+        labelStyle: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
         prefixIcon: Icon(
           label == 'Role' ? Icons.badge_outlined : Icons.store_outlined,
-          color: DesignColors.darkTextSecondary,
+          color: context.themed(DesignColors.darkTextSecondary),
         ),
         filled: true,
-        fillColor: DesignColors.darkSurfaceElevated,
+        fillColor: context.themed(DesignColors.darkSurfaceElevated),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          borderSide: const BorderSide(color: DesignColors.darkBorder),
+          borderSide: BorderSide(color: context.themed(DesignColors.darkBorder)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          borderSide: const BorderSide(color: DesignColors.darkBorder),
+          borderSide: BorderSide(color: context.themed(DesignColors.darkBorder)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),

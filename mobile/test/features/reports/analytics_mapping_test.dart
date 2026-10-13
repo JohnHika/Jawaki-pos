@@ -105,4 +105,30 @@ void main() {
     expect(peaks.first['transactionCount'], 5);
     expect(peakHoursFromHourly(hourlyFromServer([], DateTime(2026, 10, 13))), isEmpty);
   });
+
+  test('weekly velocity always has seven days ending today, zero-filled', () {
+    final rows = weeklyVelocityFromServer([
+      {'period': '2026-10-13', 'itemsSold': 14},
+      {'period': '2026-10-11', 'itemsSold': 13},
+      {'period': '2026-10-11', 'itemsSold': 2},
+    ], DateTime(2026, 10, 13));
+    expect(rows.length, 7);
+    expect(rows.first['date'], '2026-10-07');
+    expect(rows.last['date'], '2026-10-13');
+    expect(rows.last['itemsSold'], 14);
+    expect(rows[4]['itemsSold'], 15); // two rows for the same day add up
+    expect(rows[0]['itemsSold'], 0);
+    expect(rows.last['day'], 'Tue'); // 13 Oct 2026 is a Tuesday
+  });
+
+  test('slowest products come from the bottom of a ranking', () {
+    final ranking = [
+      {'productName': 'A', 'totalQty': 9},
+      {'productName': 'B', 'totalQty': 1},
+      {'productName': 'C', 'totalQty': 4},
+    ];
+    expect(slowestFromRanking(ranking, limit: 2).map((r) => r['productName']),
+        ['B', 'C']);
+    expect(ranking.first['productName'], 'A'); // input is not mutated
+  });
 }

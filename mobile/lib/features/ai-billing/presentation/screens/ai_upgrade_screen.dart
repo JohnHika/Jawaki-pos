@@ -20,6 +20,11 @@ class AiUpgradeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textPrimary =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final textSecondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Axon AI Assistant', showLogo: false),
       body: SafeArea(
@@ -45,23 +50,23 @@ class AiUpgradeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: DesignSpacing.xxl),
 
-                const Text(
-                  'Axon AI Assistant',
+                Text(
+                  'Switch on your AI assistant',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: DesignColors.textPrimary,
+                    color: textPrimary,
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: DesignSpacing.md),
 
-                const Text(
+                Text(
                   'The AI assistant is included in every Axon POS plan — Core, '
                   'Business and Enterprise. Activate your plan to get instant '
                   'insights, product recommendations, and business analytics.',
                   style: TextStyle(
-                    color: DesignColors.textSecondary,
+                    color: textSecondary,
                     fontSize: 14,
                     height: 1.5,
                   ),
@@ -96,15 +101,15 @@ class AiUpgradeScreen extends StatelessWidget {
                     tint: DesignColors.brand.withValues(alpha: 0.05),
                     child: Column(
                       children: [
-                        Row(
+                        const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.workspace_premium,
+                            Icon(Icons.workspace_premium,
                                 color: DesignColors.brand, size: 24),
-                            const SizedBox(width: DesignSpacing.sm),
+                            SizedBox(width: DesignSpacing.sm),
                             Text(
                               'Included in every plan',
-                              style: DesignType.numeric(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: DesignColors.brand,
@@ -113,12 +118,12 @@ class AiUpgradeScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: DesignSpacing.sm),
-                        const Text(
+                        Text(
                           'Core, Business and Enterprise all include the AI '
                           'assistant. No separate AI subscription, no add-on '
                           'charge.',
                           style: TextStyle(
-                            color: DesignColors.textSecondary,
+                            color: textSecondary,
                             fontSize: 13,
                           ),
                           textAlign: TextAlign.center,
@@ -157,6 +162,7 @@ class _FeatureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.md),
       child: Row(
@@ -176,13 +182,18 @@ class _FeatureTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
-                        color: DesignColors.textPrimary)),
+                        color: isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary)),
                 Text(subtitle,
-                    style: const TextStyle(
-                        color: DesignColors.textSecondary, fontSize: 13)),
+                    style: TextStyle(
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
+                        fontSize: 13)),
               ],
             ),
           ),

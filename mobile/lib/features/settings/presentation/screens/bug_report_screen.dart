@@ -76,22 +76,12 @@ class _BugReportScreenState extends State<BugReportScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimary = isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
 
     return Scaffold(
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surface,
-      appBar: AppBar(
-        backgroundColor: isDark ? DesignColors.darkSurface : Colors.white,
-        leading: IconButton(tooltip: 'Back', 
-          icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-          onPressed: () => context.pop(),
+      appBar: const BrandedAppBar(
+          title: 'Report a Bug',
         ),
-        title: Text(
-          'Report a Bug',
-          style: TextStyle(color: textPrimary, fontWeight: FontWeight.w800),
-        ),
-        elevation: 0,
-      ),
       body: SafeArea(
         top: false,
         child: _result != null ? _buildResult(isDark) : _buildForm(isDark),

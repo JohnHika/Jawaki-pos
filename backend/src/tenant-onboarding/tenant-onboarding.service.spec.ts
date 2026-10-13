@@ -19,4 +19,29 @@ describe('TenantOnboardingService staff invitations', () => {
     expect(prisma.tenantStaffInvitation.create).not.toHaveBeenCalled();
     expect(otp.request).not.toHaveBeenCalled();
   });
+
+  it('lists invitations for an admin of a company with no onboarding row', async () => {
+    const prisma: any = {
+      tenantOnboarding: { findUnique: jest.fn().mockResolvedValue(null) },
+      tenantStaffInvitation: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new TenantOnboardingService(prisma, { request: jest.fn() } as any);
+
+    await expect(service.listInvitations(
+      { sub: 'admin-1', tenantId: 'tenant-1', permissions: ['users.create'] },
+    )).resolves.toEqual([]);
+  });
+
+  it('still refuses a caller without users.create when there is no onboarding row', async () => {
+    const prisma: any = {
+      tenantOnboarding: { findUnique: jest.fn().mockResolvedValue(null) },
+      tenantStaffInvitation: { findMany: jest.fn() },
+    };
+    const service = new TenantOnboardingService(prisma, { request: jest.fn() } as any);
+
+    await expect(service.listInvitations(
+      { sub: 'cashier-1', tenantId: 'tenant-1', permissions: [] },
+    )).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.tenantStaffInvitation.findMany).not.toHaveBeenCalled();
+  });
 });

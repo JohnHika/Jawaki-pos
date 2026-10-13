@@ -130,3 +130,38 @@ List<Map<String, dynamic>> peakHoursFromHourly(
     });
   return rows.take(limit).toList();
 }
+
+/// Seven most recent days of units sold, ending [today], one row per day with
+/// zeros for days that have no sales (so the chart always has seven bars).
+List<Map<String, dynamic>> weeklyVelocityFromServer(Object? trend, DateTime today) {
+  const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final byDate = <String, int>{};
+  for (final r in _rows(trend)) {
+    final key = (r['period']?.toString() ?? '');
+    if (key.length >= 10) {
+      final day = key.substring(0, 10);
+      byDate[day] = (byDate[day] ?? 0) + _num(r['itemsSold']).toInt();
+    }
+  }
+  final start = DateTime(today.year, today.month, today.day)
+      .subtract(const Duration(days: 6));
+  return [
+    for (var i = 0; i < 7; i++)
+      () {
+        final d = start.add(Duration(days: i));
+        final key =
+            '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        return {'day': names[d.weekday - 1], 'itemsSold': byDate[key] ?? 0, 'date': key};
+      }(),
+  ];
+}
+
+/// The [limit] products that sold least from a full ranking (lowest units first).
+List<Map<String, dynamic>> slowestFromRanking(
+  List<Map<String, dynamic>> ranking, {
+  int limit = 10,
+}) =>
+    ([...ranking]..sort((a, b) =>
+            (a['totalQty'] as int).compareTo(b['totalQty'] as int)))
+        .take(limit)
+        .toList();

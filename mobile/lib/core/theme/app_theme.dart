@@ -179,6 +179,9 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: DesignColors.surfaceSubtle,
+        selectedColor: DesignColors.brand.withValues(alpha: 0.14),
+        checkmarkColor: DesignColors.brandDark,
+        side: const BorderSide(color: DesignColors.surfaceBorder),
         deleteIconColor: DesignColors.textSecondary,
         labelStyle: const TextStyle(
           color: DesignColors.textPrimary,
@@ -455,6 +458,8 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: DesignColors.darkSurfaceElevated,
+        selectedColor: DesignColors.brand.withValues(alpha: 0.28),
+        checkmarkColor: DesignColors.darkTextPrimary,
         labelStyle: const TextStyle(
           color: DesignColors.darkTextPrimary,
           fontSize: 13,

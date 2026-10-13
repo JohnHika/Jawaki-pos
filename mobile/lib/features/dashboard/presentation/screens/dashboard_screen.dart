@@ -961,13 +961,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     ),
                     Expanded(
                       child: _costMetric(
-                        'Profit',
+                        // With no cost entered, "profit" would just repeat
+                        // revenue as if every sale were pure margin.
+                        cost <= 0 && !isLoading ? 'Profit (no cost yet)' : 'Profit',
                         isLoading ? '—' : formatMoney(profit),
-                        DesignColors.success,
+                        cost <= 0 && !isLoading
+                            ? (isDark
+                                ? DesignColors.darkTextSecondary
+                                : DesignColors.textSecondary)
+                            : DesignColors.success,
                       ),
                     ),
                   ],
                 ),
+                if (cost <= 0 && !isLoading) ...[
+                  const SizedBox(height: DesignSpacing.sm),
+                  Text(
+                    'Tap Adjust to enter what your stock cost today.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: isDark
+                              ? DesignColors.darkTextTertiary
+                              : DesignColors.textTertiary,
+                        ),
+                  ),
+                ],
               ],
             ),
           ),

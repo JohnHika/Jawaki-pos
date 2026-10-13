@@ -475,8 +475,12 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final effectiveTint =
+    final rawTint =
         tint ?? (isDark ? DesignColors.glassDark : DesignColors.glassWhite);
+    // Light mode has nothing to blur against, and a see-through fill lets the
+    // card's own drop shadow show through (muddy grey). Lay it over white.
+    final effectiveTint =
+        isDark ? rawTint : Color.alphaBlend(rawTint, Colors.white);
     final effectiveBorder = borderColor ??
         (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder);
 
@@ -1658,6 +1662,11 @@ class SettingsRow extends StatelessWidget {
   /// Lines the subtitle may wrap to before truncating (2 by default; raise it
   /// for rows whose description must be read in full, e.g. option pickers).
   final int subtitleMaxLines;
+
+  /// Show a trailing chevron on tappable rows without a [trailing] widget.
+  /// Turn off for choice lists (theme, language) where tapping selects rather
+  /// than navigates, so unselected options don't look like links.
+  final bool showChevron;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool isDestructive;
@@ -1670,6 +1679,7 @@ class SettingsRow extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.subtitleMaxLines = 2,
+    this.showChevron = true,
     this.trailing,
     this.onTap,
     this.isDestructive = false,
@@ -1720,7 +1730,7 @@ class SettingsRow extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: titleColor,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (subtitle != null) ...[
@@ -1738,14 +1748,14 @@ class SettingsRow extends StatelessWidget {
                 ),
                 if (trailing != null) ...[
                   const SizedBox(width: 8),
-                  Flexible(
-                    fit: FlexFit.loose,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: trailing!,
-                    ),
+                  // Content-sized (capped) so the title/subtitle column keeps
+                  // the remaining width instead of splitting the row 50/50 with
+                  // a switch or badge.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: trailing!,
                   ),
-                ] else if (onTap != null)
+                ] else if (onTap != null && showChevron)
                   Icon(Icons.chevron_right_rounded,
                       color: chevronColor, size: 20),
               ],
@@ -2480,5 +2490,30 @@ class _BackButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// For screens written against the dark palette: returns [darkToken] in dark
+/// mode and its light-theme counterpart otherwise, so the screen follows the
+/// app's Light/Dark setting without being rewritten token by token.
+extension ThemedDarkTokens on BuildContext {
+  Color themed(Color darkToken) {
+    if (Theme.of(this).brightness == Brightness.dark) return darkToken;
+    if (darkToken == DesignColors.darkBg) return DesignColors.surfaceMuted;
+    if (darkToken == DesignColors.darkSurface) return Colors.white;
+    if (darkToken == DesignColors.darkSurfaceElevated) {
+      return DesignColors.surfaceMuted;
+    }
+    if (darkToken == DesignColors.darkBorder) return DesignColors.surfaceBorder;
+    if (darkToken == DesignColors.darkTextPrimary) {
+      return DesignColors.textPrimary;
+    }
+    if (darkToken == DesignColors.darkTextSecondary) {
+      return DesignColors.textSecondary;
+    }
+    if (darkToken == DesignColors.darkTextTertiary) {
+      return DesignColors.textTertiary;
+    }
+    return darkToken;
   }
 }

@@ -34,7 +34,7 @@ export class TenantOnboardingService {
   }
 
   async createInvitation(actor: Actor, dto: { email: string; firstName: string; lastName: string; roleId: string; branchId: string }) {
-    await this.assertOwnerOrPermission(actor, 'users.create');
+    await this.assertCanInviteStaff(actor);
     const branch = await this.prisma.branch.findFirst({ where: { id: dto.branchId, tenantId: actor.tenantId, isActive: true } });
     if (!branch) throw new ForbiddenException('Branch is not available in this company');
     const role = await this.prisma.role.findFirst({ where: { id: dto.roleId, tenantId: actor.tenantId } });
@@ -56,7 +56,7 @@ export class TenantOnboardingService {
   }
 
   async listInvitations(actor: Actor) {
-    await this.assertOwnerOrPermission(actor, 'users.create');
+    await this.assertCanInviteStaff(actor);
     const invitations = await this.prisma.tenantStaffInvitation.findMany({
       where: { tenantId: actor.tenantId },
       orderBy: { createdAt: 'desc' },
@@ -188,6 +188,22 @@ export class TenantOnboardingService {
     });
 
     return completed;
+  }
+
+  /**
+   * Inviting staff must work for companies that predate the onboarding checklist
+   * (no TenantOnboarding row): those fall back to the permission check alone
+   * instead of failing with a 404 that the client reads as a lost session.
+   */
+  private async assertCanInviteStaff(actor: Actor) {
+    const onboarding = await this.prisma.tenantOnboarding.findUnique({
+      where: { tenantId: actor.tenantId },
+      select: { ownerUserId: true },
+    });
+    const isOwner = onboarding?.ownerUserId === actor.sub;
+    if (!isOwner && !actor.permissions?.includes('users.create')) {
+      throw new ForbiddenException('Not authorized to manage onboarding');
+    }
   }
 
   private async assertOwnerOrPermission(actor: Actor, requiredPermission: string) {

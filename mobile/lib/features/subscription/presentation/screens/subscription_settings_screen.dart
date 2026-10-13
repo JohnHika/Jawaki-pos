@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
@@ -22,7 +21,7 @@ Color _statusColor(String? status) {
     case 'EXPIRED':
       return DesignColors.error;
     default:
-      return DesignColors.darkTextTertiary;
+      return DesignColors.textTertiary;
   }
 }
 
@@ -128,15 +127,15 @@ class _SubscriptionSettingsScreenState
               splashFactory: InkRipple.splashFactory,
             ),
             child: AlertDialog(
-              backgroundColor: DesignColors.darkSurfaceElevated,
+              backgroundColor: context.themed(DesignColors.darkSurfaceElevated),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-                side: const BorderSide(color: DesignColors.darkBorder),
+                side: BorderSide(color: context.themed(DesignColors.darkBorder)),
               ),
-              title: const Text(
+              title: Text(
                 'Change Plan',
                 style: TextStyle(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -146,7 +145,7 @@ class _SubscriptionSettingsScreenState
                   Text(
                     'Select a new plan. Changes take effect immediately.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: DesignColors.darkTextSecondary,
+                          color: context.themed(DesignColors.darkTextSecondary),
                         ),
                   ),
                   const SizedBox(height: DesignSpacing.lg),
@@ -248,21 +247,9 @@ class _SubscriptionSettingsScreenState
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
-        appBar: AppBar(
-          backgroundColor: DesignColors.darkBg,
-          title: const Text(
-            'Subscription',
-            style: TextStyle(
-              color: DesignColors.darkTextPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          leading: IconButton(tooltip: 'Back', 
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: DesignColors.darkTextPrimary),
-            onPressed: () => context.pop(),
-          ),
+        backgroundColor: context.themed(DesignColors.darkBg),
+        appBar: const BrandedAppBar(
+          title: 'Subscription',
         ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(
@@ -324,18 +311,18 @@ class _SubscriptionSettingsScreenState
       return Container(
         padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
-          color: DesignColors.darkSurface.withValues(alpha: 0.82),
+          color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-          border: Border.all(color: DesignColors.darkBorder),
+          border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
-        child: const Column(
+        child: Column(
           children: [
             Icon(Icons.error_outline_rounded,
-                color: DesignColors.darkTextTertiary, size: 40),
-            SizedBox(height: DesignSpacing.md),
+                color: context.themed(DesignColors.darkTextTertiary), size: 40),
+            const SizedBox(height: DesignSpacing.md),
             Text(
               'Could not load subscription details',
-              style: TextStyle(color: DesignColors.darkTextSecondary),
+              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
             ),
           ],
         ),
@@ -355,7 +342,7 @@ class _SubscriptionSettingsScreenState
         gradient: LinearGradient(
           colors: [
             DesignColors.brand.withValues(alpha: 0.20),
-            DesignColors.darkSurfaceElevated,
+            context.themed(DesignColors.darkSurfaceElevated),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -392,7 +379,7 @@ class _SubscriptionSettingsScreenState
                     Text(
                       planName,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: DesignColors.darkTextPrimary,
+                            color: context.themed(DesignColors.darkTextPrimary),
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.0,
                           ),
@@ -434,7 +421,7 @@ class _SubscriptionSettingsScreenState
                 style: DesignType.numeric(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                 ),
               ),
               const SizedBox(width: DesignSpacing.sm),
@@ -443,7 +430,7 @@ class _SubscriptionSettingsScreenState
                 child: Text(
                   '/month',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: DesignColors.darkTextTertiary,
+                        color: context.themed(DesignColors.darkTextTertiary),
                       ),
                 ),
               ),
@@ -474,7 +461,7 @@ class _SubscriptionSettingsScreenState
           // Divider
           Container(
             height: 1,
-            color: DesignColors.darkBorder.withValues(alpha: 0.6),
+            color: context.themed(DesignColors.darkBorder).withValues(alpha: 0.6),
           ),
           const SizedBox(height: DesignSpacing.lg),
           // Trial / billing info
@@ -507,13 +494,13 @@ class _SubscriptionSettingsScreenState
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         children: [
-          Icon(icon, color: DesignColors.darkTextSecondary, size: 16),
+          Icon(icon, color: context.themed(DesignColors.darkTextSecondary), size: 16),
           const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: DesignColors.darkTextSecondary,
+                    color: context.themed(DesignColors.darkTextSecondary),
                   ),
             ),
           ),
@@ -534,9 +521,9 @@ class _SubscriptionSettingsScreenState
       margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Row(
         children: [
@@ -544,12 +531,12 @@ class _SubscriptionSettingsScreenState
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: DesignColors.darkSurfaceElevated,
+              color: context.themed(DesignColors.darkSurfaceElevated),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.receipt_long_rounded,
-              color: DesignColors.darkTextSecondary,
+              color: context.themed(DesignColors.darkTextSecondary),
               size: 18,
             ),
           ),
@@ -561,7 +548,7 @@ class _SubscriptionSettingsScreenState
                 Text(
                   description,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DesignColors.darkTextPrimary,
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w600,
                       ),
                   maxLines: 1,
@@ -571,7 +558,7 @@ class _SubscriptionSettingsScreenState
                 Text(
                   date.isNotEmpty ? _formatDate(date) : '',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: DesignColors.darkTextTertiary,
+                        color: context.themed(DesignColors.darkTextTertiary),
                       ),
                 ),
               ],
@@ -585,7 +572,7 @@ class _SubscriptionSettingsScreenState
                 style: DesignType.numeric(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                 ),
               ),
               const SizedBox(height: DesignSpacing.xs),
@@ -617,19 +604,19 @@ class _SubscriptionSettingsScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xxl),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Column(
         children: [
-          const Icon(Icons.receipt_long_outlined,
-              color: DesignColors.darkTextTertiary, size: 36),
+          Icon(Icons.receipt_long_outlined,
+              color: context.themed(DesignColors.darkTextTertiary), size: 36),
           const SizedBox(height: DesignSpacing.md),
           Text(
             'No invoices yet',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                 ),
           ),
           const SizedBox(height: DesignSpacing.xs),
@@ -637,7 +624,7 @@ class _SubscriptionSettingsScreenState
             'Invoices will appear after your first billing cycle.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: DesignColors.darkTextTertiary,
+                  color: context.themed(DesignColors.darkTextTertiary),
                 ),
           ),
         ],
@@ -715,9 +702,9 @@ class _SubscriptionSettingsScreenState
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.lg),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -725,7 +712,7 @@ class _SubscriptionSettingsScreenState
           Text(
             'What\u2019s included in $planName',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,
                 ),
           ),
@@ -756,7 +743,7 @@ class _SubscriptionSettingsScreenState
           child: Text(
             feature.text,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                   height: 1.35,
                 ),
           ),
@@ -799,12 +786,12 @@ class _PlanOptionTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: isSelected
                 ? DesignColors.brand.withValues(alpha: 0.12)
-                : DesignColors.darkSurface,
+                : context.themed(DesignColors.darkSurface),
             borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             border: Border.all(
               color: isSelected
                   ? DesignColors.brand.withValues(alpha: 0.5)
-                  : DesignColors.darkBorder,
+                  : context.themed(DesignColors.darkBorder),
               width: isSelected ? 1.5 : 1.0,
             ),
           ),
@@ -822,7 +809,7 @@ class _PlanOptionTile extends StatelessWidget {
                               .textTheme
                               .bodyMedium
                               ?.copyWith(
-                                color: DesignColors.darkTextPrimary,
+                                color: context.themed(DesignColors.darkTextPrimary),
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
@@ -833,7 +820,7 @@ class _PlanOptionTile extends StatelessWidget {
                                 horizontal: DesignSpacing.xs,
                                 vertical: DesignSpacing.xs),
                             decoration: BoxDecoration(
-                              color: DesignColors.darkTextTertiary
+                              color: context.themed(DesignColors.darkTextTertiary)
                                   .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(
                                   DesignSpacing.radiusFull),
@@ -844,7 +831,7 @@ class _PlanOptionTile extends StatelessWidget {
                                   .textTheme
                                   .labelSmall
                                   ?.copyWith(
-                                    color: DesignColors.darkTextTertiary,
+                                    color: context.themed(DesignColors.darkTextTertiary),
                                     fontWeight: FontWeight.w700,
                                   ),
                             ),
@@ -856,7 +843,7 @@ class _PlanOptionTile extends StatelessWidget {
                     Text(
                       price,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: DesignColors.darkTextSecondary,
+                            color: context.themed(DesignColors.darkTextSecondary),
                           ),
                     ),
                   ],
@@ -895,9 +882,9 @@ class _CurrentPlanSkeleton extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -958,9 +945,9 @@ class _InvoiceSkeletonList extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
           padding: const EdgeInsets.all(DesignSpacing.md),
           decoration: BoxDecoration(
-            color: DesignColors.darkSurface.withValues(alpha: 0.82),
+            color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-            border: Border.all(color: DesignColors.darkBorder),
+            border: Border.all(color: context.themed(DesignColors.darkBorder)),
           ),
           child: const Row(
             children: [
