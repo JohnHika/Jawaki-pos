@@ -182,8 +182,11 @@ class _TourCard extends StatelessWidget {
     // Prefer placing the card below the spotlighted target; if there isn't
     // room (target is near the bottom of the screen, e.g. the bottom nav),
     // place it above instead.
-    final spaceBelow = screenSize.height - targetRect.bottom;
-    final placeBelow = spaceBelow > 220;
+    // The card is ~250dp tall plus the gesture inset; anything tighter used to
+    // run off the bottom of the screen with its buttons clipped.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final spaceBelow = screenSize.height - targetRect.bottom - bottomInset;
+    final placeBelow = spaceBelow > 300;
     final cardTop = placeBelow ? targetRect.bottom + 24 : null;
     final cardBottom = placeBelow ? null : screenSize.height - targetRect.top + 24;
 

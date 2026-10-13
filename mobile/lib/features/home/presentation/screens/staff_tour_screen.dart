@@ -34,6 +34,13 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
     if (!mounted) return;
     final perms = ref.read(permissionsProvider);
 
+    // The "More" tab is spotlighted on its own first (sheet closed, so the
+    // tab is actually visible); the sheet opens only for the steps that
+    // point at its rows. Idempotent, so every sheet step can call it.
+    Future<void> openSheet() async {
+      HomeNavKeys.moreSheetOpenRequest.value = true;
+    }
+
     final steps = <CoachMarkStep>[
       CoachMarkStep(
         targetKey: HomeNavKeys.pos,
@@ -45,26 +52,26 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
         targetKey: HomeNavKeys.more,
         title: 'Everything else lives here',
         description: 'Tap "More" any time to find Inventory, Reports, Settings, and more.',
-        beforeShow: () async {
-          HomeNavKeys.moreSheetOpenRequest.value = true;
-        },
       ),
       if (perms.canSeeInventory)
         CoachMarkStep(
           targetKey: HomeNavKeys.moreSheetInventory,
           title: 'Track your stock',
           description: 'Check stock levels and receive new deliveries here.',
+          beforeShow: openSheet,
         ),
       if (perms.canSeeReports)
         CoachMarkStep(
           targetKey: HomeNavKeys.moreSheetReports,
           title: 'See how business is going',
           description: 'Daily, weekly, and monthly sales — all in one place.',
+          beforeShow: openSheet,
         ),
       CoachMarkStep(
         targetKey: HomeNavKeys.moreSheetSettings,
         title: 'Your account & preferences',
         description: 'Change your PIN, adjust notifications, and find help here.',
+        beforeShow: openSheet,
         onLeave: () {
           HomeNavKeys.moreSheetOpenRequest.value = false;
         },
@@ -76,6 +83,8 @@ class _StaffTourScreenState extends ConsumerState<StaffTourScreen> {
   }
 
   void _finish() {
+    // Skipping from inside a sheet step used to leave the More sheet open.
+    HomeNavKeys.moreSheetOpenRequest.value = false;
     getIt<StorageService>().setHasSeenStaffTour(true);
     if (mounted) context.go('/');
   }
