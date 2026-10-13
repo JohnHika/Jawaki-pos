@@ -40,6 +40,7 @@ import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/settings/presentation/screens/operating_hours_screen.dart';
 import '../../features/settings/presentation/screens/bug_report_screen.dart';
 import '../../features/ai/presentation/screens/ai_memory_screen.dart';
+import '../../features/payments/presentation/screens/manual_payments_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
@@ -182,6 +183,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // overview and remains reachable for every signed-in role.
         if (path == '/reports' && !perms.canSeeReports) {
           return '/';
+        }
+        // Manual payment approvals mirror the backend's payments.view_status.
+        if (path == '/payments/manual' && !perms.has('payments.view_status')) {
+          return '/payments';
         }
         // Operating hours, roles, and per-user permission overrides are
         // branch/user-management actions — only reachable directly (deep
@@ -461,6 +466,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/payments',
             name: 'payments',
             builder: (context, state) => const PaymentsHubScreen(),
+          ),
+
+          // Manual payments: request / approve payments taken outside the app
+          GoRoute(
+            path: '/payments/manual',
+            name: 'manual-payments',
+            builder: (context, state) => const ManualPaymentsScreen(),
           ),
 
           // Customers Screen

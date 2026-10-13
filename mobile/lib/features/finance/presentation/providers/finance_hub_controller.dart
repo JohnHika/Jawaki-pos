@@ -7,6 +7,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../data/finance_repository.dart';
+import '../../domain/bulk_allocation.dart';
 import '../../domain/finance_models.dart';
 
 final financeHubProvider =
@@ -96,6 +97,24 @@ class ReceivableCollectionRequest {
   final String? reference;
 }
 
+class BulkCollectionRequest {
+  const BulkCollectionRequest({
+    required this.branchId,
+    required this.allocations,
+    required this.method,
+    this.reference,
+    this.offlineId,
+  });
+
+  final String branchId;
+  final List<ReceivableAllocation> allocations;
+  final String method;
+  final String? reference;
+
+  /// Stable per user action so a retry after a dropped connection cannot pay twice.
+  final String? offlineId;
+}
+
 abstract class FinanceHubDataSource {
   FinanceSnapshot? loadCachedSnapshot(String tenantId, String branchId);
   Future<FinanceSnapshot> refresh(String branchId);
@@ -103,6 +122,7 @@ abstract class FinanceHubDataSource {
   Future<void> createPeerReceivable(PeerReceivableRequest request);
   Future<void> recordRetailCollection(ReceivableCollectionRequest request);
   Future<void> recordPeerCollection(ReceivableCollectionRequest request);
+  Future<void> recordRetailBulkCollection(BulkCollectionRequest request);
 }
 
 class FinanceHubController extends StateNotifier<FinanceHubState> {
@@ -186,6 +206,23 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
   Future<void> recordPeerCollection(ReceivableCollectionRequest request) async {
     _validateCollection(request);
     await _requireSource().recordPeerCollection(request);
+    await refresh();
+  }
+
+  Future<void> recordRetailBulkCollection(BulkCollectionRequest request) async {
+    if (request.branchId.trim().isEmpty || _branchId.isEmpty) {
+      throw const FinanceFormException('Branch is required');
+    }
+    if (request.allocations.isEmpty) {
+      throw const FinanceFormException('Select at least one credit to collect');
+    }
+    if (request.allocations.length > 50) {
+      throw const FinanceFormException('Collect at most 50 credits at a time');
+    }
+    if (request.allocations.any((a) => a.amount <= 0)) {
+      throw const FinanceFormException('Amount must be greater than zero');
+    }
+    await _requireSource().recordRetailBulkCollection(request);
     await refresh();
   }
 
@@ -274,6 +311,22 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
       amount: request.amount,
       method: request.method,
       reference: request.reference,
+    );
+  }
+
+  @override
+  Future<void> recordRetailBulkCollection(BulkCollectionRequest request) async {
+    await _apiClient.recordRetailBulkPayment(
+      branchId: request.branchId,
+      method: request.method,
+      reference: request.reference,
+      offlineId: request.offlineId,
+      allocations: request.allocations
+          .map((a) => <String, dynamic>{
+                'receivableId': a.receivableId,
+                'amount': a.amount,
+              })
+          .toList(),
     );
   }
 }

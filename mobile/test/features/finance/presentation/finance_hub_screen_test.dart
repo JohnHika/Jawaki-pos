@@ -129,6 +129,14 @@ class _StubSource implements FinanceHubDataSource {
   @override
   Future<void> recordPeerCollection(
       ReceivableCollectionRequest request) async {}
+
+  BulkCollectionRequest? bulkRequest;
+
+  @override
+  Future<void> recordRetailBulkCollection(
+      BulkCollectionRequest request) async {
+    bulkRequest = request;
+  }
 }
 
 Widget _host(FinanceHubController controller) => ProviderScope(
@@ -247,5 +255,62 @@ void main() {
     await tester.tap(find.text('Overview'));
     await tester.pumpAndSettle();
     expect(find.textContaining('1,250'), findsWidgets);
+  });
+
+  testWidgets('bulk collection settles a customer credit in one request',
+      (tester) async {
+    final source = _StubSource();
+    final controller = FinanceHubController(
+      source: source,
+      tenantId: 'tenant-1',
+      branchId: 'branch-1',
+    );
+    await tester.pumpWidget(_host(controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Customer Credit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Collect for a customer'));
+    await tester.pumpAndSettle();
+
+    // Defaults to the customer's full balance, so the whole credit is settled.
+    expect(find.byKey(const ValueKey('bulk-preview')), findsOneWidget);
+    expect(find.textContaining('Settles 1 of 1 credit'), findsOneWidget);
+
+    await tester.tap(find.text('Record collection'));
+    await tester.pumpAndSettle();
+
+    final request = source.bulkRequest;
+    expect(request, isNotNull);
+    expect(request!.branchId, 'branch-1');
+    expect(request.method, 'CASH');
+    expect(request.allocations.single.receivableId, 'retail-1');
+    expect(request.allocations.single.amount, 320);
+    expect(request.offlineId, startsWith('bulk-'));
+    expect(find.text('Record collection'), findsNothing);
+  });
+
+  testWidgets('bulk collection refuses more than the customer owes',
+      (tester) async {
+    final source = _StubSource();
+    final controller = FinanceHubController(
+      source: source,
+      tenantId: 'tenant-1',
+      branchId: 'branch-1',
+    );
+    await tester.pumpWidget(_host(controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Customer Credit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Collect for a customer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('bulk-amount')), '500');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Record collection'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('More than the customer owes'), findsOneWidget);
+    expect(source.bulkRequest, isNull);
   });
 }

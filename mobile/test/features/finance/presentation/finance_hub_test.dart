@@ -300,4 +300,12 @@ class _FakeFinanceHubDataSource implements FinanceHubDataSource {
   @override
   Future<void> recordRetailCollection(
       ReceivableCollectionRequest request) async {}
+
+  BulkCollectionRequest? bulkRequest;
+
+  @override
+  Future<void> recordRetailBulkCollection(
+      BulkCollectionRequest request) async {
+    bulkRequest = request;
+  }
 }

@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Payments Hub - overview of today's takings plus real links into
 /// Receipts, Payment Analytics, and Customer Credit/Installments.
@@ -226,6 +227,30 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                         ],
                       )
                     ),
+
+                    if (ref
+                        .watch(permissionsProvider)
+                        .has('payments.view_status')) ...[
+                      const SizedBox(height: DesignSpacing.md),
+                      StaggeredItem(
+                        itemKey: 'payments-quick-manual',
+                        index: 3,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: QuickActionTile(
+                                icon: Icons.fact_check_rounded,
+                                label: 'Manual Payments',
+                                subtitle: 'Request & approve',
+                                color: DesignColors.accent,
+                                onTap: () => context.push('/payments/manual'),
+                              ),
+                            ),
+                            const Expanded(child: SizedBox.shrink()),
+                          ],
+                        ),
+                      ),
+                    ],
 
                     const SizedBox(height: DesignSpacing.xxl),
 

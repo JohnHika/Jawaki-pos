@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
   ReceivablePaymentMethod,
@@ -10,6 +10,7 @@ import { CashFlowService } from '../cash-flow/cash-flow.service';
 import { CashEntryType } from '../cash-flow/dto/cash-flow.dto';
 import { PrismaService } from '../common/prisma/prisma.service';
 import {
+  BulkRetailPaymentDto,
   CreatePeerDebtorDto,
   CreatePeerReceivableDto,
   RecordReceivablePaymentDto,
@@ -222,6 +223,69 @@ export class FinanceService {
       newValues: { receivableId, branchId: dto.branchId, amount: dto.amount, method: dto.method },
     });
     return this.formatPayment(payment);
+  }
+
+  /**
+   * Splits one collection across several retail receivables atomically: either every
+   * allocation is applied or none is. Idempotent per `offlineId` (one derived key per row).
+   */
+  async recordRetailBulkPayment(userId: string, tenantId: string, dto: BulkRetailPaymentDto) {
+    await this.assertBranch(tenantId, dto.branchId);
+    const ids = dto.allocations.map((a) => a.receivableId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('Each receivable may appear only once in a bulk payment');
+    }
+    const keyFor = (receivableId: string) => (dto.offlineId ? `${dto.offlineId}:${receivableId}` : undefined);
+
+    if (dto.offlineId) {
+      const existing = await this.prisma.retailReceivablePayment.findMany({
+        where: { offlineId: { in: ids.map((id) => keyFor(id) as string) } },
+      });
+      if (existing.length > 0) {
+        const inScope = existing.every((p) => p.tenantId === tenantId && p.branchId === dto.branchId);
+        if (!inScope || existing.length !== ids.length) {
+          throw new ConflictException('Bulk payment key was already used for a different request');
+        }
+        return this.formatBulkResult(existing);
+      }
+    }
+
+    // Lock receivables in a stable order so concurrent bulk payments cannot deadlock.
+    const ordered = [...dto.allocations].sort((a, b) => a.receivableId.localeCompare(b.receivableId));
+    const payments = await this.prisma.$transaction(async (tx) => {
+      const created: any[] = [];
+      for (const allocation of ordered) {
+        created.push(
+          await this.recordPaymentInTransaction(tx, 'retail', userId, tenantId, allocation.receivableId, {
+            branchId: dto.branchId,
+            amount: allocation.amount,
+            method: dto.method,
+            reference: dto.reference,
+            notes: dto.notes,
+            offlineId: keyFor(allocation.receivableId),
+          }),
+        );
+      }
+      return created;
+    });
+    await this.auditService.record({
+      userId,
+      action: 'CREATE',
+      entityType: 'retail_receivable_bulk_payment',
+      entityId: payments[0]?.id,
+      newValues: {
+        branchId: dto.branchId,
+        method: dto.method,
+        receivableIds: ids,
+        totalAmount: this.formatBulkResult(payments).totalAmount,
+      },
+    });
+    return this.formatBulkResult(payments);
+  }
+
+  private formatBulkResult(payments: any[]) {
+    const totalAmount = Math.round(payments.reduce((sum, p) => sum + this.money(p.amount), 0) * 100) / 100;
+    return { count: payments.length, totalAmount, payments: payments.map((p) => this.formatPayment(p)) };
   }
 
   async recordPeerPayment(userId: string, tenantId: string, receivableId: string, dto: RecordReceivablePaymentDto) {

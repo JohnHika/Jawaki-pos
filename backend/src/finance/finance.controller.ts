@@ -5,6 +5,7 @@ import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
+  BulkRetailPaymentDto,
   CreatePeerDebtorDto,
   CreatePeerReceivableDto,
   FinanceBranchQueryDto,
@@ -52,6 +53,17 @@ export class FinanceController {
     @Body() dto: RecordReceivablePaymentDto,
   ) {
     return this.financeService.recordRetailPayment(userId, tenantId, id, dto);
+  }
+
+  @Post('retail-receivables/bulk-payments')
+  @RequirePermissions('finance.manage_receivables')
+  @ApiOperation({ summary: 'Split one collection across several retail receivables' })
+  recordRetailBulkPayment(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() dto: BulkRetailPaymentDto,
+  ) {
+    return this.financeService.recordRetailBulkPayment(userId, tenantId, dto);
   }
 
   @Get('peer-debtors')

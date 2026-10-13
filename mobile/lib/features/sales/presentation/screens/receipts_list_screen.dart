@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../domain/receipt_search.dart';
 
 /// Receipts List Screen - Shows all sales/receipts from the local database
 class ReceiptsListScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,9 @@ class ReceiptsListScreen extends ConsumerStatefulWidget {
 class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   late final AppDatabase _db;
   List<PendingSale> _sales = [];
+  Map<String, Map<String, dynamic>> _customersById = {};
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
   bool _isLoading = true;
   String? _error;
   int? _rangeDays = 30;
@@ -29,6 +33,28 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
     _loadSales();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Sales matching the search box (receipt code, customer name or phone).
+  List<PendingSale> get _visibleSales {
+    if (_query.trim().isEmpty) return _sales;
+    return _sales.where((sale) {
+      final customer = _customersById[sale.customerId];
+      return receiptMatchesQuery(
+        saleId: sale.id,
+        receiptNumber: sale.receiptNumber,
+        paymentMethod: sale.paymentMethod,
+        customerName: customer?['name']?.toString(),
+        customerPhone: customer?['phone']?.toString(),
+        query: _query,
+      );
+    }).toList();
+  }
+
   Future<void> _loadSales() async {
     try {
       final now = DateTime.now();
@@ -36,9 +62,17 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
           ? DateTime(2000)
           : now.subtract(Duration(days: _rangeDays!));
       final sales = await _db.getSalesByDateRange(from, now);
+      // Customer names only enrich the list; never fail receipts over them.
+      var customers = <String, Map<String, dynamic>>{};
+      try {
+        customers = {
+          for (final c in await _db.getAllCustomers()) c['id'].toString(): c,
+        };
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _sales = sales;
+          _customersById = customers;
           _isLoading = false;
           _error = null;
         });
@@ -159,15 +193,48 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                           children: [
                             SectionHeader(
                               title: 'Recent Receipts',
-                              subtitle:
-                                  '${_sales.length} receipt${_sales.length != 1 ? 's' : ''} ${_rangeLabel.toLowerCase()}',
+                              subtitle: _query.trim().isEmpty
+                                  ? '${_sales.length} receipt${_sales.length != 1 ? 's' : ''} ${_rangeLabel.toLowerCase()}'
+                                  : '${_visibleSales.length} of ${_sales.length} match “${_query.trim()}”',
                               icon: Icons.receipt_long_rounded,
                             ),
                             const SizedBox(height: DesignSpacing.sm),
+                            TextField(
+                              key: const ValueKey('receipt-search'),
+                              controller: _searchController,
+                              textInputAction: TextInputAction.search,
+                              onChanged: (value) =>
+                                  setState(() => _query = value),
+                              decoration: InputDecoration(
+                                hintText: 'Search receipt, customer or phone',
+                                prefixIcon: const Icon(Icons.search_rounded),
+                                suffixIcon: _query.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: 'Clear search',
+                                        icon: const Icon(Icons.close_rounded),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() => _query = '');
+                                        },
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: DesignSpacing.md),
+                            if (_visibleSales.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    vertical: DesignSpacing.xl),
+                                child: Center(
+                                  child: Text(
+                                      'No receipts match your search.',
+                                      key: ValueKey('receipt-search-empty')),
+                                ),
+                              ),
                             // First-mount entrance stagger with stable
                             // per-sale keys - pull-to-refresh never replays
                             // the choreography.
-                            ..._sales.asMap().entries.map((entry) {
+                            ..._visibleSales.asMap().entries.map((entry) {
                               final index = entry.key;
                               final sale = entry.value;
                               return StaggeredItem(
@@ -295,6 +362,21 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                       PaymentChip(method: _capitalize(sale.paymentMethod)),
                     ],
                   ),
+                  if (_customersById[sale.customerId]?['name'] != null &&
+                      _customersById[sale.customerId]!['name']
+                          .toString()
+                          .isNotEmpty) ...[
+                    const SizedBox(height: DesignSpacing.xs - 2),
+                    Text(
+                      _customersById[sale.customerId]!['name'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: DesignType.chatSecondary,
+                        color: titleColor,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: DesignSpacing.xs),
                   Row(
                     children: [

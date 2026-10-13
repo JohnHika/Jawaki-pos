@@ -12,6 +12,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../domain/bulk_allocation.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
 import 'invoice_review_screen.dart';
@@ -120,6 +121,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           ),
         2 => _RetailTab(
             receivables: snapshot.retailReceivables,
+            onCollectForCustomer: () =>
+                _showBulkCollectionSheet(snapshot, controller),
             onCollect: (item) => _showCollectionSheet(
               title: 'Collect from ${item.customerName ?? 'customer'}',
               amount: item.outstandingAmount,
@@ -424,6 +427,149 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     );
   }
 
+  /// One payment from a customer, split across their open credits (oldest due first).
+  Future<void> _showBulkCollectionSheet(
+    FinanceSnapshot snapshot,
+    FinanceHubController controller,
+  ) async {
+    final groups = <String, List<RetailReceivable>>{};
+    for (final item in snapshot.retailReceivables) {
+      if (item.outstandingAmount <= 0) continue;
+      groups
+          .putIfAbsent(item.customerId ?? item.customerName ?? '', () => [])
+          .add(item);
+    }
+    if (groups.isEmpty) return;
+
+    String selectedKey = groups.keys.first;
+    double totalFor(String key) =>
+        groups[key]!.fold(0, (sum, r) => sum + r.outstandingAmount);
+    final amountController =
+        TextEditingController(text: totalFor(selectedKey).toStringAsFixed(0));
+    final reference = TextEditingController();
+    // Fixed for this sheet so a retry after a dropped connection cannot pay twice.
+    final offlineId = 'bulk-${DateTime.now().microsecondsSinceEpoch}';
+    String method = 'CASH';
+    String? error;
+    bool saving = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final items = groups[selectedKey]!;
+          final amount = double.tryParse(amountController.text) ?? 0;
+          final plan = allocateOldestFirst(items, amount);
+          String nameOf(List<RetailReceivable> list) =>
+              list.first.customerName ?? 'No customer';
+          return _SheetFrame(
+            title: 'Collect for a customer',
+            children: <Widget>[
+              DropdownButtonFormField<String>(
+                key: const ValueKey('bulk-customer'),
+                initialValue: selectedKey,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Customer'),
+                items: groups.entries
+                    .map((entry) => DropdownMenuItem<String>(
+                          value: entry.key,
+                          child: Text(
+                            '${nameOf(entry.value)} · KES ${totalFor(entry.key).toStringAsFixed(0)}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                    .toList(),
+                onChanged: saving
+                    ? null
+                    : (value) => setSheetState(() {
+                          selectedKey = value ?? selectedKey;
+                          amountController.text =
+                              totalFor(selectedKey).toStringAsFixed(0);
+                          error = null;
+                        }),
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              SegmentedButton<String>(
+                segments: const <ButtonSegment<String>>[
+                  ButtonSegment(value: 'CASH', label: Text('Cash')),
+                  ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
+                  ButtonSegment(value: 'CARD', label: Text('Card')),
+                ],
+                selected: <String>{method},
+                onSelectionChanged: (value) =>
+                    setSheetState(() => method = value.first),
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                key: const ValueKey('bulk-amount'),
+                controller: amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setSheetState(() => error = null),
+                decoration: InputDecoration(
+                    labelText: 'Collected (KES)', errorText: error),
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              Text(
+                amount <= 0
+                    ? 'Enter the amount the customer paid.'
+                    : 'Settles ${plan.allocations.length} of ${items.length} '
+                        'credit${items.length == 1 ? '' : 's'}, oldest due first',
+                key: const ValueKey('bulk-preview'),
+                style: Theme.of(sheetContext).textTheme.bodySmall,
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextField(
+                  controller: reference,
+                  decoration:
+                      const InputDecoration(labelText: 'Reference (optional)')),
+              const SizedBox(height: DesignSpacing.xl),
+              _sheetButton(saving ? 'Recording…' : 'Record collection',
+                  () async {
+                if (saving) return;
+                if (amount <= 0) {
+                  setSheetState(
+                      () => error = 'Amount must be greater than zero');
+                  return;
+                }
+                if (plan.unallocated > 0) {
+                  setSheetState(() => error =
+                      'More than the customer owes (KES ${totalFor(selectedKey).toStringAsFixed(0)})');
+                  return;
+                }
+                setSheetState(() => saving = true);
+                try {
+                  await controller.recordRetailBulkCollection(
+                    BulkCollectionRequest(
+                      branchId: snapshot.branchId,
+                      allocations: plan.allocations,
+                      method: method,
+                      reference: reference.text.trim().isEmpty
+                          ? null
+                          : reference.text.trim(),
+                      offlineId: offlineId,
+                    ),
+                  );
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                } catch (e) {
+                  if (!sheetContext.mounted) return;
+                  setSheetState(() {
+                    saving = false;
+                    error = e is FinanceFormException
+                        ? e.message
+                        : 'Couldn’t record the collection. Check your connection and try again.';
+                  });
+                }
+              }),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _sheetButton(String label, Future<void> Function() action) => SizedBox(
         width: double.infinity,
         height: DesignSpacing.huge,
@@ -656,16 +802,30 @@ class _SupplierTab extends StatelessWidget {
 }
 
 class _RetailTab extends StatelessWidget {
-  const _RetailTab({required this.receivables, required this.onCollect});
+  const _RetailTab({
+    required this.receivables,
+    required this.onCollect,
+    required this.onCollectForCustomer,
+  });
   final List<RetailReceivable> receivables;
   final ValueChanged<RetailReceivable> onCollect;
+  final VoidCallback onCollectForCustomer;
 
   @override
   Widget build(BuildContext context) =>
       ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
         if (receivables.isEmpty)
           const _EmptyLedger(message: 'No customer credit is outstanding.')
-        else
+        else ...<Widget>[
+          SizedBox(
+            height: DesignSpacing.huge,
+            child: FilledButton.icon(
+              onPressed: onCollectForCustomer,
+              icon: const Icon(Icons.payments_rounded),
+              label: const Text('Collect for a customer'),
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.md),
           ...receivables.map((item) => _LedgerCard(
                 title: item.receiptNumber ?? 'Receipt',
                 subtitle: item.customerName ?? 'Customer',
@@ -675,6 +835,7 @@ class _RetailTab extends StatelessWidget {
                 action: 'Collect',
                 onAction: () => onCollect(item),
               )),
+        ],
       ]);
 }
 

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
 import '../../features/finance/domain/finance_models.dart';
+import '../../features/payments/domain/manual_payment.dart';
 
 /// Verified workspace fields shared by the Google and email-OTP flows.
 /// This deliberately has no password field: the server creates owners only
@@ -1114,6 +1115,85 @@ class ApiClient {
     return ReceivablePayment.fromJson(
       Map<String, dynamic>.from(response.data as Map),
     );
+  }
+
+  /// Splits one collection across several retail receivables in a single
+  /// all-or-nothing request. [offlineId] makes retries idempotent.
+  Future<void> recordRetailBulkPayment({
+    required String branchId,
+    required String method,
+    required List<Map<String, dynamic>> allocations,
+    String? reference,
+    String? notes,
+    String? offlineId,
+  }) async {
+    await _dio.post(
+      '/finance/retail-receivables/bulk-payments',
+      data: <String, dynamic>{
+        'branchId': branchId,
+        'method': method,
+        'allocations': allocations,
+        if (reference != null) 'reference': reference,
+        if (notes != null) 'notes': notes,
+        if (offlineId != null) 'offlineId': offlineId,
+      },
+    );
+  }
+
+  Future<List<ManualPaymentRequest>> getManualPaymentRequests({
+    String? branchId,
+    String? status,
+  }) async {
+    final response = await _dio.get(
+      '/payments/manual',
+      queryParameters: <String, dynamic>{
+        if (branchId != null) 'branchId': branchId,
+        if (status != null) 'status': status,
+      },
+    );
+    return (response.data as List)
+        .map((value) => ManualPaymentRequest.fromJson(
+            Map<String, dynamic>.from(value as Map)))
+        .toList();
+  }
+
+  Future<ManualPaymentRequest> createManualPaymentRequest({
+    required String branchId,
+    required String paymentMethod,
+    required double amount,
+    required String reason,
+    String? saleId,
+    String? notes,
+  }) async {
+    final response = await _dio.post(
+      '/payments/manual/request',
+      data: <String, dynamic>{
+        'branchId': branchId,
+        'paymentMethod': paymentMethod,
+        'amount': amount,
+        'reason': reason,
+        if (saleId != null) 'saleId': saleId,
+        if (notes != null) 'notes': notes,
+      },
+    );
+    return ManualPaymentRequest.fromJson(
+        Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<ManualPaymentRequest> approveManualPayment(String id) async {
+    final response = await _dio.post('/payments/manual/$id/approve');
+    return ManualPaymentRequest.fromJson(
+        Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<ManualPaymentRequest> rejectManualPayment(
+      String id, String rejectionReason) async {
+    final response = await _dio.post(
+      '/payments/manual/$id/reject',
+      data: <String, dynamic>{'rejectionReason': rejectionReason},
+    );
+    return ManualPaymentRequest.fromJson(
+        Map<String, dynamic>.from(response.data as Map));
   }
 
   Future<List<PeerDebtor>> getPeerDebtors() async {
