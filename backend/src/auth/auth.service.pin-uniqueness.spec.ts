@@ -3,6 +3,9 @@ import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 
 describe('AuthService PIN uniqueness and collision handling', () => {
+  // bcrypt cost-12 hashing is slow when the full suite runs in parallel.
+  jest.setTimeout(30000);
+
   const buildService = (prismaOverrides: Record<string, any> = {}) => {
     const prisma: any = {
       user: {
