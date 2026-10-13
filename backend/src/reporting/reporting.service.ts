@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { getDayBoundsInTimezone, nowInTimezone, todayInTimezone } from '../common/operating-hours';
-import { StockMovementType, ExpenseStatus } from '@prisma/client';
+import { StockMovementType, ExpenseStatus, PaymentMethod } from '@prisma/client';
 import {
   ReportFilterDto,
   ReportPeriod,
@@ -476,13 +476,39 @@ export class ReportingService {
       _sum: { amount: true },
     });
 
-    const totalAmount = payments.reduce((sum, p) => sum + (Number(p._sum.amount) || 0), 0);
+    // POS cash/card sales are recorded on the Sale itself and have no Payment
+    // row (only split tenders and confirmed M-Pesa/manual payments do), so
+    // counting Payment rows alone left a day of plain cash sales out of the
+    // breakdown. Fold those sales in by their own payment method.
+    const unrecorded = await this.prisma.sale.groupBy({
+      by: ['paymentMethod'],
+      where: {
+        branch: { tenantId },
+        ...branchFilter,
+        createdAt: { gte: start, lte: end },
+        status: 'COMPLETED',
+        payments: { none: {} },
+        paymentMethod: { notIn: [PaymentMethod.CREDIT, PaymentMethod.SPLIT] },
+      },
+      _count: { id: true },
+      _sum: { totalAmount: true },
+    });
 
-    return payments.map((p) => ({
-      method: p.method,
-      transactionsCount: p._count.id,
-      amount: Number(p._sum.amount) || 0,
-      percentage: totalAmount > 0 ? ((Number(p._sum.amount) || 0) / totalAmount) * 100 : 0,
+    const merged = new Map<string, { count: number; amount: number }>();
+    const add = (method: string, count: number, amount: number) => {
+      const cur = merged.get(method) ?? { count: 0, amount: 0 };
+      merged.set(method, { count: cur.count + count, amount: cur.amount + amount });
+    };
+    for (const p of payments) add(p.method, p._count.id, Number(p._sum.amount) || 0);
+    for (const s of unrecorded) add(s.paymentMethod, s._count.id, Number(s._sum.totalAmount) || 0);
+
+    const totalAmount = [...merged.values()].reduce((sum, v) => sum + v.amount, 0);
+
+    return [...merged.entries()].map(([method, v]) => ({
+      method,
+      transactionsCount: v.count,
+      amount: v.amount,
+      percentage: totalAmount > 0 ? (v.amount / totalAmount) * 100 : 0,
     }));
   }
 

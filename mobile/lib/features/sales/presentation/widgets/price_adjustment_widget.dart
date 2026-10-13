@@ -86,19 +86,19 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: Colors.grey,
+                  color: DesignColors.textTertiary,
                 ),
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.attach_money, size: 16, color: Colors.grey),
+                  const Icon(Icons.attach_money, size: 16, color: DesignColors.textTertiary),
                   const SizedBox(width: 8),
                   Text(
                     'Original: ${formatMoney(widget.originalPrice)}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[600],
+                      color: DesignColors.textSecondary,
                       decoration: TextDecoration.lineThrough,
                     ),
                   ),

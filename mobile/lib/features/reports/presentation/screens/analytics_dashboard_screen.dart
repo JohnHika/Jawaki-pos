@@ -582,7 +582,7 @@ class _AnalyticsDashboardScreenState
                         color: index == 0
                             ? Colors.amber.withValues(alpha: 0.2)
                             : index == 1
-                                ? Colors.grey.withValues(alpha: 0.2)
+                                ? DesignColors.textTertiary.withValues(alpha: 0.2)
                                 : index == 2
                                     ? Colors.orange.withValues(alpha: 0.2)
                                     : (isDark
@@ -593,7 +593,7 @@ class _AnalyticsDashboardScreenState
                           color: (index == 0
                                   ? Colors.amber
                                   : index == 1
-                                      ? Colors.grey
+                                      ? DesignColors.textTertiary
                                       : index == 2
                                           ? Colors.orange
                                           : tertiaryColor)
@@ -608,7 +608,7 @@ class _AnalyticsDashboardScreenState
                               color: index == 0
                               ? Colors.amber[700]
                               : index == 1
-                              ? Colors.grey[700]
+                              ? DesignColors.textSecondary
                               : index == 2
                               ? Colors.orange[700]
                               : tertiaryColor,

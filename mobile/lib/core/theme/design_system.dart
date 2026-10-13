@@ -793,9 +793,9 @@ class MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final trendColor = trendValue != null
+    final trendColor = context.readable(trendValue != null
         ? (trendValue! >= 0 ? DesignColors.success : DesignColors.error)
-        : DesignColors.textTertiary;
+        : DesignColors.textTertiary);
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;

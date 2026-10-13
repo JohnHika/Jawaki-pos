@@ -545,7 +545,7 @@ class _SubscriptionBillingScreenState
                       child: Text(
                         _statusLabel(entitlement.status),
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: badgeColor,
+                          color: context.readable(badgeColor),
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.4,
                         ),
@@ -693,7 +693,7 @@ class _SubscriptionBillingScreenState
               style: DesignType.numeric(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
-                color: color,
+                color: context.readable(color),
               ),
             ),
           ],

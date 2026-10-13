@@ -289,10 +289,10 @@ class _BugReportScreenState extends State<BugReportScreen> {
                   decoration: BoxDecoration(
                     color: selected
                         ? (s['color'] as Color).withValues(alpha: 0.15)
-                        : (isDark ? DesignColors.darkSurfaceElevated : Colors.grey.shade100),
+                        : (isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceMuted),
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                     border: Border.all(
-                      color: selected ? s['color'] as Color : (isDark ? DesignColors.darkBorder : Colors.grey.shade300),
+                      color: selected ? s['color'] as Color : (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
                       width: selected ? 1.5 : 1,
                     ),
                   ),
@@ -302,7 +302,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: selected ? s['color'] as Color : (isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
+                      color: selected ? context.readable(s['color'] as Color) : (isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
                     ),
                   ),
                 ),
@@ -322,14 +322,14 @@ class _BugReportScreenState extends State<BugReportScreen> {
       labelStyle: TextStyle(color: isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
       hintStyle: TextStyle(color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
       filled: true,
-      fillColor: isDark ? DesignColors.darkSurfaceElevated : Colors.grey.shade50,
+      fillColor: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : Colors.grey.shade300),
+        borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : Colors.grey.shade300),
+        borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),

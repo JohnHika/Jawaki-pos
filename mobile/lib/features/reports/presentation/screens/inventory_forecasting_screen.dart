@@ -477,8 +477,8 @@ class _InventoryForecastingScreenState
                       isOut ? 'Out of Stock' : '${quantity is num ? (quantity == quantity.roundToDouble() ? quantity.toInt() : quantity) : quantity} left',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color:
-                          isOut ? DesignColors.error : DesignColors.warning,
+                          color: context.readable(
+                              isOut ? DesignColors.error : DesignColors.warning),
                       ),
                     ),
                   ],

@@ -205,7 +205,9 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(DesignSpacing.md),
-                        child: Wrap(
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Wrap(
                           spacing: DesignSpacing.sm,
                           runSpacing: DesignSpacing.sm,
                           children: _dayKeys.map((key) {
@@ -220,11 +222,12 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                                 selected: selected,
                                 onSelected: (_) =>
                                     setState(() => _weekStartDay = key),
-                                selectedColor:
-                                    DesignColors.accent.withValues(alpha: 0.2),
+                                selectedColor: isDark
+                                    ? DesignColors.accent.withValues(alpha: 0.2)
+                                    : DesignColors.peach,
                                 labelStyle: TextStyle(
                                   color: selected
-                                      ? DesignColors.accent
+                                      ? DesignColors.accentDark
                                       : (isDark
                                           ? DesignColors.darkTextPrimary
                                           : DesignColors.textPrimary),
@@ -234,7 +237,7 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
                               ),
                             );
                           }).toList(),
-                        ),
+                        )),
                       ),
                     ],
                   ),
