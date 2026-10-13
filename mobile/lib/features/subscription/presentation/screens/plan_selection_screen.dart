@@ -405,7 +405,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: DesignColors.accentSubtle,
+        color: context.themed(DesignColors.accentSubtle),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: DesignColors.accent.withValues(alpha: 0.25),

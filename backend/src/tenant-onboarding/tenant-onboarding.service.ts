@@ -15,7 +15,10 @@ export class TenantOnboardingService {
     const onboarding = await this.prisma.tenantOnboarding.findUnique({
       where: { tenantId: actor.tenantId }, include: { steps: { orderBy: { position: 'asc' } } },
     });
-    if (!onboarding) throw new NotFoundException('Onboarding was not found');
+    // Companies created before the onboarding checklist existed have no row.
+    // A 404 here is read by the app as an expired session, so answer with an
+    // empty checklist instead.
+    if (!onboarding) return { id: null, tenantId: actor.tenantId, steps: [] };
     return onboarding;
   }
 

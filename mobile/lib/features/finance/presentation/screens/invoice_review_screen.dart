@@ -187,6 +187,8 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                       margin: const EdgeInsets.only(bottom: DesignSpacing.lg),
                       decoration: BoxDecoration(
                         color: surface,
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg),
                         border: Border.all(
                             color: DesignColors.brand.withValues(alpha: 0.25)),
                       ),
@@ -233,7 +235,7 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                           controller: _invoiceController,
                           style: TextStyle(color: titleColor),
                           decoration: _fieldDecoration(context,
-                              labelText: 'Invoice/receipt number'),
+                              labelText: 'Invoice no.'),
                         ),
                       ),
                       const SizedBox(width: DesignSpacing.sm + 2),

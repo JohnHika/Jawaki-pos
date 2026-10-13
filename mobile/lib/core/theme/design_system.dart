@@ -800,7 +800,9 @@ class MetricCard extends StatelessWidget {
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
 
-    return ClipRRect(
+    return FadeSlideIn(
+        distance: 12,
+        child: ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: Stack(
         children: [
@@ -883,7 +885,7 @@ class MetricCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -1407,7 +1409,10 @@ class QuickActionTile extends StatelessWidget {
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
 
-    return TapScale(
+    return PopIn(
+        beginScale: 0.9,
+        duration: const Duration(milliseconds: 420),
+        child: TapScale(
         enabled: onTap != null,
         child: Material(
       color: Colors.transparent,
@@ -1451,7 +1456,7 @@ class QuickActionTile extends StatelessWidget {
           ),
         ),
       ),
-    ));
+    )));
   }
 }
 
@@ -1589,7 +1594,9 @@ class ListCard extends StatelessWidget {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
-    return TapScale(
+    return FadeSlideIn(
+        distance: 10,
+        child: TapScale(
         enabled: onTap != null,
         child: Material(
       color: Colors.transparent,
@@ -1648,7 +1655,7 @@ class ListCard extends StatelessWidget {
           ),
         ),
       ),
-    ));
+    )));
   }
 }
 
@@ -1686,7 +1693,9 @@ class GroupedCard extends StatelessWidget {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
-    return Container(
+    return FadeSlideIn(
+        distance: 14,
+        child: Container(
       margin: margin,
       decoration: BoxDecoration(
         color: surface,
@@ -1709,7 +1718,7 @@ class GroupedCard extends StatelessWidget {
           ],
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -2588,6 +2597,8 @@ extension ThemedDarkTokens on BuildContext {
 
   Color themed(Color darkToken) {
     if (Theme.of(this).brightness == Brightness.dark) return darkToken;
+    if (darkToken == DesignColors.accentSubtle) return DesignColors.peach;
+    if (darkToken == DesignColors.brandSubtle) return const Color(0xFFEEEBFF);
     if (darkToken == DesignColors.darkBg) return DesignColors.surfaceMuted;
     if (darkToken == DesignColors.darkSurface) return Colors.white;
     if (darkToken == DesignColors.darkSurfaceElevated) {

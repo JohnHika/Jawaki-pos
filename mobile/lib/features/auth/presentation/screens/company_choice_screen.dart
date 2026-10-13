@@ -409,7 +409,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
         ? DesignColors.accent.withValues(alpha: 0.72)
         : context.themed(DesignColors.darkBorder);
     final surfaceColor = isPrimary
-        ? DesignColors.accentSubtle.withValues(alpha: 0.86)
+        ? context.themed(DesignColors.accentSubtle).withValues(alpha: 0.86)
         : context.themed(DesignColors.darkSurface).withValues(alpha: 0.94);
 
     return Material(
@@ -455,7 +455,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                         color: isPrimary
-                            ? DesignColors.accentLight
+                            ? context.readable(DesignColors.accentLight)
                             : context.themed(DesignColors.darkTextTertiary),
                         letterSpacing: 0.8,
                       ),
@@ -482,7 +482,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                       detail,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: isPrimary
-                                ? DesignColors.accentLight
+                                ? context.readable(DesignColors.accentLight)
                                 : context.themed(DesignColors.darkTextTertiary),
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.2,
@@ -496,7 +496,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                 Icons.arrow_outward_rounded,
                 size: 21,
                 color: isPrimary
-                    ? DesignColors.accentLight
+                    ? context.readable(DesignColors.accentLight)
                     : context.themed(DesignColors.darkTextTertiary),
               ),
             ],

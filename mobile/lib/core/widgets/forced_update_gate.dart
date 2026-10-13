@@ -183,7 +183,7 @@ class _Mark extends StatelessWidget {
         width: 96,
         height: 96,
         decoration: BoxDecoration(
-          color: DesignColors.accentSubtle,
+          color: context.themed(DesignColors.accentSubtle),
           shape: BoxShape.circle,
           border: Border.all(
             color: DesignColors.accent.withValues(alpha: pulsing ? 0.6 : 0.35),

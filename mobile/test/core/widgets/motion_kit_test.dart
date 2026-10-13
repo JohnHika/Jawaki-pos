@@ -56,4 +56,22 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 1));
     expect(find.text('a'), findsOneWidget);
   });
+
+  testWidgets('attention/decoration animations are finite and keep their child',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: Column(children: [
+          Wiggle(child: Text('w')),
+          BreathingGlow(child: Text('b')),
+          ShimmerSweep(child: Text('s')),
+          DrawIn(),
+        ]),
+      ),
+    ));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.text('w'), findsOneWidget);
+    expect(find.text('b'), findsOneWidget);
+    expect(find.text('s'), findsOneWidget);
+  });
 }

@@ -44,4 +44,15 @@ describe('TenantOnboardingService staff invitations', () => {
     )).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.tenantStaffInvitation.findMany).not.toHaveBeenCalled();
   });
+
+  it('returns an empty checklist (not a 404) for a company with no onboarding row', async () => {
+    const prisma: any = { tenantOnboarding: { findUnique: jest.fn().mockResolvedValue(null) } };
+    const service = new TenantOnboardingService(prisma, { request: jest.fn() } as any);
+
+    await expect(service.get({ sub: 'u1', tenantId: 't1' })).resolves.toEqual({
+      id: null,
+      tenantId: 't1',
+      steps: [],
+    });
+  });
 });

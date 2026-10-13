@@ -148,7 +148,8 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.text('Other Shops'));
-    await tester.pump();
+    // The tab body cross-fades now, so let the switch finish first.
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Add receivable'));
     await tester.pumpAndSettle();
     final create = find.text('Create receivable');

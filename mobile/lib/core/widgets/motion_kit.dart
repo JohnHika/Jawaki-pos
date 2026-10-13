@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../theme/design_system.dart';
 import 'motion.dart';
@@ -19,6 +20,24 @@ import 'motion.dart';
 /// buttons, badges…) already use these, so most screens animate without
 /// each one wiring anything. Reach for them directly for one-offs.
 /// ═══════════════════════════════════════════════════════════════
+
+/// Starts [go] after [delay] using a Ticker, so the wait follows the frame
+/// clock (no real timers: tests settle, and it is cancelled on dispose).
+class _DelayedStart {
+  _DelayedStart(TickerProvider vsync, Duration delay, VoidCallback go) {
+    _ticker = vsync.createTicker((elapsed) {
+      if (elapsed >= delay) {
+        _ticker.stop();
+        go();
+      }
+    })
+      ..start();
+  }
+
+  late final Ticker _ticker;
+
+  void dispose() => _ticker.dispose();
+}
 
 enum SlideFrom { bottom, top, left, right, none }
 
@@ -56,9 +75,10 @@ class FadeSlideIn extends StatefulWidget {
 }
 
 class _FadeSlideInState extends State<FadeSlideIn>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _c =
       AnimationController(vsync: this, duration: widget.duration);
+  _DelayedStart? _delayStart;
   bool _started = false;
 
   @override
@@ -71,7 +91,7 @@ class _FadeSlideInState extends State<FadeSlideIn>
     } else if (widget.delay == Duration.zero) {
       _c.forward();
     } else {
-      Future<void>.delayed(widget.delay, () {
+      _delayStart = _DelayedStart(this, widget.delay, () {
         if (mounted) _c.forward();
       });
     }
@@ -79,6 +99,7 @@ class _FadeSlideInState extends State<FadeSlideIn>
 
   @override
   void dispose() {
+    _delayStart?.dispose();
     _c.dispose();
     super.dispose();
   }
@@ -122,9 +143,10 @@ class PopIn extends StatefulWidget {
   State<PopIn> createState() => _PopInState();
 }
 
-class _PopInState extends State<PopIn> with SingleTickerProviderStateMixin {
+class _PopInState extends State<PopIn> with TickerProviderStateMixin {
   late final AnimationController _c =
       AnimationController(vsync: this, duration: widget.duration);
+  _DelayedStart? _delayStart;
   bool _started = false;
 
   @override
@@ -137,7 +159,7 @@ class _PopInState extends State<PopIn> with SingleTickerProviderStateMixin {
     } else if (widget.delay == Duration.zero) {
       _c.forward();
     } else {
-      Future<void>.delayed(widget.delay, () {
+      _delayStart = _DelayedStart(this, widget.delay, () {
         if (mounted) _c.forward();
       });
     }
@@ -145,6 +167,7 @@ class _PopInState extends State<PopIn> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    _delayStart?.dispose();
     _c.dispose();
     super.dispose();
   }
@@ -420,9 +443,10 @@ class AnimatedCheckmark extends StatefulWidget {
 }
 
 class _AnimatedCheckmarkState extends State<AnimatedCheckmark>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 900));
+  _DelayedStart? _delayStart;
   bool _started = false;
 
   @override
@@ -433,7 +457,7 @@ class _AnimatedCheckmarkState extends State<AnimatedCheckmark>
     if (reducedMotion(context)) {
       _c.value = 1;
     } else {
-      Future<void>.delayed(widget.delay, () {
+      _delayStart = _DelayedStart(this, widget.delay, () {
         if (mounted) _c.forward();
       });
     }
@@ -441,6 +465,7 @@ class _AnimatedCheckmarkState extends State<AnimatedCheckmark>
 
   @override
   void dispose() {
+    _delayStart?.dispose();
     _c.dispose();
     super.dispose();
   }
@@ -1143,6 +1168,233 @@ class SpringIcon extends StatelessWidget {
       switchOutCurve: Curves.easeIn,
       transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
       child: Icon(icon, key: ValueKey(icon.codePoint), color: color, size: size),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// 18. Wiggle — a short attention shake once on first mount (overdue, alerts)
+// ───────────────────────────────────────────────────────────────
+class Wiggle extends StatefulWidget {
+  const Wiggle({
+    super.key,
+    required this.child,
+    this.delay = const Duration(milliseconds: 500),
+    this.angle = 0.14,
+  });
+
+  final Widget child;
+  final Duration delay;
+  final double angle;
+
+  @override
+  State<Wiggle> createState() => _WiggleState();
+}
+
+class _WiggleState extends State<Wiggle> with TickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 700));
+  _DelayedStart? _delayStart;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started || reducedMotion(context)) return;
+    _started = true;
+    _delayStart = _DelayedStart(this, widget.delay, () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _delayStart?.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) => Transform.rotate(
+        angle: math.sin(_c.value * math.pi * 5) * widget.angle * (1 - _c.value),
+        child: child,
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// 19. BreathingGlow — a soft accent halo that swells a few times, then rests
+// ───────────────────────────────────────────────────────────────
+class BreathingGlow extends StatefulWidget {
+  const BreathingGlow({
+    super.key,
+    required this.child,
+    this.color = DesignColors.accent,
+    this.radius = 18,
+    this.breaths = 3,
+  });
+
+  final Widget child;
+  final Color color;
+  final double radius;
+  final int breaths;
+
+  @override
+  State<BreathingGlow> createState() => _BreathingGlowState();
+}
+
+class _BreathingGlowState extends State<BreathingGlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: Duration(milliseconds: 1600 * widget.breaths));
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_started && !reducedMotion(context)) {
+      _started = true;
+      _c.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) {
+        final wave =
+            (math.sin(_c.value * widget.breaths * 2 * math.pi - math.pi / 2) + 1) /
+                2;
+        final fade = _c.isCompleted ? 0.0 : 1.0;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.radius),
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withValues(alpha: 0.34 * wave * fade),
+                blurRadius: 10 + 16 * wave,
+                spreadRadius: 1 + 2 * wave,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// 20. ShimmerSweep — a one-off light sweep across a child (premium badges)
+// ───────────────────────────────────────────────────────────────
+class ShimmerSweep extends StatefulWidget {
+  const ShimmerSweep({
+    super.key,
+    required this.child,
+    this.delay = const Duration(milliseconds: 600),
+  });
+
+  final Widget child;
+  final Duration delay;
+
+  @override
+  State<ShimmerSweep> createState() => _ShimmerSweepState();
+}
+
+class _ShimmerSweepState extends State<ShimmerSweep>
+    with TickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1100));
+  _DelayedStart? _delayStart;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started || reducedMotion(context)) return;
+    _started = true;
+    _delayStart = _DelayedStart(this, widget.delay, () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _delayStart?.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) {
+        if (_c.value == 0 || _c.value == 1) return child!;
+        final x = -1.0 + 3.0 * _c.value;
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (rect) => LinearGradient(
+            begin: Alignment(x - 0.6, -0.3),
+            end: Alignment(x + 0.2, 0.3),
+            colors: [
+              Colors.white.withValues(alpha: 0),
+              Colors.white.withValues(alpha: 0.55),
+              Colors.white.withValues(alpha: 0),
+            ],
+          ).createShader(rect),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// 21. DrawIn — an underline/accent bar that grows from the left once
+// ───────────────────────────────────────────────────────────────
+class DrawIn extends StatelessWidget {
+  const DrawIn({
+    super.key,
+    this.height = 3,
+    this.color = DesignColors.accent,
+    this.width = 44,
+    this.duration = const Duration(milliseconds: 600),
+  });
+
+  final double height;
+  final Color color;
+  final double width;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: reducedMotion(context) ? Duration.zero : duration,
+      curve: Curves.easeOutCubic,
+      builder: (context, v, _) => Container(
+        width: width * v,
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(height),
+        ),
+      ),
     );
   }
 }

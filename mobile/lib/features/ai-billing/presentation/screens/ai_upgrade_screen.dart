@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion.dart';
 
 /// Upgrade screen shown when the AI assistant is not available on the
@@ -44,8 +45,9 @@ class AiUpgradeScreen extends StatelessWidget {
                       color: DesignColors.brand.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.auto_awesome,
-                        size: 48, color: DesignColors.brand),
+                    child: const Floating(
+                        child: Icon(Icons.auto_awesome,
+                            size: 48, color: DesignColors.brand)),
                   ),
                 ),
                 const SizedBox(height: DesignSpacing.xxl),

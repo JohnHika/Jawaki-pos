@@ -14,10 +14,10 @@ class AppTheme {
       colorScheme: const ColorScheme.light(
         primary: DesignColors.accent,
         onPrimary: Colors.white,
-        primaryContainer: DesignColors.accentSubtle,
+        primaryContainer: DesignColors.peach,
         secondary: DesignColors.brand,
         onSecondary: Colors.white,
-        secondaryContainer: DesignColors.brandSubtle,
+        secondaryContainer: Color(0xFFEEEBFF),
         tertiary: DesignColors.info,
         surface: DesignColors.surface,
         onSurface: DesignColors.textPrimary,
@@ -175,6 +175,20 @@ class AppTheme {
         unselectedLabelStyle: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.normal,
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((s) =>
+              s.contains(WidgetState.selected)
+                  ? DesignColors.peach
+                  : Colors.white),
+          foregroundColor: WidgetStateProperty.resolveWith((s) =>
+              s.contains(WidgetState.selected)
+                  ? DesignColors.accentDark
+                  : DesignColors.textPrimary),
+          side: const WidgetStatePropertyAll(
+              BorderSide(color: DesignColors.surfaceBorder)),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -460,6 +474,20 @@ class AppTheme {
         unselectedItemColor: DesignColors.darkTextTertiary,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((s) =>
+              s.contains(WidgetState.selected)
+                  ? DesignColors.accent.withValues(alpha: 0.2)
+                  : DesignColors.darkSurfaceElevated),
+          foregroundColor: WidgetStateProperty.resolveWith((s) =>
+              s.contains(WidgetState.selected)
+                  ? DesignColors.accentLight
+                  : DesignColors.darkTextPrimary),
+          side: const WidgetStatePropertyAll(
+              BorderSide(color: DesignColors.darkBorder)),
+        ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: DesignColors.darkSurfaceElevated,

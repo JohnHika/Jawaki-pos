@@ -12,6 +12,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../domain/bulk_allocation.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
@@ -105,7 +106,12 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                   _FinanceTabs(
                       index: _tab,
                       onChanged: (index) => setState(() => _tab = index)),
-                  Expanded(child: _tabBody(snapshot, controller)),
+                  Expanded(
+                      child: SlideSwitcher(
+                          from: SlideFrom.right,
+                          child: KeyedSubtree(
+                              key: ValueKey<int>(_tab),
+                              child: _tabBody(snapshot, controller)))),
                 ],
               ),
       ),
@@ -787,7 +793,12 @@ class _SupplierTab extends StatelessWidget {
           SizedBox(
               height: DesignSpacing.huge,
               child: OutlinedButton(
-                  onPressed: onManual, child: const Text('Manual'))),
+                  // The app-wide outlined style is full-width; inside a Row
+                  // that is an unbounded width and blanked the whole tab.
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(96, DesignSpacing.huge)),
+                  onPressed: onManual,
+                  child: const Text('Manual'))),
         ]),
         const SizedBox(height: DesignSpacing.lg),
         if (payables.isEmpty)
@@ -942,8 +953,9 @@ class _CountCard extends StatelessWidget {
       child: ListTile(
           minTileHeight: DesignSpacing.huge,
           leading:
-              Icon(Icons.event_busy_rounded,
-                  color: context.readable(DesignColors.warning)),
+              Wiggle(
+                  child: Icon(Icons.event_busy_rounded,
+                      color: context.readable(DesignColors.warning))),
           title: const Text('Overdue'),
           trailing: Text('$overdue',
               style: DesignType.numeric(

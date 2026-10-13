@@ -442,7 +442,9 @@ class _NavItemWidget extends ConsumerWidget {
               children: [
                 Positioned(
                   top: -14,
-                  child: AnimatedContainer(
+                  child: BreathingGlow(
+                      radius: 18,
+                      child: AnimatedContainer(
                     duration: DesignAnimation.fast,
                     curve: DesignAnimation.smooth,
                     width: 54,
@@ -483,7 +485,7 @@ class _NavItemWidget extends ConsumerWidget {
                         size: 28,
                       ),
                     ),
-                  ),
+                  )),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 42),
