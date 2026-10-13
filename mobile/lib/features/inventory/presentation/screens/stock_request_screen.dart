@@ -347,7 +347,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+                  decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
                   child: Row(
               children: [
                 Container(
@@ -410,7 +410,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
               child: TextFormField(
                 controller: _quantityController,
                 style: TextStyle(color: titleColor),
@@ -445,7 +445,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
               child: DropdownButtonFormField<String>(
                 initialValue: _priority,
                 decoration: _fieldDecoration(context, labelText: 'Priority'),
@@ -473,7 +473,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
               child: TextFormField(
                 controller: _reasonController,
                 style: TextStyle(color: titleColor),
@@ -495,7 +495,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

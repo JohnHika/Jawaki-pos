@@ -167,7 +167,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ' — reorder below ${_formatUnitQty(reorderPackagingQty)} $tierUnit';
     }
 
-    return '$quantity $unit left (reorder below $minStock $unit)';
+    return '$quantity ${pluralizeUnit(unit, quantity)} left (reorder below $minStock ${pluralizeUnit(unit, minStock)})';
   }
 
   List<Map<String, dynamic>> get _filteredInventoryItems {
@@ -216,6 +216,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             ),
           ],
           IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded, size: 20),
             onPressed: _loadData,
           ),
@@ -452,7 +453,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       child: Container(
         padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
         decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border)),
+            BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -533,9 +534,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            // Stock row + actions
+            // Stock row + actions. The badge and "Min" label share one
+            // expanding group so the badge gets every pixel the Receive button
+            // doesn't need (a Spacer next to a Flexible split the room 50/50
+            // and truncated "0 pieces" to "0 piec…").
             Row(
               children: [
+                Expanded(
+                  child: Row(
+                    children: [
                 // Stock count badge
                 Flexible(
                   child: Container(
@@ -601,7 +608,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           .labelSmall!
                           .copyWith(color: tertiaryColor)),
                 ],
-                const Spacer(),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
                 // Receive button
                 if (permissions.canManageStock)
                   SizedBox(
@@ -699,7 +709,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             return Container(
               padding: const EdgeInsets.all(DesignSpacing.xxl),
               decoration: BoxDecoration(
-                  color: surface, border: Border.all(color: border)),
+                  color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
               child: Column(
                 children: [
                   Container(
@@ -1173,7 +1183,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             child: Container(
               padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
               decoration: BoxDecoration(
-                  color: surface, border: Border.all(color: border)),
+                  color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
               child: const Row(
                 children: [
                   ShimmerWidget(

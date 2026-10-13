@@ -102,7 +102,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
       appBar: BrandedAppBar(
         title: 'Adjust Profit Calculation',
         actions: [
-          IconButton(
+          IconButton(tooltip: 'Help', 
             icon: const Icon(Icons.help_outline_rounded),
             onPressed: () => _showHelpDialog(context),
           ),
@@ -137,7 +137,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration:
-                      BoxDecoration(color: surface, border: Border.all(color: border)),
+                      BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
                   child: Column(
                     children: [
                       Row(

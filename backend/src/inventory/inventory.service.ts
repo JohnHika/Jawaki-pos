@@ -1,3 +1,4 @@
+import { getDayBoundsInTimezone } from '../common/operating-hours';
 import {
   Injectable,
   NotFoundException,
@@ -239,9 +240,22 @@ export class InventoryService {
     if (productId) where.productId = productId;
 
     if (startDate || endDate) {
+      // Plain calendar dates ("2026-10-13") cover the whole day in the branch's
+      // timezone; `new Date("2026-10-13")` is midnight UTC and used to cut off
+      // the entire last day of the range.
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+      const timezone = branch.timezone || 'Africa/Nairobi';
       where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
+      if (startDate) {
+        where.createdAt.gte = dateOnly.test(startDate)
+          ? getDayBoundsInTimezone(startDate, timezone).start
+          : new Date(startDate);
+      }
+      if (endDate) {
+        where.createdAt.lte = dateOnly.test(endDate)
+          ? getDayBoundsInTimezone(endDate, timezone).end
+          : new Date(endDate);
+      }
     }
 
     const [movements, total] = await Promise.all([

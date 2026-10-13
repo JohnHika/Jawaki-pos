@@ -44,6 +44,23 @@ class AppTheme {
           bottom: BorderSide(color: DesignColors.surfaceBorder, width: 1),
         ),
       ),
+      // Plain SnackBar()s used the stock flat white/grey bar, which clashed
+      // with the app and sat flush against the nav bar. Match showGlassSnackBar.
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.white,
+        contentTextStyle: const TextStyle(
+          color: DesignColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        actionTextColor: DesignColors.accent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: DesignColors.surfaceBorder),
+        ),
+      ),
       cardTheme: CardThemeData(
         color: DesignColors.surface,
         elevation: 0,
@@ -364,11 +381,28 @@ class AppTheme {
           bottom: BorderSide(color: DesignColors.darkBorder, width: 1),
         ),
       ),
+      // Plain SnackBar()s used the stock flat white/grey bar, which clashed
+      // with the app and sat flush against the nav bar. Match showGlassSnackBar.
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: DesignColors.darkSurface,
+        contentTextStyle: const TextStyle(
+          color: DesignColors.darkTextPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        actionTextColor: DesignColors.accent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: DesignColors.darkBorder),
+        ),
+      ),
       cardTheme: CardThemeData(
         color: DesignColors.darkSurfaceElevated,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           side: const BorderSide(color: DesignColors.darkBorder, width: 1),
         ),
       ),

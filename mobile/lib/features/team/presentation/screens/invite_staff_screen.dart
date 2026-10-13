@@ -127,7 +127,7 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
         backgroundColor: DesignColors.darkBg,
         appBar: AppBar(
           backgroundColor: DesignColors.darkSurface,
-          leading: IconButton(
+          leading: IconButton(tooltip: 'Back', 
             icon: const Icon(Icons.arrow_back_rounded,
                 color: DesignColors.darkTextPrimary),
             onPressed: () => context.pop(),

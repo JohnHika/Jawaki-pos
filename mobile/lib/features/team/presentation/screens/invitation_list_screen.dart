@@ -85,7 +85,7 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
       backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: surface,
-        leading: IconButton(
+        leading: IconButton(tooltip: 'Back', 
           icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
           onPressed: () => context.pop(),
         ),
@@ -406,7 +406,7 @@ class _InvitationCard extends StatelessWidget {
 
   String _formatDate(String iso) {
     try {
-      final dt = DateTime.parse(iso);
+      final dt = DateTime.parse(iso).toLocal();
       final months = [
         'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',

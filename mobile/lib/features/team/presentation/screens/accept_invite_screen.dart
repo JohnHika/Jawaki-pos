@@ -85,7 +85,7 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
         backgroundColor: DesignColors.darkBg,
         appBar: AppBar(
           backgroundColor: DesignColors.darkSurface,
-          leading: IconButton(
+          leading: IconButton(tooltip: 'Back', 
             icon: const Icon(Icons.arrow_back_rounded,
                 color: DesignColors.darkTextPrimary),
             onPressed: () => context.pop(),

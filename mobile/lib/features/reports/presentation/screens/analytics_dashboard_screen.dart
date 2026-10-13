@@ -104,7 +104,7 @@ class _AnalyticsDashboardScreenState
       appBar: BrandedAppBar(
         title: 'Analytics',
         actions: [
-          IconButton(
+          IconButton(tooltip: 'Refresh', 
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadAnalyticsData,
           ),
@@ -406,7 +406,7 @@ class _AnalyticsDashboardScreenState
                         final index = value.toInt();
                         if (index >= 0 && index < _hourlySales.length) {
                           final date =
-                              DateTime.parse(_hourlySales[index]['date'] ?? '');
+                              DateTime.parse(_hourlySales[index]['date'] ?? '').toLocal();
                           final time = _selectedPeriod == 0
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';
@@ -924,7 +924,7 @@ class _AnalyticsDashboardScreenState
                           final index = value.toInt();
                           if (index >= 0 && index < _hourlySales.length) {
                             final date = DateTime.parse(
-                                _hourlySales[index]['date'] ?? '');
+                                _hourlySales[index]['date'] ?? '').toLocal();
                             final hour = date.hour;
                             final time = hour >= 12
                                 ? '${hour > 12 ? hour - 12 : 12} PM'

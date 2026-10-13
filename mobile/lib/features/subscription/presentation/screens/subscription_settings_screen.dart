@@ -258,7 +258,7 @@ class _SubscriptionSettingsScreenState
               fontWeight: FontWeight.w800,
             ),
           ),
-          leading: IconButton(
+          leading: IconButton(tooltip: 'Back', 
             icon: const Icon(Icons.arrow_back_rounded,
                 color: DesignColors.darkTextPrimary),
             onPressed: () => context.pop(),
@@ -692,7 +692,7 @@ class _SubscriptionSettingsScreenState
 
   String _formatDate(String iso) {
     try {
-      final dt = DateTime.parse(iso);
+      final dt = DateTime.parse(iso).toLocal();
       return DateFormat('MMM d, yyyy').format(dt);
     } catch (_) {
       return iso;

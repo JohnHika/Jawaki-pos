@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
+import '../../../../core/widgets/app_markdown.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -20,6 +20,7 @@ import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
+import '../../../../core/utils/format.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -179,6 +180,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             onPressed: () => _openDayPicker(context),
           ),
           IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               ref.invalidate(_dashboardSummaryProvider);
@@ -186,6 +188,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             },
           ),
           IconButton(
+            tooltip: 'Share report',
             icon: const Icon(Icons.share_rounded),
             onPressed: () => _shareDashboardReport(context, ref),
           ),
@@ -220,29 +223,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       identity.userFirstName.isNotEmpty
                           ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
                           : 'Good ${_getGreeting()}',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? DesignColors.darkTextPrimary
-                            : DesignColors.textPrimary,
-                      ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineSmall
+                          ?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? DesignColors.darkTextPrimary
+                                    : DesignColors.textPrimary,
+                          ),
                     ),
                     const SizedBox(height: DesignSpacing.xs - 2),
                     Text(
                       identity.companyName,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: DesignColors.accent,
-                      ),
+                            fontWeight: FontWeight.w600,
+                            color: DesignColors.accent,
+                          ),
                     ),
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
                       _dateFmt.format(DateTime.now()),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).brightness == Brightness.dark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                      ),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? DesignColors.darkTextSecondary
+                                    : DesignColors.textSecondary,
+                          ),
                     ),
                   ],
                 ),
@@ -306,10 +314,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 trailing: Text(
                   'Last 10',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).brightness == Brightness.dark
-                      ? DesignColors.darkTextTertiary
-                      : DesignColors.textTertiary,
-                  ),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
+                      ),
                 ),
               ),
 
@@ -378,22 +386,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       children: [
                                         Text(
                                           sale.receiptNumber,
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              color: isDark
-                                              ? DesignColors.darkTextPrimary
-                                              : DesignColors.textPrimary,
-                                          ),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                color: isDark
+                                                    ? DesignColors
+                                                        .darkTextPrimary
+                                                    : DesignColors.textPrimary,
+                                              ),
                                         ),
                                         const SizedBox(
                                             height: DesignSpacing.xs - 1),
                                         Text(
                                           '${sale.paymentMethod.toUpperCase()}  ·  ${_timeFmt.format(sale.createdAt)}',
-                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                              color: isDark
-                                              ? DesignColors.darkTextTertiary
-                                              : DesignColors.textTertiary,
-                                          ),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(
+                                                color: isDark
+                                                    ? DesignColors
+                                                        .darkTextTertiary
+                                                    : DesignColors.textTertiary,
+                                              ),
                                         ),
                                       ],
                                     ),
@@ -574,12 +590,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     Text(
                       'AI BRIEF',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                          color: isDark
-                          ? DesignColors.darkTextTertiary
-                          : DesignColors.textTertiary,
-                      ),
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1,
+                            color: isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary,
+                          ),
                     ),
                   ],
                 ),
@@ -593,14 +609,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       // reply can include a markdown table of restock priorities,
                       // which a plain Text widget would show as literal
                       // "**bold**" and "| pipe | text |" instead of formatting.
-                      return GptMarkdown(
+                      return AppMarkdown(
                         brief.trim(),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            height: 1.45,
-                            color: isDark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary,
-                        ),
+                              height: 1.45,
+                              color: isDark
+                                  ? DesignColors.darkTextSecondary
+                                  : DesignColors.textSecondary,
+                            ),
                       );
                     }
                     return _buildBriefSnippets(
@@ -622,11 +638,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       Text(
                         'Thinking about today\'s numbers...',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontStyle: FontStyle.italic,
-                            color: isDark
-                            ? DesignColors.darkTextTertiary
-                            : DesignColors.textTertiary,
-                        ),
+                              fontStyle: FontStyle.italic,
+                              color: isDark
+                                  ? DesignColors.darkTextTertiary
+                                  : DesignColors.textTertiary,
+                            ),
                       ),
                     ],
                   ),
@@ -660,11 +676,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: Text(
                 snippet,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    height: 1.45,
-                    color: isDark
-                    ? DesignColors.darkTextSecondary
-                    : DesignColors.textSecondary,
-                ),
+                      height: 1.45,
+                      color: isDark
+                          ? DesignColors.darkTextSecondary
+                          : DesignColors.textSecondary,
+                    ),
               ),
             ),
           )
@@ -678,7 +694,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final closeAsync = ref.watch(_eodStatusProvider);
 
@@ -844,12 +861,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     Text(
                       "TODAY'S COST & PROFIT",
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                          color: isDark
-                          ? DesignColors.darkTextTertiary
-                          : DesignColors.textTertiary,
-                      ),
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1,
+                            color: isDark
+                                ? DesignColors.darkTextTertiary
+                                : DesignColors.textTertiary,
+                          ),
                     ),
                     const Spacer(),
                     // Material+InkWell: real pressed/ripple state on the
@@ -883,11 +900,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   size: 14, color: DesignColors.accent),
                               const SizedBox(width: DesignSpacing.xs),
                               Text('ADJUST',
-                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.5,
-                                      color: DesignColors.accent,
-                                  )),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.5,
+                                        color: DesignColors.accent,
+                                      )),
                             ],
                           ),
                         ),
@@ -901,7 +921,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     Expanded(
                       child: _costMetric(
                         'Cost of Goods',
-                        isLoading ? '—' : 'KES ${cost.toStringAsFixed(0)}',
+                        isLoading ? '—' : formatMoney(cost),
                         isDark
                             ? DesignColors.darkTextPrimary
                             : DesignColors.textPrimary,
@@ -910,7 +930,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     Expanded(
                       child: _costMetric(
                         'Profit',
-                        isLoading ? '—' : 'KES ${profit.toStringAsFixed(0)}',
+                        isLoading ? '—' : formatMoney(profit),
                         DesignColors.success,
                       ),
                     ),
@@ -938,12 +958,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         Text(
           label.toUpperCase(),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
-              color: isDark
-              ? DesignColors.darkTextTertiary
-              : DesignColors.textTertiary,
-          ),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                color: isDark
+                    ? DesignColors.darkTextTertiary
+                    : DesignColors.textTertiary,
+              ),
         ),
         const SizedBox(height: DesignSpacing.xs - 1),
         Text(

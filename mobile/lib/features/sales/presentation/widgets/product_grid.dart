@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/stock_quantity_display.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
+import '../../../../core/utils/format.dart';
 
 class ProductGrid extends ConsumerWidget {
   static String _getUserFriendlyErrorMessage(dynamic error) {
@@ -50,17 +52,20 @@ class ProductGrid extends ConsumerWidget {
     return productsAsync.when(
       data: (products) {
         if (products.isEmpty) return const _EmptyState();
+        // Photos make tall cards worthwhile; without them the empty image block
+        // just wastes space, so use shorter cards and fit ~50% more per screen.
+        final hasPhotos = products.any((p) => p['imageUrl'] != null);
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            childAspectRatio: 0.78,
+            childAspectRatio: hasPhotos ? 0.78 : 1.12,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
           itemCount: products.length,
           itemBuilder: (context, index) =>
-              _ProductCard(product: products[index]),
+              _ProductCard(product: products[index], compact: !hasPhotos),
         );
       },
       loading: () => GridView.builder(
@@ -101,7 +106,11 @@ class _EmptyState extends StatelessWidget {
 
 class _ProductCard extends ConsumerWidget {
   final Map<String, dynamic> product;
-  const _ProductCard({required this.product});
+
+  /// No product has a photo: give the text block most of the card so two-line
+  /// names, price and stock always fit.
+  final bool compact;
+  const _ProductCard({required this.product, this.compact = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -146,7 +155,7 @@ class _ProductCard extends ConsumerWidget {
         children: [
           // Product Image
           Expanded(
-            flex: 3,
+            flex: compact ? 2 : 3,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -158,10 +167,12 @@ class _ProductCard extends ConsumerWidget {
                       ? CachedNetworkImage(
                           imageUrl: imageUrl,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => _ImagePlaceholder(),
-                          errorWidget: (_, __, ___) => _ImagePlaceholder(),
+                          placeholder: (_, __) =>
+                              _ImagePlaceholder(name: productName),
+                          errorWidget: (_, __, ___) =>
+                              _ImagePlaceholder(name: productName),
                         )
-                      : _ImagePlaceholder(),
+                      : _ImagePlaceholder(name: productName),
                 ),
 
                 // Quantity Badge
@@ -203,7 +214,8 @@ class _ProductCard extends ConsumerWidget {
                           ),
                           decoration: BoxDecoration(
                             color: DesignColors.accent,
-                            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusMd),
                             boxShadow: [
                               BoxShadow(
                                 color: DesignColors.accent.withValues(
@@ -232,7 +244,7 @@ class _ProductCard extends ConsumerWidget {
 
           // Product Info
           Expanded(
-            flex: 2,
+            flex: compact ? 3 : 2,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Column(
@@ -255,7 +267,7 @@ class _ProductCard extends ConsumerWidget {
                   Row(
                     children: [
                       Text(
-                        'KES ${price.toStringAsFixed(0)}',
+                        formatMoney(price),
                         style: DesignType.numeric(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -267,7 +279,7 @@ class _ProductCard extends ConsumerWidget {
                   const SizedBox(height: 3),
                   Text(
                     trackInventory
-                        ? '$stock $unit in stock'
+                        ? '$stock ${pluralizeUnit(unit, stock)} in stock'
                         : 'Stock not tracked',
                     style: TextStyle(
                       fontSize: 10,
@@ -374,21 +386,53 @@ class _ProductCard extends ConsumerWidget {
 }
 
 class _ImagePlaceholder extends StatelessWidget {
+  const _ImagePlaceholder({this.name = ''});
+
+  /// Shown as initials so products are scannable even without a photo.
+  final String name;
+
+  String get _initials {
+    final words = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map((w) => w.replaceAll(RegExp(r'[^A-Za-z]'), ''))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return '';
+    if (words.length == 1) {
+      return words.first
+          .substring(0, words.first.length.clamp(1, 2))
+          .toUpperCase();
+    }
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final initials = _initials;
     return Container(
       color: isDark
           ? DesignColors.darkSurfaceElevated
           : DesignColors.surfaceSubtle,
       child: Center(
-        child: Icon(
-          Icons.image_outlined,
-          size: 40,
-          color: isDark
-              ? DesignColors.darkTextTertiary
-              : DesignColors.textTertiary,
-        ),
+        child: initials.isEmpty
+            ? Icon(
+                Icons.image_outlined,
+                size: 32,
+                color: isDark
+                    ? DesignColors.darkTextTertiary
+                    : DesignColors.textTertiary,
+              )
+            : Text(
+                initials,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: DesignColors.accent.withValues(alpha: 0.55),
+                ),
+              ),
       ),
     );
   }
@@ -562,10 +606,11 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           ? CachedNetworkImage(
                               imageUrl: widget.imageUrl!,
                               fit: BoxFit.cover,
-                              placeholder: (_, __) => _ImagePlaceholder(),
-                              errorWidget: (_, __, ___) => _ImagePlaceholder(),
+                              placeholder: (_, __) => const _ImagePlaceholder(),
+                              errorWidget: (_, __, ___) =>
+                                  const _ImagePlaceholder(),
                             )
-                          : _ImagePlaceholder(),
+                          : const _ImagePlaceholder(),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -587,7 +632,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'KES ${_selectedTier.price.toStringAsFixed(0)} per ${_selectedTier.unit}',
+                          '${formatMoney(_selectedTier.price)} per ${_selectedTier.unit}',
                           style: TextStyle(
                             color: isDark
                                 ? DesignColors.darkTextSecondary
@@ -674,9 +719,11 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       : (isDark
                           ? DesignColors.darkSurfaceElevated
                           : DesignColors.surfaceSubtle),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusMd + 2),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusMd + 2),
                     onTap:
                         _quantity > 1 ? () => _updateQty(_quantity - 1) : null,
                     child: SizedBox(
@@ -710,7 +757,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide: BorderSide(
                           color: isDark
                               ? DesignColors.darkBorder
@@ -718,7 +766,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide: BorderSide(
                           color: isDark
                               ? DesignColors.darkBorder
@@ -726,7 +775,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         borderSide: const BorderSide(
                           color: DesignColors.accent,
                           width: 2,
@@ -748,15 +798,18 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                 const SizedBox(width: 12),
                 Material(
                   color: DesignColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusMd + 2),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
+                    borderRadius:
+                        BorderRadius.circular(DesignSpacing.radiusMd + 2),
                     onTap: () => _updateQty(_quantity + 1),
                     child: Container(
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd + 2),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd + 2),
                         color: DesignColors.accent,
                       ),
                       child: const Icon(Icons.add_rounded, color: Colors.black),
@@ -788,8 +841,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     Expanded(
                       child: Text(
                         exceedsStock
-                            ? 'Only $availableStock ${widget.baseUnit} available'
-                            : '${availableStock - baseUnits} ${widget.baseUnit} left after this sale',
+                            ? 'Only $availableStock ${pluralizeUnit(widget.baseUnit, availableStock)} available'
+                            : '${availableStock - baseUnits} ${pluralizeUnit(widget.baseUnit, availableStock - baseUnits)} left after this sale',
                         style: TextStyle(
                           fontSize: 12,
                           color: exceedsStock
@@ -836,7 +889,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'KES ${total.toStringAsFixed(0)}',
+                        formatMoney(total),
                         style: DesignType.numeric(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
@@ -872,7 +925,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                                 color: DesignColors.accent.withValues(
                                   alpha: 0.09,
                                 ),
-                                borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+                                borderRadius: BorderRadius.circular(
+                                    DesignSpacing.radiusSm),
                                 border: Border.all(
                                   color: DesignColors.accent.withValues(
                                     alpha: 0.45,
@@ -933,7 +987,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                               ),
                             )
                           : InkWell(
-                              borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusSm),
                               onTap: _beginPriceEditing,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
@@ -942,7 +997,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      '@ KES ${_effectivePrice.toStringAsFixed(0)}',
+                                      '@ ${formatMoney(_effectivePrice)}',
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: _overridePrice != null
@@ -984,7 +1039,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                       ),
                       side: BorderSide(
                         color: isDark

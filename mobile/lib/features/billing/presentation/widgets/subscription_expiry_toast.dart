@@ -122,7 +122,7 @@ class SubscriptionExpiryToast extends StatelessWidget {
             SizedBox(
               width: 44,
               height: 44,
-              child: IconButton(
+              child: IconButton(tooltip: 'Dismiss', 
                 onPressed: onDismiss,
                 icon: const Icon(Icons.close_rounded, size: 16),
                 color: bodyColor,

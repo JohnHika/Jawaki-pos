@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -144,7 +145,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                                   label: 'Total Sales',
                                   value: _isLoading
                                       ? '...'
-                                      : 'KES ${_todaysTotal.toStringAsFixed(0)}',
+                                      : 'KES ${NumberFormat('#,##0').format(_todaysTotal)}',
                                   icon: Icons.point_of_sale_rounded,
                                 ),
                                 _buildGlassStatItem(
@@ -246,7 +247,6 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                                 onTap: () => context.push('/payments/manual'),
                               ),
                             ),
-                            const Expanded(child: SizedBox.shrink()),
                           ],
                         ),
                       ),

@@ -24,7 +24,7 @@ class ReportsScreen extends ConsumerWidget {
         title: 'Reports',
         showBackButton: false,
         actions: [
-          IconButton(
+          IconButton(tooltip: 'Refresh', 
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               ref.invalidate(dashboardSummaryProvider);
@@ -364,7 +364,7 @@ class ReportsScreen extends ConsumerWidget {
                               final saleTotal =
                                   (sale['totalAmount'] as num?)?.toDouble() ?? 0;
                               final saleCreatedAt = DateTime.tryParse(
-                                      sale['createdAt']?.toString() ?? '') ??
+                                      sale['createdAt']?.toString() ?? '')?.toLocal() ??
                                   DateTime.now();
                               final saleRow = ListCard(
                                 leading: CircleAvatar(

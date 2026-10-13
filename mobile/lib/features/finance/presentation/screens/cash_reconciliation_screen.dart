@@ -295,7 +295,7 @@ class _ReconciliationCard extends StatelessWidget {
     final countedCash = (item['countedCash'] as num).toDouble();
     final discrepancy = (item['discrepancy'] as num).toDouble();
     final countedByName = item['countedByName'] as String?;
-    final createdAt = DateTime.tryParse(item['createdAt'] as String? ?? '');
+    final createdAt = DateTime.tryParse(item['createdAt'] as String? ?? '')?.toLocal();
 
     final isMatch = discrepancy.abs() < 0.01;
     final statusColor = isMatch

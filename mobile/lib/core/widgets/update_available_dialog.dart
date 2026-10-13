@@ -77,7 +77,7 @@ class _UpdateDialog extends StatelessWidget {
               buildNumber: update.buildNumber,
               publishedAt: update.publishedAt,
             ),
-            if (update.releaseNotes.trim().isNotEmpty) ...[
+            if (parseReleaseNotes(update.releaseNotes).isNotEmpty) ...[
               const SizedBox(height: DesignSpacing.md),
               Align(
                 alignment: Alignment.centerLeft,
@@ -208,7 +208,7 @@ class UpdateAvailableCard extends StatelessWidget {
                       buildNumber: update.buildNumber,
                       publishedAt: update.publishedAt,
                     ),
-                    if (update.releaseNotes.trim().isNotEmpty) ...[
+                    if (parseReleaseNotes(update.releaseNotes).isNotEmpty) ...[
                       const SizedBox(height: DesignSpacing.md),
                       Align(
                         alignment: Alignment.centerLeft,

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
+import '../../../../core/widgets/app_markdown.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/services/voice_input_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -1384,7 +1384,7 @@ class _PendingTurnCardState extends State<_PendingTurnCard> {
               ],
             ),
             const SizedBox(height: DesignSpacing.sm),
-            GptMarkdown(
+            AppMarkdown(
               widget.pending.plan ?? '',
               style: TextStyle(
                   color: textColor, fontSize: DesignType.chatBody, height: 1.4),
@@ -1634,7 +1634,7 @@ class _ChatBubble extends ConsumerWidget {
               color: textColor, fontSize: DesignType.chatBody, height: 1.5),
         );
       }
-      return GptMarkdown(
+      return AppMarkdown(
         message,
         style: TextStyle(
           color: textColor,
@@ -1729,7 +1729,7 @@ class _TypewriterMarkdownState extends State<_TypewriterMarkdown> {
   @override
   Widget build(BuildContext context) {
     final visibleText = _words.take(_visibleWords).join();
-    return GptMarkdown(visibleText, style: widget.style);
+    return AppMarkdown(visibleText, style: widget.style);
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/design_system.dart';
 
 import '../providers/cart_provider.dart';
+import '../../../../core/utils/format.dart';
 
 /// Allows sellers to manually adjust a single cart line's price during
 /// checkout. [productId] identifies the cart line (matches
@@ -73,7 +74,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                     'Price Adjustment',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
-                  IconButton(
+                  IconButton(tooltip: 'Cancel price change', 
                     icon: const Icon(Icons.close),
                     onPressed: widget.onCancel ?? () => Navigator.pop(context),
                   ),
@@ -94,7 +95,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                   const Icon(Icons.attach_money, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
                   Text(
-                    'Original: KES ${widget.originalPrice.toStringAsFixed(0)}',
+                    'Original: ${formatMoney(widget.originalPrice)}',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],

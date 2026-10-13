@@ -224,6 +224,15 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
     );
   }
 
+  /// Same shape and height for both decisions (the theme gave the outlined
+  /// button a rounded-rectangle and the filled one a pill).
+  static final ButtonStyle _decisionButtonShape = ButtonStyle(
+    minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
+    shape: WidgetStatePropertyAll(
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  );
+
   Widget _buildCard(ManualPaymentRequest request, {required bool canDecide}) {
     final color = request.isPending
         ? DesignColors.warning
@@ -238,7 +247,7 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
     final busy = _busy.contains(request.id);
     final when = request.createdAt == null
         ? ''
-        : DateFormat('d MMM, HH:mm').format(request.createdAt!);
+        : DateFormat('d MMM, h:mm a').format(request.createdAt!);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.md),
@@ -288,6 +297,7 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
                 Expanded(
                   child: OutlinedButton(
                     key: ValueKey('reject-${request.id}'),
+                    style: _decisionButtonShape,
                     onPressed: busy ? null : () => _showRejectSheet(request),
                     child: const Text('Reject'),
                   ),
@@ -296,6 +306,7 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
                 Expanded(
                   child: FilledButton(
                     key: ValueKey('approve-${request.id}'),
+                    style: _decisionButtonShape,
                     onPressed: busy
                         ? null
                         : () => _decide(

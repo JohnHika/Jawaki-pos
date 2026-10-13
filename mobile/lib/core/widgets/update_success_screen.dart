@@ -112,7 +112,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                           CategorizedNotes(releaseNotes: update.releaseNotes)
                         else
                           const Text(
-                            'Release notes were not published for this build.',
+                            'Improvements and bug fixes to keep Axon POS fast and reliable.',
                             style: TextStyle(
                               color: DesignColors.darkTextSecondary,
                               fontSize: 13,

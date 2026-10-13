@@ -82,7 +82,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surface,
       appBar: AppBar(
         backgroundColor: isDark ? DesignColors.darkSurface : Colors.white,
-        leading: IconButton(
+        leading: IconButton(tooltip: 'Back', 
           icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
           onPressed: () => context.pop(),
         ),

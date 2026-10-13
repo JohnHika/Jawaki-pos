@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/format.dart';
 
 /// Product Picker Dialog - Select a product from the catalog
 class ProductPickerDialog extends ConsumerStatefulWidget {
@@ -162,7 +163,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                 color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
               ),
               suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
+                  ? IconButton(tooltip: 'Clear search', 
                       icon: Icon(
                         Icons.clear_rounded,
                         color:
@@ -355,7 +356,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                                   ),
                                 ),
                                 Text(
-                                  'KES ${product.price.toStringAsFixed(0)}',
+                                  formatMoney(product.price),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 14,

@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../domain/receipt_search.dart';
+import '../../../../core/utils/format.dart';
 
 /// Receipts List Screen - Shows all sales/receipts from the local database
 class ReceiptsListScreen extends ConsumerStatefulWidget {
@@ -97,7 +98,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return 'KES ${amount.toStringAsFixed(0)}';
+    return formatMoney(amount);
   }
 
   Color _paymentMethodColor(String method) {
@@ -359,7 +360,9 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                         ),
                       ),
                       const SizedBox(width: DesignSpacing.sm),
-                      PaymentChip(method: _capitalize(sale.paymentMethod)),
+                      PaymentChip(
+                          method: _capitalize(sale.paymentMethod),
+                          compact: true),
                     ],
                   ),
                   if (_customersById[sale.customerId]?['name'] != null &&

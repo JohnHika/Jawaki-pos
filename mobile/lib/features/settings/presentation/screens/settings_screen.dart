@@ -1880,7 +1880,7 @@ class SettingsScreen extends ConsumerWidget {
                                           'System',
                                       time: entry['createdAt'] != null
                                           ? _formatDateTime(DateTime.parse(
-                                              entry['createdAt'] as String))
+                                              entry['createdAt'] as String).toLocal())
                                           : '',
                                     ))
                                 .toList(),

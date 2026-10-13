@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:gpt_markdown_lite/gpt_markdown_lite.dart';
+import '../../../../core/widgets/app_markdown.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
@@ -22,8 +22,8 @@ class DaySummaryData {
   DaySummaryData({required this.summary, required this.sales});
 }
 
-final _daySummaryProvider =
-    FutureProvider.autoDispose.family<DaySummaryData, DateTime>((ref, date) async {
+final _daySummaryProvider = FutureProvider.autoDispose
+    .family<DaySummaryData, DateTime>((ref, date) async {
   final branchId = getIt<AuthService>().branchId;
   final dateStr = DateFormat('yyyy-MM-dd').format(date);
   final api = getIt<ApiClient>();
@@ -70,6 +70,7 @@ class DaySummaryScreen extends ConsumerWidget {
         title: _titleDateFmt.format(date),
         actions: [
           IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               ref.invalidate(_daySummaryProvider(date));
@@ -113,7 +114,8 @@ class DaySummaryScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final divider = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final divider =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
     return PageContainer(
       withScroll: true,
@@ -140,7 +142,8 @@ class DaySummaryScreen extends ConsumerWidget {
                     Expanded(
                       child: MetricCard(
                         title: 'Transactions',
-                        value: '${summary['totalTransactions'] ?? sales.length}',
+                        value:
+                            '${summary['totalTransactions'] ?? sales.length}',
                         icon: Icons.receipt_long_rounded,
                         color: DesignColors.brand,
                       ),
@@ -200,16 +203,17 @@ class DaySummaryScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
               child: Container(
                 decoration: BoxDecoration(
-                  color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+                  color:
+                      isDark ? DesignColors.darkSurfaceElevated : Colors.white,
                   border: Border.all(color: divider),
                 ),
                 child: Column(
                   children: sales.asMap().entries.map((entry) {
                     final isLast = entry.key == sales.length - 1;
                     final sale = entry.value as Map<String, dynamic>;
-                    final createdAt =
-                        DateTime.tryParse(sale['createdAt']?.toString() ?? '') ??
-                            date;
+                    final createdAt = DateTime.tryParse(
+                            sale['createdAt']?.toString() ?? '')?.toLocal() ??
+                        date;
                     final total = (sale['totalAmount'] as num?) ?? 0;
                     final receiptNumber =
                         sale['receiptNumber']?.toString() ?? '';
@@ -237,8 +241,8 @@ class DaySummaryScreen extends ConsumerWidget {
                                 height: 38,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color:
-                                      DesignColors.accent.withValues(alpha: 0.10),
+                                  color: DesignColors.accent
+                                      .withValues(alpha: 0.10),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(Icons.receipt_long_rounded,
@@ -266,7 +270,8 @@ class DaySummaryScreen extends ConsumerWidget {
                                                 color: isDark
                                                     ? DesignColors
                                                         .darkTextTertiary
-                                                    : DesignColors.textTertiary)),
+                                                    : DesignColors
+                                                        .textTertiary)),
                                   ],
                                 ),
                               ),
@@ -329,7 +334,7 @@ class DaySummaryScreen extends ConsumerWidget {
                 briefAsync.when(
                   data: (brief) {
                     if (brief != null && brief.trim().isNotEmpty) {
-                      return GptMarkdown(
+                      return AppMarkdown(
                         brief.trim(),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             height: 1.45,

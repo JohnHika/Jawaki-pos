@@ -6,6 +6,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../sales/presentation/providers/cart_provider.dart';
+import '../../../../core/utils/format.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final String customerId;
@@ -248,7 +249,7 @@ class _CustomerProfileScreenState
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                            color: surface, border: Border.all(color: border)),
+                            color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
                         child: Row(
                           children: [
                             CircleAvatar(
@@ -404,7 +405,7 @@ class _CustomerProfileScreenState
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'KES ${(inst['amount'] as num).toStringAsFixed(0)}',
+                                          formatMoney((inst['amount'] as num)),
                                           style: DesignType.numeric(
                                               color: titleColor,
                                               fontWeight: FontWeight.w700,
@@ -492,7 +493,8 @@ class _CustomerProfileScreenState
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
                                           color: surface,
-                                          border: Border.all(color: border)),
+                                          border: Border.all(color: border),
+                                          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
                                       child: Row(children: [
                                         Expanded(
                                             child: Text(
@@ -506,7 +508,7 @@ class _CustomerProfileScreenState
                                                 CrossAxisAlignment.end,
                                             children: [
                                               Text(
-                                                  'KES ${(s['total'] as num).toStringAsFixed(0)}',
+                                                  formatMoney((s['total'] as num)),
                                                   style: DesignType.numeric(
                                                       color: DesignColors.brand,
                                                       fontWeight: FontWeight.w700,

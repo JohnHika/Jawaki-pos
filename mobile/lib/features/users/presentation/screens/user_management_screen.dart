@@ -24,7 +24,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
     if (!permissions.canManageUsers) {
       return const Scaffold(
-        appBar: BrandedAppBar(title: 'Users', showBackButton: true),
+        appBar: BrandedAppBar(title: 'Team & Access', showBackButton: true),
         body: EmptyState(
           icon: Icons.lock_outline_rounded,
           title: 'Restricted',
@@ -37,7 +37,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Users',
+        title: 'Team & Access',
         showBackButton: true,
         actions: [
           if (permissions.canManageRoles)
@@ -178,9 +178,13 @@ class _UserCard extends StatelessWidget {
           onTap: () => context.push('/users/${user['id']}/permissions'),
         ),
         if (roles.isNotEmpty)
-          Padding(
+          Align(
+            // The card's column centres its children; pin the badges to the
+            // left, under the person's name, instead of floating mid-card.
+            alignment: Alignment.centerLeft,
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(
-              14,
+              62,
               0,
               14,
               DesignSpacing.md,
@@ -192,6 +196,7 @@ class _UserCard extends StatelessWidget {
                   .map((r) => StatusBadge(label: r, color: DesignColors.accent))
                   .toList(),
             ),
+          ),
           ),
       ],
     );

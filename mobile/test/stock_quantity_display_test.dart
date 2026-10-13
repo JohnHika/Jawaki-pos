@@ -2,6 +2,27 @@ import 'package:axon_pos/core/utils/stock_quantity_display.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('pluralizeUnit', () {
+    test('adds the right plural ending when the count is not 1', () {
+      expect(pluralizeUnit('bale', 40), 'bales');
+      expect(pluralizeUnit('box', 2), 'boxes');
+      expect(pluralizeUnit('bunch', 3), 'bunches');
+      expect(pluralizeUnit('pantry', 2), 'pantries');
+      expect(pluralizeUnit('tray', 2), 'trays');
+      expect(pluralizeUnit('piece', 0), 'pieces');
+      expect(pluralizeUnit('kilo', 2.5), 'kilos');
+    });
+
+    test('leaves singular counts, plurals and invariant units alone', () {
+      expect(pluralizeUnit('bale', 1), 'bale');
+      expect(pluralizeUnit('pieces', 5), 'pieces');
+      expect(pluralizeUnit('dozen', 20), 'dozen');
+      expect(pluralizeUnit('half dozen', 4), 'half dozen');
+      expect(pluralizeUnit('kg', 3), 'kg');
+      expect(pluralizeUnit('  ', 3), '');
+    });
+  });
+
   group('buildStockQuantityPresentation', () {
     test('shows current stock in the last received packaging unit', () {
       final result = buildStockQuantityPresentation(
@@ -13,7 +34,7 @@ void main() {
       );
 
       expect(result.primary, '20 dozen');
-      expect(result.secondary, '240 piece');
+      expect(result.secondary, '240 pieces');
       expect(result.lastReceived, 'Last received: 20 dozen');
     });
 
@@ -23,7 +44,7 @@ void main() {
         baseUnit: 'piece',
       );
 
-      expect(result.primary, '7 piece');
+      expect(result.primary, '7 pieces');
       expect(result.secondary, isNull);
       expect(result.lastReceived, isNull);
     });
@@ -38,7 +59,7 @@ void main() {
       );
 
       expect(result.primary, '2.08 dozen');
-      expect(result.secondary, '25 piece');
+      expect(result.secondary, '25 pieces');
     });
   });
 

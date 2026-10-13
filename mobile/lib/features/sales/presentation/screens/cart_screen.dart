@@ -8,6 +8,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
+import '../../../../core/utils/format.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
@@ -21,7 +22,7 @@ class CartScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: Container(
           margin: const EdgeInsets.only(left: DesignSpacing.xs),
-          child: IconButton(
+          child: IconButton(tooltip: 'Back', 
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
@@ -217,11 +218,11 @@ class CartScreen extends ConsumerWidget {
               (getIt<AuthService>().showTaxOnReceipt &&
                   getIt<AuthService>().taxRatePercent > 0)) ...[
             _buildSummaryRow(context, 'Subtotal',
-                'KES ${cart.subtotal.toStringAsFixed(0)}'),
+                formatMoney(cart.subtotal)),
             const SizedBox(height: DesignSpacing.sm),
             if (cart.discount > 0) ...[
               _buildSummaryRow(context, 'Discount',
-                  '- KES ${cart.discount.toStringAsFixed(0)}',
+                  '- ${formatMoney(cart.discount)}',
                   valueColor: DesignColors.success),
               const SizedBox(height: DesignSpacing.sm),
             ],
@@ -230,7 +231,7 @@ class CartScreen extends ConsumerWidget {
               _buildSummaryRow(
                 context,
                 'Tax (${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}%)',
-                'KES ${cart.tax.toStringAsFixed(0)}',
+                formatMoney(cart.tax),
               ),
               const SizedBox(height: DesignSpacing.sm),
             ],
@@ -274,7 +275,7 @@ class CartScreen extends ConsumerWidget {
                 ],
               ),
               Text(
-                'KES ${cart.total.toStringAsFixed(0)}',
+                formatMoney(cart.total),
                 style: DesignType.numeric(
                   fontSize: 26,
                   fontWeight: FontWeight.w800,

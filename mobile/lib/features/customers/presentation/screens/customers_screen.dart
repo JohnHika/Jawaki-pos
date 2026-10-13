@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/utils/format.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -491,7 +492,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         const BorderSide(color: DesignColors.brand, width: 1.5),
                   ),
                   suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
+                      ? IconButton(tooltip: 'Clear search', 
                           icon:
                               Icon(Icons.clear, size: 18, color: tertiaryColor),
                           onPressed: () {
@@ -669,7 +670,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                                 children: [
                                                   if (balance > 0)
                                                     Text(
-                                                        'Owes KES ${balance.toStringAsFixed(0)}',
+                                                        'Owes ${formatMoney(balance)}',
                                                         style: DesignType.numeric(
                                                             color: DesignColors
                                                             .error,

@@ -593,6 +593,11 @@ class _GradientButtonState extends State<GradientButton> {
         duration: DesignAnimation.fast,
         height: widget.height,
         width: widget.expanded ? double.infinity : null,
+        // A compact (non-expanded) button hugs its content, so without side
+        // padding the icon and label sit flush against the button edge.
+        padding: widget.expanded
+            ? null
+            : const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(widget.borderRadius),
           color: _isPressed ? _darken(fill, 0.12) : fill,
@@ -776,6 +781,7 @@ class MetricCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: surface,
               border: Border.all(color: border),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1354,12 +1360,12 @@ class QuickActionTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: surface,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             border: Border.all(color: border),
           ),
           child: Column(
@@ -1403,11 +1409,16 @@ class PaymentChip extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onTap;
 
+  /// Small read-only tag for list rows: always tinted with the method colour,
+  /// tighter padding, no outline fighting the card border.
+  final bool compact;
+
   const PaymentChip({
     super.key,
     required this.method,
     this.isSelected = false,
     this.onTap,
+    this.compact = false,
   });
 
   Color get _color {
@@ -1448,33 +1459,41 @@ class PaymentChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tinted = isSelected || compact;
+    // The unselected look used fixed light-theme colours: near-black text on a
+    // dark card was unreadable. Pick the text/border for the active theme.
+    final idleText =
+        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
+    final idleBorder =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: DesignAnimation.fast,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: compact
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color:
-              isSelected ? _color.withValues(alpha: 0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: tinted ? _color.withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(compact ? 8 : 12),
           border: Border.all(
-            color: isSelected
-                ? _color.withValues(alpha: 0.4)
-                : DesignColors.surfaceBorder,
+            color: tinted ? _color.withValues(alpha: 0.4) : idleBorder,
             width: isSelected ? 1.5 : 1,
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_icon, color: _color, size: 16),
-            const SizedBox(width: 6),
+            Icon(_icon, color: _color, size: compact ? 13 : 16),
+            SizedBox(width: compact ? 4 : 6),
             Text(
               method,
               style: TextStyle(
-                color: isSelected ? _color : DesignColors.textPrimary,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                fontSize: 13,
+                color: tinted ? _color : idleText,
+                fontWeight: tinted ? FontWeight.w700 : FontWeight.w500,
+                fontSize: compact ? 11 : 13,
               ),
             ),
           ],
@@ -1522,12 +1541,16 @@ class ListCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             color: surface,
             border: Border.all(color: border),
+            // Every other list row/card in the app is rounded; this one was
+            // square, with a ripple that spilled past its corners.
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           ),
           child: Row(
             children: [
@@ -1977,7 +2000,7 @@ Future<bool> showConfirmDialog(
           isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
       return AlertDialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         ),
         backgroundColor:
             isDark ? DesignColors.darkSurfaceElevated : Colors.white,
@@ -2422,24 +2445,34 @@ class _BackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12),
-      child: Material(
-        color: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(
-            color:
-                isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+    // Center: the AppBar leading slot passes tight 56x60 constraints, which
+    // stretched this button into a tall rectangle. 44dp keeps a comfortable
+    // tap target while the bordered square stays compact.
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: Material(
+          color: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color:
+                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+            ),
           ),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => Navigator.of(context).maybePop(),
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Icon(Icons.arrow_back_rounded, color: color, size: 19),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => Navigator.of(context).maybePop(),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                Icons.arrow_back_rounded,
+                semanticLabel: 'Back',
+                color: color,
+                size: 20,
+              ),
+            ),
           ),
         ),
       ),

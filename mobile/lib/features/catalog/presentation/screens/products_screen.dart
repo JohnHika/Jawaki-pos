@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/stock_quantity_display.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
@@ -12,6 +13,7 @@ import '../../../sales/presentation/providers/catalog_provider.dart'
 import '../providers/catalog_categories_provider.dart';
 import '../widgets/add_edit_product_sheet.dart';
 import '../widgets/image_picker_section.dart';
+import '../../../../core/utils/format.dart';
 
 // Providers for the products screen
 final _productsProvider = StreamProvider<List<Product>>((ref) {
@@ -163,6 +165,7 @@ class ProductsScreen extends ConsumerWidget {
                   prefixIcon: Icon(Icons.search_rounded, color: tertiaryColor),
                   suffixIcon: searchQuery.isNotEmpty
                       ? IconButton(
+                          tooltip: 'Clear search',
                           icon: Icon(Icons.clear_rounded, color: tertiaryColor),
                           onPressed: () => ref
                               .read(_searchQueryProvider.notifier)
@@ -752,7 +755,7 @@ class _ProductGridCard extends ConsumerWidget {
                   children: [
                     Text(
                       product.name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             fontWeight: FontWeight.w700,
@@ -773,7 +776,7 @@ class _ProductGridCard extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'KES ${product.price.toStringAsFixed(0)}',
+                            formatMoney(product.price),
                             style: DesignType.numeric(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -889,7 +892,7 @@ class _ProductListTile extends ConsumerWidget {
                       stockAsync.when(
                         data: (qty) => Text(
                           hasStock
-                              ? '$stockLabel ${product.unit} in stock'
+                              ? '$stockLabel ${pluralizeUnit(product.unit, qty ?? 0)} in stock'
                               : 'Out of stock',
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -909,7 +912,7 @@ class _ProductListTile extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'KES ${product.price.toStringAsFixed(0)}',
+                      formatMoney(product.price),
                       style: DesignType.numeric(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,

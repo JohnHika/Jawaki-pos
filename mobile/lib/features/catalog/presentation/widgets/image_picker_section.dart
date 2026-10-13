@@ -31,6 +31,8 @@ class ImagePickerSection extends StatefulWidget {
 }
 
 class _ImagePickerSectionState extends State<ImagePickerSection> {
+  bool get _dark => Theme.of(context).brightness == Brightness.dark;
+
   String? _imageUrl;
   String? _localImagePath;
   String? _errorMessage;
@@ -170,13 +172,13 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       return Container(
         height: 64,
         decoration: BoxDecoration(
-          color: DesignColors.surfaceSubtle,
+          color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(
+            const SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
@@ -184,10 +186,10 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
                 color: DesignColors.brand,
               ),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Text(
               'Uploading...',
-              style: TextStyle(fontSize: 13, color: DesignColors.textSecondary),
+              style: TextStyle(fontSize: 13, color: (_dark ? DesignColors.darkTextSecondary : DesignColors.textSecondary)),
             ),
           ],
         ),
@@ -267,23 +269,23 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
           child: Container(
             height: 56,
             decoration: BoxDecoration(
-              color: DesignColors.surfaceSubtle,
+              color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: DesignColors.surfaceBorder),
+              border: Border.all(color: (_dark ? DesignColors.darkBorder : DesignColors.surfaceBorder)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.add_photo_alternate_outlined,
-                  color: DesignColors.textTertiary,
+                  color: (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   widget.label,
-                  style: const TextStyle(
-                    color: DesignColors.textTertiary,
+                  style: TextStyle(
+                    color: (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
                     fontSize: 13,
                   ),
                 ),
@@ -324,7 +326,7 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       placeholder: (_, __) => Container(
         width: 64,
         height: 64,
-        color: DesignColors.surfaceSubtle,
+        color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
       ),
       errorWidget: (_, __, ___) => _brokenPreview(),
     );
@@ -334,10 +336,10 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
     return Container(
       width: 64,
       height: 64,
-      color: DesignColors.surfaceSubtle,
-      child: const Icon(
+      color: (_dark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle),
+      child: Icon(
         Icons.broken_image_outlined,
-        color: DesignColors.textTertiary,
+        color: (_dark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
         size: 28,
       ),
     );

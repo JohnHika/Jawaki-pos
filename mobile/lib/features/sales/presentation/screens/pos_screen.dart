@@ -16,6 +16,7 @@ import '../widgets/category_chips.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
+import '../../../../core/utils/format.dart';
 
 class POSScreen extends ConsumerStatefulWidget {
   const POSScreen({super.key});
@@ -617,10 +618,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                           fontWeight: FontWeight.bold)))),
                           title: s.label,
                           subtitle:
-                              'KES ${s.cart.total.toStringAsFixed(0)} \u00b7 ${elapsed.inMinutes}m ago',
+                              '${formatMoney(s.cart.total)} \u00b7 ${elapsed.inMinutes}m ago',
                           trailing:
                               Row(mainAxisSize: MainAxisSize.min, children: [
-                            IconButton(
+                            IconButton(tooltip: 'Resume held sale', 
                                 icon: const Icon(Icons.play_arrow_rounded,
                                     color: DesignColors.success),
                                 onPressed: () {
@@ -640,7 +641,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                   }
                                   Navigator.pop(ctx);
                                 }),
-                            IconButton(
+                            IconButton(tooltip: 'Delete held sale', 
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: DesignColors.error),
                                 onPressed: () async {

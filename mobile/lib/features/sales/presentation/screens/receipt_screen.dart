@@ -39,7 +39,7 @@ class ReceiptScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: Container(
           margin: const EdgeInsets.only(left: DesignSpacing.xs),
-          child: IconButton(
+          child: IconButton(tooltip: 'Close receipt', 
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
@@ -122,7 +122,7 @@ class ReceiptScreen extends ConsumerWidget {
             tooltip: 'Print receipt',
             onPressed: () => _printReceipt(context, receiptAsync.valueOrNull),
           ),
-          IconButton(
+          IconButton(tooltip: 'Void sale', 
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
@@ -443,7 +443,7 @@ class ReceiptScreen extends ConsumerWidget {
   String _formatDateTime(dynamic dateTime) {
     if (dateTime == null) return 'N/A';
     final dt =
-        dateTime is DateTime ? dateTime : DateTime.parse(dateTime.toString());
+        dateTime is DateTime ? dateTime : DateTime.parse(dateTime.toString()).toLocal();
     return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
   }
 

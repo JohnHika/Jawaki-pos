@@ -662,7 +662,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border)),
+            BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

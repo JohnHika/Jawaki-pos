@@ -7,6 +7,29 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 
+/// Name printed at the top of a receipt: the business, plus the branch when it
+/// differs and the line still fits a 58mm (32 character) printout. Without this
+/// every receipt fell back to the placeholder "POS Store".
+String? receiptHeaderName(Map<String, dynamic>? user) {
+  String? clean(Object? value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  final tenant = user?['tenant'];
+  final company = clean(tenant is Map ? tenant['name'] : null) ??
+      clean(user?['tenantName']) ??
+      clean(user?['companyName']);
+  final branch = clean(user?['branchName']);
+
+  if (company == null) return branch;
+  if (branch == null || branch.toLowerCase() == company.toLowerCase()) {
+    return company;
+  }
+  final combined = '$company - $branch';
+  return combined.length <= 32 ? combined : company;
+}
+
 /// The credit/debt portion still owed on a sale, for the receipt's
 /// "Balance owed" line. A pure CREDIT sale owes its whole total; a SPLIT
 /// sale owes the sum of its CREDIT tenders (parsed from paymentReference,
@@ -19,8 +42,10 @@ double _extractOutstanding(PendingSale sale) {
       final tenders = jsonDecode(sale.paymentReference!) as List;
       return tenders
           .whereType<Map>()
-          .where((t) => (t['method'] ?? '').toString().toUpperCase() == 'CREDIT')
-          .fold<double>(0, (sum, t) => sum + ((t['amount'] as num?)?.toDouble() ?? 0));
+          .where(
+              (t) => (t['method'] ?? '').toString().toUpperCase() == 'CREDIT')
+          .fold<double>(
+              0, (sum, t) => sum + ((t['amount'] as num?)?.toDouble() ?? 0));
     } catch (_) {
       return 0;
     }
@@ -77,6 +102,7 @@ final receiptProvider =
       'paymentMethod': sale.paymentMethod,
       'paymentReference': sale.paymentReference,
       'createdAt': sale.createdAt.toIso8601String(),
+      'branchName': receiptHeaderName(auth.currentUser),
       'cashierName': auth.currentUser?['name'],
       'customerName': customer?['name'],
       'customerPhone': customer?['phone'],
@@ -118,14 +144,16 @@ final dailySummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 });
 
 // Daily Profit & Loss provider (with expense integration)
-final dailyProfitLossProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, branchId) async {
+final dailyProfitLossProvider =
+    FutureProvider.family<Map<String, dynamic>, String>((ref, branchId) async {
   final apiClient = getIt<ApiClient>();
   final today = DateTime.now().toIso8601String().split('T').first;
   return await apiClient.getDailyProfitLoss(branchId, today);
 });
 
 // Sales history provider
-final salesHistoryProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final salesHistoryProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final apiClient = getIt<ApiClient>();
   return (await apiClient.getSales()).cast<Map<String, dynamic>>();
 });

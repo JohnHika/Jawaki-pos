@@ -221,7 +221,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
   }
 
   String _closedAtSuffix(Map<String, dynamic> close) {
-    final at = DateTime.tryParse(close['closedAt'] as String? ?? '');
+    final at = DateTime.tryParse(close['closedAt'] as String? ?? '')?.toLocal();
     return at != null ? ' at ${_timeFmt.format(at)}' : '';
   }
 
@@ -452,6 +452,7 @@ class _EodGroupSkeleton extends StatelessWidget {
             decoration: BoxDecoration(
               color: surface,
               border: Border.all(color: border),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             ),
             child: const ShimmerWidget(
                 width: double.infinity,

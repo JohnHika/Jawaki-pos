@@ -112,7 +112,7 @@ class _InventoryForecastingScreenState
       appBar: BrandedAppBar(
         title: 'Inventory Forecast',
         actions: [
-          IconButton(
+          IconButton(tooltip: 'Refresh', 
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadInventoryData,
           ),
@@ -218,7 +218,7 @@ class _InventoryForecastingScreenState
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -350,7 +350,7 @@ class _InventoryForecastingScreenState
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -489,7 +489,7 @@ class _InventoryForecastingScreenState
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -592,7 +592,7 @@ class _InventoryForecastingScreenState
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -449,11 +449,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           child: Stack(
             children: [
               // Decorative 3D-ish brand image in the upper-right background.
+              // Kept small and above the headline: at 55% width it used to run
+              // straight through the title and subtitle (and its orange shop
+              // badge sat on top of the text).
               Positioned(
-                top: size.height * 0.04,
-                right: -size.width * 0.08,
-                width: size.width * 0.55,
-                height: size.width * 0.55,
+                top: size.height * 0.02,
+                right: size.width * 0.02,
+                width: size.width * 0.34,
+                height: size.width * 0.34,
                 child: AnimatedBuilder(
                   animation: _pulseController,
                   builder: (context, child) {
@@ -465,8 +468,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     );
                   },
-                  child: Opacity(
-                    opacity: 0.35,
+                  // Hidden while typing: the content scrolls up under it and
+                  // the shop badge would sit on the company name.
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: MediaQuery.viewInsetsOf(context).bottom > 0
+                        ? 0.0
+                        : 0.35,
                     child: Image.asset(
                       'assets/images/axon_app_icon_512.png',
                       fit: BoxFit.contain,
@@ -587,7 +595,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       StaggeredItem(
                         itemKey: 'login-card',
                         index: 3,
-                        child: _buildLoginCard(isSmallScreen, authState, isDark),
+                        child:
+                            _buildLoginCard(isSmallScreen, authState, isDark),
                       ),
 
                       // Bottom branding
@@ -652,7 +661,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   const SizedBox(width: DesignSpacing.md),
                   Expanded(
                     child: Text(
-                      'Join an existing business',
+                      'Staff sign in',
                       style: (isSmallScreen
                               ? Theme.of(context).textTheme.titleLarge
                               : Theme.of(context).textTheme.headlineSmall)
@@ -697,8 +706,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       isDark: isDark,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  if (_deviceAuthenticationAvailable)
+                  if (_deviceAuthenticationAvailable) ...[
+                    const SizedBox(width: 12),
                     Expanded(
                       child: _buildAltLoginButton(
                         icon: Icons.fingerprint_rounded,
@@ -711,6 +720,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         isDark: isDark,
                       ),
                     ),
+                  ],
                 ],
               ),
               const SizedBox(height: DesignSpacing.xl),
@@ -854,6 +864,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _handleLogin(),
                   suffixIcon: IconButton(
+                    tooltip: 'Show or hide password',
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility_outlined
@@ -889,8 +900,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       toggled: _rememberMe,
                       label: 'Stay signed in',
                       child: InkWell(
-                        onTap: () =>
-                            setState(() => _rememberMe = !_rememberMe),
+                        onTap: () => setState(() => _rememberMe = !_rememberMe),
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
                         child: Padding(
@@ -964,11 +974,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                       child: Text(
                         'Forgot Password?',
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: DesignColors.brand,
-                                ),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: DesignColors.brand,
+                            ),
                       ),
                     ),
                   ],
@@ -998,7 +1007,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     padding: const EdgeInsets.all(DesignSpacing.md),
                     decoration: BoxDecoration(
                       color: DesignColors.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                       border: Border.all(
                         color: DesignColors.error.withValues(alpha: 0.3),
                       ),
@@ -1014,14 +1024,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         Expanded(
                           child: Text(
                             authState.error!,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: DesignColors.error,
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.35,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: DesignColors.error,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.35,
+                                    ),
                           ),
                         ),
                       ],
@@ -1140,6 +1148,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       : DesignColors.textTertiary,
                 ),
             helperText: helperText,
+            helperMaxLines: 2,
+            errorMaxLines: 3,
             helperStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: isDark
                       ? DesignColors.darkTextTertiary

@@ -16,6 +16,7 @@ import '../../domain/bulk_allocation.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
 import 'invoice_review_screen.dart';
+import '../../../../core/utils/format.dart';
 
 class FinanceScreen extends ConsumerStatefulWidget {
   const FinanceScreen({super.key, this.prefill});
@@ -389,6 +390,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           title: title,
           children: <Widget>[
             SegmentedButton<String>(
+                expandedInsets: EdgeInsets.zero,
               segments: const <ButtonSegment<String>>[
                 ButtonSegment(value: 'CASH', label: Text('Cash')),
                 ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
@@ -476,7 +478,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     .map((entry) => DropdownMenuItem<String>(
                           value: entry.key,
                           child: Text(
-                            '${nameOf(entry.value)} · KES ${totalFor(entry.key).toStringAsFixed(0)}',
+                            '${nameOf(entry.value)} · ${formatMoney(totalFor(entry.key))}',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ))
@@ -492,6 +494,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               ),
               const SizedBox(height: DesignSpacing.md),
               SegmentedButton<String>(
+                expandedInsets: EdgeInsets.zero,
                 segments: const <ButtonSegment<String>>[
                   ButtonSegment(value: 'CASH', label: Text('Cash')),
                   ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
@@ -536,7 +539,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 }
                 if (plan.unallocated > 0) {
                   setSheetState(() => error =
-                      'More than the customer owes (KES ${totalFor(selectedKey).toStringAsFixed(0)})');
+                      'More than the customer owes (${formatMoney(totalFor(selectedKey))})');
                   return;
                 }
                 setSheetState(() => saving = true);
@@ -747,7 +750,7 @@ class _OverviewTab extends StatelessWidget {
               const SizedBox(width: DesignSpacing.sm),
               Expanded(
                 child: _MetricCard(
-                  label: 'Net receivable',
+                  label: 'Total owed to us',
                   value: net,
                   color: DesignColors.success,
                 ),
@@ -812,9 +815,12 @@ class _RetailTab extends StatelessWidget {
   final VoidCallback onCollectForCustomer;
 
   @override
-  Widget build(BuildContext context) =>
-      ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
-        if (receivables.isEmpty)
+  Widget build(BuildContext context) {
+    // Settled credits (balance 0) stay on the server for history but offering
+    // "Collect" on a KES 0 balance is just noise.
+    final open = receivables.where((r) => r.outstandingAmount > 0).toList();
+    return ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
+        if (open.isEmpty)
           const _EmptyLedger(message: 'No customer credit is outstanding.')
         else ...<Widget>[
           SizedBox(
@@ -826,7 +832,7 @@ class _RetailTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: DesignSpacing.md),
-          ...receivables.map((item) => _LedgerCard(
+          ...open.map((item) => _LedgerCard(
                 title: item.receiptNumber ?? 'Receipt',
                 subtitle: item.customerName ?? 'Customer',
                 value: item.outstandingAmount,
@@ -837,6 +843,7 @@ class _RetailTab extends StatelessWidget {
               )),
         ],
       ]);
+  }
 }
 
 class _PeerTab extends StatelessWidget {
@@ -877,10 +884,12 @@ class _PeerTab extends StatelessWidget {
         const SizedBox(height: DesignSpacing.lg),
         Text('Receivables', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: DesignSpacing.sm),
-        if (snapshot.peerReceivables.isEmpty)
+        if (snapshot.peerReceivables.every((r) => r.outstandingAmount <= 0))
           const _EmptyLedger(message: 'No other-shop receivables yet.')
         else
-          ...snapshot.peerReceivables.map((item) => _LedgerCard(
+          ...snapshot.peerReceivables
+              .where((r) => r.outstandingAmount > 0)
+              .map((item) => _LedgerCard(
                 title: item.debtor.name,
                 subtitle: item.description,
                 value: item.outstandingAmount,
@@ -982,9 +991,27 @@ class _LedgerCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (dueDate != null)
-                        Text(
-                            'Due ${DateFormat('d MMM y').format(dueDate!.toLocal())}',
-                            style: Theme.of(context).textTheme.labelSmall),
+                        // Past-due balances are what the owner needs to chase,
+                        // so make them stand out instead of reading like any
+                        // other date.
+                        Builder(builder: (context) {
+                          final isOverdue =
+                              value > 0 && dueDate!.isBefore(DateTime.now());
+                          final label =
+                              'Due ${DateFormat('d MMM y').format(dueDate!.toLocal())}';
+                          return Text(
+                            isOverdue ? 'Overdue · $label' : label,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color:
+                                      isOverdue ? DesignColors.error : null,
+                                  fontWeight:
+                                      isOverdue ? FontWeight.w700 : null,
+                                ),
+                          );
+                        }),
                     ])),
                 const SizedBox(width: DesignSpacing.sm),
                 SizedBox(

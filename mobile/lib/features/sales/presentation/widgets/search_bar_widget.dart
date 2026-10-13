@@ -98,7 +98,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
               ),
             ),
             suffixIcon: _showClear
-                ? IconButton(
+                ? IconButton(tooltip: 'Clear search', 
                     icon: const Icon(Icons.close_rounded, size: 20),
                     style: IconButton.styleFrom(
                       backgroundColor:

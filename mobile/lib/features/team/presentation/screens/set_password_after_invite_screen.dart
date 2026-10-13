@@ -90,7 +90,7 @@ class _SetPasswordAfterInviteScreenState
       backgroundColor: DesignColors.darkBg,
       appBar: AppBar(
         backgroundColor: DesignColors.darkSurface,
-        leading: IconButton(
+        leading: IconButton(tooltip: 'Back', 
           icon: const Icon(Icons.arrow_back_rounded,
               color: DesignColors.darkTextPrimary),
           onPressed: () => context.pop(),
@@ -181,7 +181,7 @@ class _SetPasswordAfterInviteScreenState
                       const TextStyle(color: DesignColors.darkTextSecondary),
                   prefixIcon: const Icon(Icons.lock_outline_rounded,
                       color: DesignColors.darkTextSecondary),
-                  suffixIcon: IconButton(
+                  suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility_outlined
@@ -236,7 +236,7 @@ class _SetPasswordAfterInviteScreenState
                       const TextStyle(color: DesignColors.darkTextSecondary),
                   prefixIcon: const Icon(Icons.lock_outline_rounded,
                       color: DesignColors.darkTextSecondary),
-                  suffixIcon: IconButton(
+                  suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscureConfirmPassword
                           ? Icons.visibility_outlined
@@ -311,7 +311,7 @@ class _SetPasswordAfterInviteScreenState
                       const TextStyle(color: DesignColors.darkTextSecondary),
                   prefixIcon: const Icon(Icons.pin_outlined,
                       color: DesignColors.darkTextSecondary),
-                  suffixIcon: IconButton(
+                  suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscurePin
                           ? Icons.visibility_outlined
@@ -376,7 +376,7 @@ class _SetPasswordAfterInviteScreenState
                       const TextStyle(color: DesignColors.darkTextSecondary),
                   prefixIcon: const Icon(Icons.pin_outlined,
                       color: DesignColors.darkTextSecondary),
-                  suffixIcon: IconButton(
+                  suffixIcon: IconButton(tooltip: 'Show or hide password', 
                     icon: Icon(
                       _obscureConfirmPin
                           ? Icons.visibility_outlined

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
+import '../../../../core/utils/format.dart';
 
 class CartSummaryBar extends ConsumerWidget {
   const CartSummaryBar({super.key});
@@ -146,7 +147,7 @@ class CartSummaryBar extends ConsumerWidget {
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'KES ${cartState.total.toStringAsFixed(0)}',
+                      formatMoney(cartState.total),
                       style: DesignType.numeric(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,

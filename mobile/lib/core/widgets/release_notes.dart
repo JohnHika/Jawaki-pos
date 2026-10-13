@@ -14,23 +14,18 @@ class ReleaseNote {
 /// Parses raw release notes text into categorized lines and renders them
 /// with icons. Shared by [UpdateAvailableDialog] and [UpdateSuccessScreen]
 /// so both show the same structured format from the same source.
+///
+/// Release bodies are written for engineers (GitHub release markdown with
+/// download links, build metadata, CI notes). [cleanReleaseNoteLines] turns
+/// that into plain, user-facing lines and returns nothing when no human-readable
+/// change remains, so callers can show a friendly fallback instead.
 List<ReleaseNote> parseReleaseNotes(String raw) {
-  final trimmed = raw.trim();
-  if (trimmed.isEmpty) return const [];
+  final cleaned = cleanReleaseNoteLines(raw);
+  if (cleaned.isEmpty) return const [];
 
-  final lines = trimmed
-      .split('\n')
-      .map((line) => line.trim().replaceFirst(RegExp(r'^[-*•]\s*'), ''))
-      .where((line) => line.isNotEmpty)
-      .toList();
-
-  final source = lines.length > 1
-      ? lines
-      : lines.isEmpty
-          ? _splitLongSentence(trimmed)
-          : lines.first.length > 60
-              ? _splitLongSentence(lines.first)
-              : lines;
+  final source = cleaned.length == 1 && cleaned.first.length > 60
+      ? cleanReleaseNoteLines(_splitLongSentence(cleaned.first).join('\n'))
+      : cleaned;
 
   return source.map((line) {
     final lower = line.toLowerCase();
@@ -45,6 +40,72 @@ List<ReleaseNote> parseReleaseNotes(String raw) {
     }
     return ReleaseNote(line, ReleaseCategory.general);
   }).toList();
+}
+
+/// Sections whose whole body is installation/CI detail, not product changes.
+final RegExp _technicalHeading = RegExp(
+  r'download|update sources?|\bsources?\b|install|checksum|\bassets?\b|artifacts?|build info|technical|verification|signing',
+  caseSensitive: false,
+);
+
+/// Individual lines that are build metadata even outside a technical section.
+final RegExp _technicalLine = RegExp(
+  r'^(release|internal build|build|source|commit|sha|tag|version|package)\s*:'
+  r'|github actions|cloudflare|\br2\b|\.apk\b|sha-?256|latest\.json'
+  r'|published from [0-9a-f]{7,}',
+  caseSensitive: false,
+);
+
+/// Strips markdown and engineering-only content from a raw release body.
+///
+/// Headings are treated as structure (never shown); lists lose their markers;
+/// `**bold**`, `` `code` ``, `[links](url)` and bare URLs are flattened to plain
+/// text; technical sections/lines are dropped; at most 8 lines are kept.
+List<String> cleanReleaseNoteLines(String raw) {
+  final out = <String>[];
+  var inTechnicalSection = false;
+  for (final original in raw.split('\n')) {
+    var line = original.trim();
+    if (line.isEmpty) continue;
+
+    final heading = RegExp(r'^#{1,6}\s*(.*)$').firstMatch(line);
+    if (heading != null) {
+      inTechnicalSection = _technicalHeading.hasMatch(heading.group(1)!);
+      continue;
+    }
+    if (inTechnicalSection) continue;
+
+    line = line
+        .replaceFirst(RegExp(r'^(?:[-*•+]|\d+[.)])\s+'), '')
+        .replaceAllMapped(RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m[1] ?? '')
+        .replaceAll(RegExp(r'https?://\S+'), '')
+        .replaceAll(RegExp(r'[*`]+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Judge sentence by sentence so "Faster sync. Build 2093 was published
+    // from abc1234." keeps the first half.
+    line = line
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .where((sentence) => sentence.length >= 3 && !_technicalLine.hasMatch(sentence))
+        .join(' ');
+    if (line.length < 3) continue;
+    out.add(line);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/// "Axon POS Android Axon POS 1.0.50" -> "Axon POS 1.0.50".
+/// Release names are assembled from a platform label plus the release title, so
+/// the product name can appear twice; show it once.
+String cleanReleaseName(String? raw, {required String fallback}) {
+  var name = raw?.trim() ?? '';
+  if (name.isEmpty) return fallback;
+  final last = name.toLowerCase().lastIndexOf('axon pos');
+  if (last > 0) name = name.substring(last);
+  name = name.replaceAll(RegExp(r'\bAndroid\b\s*'), '').trim();
+  return name.isEmpty ? fallback : name;
 }
 
 List<String> _splitLongSentence(String text) {
@@ -97,9 +158,7 @@ class UpdateReleaseMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final title = releaseName?.trim().isNotEmpty == true
-        ? releaseName!.trim()
-        : version;
+    final title = cleanReleaseName(releaseName, fallback: 'Axon POS $version');
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiary =
@@ -123,7 +182,7 @@ class UpdateReleaseMeta extends StatelessWidget {
               color: DesignColors.accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
             ),
-            child: const Icon(Icons.new_releases_rounded,
+            child: const Icon(Icons.system_update_rounded,
                 color: DesignColors.accent, size: 21),
           ),
           const SizedBox(width: DesignSpacing.md),
@@ -159,11 +218,14 @@ class UpdateReleaseMeta extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                version,
-                style: TextStyle(color: tertiary, fontSize: 11),
-              ),
+              // The title usually already carries the version; don't repeat it.
+              if (!title.contains(version)) ...[
+                const SizedBox(height: 3),
+                Text(
+                  version,
+                  style: TextStyle(color: tertiary, fontSize: 11),
+                ),
+              ],
             ],
           ),
         ],
@@ -199,11 +261,15 @@ class _CategorizedNoteRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final (icon, color) = switch (note.category) {
       ReleaseCategory.feature => (Icons.auto_awesome_rounded, DesignColors.accent),
       ReleaseCategory.fix => (Icons.build_rounded, DesignColors.info),
       ReleaseCategory.improvement => (Icons.speed_rounded, DesignColors.success),
-      ReleaseCategory.general => (Icons.check_circle_rounded, DesignColors.darkTextTertiary),
+      ReleaseCategory.general => (
+          Icons.check_circle_rounded,
+          isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+        ),
     };
 
     return Padding(
@@ -219,8 +285,10 @@ class _CategorizedNoteRow extends StatelessWidget {
           Expanded(
             child: Text(
               note.text,
-              style: const TextStyle(
-                color: DesignColors.darkTextSecondary,
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.darkTextSecondary
+                    : DesignColors.textSecondary,
                 fontSize: 13,
                 height: 1.35,
               ),

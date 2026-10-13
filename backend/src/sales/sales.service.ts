@@ -447,6 +447,47 @@ export class SalesService {
     return this.formatSale(sale);
   }
 
+  /**
+   * Turns the `startDate`/`endDate` query values into a `createdAt` filter.
+   *
+   * Clients send plain calendar dates ("2026-10-13"). `new Date("2026-10-13")` is
+   * midnight UTC, so using it as an inclusive upper bound dropped the whole last
+   * day: a one-day range ("Today") matched nothing and "This Week" omitted
+   * today's sales. Date-only values are therefore expanded to the start/end of
+   * that day in the branch's timezone; full timestamps are used as given.
+   */
+  private async resolveCreatedAtRange(
+    tenantId: string,
+    branchId: string | undefined,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<{ gte?: Date; lte?: Date } | undefined> {
+    if (!startDate && !endDate) return undefined;
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+
+    let timezone = 'Africa/Nairobi';
+    if (branchId && ((startDate && dateOnly.test(startDate)) || (endDate && dateOnly.test(endDate)))) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: { timezone: true },
+      });
+      if (branch?.timezone) timezone = branch.timezone;
+    }
+
+    const range: { gte?: Date; lte?: Date } = {};
+    if (startDate) {
+      range.gte = dateOnly.test(startDate)
+        ? getDayBoundsInTimezone(startDate, timezone).start
+        : new Date(startDate);
+    }
+    if (endDate) {
+      range.lte = dateOnly.test(endDate)
+        ? getDayBoundsInTimezone(endDate, timezone).end
+        : new Date(endDate);
+    }
+    return range;
+  }
+
   async getSales(tenantId: string, query: SalesQueryDto) {
     const { branchId, userId, status, paymentMethod, startDate, endDate, page = 1, limit = 50 } = query;
     const skip = (page - 1) * limit;
@@ -460,11 +501,8 @@ export class SalesService {
     if (status) where.status = status;
     if (paymentMethod) where.paymentMethod = paymentMethod;
 
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
-    }
+    const createdAt = await this.resolveCreatedAtRange(tenantId, branchId, startDate, endDate);
+    if (createdAt) where.createdAt = createdAt;
 
     const [sales, total] = await Promise.all([
       this.prisma.sale.findMany({
@@ -855,11 +893,8 @@ export class SalesService {
 
     if (branchId) where.branchId = branchId;
 
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
-    }
+    const createdAt = await this.resolveCreatedAtRange(tenantId, branchId, startDate, endDate);
+    if (createdAt) where.createdAt = createdAt;
 
     // Filter for sales with outstanding balance
     const sales = await this.prisma.sale.findMany({

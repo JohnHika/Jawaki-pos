@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import 'price_adjustment_widget.dart';
+import '../../../../core/utils/format.dart';
 
 class CartItemTile extends ConsumerWidget {
   final CartItem item;
@@ -37,7 +38,11 @@ class CartItemTile extends ConsumerWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          border: Border.all(color: Theme.of(context).dividerColor),
+          border: Border.all(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? DesignColors.darkBorder
+                : DesignColors.surfaceBorder,
+          ),
         ),
         child: Row(
           children: [
@@ -80,8 +85,8 @@ class CartItemTile extends ConsumerWidget {
                       // gesture. This icon is the same removeItem() call,
                       // just a second, always-visible entry point.
                       SizedBox(
-                        width: 36,
-                        height: 36,
+                        width: 44,
+                        height: 44,
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
@@ -90,7 +95,8 @@ class CartItemTile extends ConsumerWidget {
                             onTap: () => _confirmRemove(context, ref, item),
                             child: Icon(
                               Icons.close_rounded,
-                              size: 18,
+                              semanticLabel: 'Remove item',
+                              size: 20,
                               color: Theme.of(context).disabledColor,
                             ),
                           ),
@@ -118,11 +124,11 @@ class CartItemTile extends ConsumerWidget {
                       vertical: 2,
                     ),
                     child: Text(
-                      'KES ${item.total.toStringAsFixed(0)}',
+                      formatMoney(item.total),
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: DesignColors.brand,
-                      ),
+                            fontWeight: FontWeight.bold,
+                            color: DesignColors.brand,
+                          ),
                     ),
                   ),
                 ),
@@ -168,7 +174,8 @@ class CartItemTile extends ConsumerWidget {
   Widget _buildDetailBlock(BuildContext context) {
     final disabledColor = Theme.of(context).disabledColor;
     final soldByTier = item.saleUnit != null && item.saleQuantity != null;
-    final displayQty = soldByTier ? item.saleQuantity! : item.quantity.toDouble();
+    final displayQty =
+        soldByTier ? item.saleQuantity! : item.quantity.toDouble();
     final displayUnit = soldByTier ? item.saleUnit! : 'unit';
     final perUnitPrice = soldByTier
         ? item.unitPrice * (item.unitConversionFactor ?? 1)
@@ -181,8 +188,8 @@ class CartItemTile extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${_formatQty(displayQty)} $displayUnit × KES ${perUnitPrice.toStringAsFixed(0)} '
-          '= KES ${subtotal.toStringAsFixed(0)}',
+          '${_formatQty(displayQty)} $displayUnit × ${formatMoney(perUnitPrice)} '
+          '= ${formatMoney(subtotal)}',
           style: TextStyle(color: disabledColor, fontSize: 12),
         ),
         if (showsStockImpact) ...[
@@ -197,7 +204,7 @@ class CartItemTile extends ConsumerWidget {
           Row(
             children: [
               Text(
-                'KES ${subtotal.toStringAsFixed(0)}',
+                formatMoney(subtotal),
                 style: TextStyle(
                   color: disabledColor,
                   fontSize: 11,
@@ -215,7 +222,7 @@ class CartItemTile extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
                 ),
                 child: Text(
-                  '-KES ${item.discount.toStringAsFixed(0)}',
+                  '-${formatMoney(item.discount)}',
                   style: const TextStyle(
                     color: DesignColors.success,
                     fontSize: 10,
@@ -259,8 +266,8 @@ class _QuantityControls extends ConsumerWidget {
             icon: Icons.remove,
             onPressed: item.quantity > 1
                 ? () => ref
-                      .read(cartProvider.notifier)
-                      .updateQuantity(item.productId, item.quantity - 1)
+                    .read(cartProvider.notifier)
+                    .updateQuantity(item.productId, item.quantity - 1)
                 : null,
           ),
           Container(
@@ -304,9 +311,13 @@ class _QuantityButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          // 18dp icon + 13dp padding = 44dp: a comfortable thumb target for
+          // a control used constantly at the till.
+          padding: const EdgeInsets.all(13),
           child: Icon(
             icon,
+            semanticLabel:
+                icon == Icons.add ? 'Increase quantity' : 'Decrease quantity',
             size: 18,
             color: onPressed != null ? null : Theme.of(context).disabledColor,
           ),
@@ -315,4 +326,3 @@ class _QuantityButton extends StatelessWidget {
     );
   }
 }
-

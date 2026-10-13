@@ -7,7 +7,9 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
+import '../../domain/cash_tender.dart';
 import '../providers/payment_provider.dart';
+import '../widgets/cash_tender_sheet.dart';
 
 enum PaymentMethod {
   cash,
@@ -45,6 +47,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         leading: Container(
           margin: const EdgeInsets.only(left: DesignSpacing.xs),
           child: IconButton(
+            tooltip: 'Back',
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
@@ -81,77 +84,82 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Order Total Card
-            GlassCard(
-              padding: const EdgeInsets.all(DesignSpacing.xl),
-              borderRadius: DesignSpacing.radiusXl,
-              blur: 8,
-              tint: DesignColors.accent.withValues(alpha: 0.08),
-              borderColor: DesignColors.accent.withValues(alpha: 0.15),
-              child: Column(
-                children: [
-                  Text(
-                    'Total Amount',
-                    style: TextStyle(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                      fontSize: DesignType.chatBody,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: DesignSpacing.sm),
-                  Text(
-                    'KES ${cart.total.toStringAsFixed(2)}',
-                    style: DesignType.numeric(
-                      color: isDark
-                          ? DesignColors.darkTextPrimary
-                          : DesignColors.textPrimary,
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: DesignSpacing.xs),
-                  Text(
-                    '${cart.itemCount} items',
-                    style: TextStyle(
-                      color: isDark
-                          ? DesignColors.darkTextSecondary
-                          : DesignColors.textSecondary,
-                      fontSize: DesignType.chatBody,
-                    ),
-                  ),
-                  if (cart.customerName != null) ...[
-                    const SizedBox(height: DesignSpacing.md - 2),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: DesignSpacing.md + 2,
-                          vertical: DesignSpacing.sm - 2),
-                      decoration: BoxDecoration(
-                        color: DesignColors.accent.withValues(alpha: 0.12),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        border: Border.all(
-                            color: DesignColors.accent.withValues(alpha: 0.25)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.person_rounded,
-                              size: 15, color: DesignColors.accent),
-                          const SizedBox(width: DesignSpacing.sm - 2),
-                          Text(
-                            cart.customerName!,
-                            style: const TextStyle(
-                                color: DesignColors.accent,
-                                fontSize: DesignType.chatBody - 1,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
+            // Order Total Card — full width (the column is start-aligned, so
+            // without this the card shrinks to its text and sits off-centre).
+            SizedBox(
+              width: double.infinity,
+              child: GlassCard(
+                padding: const EdgeInsets.all(DesignSpacing.xl),
+                borderRadius: DesignSpacing.radiusXl,
+                blur: 8,
+                tint: DesignColors.accent.withValues(alpha: 0.08),
+                borderColor: DesignColors.accent.withValues(alpha: 0.15),
+                child: Column(
+                  children: [
+                    Text(
+                      'Total Amount',
+                      style: TextStyle(
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
+                        fontSize: DesignType.chatBody,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
+                    const SizedBox(height: DesignSpacing.sm),
+                    Text(
+                      'KES ${cart.total.toStringAsFixed(2)}',
+                      style: DesignType.numeric(
+                        color: isDark
+                            ? DesignColors.darkTextPrimary
+                            : DesignColors.textPrimary,
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.xs),
+                    Text(
+                      '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'}',
+                      style: TextStyle(
+                        color: isDark
+                            ? DesignColors.darkTextSecondary
+                            : DesignColors.textSecondary,
+                        fontSize: DesignType.chatBody,
+                      ),
+                    ),
+                    if (cart.customerName != null) ...[
+                      const SizedBox(height: DesignSpacing.md - 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.md + 2,
+                            vertical: DesignSpacing.sm - 2),
+                        decoration: BoxDecoration(
+                          color: DesignColors.accent.withValues(alpha: 0.12),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                          border: Border.all(
+                              color:
+                                  DesignColors.accent.withValues(alpha: 0.25)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.person_rounded,
+                                size: 15, color: DesignColors.accent),
+                            const SizedBox(width: DesignSpacing.sm - 2),
+                            Text(
+                              cart.customerName!,
+                              style: const TextStyle(
+                                  color: DesignColors.accent,
+                                  fontSize: DesignType.chatBody - 1,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             const SizedBox(height: DesignSpacing.xxl),
@@ -252,8 +260,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 padding: const EdgeInsets.all(DesignSpacing.md),
                 decoration: BoxDecoration(
                   color: DesignColors.error.withValues(alpha: 0.1),
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusMd),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   border: Border.all(
                       color: DesignColors.error.withValues(alpha: 0.2)),
                 ),
@@ -321,14 +328,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final paymentNotifier = ref.read(paymentProvider.notifier);
 
     String? result;
+    double cashChangeDue = 0;
 
     switch (_selectedMethod!) {
       case PaymentMethod.cash:
+        // Ask what the customer handed over so the cashier sees the change to
+        // give back; cancelling the sheet abandons the sale untouched.
+        final tendered = await showCashTenderSheet(context, total: cart.total);
+        if (tendered == null || !mounted) return;
         result = await paymentNotifier.processCashPayment(
           amount: cart.total,
           items: cart.items,
           customerId: cart.customerId,
         );
+        cashChangeDue = cashChange(total: cart.total, tendered: tendered);
         break;
       case PaymentMethod.mpesa:
         if (_phoneController.text.isEmpty) {
@@ -430,6 +443,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ref.invalidate(filteredProductsProvider);
       ref.invalidate(favoriteProductsProvider);
       context.go('/receipt/$result');
+      // Shown after navigating so the cashier still sees the change figure on
+      // the receipt screen while handing the money back.
+      if (cashChangeDue > 0) {
+        showGlassSnackBar(
+          context,
+          'Give change: KES ${cashChangeDue.toStringAsFixed(cashChangeDue.truncateToDouble() == cashChangeDue ? 0 : 2)}',
+          icon: Icons.payments_rounded,
+          color: DesignColors.accent,
+        );
+      }
     }
   }
 
@@ -481,8 +504,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             : DesignColors.textSecondary)),
                 const SizedBox(height: DesignSpacing.lg),
                 ConstrainedBox(
-                  constraints:
-                      BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                  constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.45),
                   child: SingleChildScrollView(
                     child: Column(
                       children: rows.asMap().entries.map((entry) {
@@ -514,8 +537,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                                           border: InputBorder.none),
                                       items: const [
                                         DropdownMenuItem(
-                                            value: 'CASH',
-                                            child: Text('Cash')),
+                                            value: 'CASH', child: Text('Cash')),
                                         DropdownMenuItem(
                                             value: 'MPESA',
                                             child: Text('M-Pesa')),
@@ -605,8 +627,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             ? DesignColors.warning
                             : DesignColors.success)
                         .withValues(alpha: 0.1),
-                    borderRadius:
-                        BorderRadius.circular(DesignSpacing.radiusMd),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: Text(
                     remaining > 0.01

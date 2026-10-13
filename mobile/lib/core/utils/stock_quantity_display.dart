@@ -33,6 +33,30 @@ String _formatStockNumber(num value) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
+/// Units that read the same for any count ("20 dozen", "5 kg").
+const _invariantUnits = <String>{
+  'dozen', 'half dozen', 'kg', 'g', 'mg', 'l', 'ml', 'm', 'cm', 'mm', 'oz',
+  'lb', 'lbs', 'pcs', 'ltr', 'sqm',
+};
+
+/// "bale" -> "bales", "box" -> "boxes" when [quantity] is not exactly 1.
+/// Units that are already plural or never change (dozen, kg, ml) are untouched.
+String pluralizeUnit(String unit, num quantity) {
+  final trimmed = unit.trim();
+  if (trimmed.isEmpty || quantity == 1) return trimmed;
+  final lower = trimmed.toLowerCase();
+  if (_invariantUnits.contains(lower)) return trimmed;
+  if (lower.endsWith('s') && !lower.endsWith('ss')) return trimmed;
+  if (RegExp(r'(ss|x|z|ch|sh)$').hasMatch(lower)) return '${trimmed}es';
+  if (RegExp(r'[^aeiou]y$').hasMatch(lower)) {
+    return '${trimmed.substring(0, trimmed.length - 1)}ies';
+  }
+  return '${trimmed}s';
+}
+
+String _quantityWithUnit(num quantity, String unit) =>
+    '${_formatStockNumber(quantity)} ${pluralizeUnit(unit, quantity)}';
+
 StockQuantityPresentation buildStockQuantityPresentation({
   required num baseQuantity,
   required String baseUnit,
@@ -52,20 +76,20 @@ StockQuantityPresentation buildStockQuantityPresentation({
 
   if (!canUsePreferredUnit) {
     return StockQuantityPresentation(
-      primary: '${_formatStockNumber(baseQuantity)} $normalizedBaseUnit',
+      primary: _quantityWithUnit(baseQuantity, normalizedBaseUnit),
       lastReceived: lastReceivedQuantity == null
           ? null
-          : 'Last received: ${_formatStockNumber(lastReceivedQuantity)} $normalizedBaseUnit',
+          : 'Last received: ${_quantityWithUnit(lastReceivedQuantity, normalizedBaseUnit)}',
     );
   }
 
   return StockQuantityPresentation(
     primary:
-        '${_formatStockNumber(baseQuantity.toDouble() / conversion)} $normalizedPreferredUnit',
-    secondary: '${_formatStockNumber(baseQuantity)} $normalizedBaseUnit',
+        _quantityWithUnit(baseQuantity.toDouble() / conversion, normalizedPreferredUnit),
+    secondary: _quantityWithUnit(baseQuantity, normalizedBaseUnit),
     lastReceived: lastReceivedQuantity == null
         ? null
-        : 'Last received: ${_formatStockNumber(lastReceivedQuantity)} $normalizedPreferredUnit',
+        : 'Last received: ${_quantityWithUnit(lastReceivedQuantity, normalizedPreferredUnit)}',
   );
 }
 

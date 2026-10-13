@@ -7,6 +7,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../widgets/add_edit_product_sheet.dart';
+import '../../../../core/utils/format.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final String productId;
@@ -165,6 +166,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           decoration: BoxDecoration(
             color: surface,
             border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
           ),
           child: Column(
             children: [
@@ -247,7 +249,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'KES ${product.price.toStringAsFixed(0)}',
+                          formatMoney(product.price),
                           style: DesignType.numeric(
                             fontSize: 22,
                             color: titleColor,
@@ -256,7 +258,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         if (product.costPrice != null) ...[
                           const SizedBox(height: DesignSpacing.xs - 2),
                           Text(
-                            'Cost: KES ${product.costPrice!.toStringAsFixed(0)}',
+                            'Cost: ${formatMoney(product.costPrice!)}',
                             style: DesignType.numeric(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
@@ -325,7 +327,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
           padding: const EdgeInsets.all(DesignSpacing.lg),
           decoration:
-              BoxDecoration(color: surface, border: Border.all(color: border)),
+              BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
           child: Text(
             product.description?.isNotEmpty == true
                 ? product.description!
@@ -350,7 +352,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           margin: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
           padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs),
           decoration:
-              BoxDecoration(color: surface, border: Border.all(color: border)),
+              BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
           child: Column(
             children: [
               _detailRow(Icons.qr_code_rounded, 'SKU', product.sku,
@@ -389,7 +391,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   Icons.inventory_2_outlined,
                   '${tier.unit[0].toUpperCase()}${tier.unit.substring(1)} Pricing',
                   '${tier.unit} (${tier.quantityPerUnit} ${product.unit}) — '
-                      'KES ${tier.price.toStringAsFixed(0)}',
+                  '${formatMoney(tier.price)}',
                   secondaryColor,
                   titleColor,
                 ),

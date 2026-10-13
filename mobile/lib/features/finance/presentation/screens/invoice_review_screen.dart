@@ -529,7 +529,7 @@ class _InvoiceItemCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
         decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border)),
+            BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -698,7 +698,7 @@ class _InvoiceTotalsCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.lg),
-      decoration: BoxDecoration(color: fill, border: Border.all(color: border)),
+      decoration: BoxDecoration(color: fill, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
       child: Column(
         children: [
           _row('Total', total, secondaryColor, titleColor),

@@ -811,7 +811,7 @@ class _ErrorPanel extends StatelessWidget {
                 child: Text(message,
                     style: const TextStyle(
                         color: DesignColors.darkTextSecondary))),
-            IconButton(
+            IconButton(tooltip: 'Dismiss', 
                 onPressed: onDismiss,
                 icon: const Icon(Icons.close_rounded,
                     color: DesignColors.darkTextTertiary)),

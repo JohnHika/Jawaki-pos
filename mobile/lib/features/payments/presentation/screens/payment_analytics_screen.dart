@@ -101,7 +101,7 @@ class _PaymentAnalyticsScreenState
       appBar: BrandedAppBar(
         title: 'Payment Analytics',
         actions: [
-          IconButton(
+          IconButton(tooltip: 'Refresh', 
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadPaymentData,
           ),
@@ -516,7 +516,7 @@ class _PaymentAnalyticsScreenState
                         final index = value.toInt();
                         if (index >= 0 && index < _transactionTrends.length) {
                           final date = DateTime.parse(
-                              _transactionTrends[index]['date'] ?? '');
+                              _transactionTrends[index]['date'] ?? '').toLocal();
                           final time = _selectedPeriod == 0
                               ? '${date.hour}:00'
                               : '${date.day}/${date.month}';

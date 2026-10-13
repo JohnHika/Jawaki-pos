@@ -267,7 +267,15 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                         floatingLabelBehavior: FloatingLabelBehavior.auto,
                         prefixIcon:
                             Icon(Icons.category_outlined, color: tertiaryColor),
+                        // The wrapping Container already draws the field box;
+                        // without these the theme added a second outline inside.
+                        filled: false,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                       ),
                       dropdownColor:
                           isDark ? DesignColors.darkSurface : Colors.white,
@@ -579,7 +587,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: TextStyle(color: titleColor),
             decoration: InputDecoration(
-              labelText: 'Reorder when below (optional)',
+              labelText: 'Low-stock alert at',
               hintStyle: TextStyle(color: tertiaryColor),
               labelStyle: TextStyle(
                 color: secondaryColor,
@@ -797,6 +805,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     fontWeight: FontWeight.w600,
                   ),
                   decoration: InputDecoration(
+                    labelText: 'Price',
                     hintText: '0.00',
                     hintStyle: TextStyle(
                       color: tertiaryColor,

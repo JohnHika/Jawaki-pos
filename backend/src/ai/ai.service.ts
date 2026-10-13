@@ -1490,7 +1490,7 @@ ${dto.tool_access
     }
 
     if (keyInsights.length === 0) {
-      keyInsights.push('No live POS totals were included, so this answer is based on business operating patterns.');
+      keyInsights.push('No sales figures were available for this period, so these tips are based on typical retail patterns.');
     }
 
     if (problems.length === 0) {
@@ -1529,7 +1529,7 @@ ${dto.tool_access
       ? `KES ${totalSales.toLocaleString('en-KE')}${transactions ? ` from ${transactions} transaction(s)` : ''}`
       : 'the available POS activity';
 
-    return `For ${branch}, I reviewed ${salesText} with a ${focus} focus. The best next step is to protect fast-moving stock, improve basket value, and turn slow stock back into cash.`;
+    return `For ${branch}, I reviewed ${salesText} with a ${focus.replace(/_/g, ' ')} focus. The best next step is to protect fast-moving stock, improve basket value, and turn slow stock back into cash.`;
   }
 
   private formatBusinessResponse(response: BusinessResponse): string {

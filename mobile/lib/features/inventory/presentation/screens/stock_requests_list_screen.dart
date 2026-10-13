@@ -226,7 +226,7 @@ class _StockRequestsListScreenState
           onTap: () => _showRequestDetails(request),
           child: Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: surface, border: Border.all(color: border)),
+            decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
             child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
