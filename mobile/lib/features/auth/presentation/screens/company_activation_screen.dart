@@ -214,7 +214,7 @@ class _CompanyActivationScreenState
     final hasCheckout = reference != null && reference.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: DesignColors.darkBg,
+      backgroundColor: context.themed(DesignColors.darkBg),
       body: SafeArea(
         child: Stack(
           children: [
@@ -241,7 +241,7 @@ class _CompanyActivationScreenState
                       'Activate your workspace',
                       style:
                           Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                color: DesignColors.darkTextPrimary,
+                                color: context.themed(DesignColors.darkTextPrimary),
                                 fontWeight: FontWeight.w800,
                                 height: 1.05,
                               ),
@@ -256,7 +256,7 @@ class _CompanyActivationScreenState
                           ? 'Your company is created. One payment unlocks the Axon POS workspace.'
                           : '$companyName is created. Complete activation before using Axon POS.',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: DesignColors.darkTextSecondary,
+                            color: context.themed(DesignColors.darkTextSecondary),
                             height: 1.45,
                           ),
                     ),
@@ -310,9 +310,9 @@ class _CompanyActivationScreenState
                               : 'I completed payment — check status',
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: DesignColors.darkTextPrimary,
+                          foregroundColor: context.themed(DesignColors.darkTextPrimary),
                           side: BorderSide(
-                            color: DesignColors.darkTextTertiary
+                            color: context.themed(DesignColors.darkTextTertiary)
                                 .withValues(alpha: 0.45),
                           ),
                           minimumSize: const Size.fromHeight(52),
@@ -328,7 +328,7 @@ class _CompanyActivationScreenState
                     'Secure checkout powered by Paystack. Axon will only unlock the workspace after the payment is verified by the server.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: DesignColors.darkTextTertiary,
+                          color: context.themed(DesignColors.darkTextTertiary),
                           height: 1.4,
                         ),
                   ),
@@ -367,7 +367,7 @@ class _CompanyActivationScreenState
               Text(
                 'AXON / ACTIVATION',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: DesignColors.darkTextPrimary,
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.6,
                     ),
@@ -395,7 +395,7 @@ class _CompanyActivationScreenState
         gradient: LinearGradient(
           colors: [
             DesignColors.brand.withValues(alpha: 0.24),
-            DesignColors.darkSurfaceElevated,
+            context.themed(DesignColors.darkSurfaceElevated),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -415,7 +415,7 @@ class _CompanyActivationScreenState
                 Text(
                   'Axon workspace activation',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: DesignColors.darkTextPrimary,
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w700,
                       ),
                 ),
@@ -425,7 +425,7 @@ class _CompanyActivationScreenState
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: DesignColors.darkTextSecondary),
+                      ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
                 ),
               ],
             ),
@@ -433,7 +433,7 @@ class _CompanyActivationScreenState
           Text(
             'KSh 35,000',
             style: DesignType.numeric(
-              color: DesignColors.darkTextPrimary,
+              color: context.themed(DesignColors.darkTextPrimary),
               fontWeight: FontWeight.w900,
               fontSize: 18,
             ),
@@ -452,9 +452,9 @@ class _CompanyActivationScreenState
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurface.withValues(alpha: 0.82),
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-        border: Border.all(color: DesignColors.darkBorder),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
       ),
       child: Column(
         children: items
@@ -464,12 +464,12 @@ class _CompanyActivationScreenState
                 leading: const Icon(Icons.check_circle_rounded,
                     color: DesignColors.accent, size: 22),
                 title: Text(item.$1,
-                    style: const TextStyle(
-                        color: DesignColors.darkTextPrimary,
+                    style: TextStyle(
+                        color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w700)),
                 subtitle: Text(item.$2,
                     style:
-                        const TextStyle(color: DesignColors.darkTextSecondary)),
+                        TextStyle(color: context.themed(DesignColors.darkTextSecondary))),
               ),
             )
             .toList(),

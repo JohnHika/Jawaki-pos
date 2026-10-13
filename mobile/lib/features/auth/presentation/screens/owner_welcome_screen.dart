@@ -114,7 +114,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
     final name = widget.companyName?.trim();
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: DesignColors.darkBg,
+      backgroundColor: context.themed(DesignColors.darkBg),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadOnboarding,
@@ -140,7 +140,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                       : 'Welcome to Axon POS',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.headlineMedium?.copyWith(
-                      color: DesignColors.darkTextPrimary,
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w800),
                 ),
               ),
@@ -152,7 +152,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                   'Your workspace is ready. Complete the essentials now or safely return later.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                      color: DesignColors.darkTextSecondary, height: 1.4),
+                      color: context.themed(DesignColors.darkTextSecondary), height: 1.4),
                 ),
               ),
               const SizedBox(height: DesignSpacing.lg + 2),
@@ -215,15 +215,15 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
           const Icon(Icons.cloud_off_outlined,
               color: DesignColors.warning, size: 36),
           const SizedBox(height: 12),
-          const Text('Could not load your onboarding checklist',
+          Text('Could not load your onboarding checklist',
               style: TextStyle(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          const Text(
+          Text(
               'You can still add products now and retry the checklist when online.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: DesignColors.darkTextSecondary)),
+              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary))),
           TextButton.icon(
               onPressed: _loadOnboarding,
               icon: const Icon(Icons.refresh_rounded),
@@ -238,7 +238,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('$completed of ${steps.length} completed',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: DesignColors.darkTextPrimary,
+              color: context.themed(DesignColors.darkTextPrimary),
               fontWeight: FontWeight.w800)),
       const SizedBox(height: DesignSpacing.sm),
       LinearProgressIndicator(
@@ -268,12 +268,12 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
       margin: const EdgeInsets.only(bottom: DesignSpacing.md - 2),
       padding: const EdgeInsets.all(DesignSpacing.lg - 2),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurfaceElevated,
+        color: context.themed(DesignColors.darkSurfaceElevated),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         border: Border.all(
             color: isDone
                 ? DesignColors.success.withValues(alpha: 0.45)
-                : DesignColors.darkBorder),
+                : context.themed(DesignColors.darkBorder)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -288,12 +288,12 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                     style: Theme.of(context)
                         .textTheme
                         .titleSmall
-                        ?.copyWith(color: DesignColors.darkTextPrimary)),
+                        ?.copyWith(color: context.themed(DesignColors.darkTextPrimary))),
                 Text(detail.subtitle,
                     style: Theme.of(context)
                         .textTheme
                         .labelMedium
-                        ?.copyWith(color: DesignColors.darkTextSecondary)),
+                        ?.copyWith(color: context.themed(DesignColors.darkTextSecondary))),
               ])),
           _statusBadge(status),
         ]),
@@ -384,7 +384,7 @@ class _FeatureChip extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .labelMedium
-                  ?.copyWith(color: DesignColors.darkTextSecondary))
+                  ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)))
         ]),
       );
 }

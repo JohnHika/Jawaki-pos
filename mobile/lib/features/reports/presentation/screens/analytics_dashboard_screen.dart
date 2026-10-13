@@ -427,6 +427,7 @@ class _AnalyticsDashboardScreenState
                             (_hourlySales[i]['totalAmount'] ?? 0).toDouble()),
                     ],
                     isCurved: true,
+                    preventCurveOverShooting: true,
                     gradient: const LinearGradient(
                       colors: [DesignColors.brand, DesignColors.brandLight],
                     ),

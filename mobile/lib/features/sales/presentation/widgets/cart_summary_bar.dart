@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
@@ -16,30 +17,30 @@ class CartSummaryBar extends ConsumerWidget {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return GlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+    // Floating rounded bar (slides up when the first item is added).
+    return FadeSlideIn(
+      distance: 28,
+      duration: const Duration(milliseconds: 420),
+      child: Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+      child: GlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
       margin: EdgeInsets.zero,
-      borderRadius: 0,
+      borderRadius: 24,
       blur: 20,
-      tint: isDark
-          ? DesignColors.darkSurfaceElevated.withValues(alpha:0.95)
-          : Colors.white.withValues(alpha:0.95),
-      borderColor: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+      tint: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+      borderColor:
+          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight,
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withValues(alpha:isDark ? 0.4 : 0.08),
-          blurRadius: 16,
-          offset: const Offset(0, -4),
-        ),
-        BoxShadow(
-          color: Colors.black.withValues(alpha:isDark ? 0.2 : 0.04),
-          blurRadius: 32,
-          offset: const Offset(0, -8),
+          color: isDark
+              ? Colors.black.withValues(alpha: 0.45)
+              : const Color(0xFF8A6B45).withValues(alpha: 0.18),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
         ),
       ],
-      child: SafeArea(
-        top: false,
-        child: Row(
+      child: Row(
           children: [
             // Cart Icon with Badge (Pulse Animation)
             PulseAnimation(
@@ -67,7 +68,9 @@ class CartSummaryBar extends ConsumerWidget {
                   Positioned(
                     top: -4,
                     right: -4,
-                    child: TweenAnimationBuilder<int>(
+                    child: BadgeBounce(
+                      value: cartState.itemCount,
+                      child: TweenAnimationBuilder<int>(
                       duration: DesignAnimation.fast,
                       tween: IntTween(
                         begin: 0,
@@ -92,15 +95,15 @@ class CartSummaryBar extends ConsumerWidget {
                           child: Text(
                             '$value',
                             style: const TextStyle(
-                              color: Colors.black,
+                              color: Colors.white,
                               fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w800,
                             ),
                             textAlign: TextAlign.center,
                           ),
                         );
                       },
-                    ),
+                    )),
                   ),
                 ],
               ),
@@ -146,8 +149,9 @@ class CartSummaryBar extends ConsumerWidget {
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
-                    child: Text(
+                    child: CountUpText(
                       formatMoney(cartState.total),
+                      duration: const Duration(milliseconds: 450),
                       style: DesignType.numeric(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -168,13 +172,13 @@ class CartSummaryBar extends ConsumerWidget {
               icon: Icons.arrow_forward_rounded,
               onPressed: () => context.push('/cart'),
               height: 44,
-              borderRadius: 12,
+              borderRadius: 16,
               expanded: false,
             ),
           ],
         ),
       ),
-    );
+    ));
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../providers/catalog_provider.dart';
 
 class CategoryChips extends ConsumerWidget {
@@ -28,11 +29,12 @@ class CategoryChips extends ConsumerWidget {
     final selectedId = ref.watch(selectedCategoryProvider);
 
     return SizedBox(
-      height: 48,
+      height: 58,
       child: categoriesAsync.when(
         data: (categories) => ListView.builder(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           itemCount: categories.length + 1,
           itemBuilder: (context, index) {
             if (index == 0) {
@@ -93,14 +95,13 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const chipColor = DesignColors.brand;
+    const chipColor = DesignColors.accent;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: AnimatedContainer(
-        duration: DesignAnimation.fast,
-        curve: DesignAnimation.smooth,
+      child: TapScale(
+        scale: 0.94,
         child: GestureDetector(
           onTap: onTap,
           child: AnimatedContainer(
@@ -108,8 +109,10 @@ class _CategoryChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected
-                  ? chipColor.withValues(alpha: 0.15)
-                  : (isDark ? DesignColors.glassDark : DesignColors.glassWhite),
+                  ? (isDark
+                      ? chipColor.withValues(alpha: 0.18)
+                      : DesignColors.peach)
+                  : (isDark ? DesignColors.glassDark : Colors.white),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
               border: Border.all(
                 color: isSelected
@@ -122,9 +125,9 @@ class _CategoryChip extends StatelessWidget {
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        color: chipColor.withValues(alpha: 0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: chipColor.withValues(alpha: 0.22),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ]
                   : null,

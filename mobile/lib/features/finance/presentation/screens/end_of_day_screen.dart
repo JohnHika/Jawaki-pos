@@ -159,7 +159,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         StaggeredItem(
           itemKey: 'eod-summary',
           index: 1,
-          child: GroupedCard(children: [
+          child: GroupedCard(dividerIndent: 14, children: [
             _summaryRow('Total sales', _currencyFmt.format(totalSales), isDark,
                 bold: true),
             _summaryRow('Transactions', '$txns', isDark),
@@ -178,7 +178,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           StaggeredItem(
             itemKey: 'eod-close-details',
             index: 2,
-            child: GroupedCard(children: [
+            child: GroupedCard(dividerIndent: 14, children: [
               _summaryRow(
                   'Counted cash',
                   _currencyFmt.format((close['countedCash'] as num).toDouble()),

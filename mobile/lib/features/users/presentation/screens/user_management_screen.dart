@@ -158,6 +158,7 @@ class _UserCard extends StatelessWidget {
         .toList();
 
     return GroupedCard(
+      showDividers: false,
       margin: const EdgeInsets.only(bottom: DesignSpacing.md + 2),
       children: [
         SettingsRow(

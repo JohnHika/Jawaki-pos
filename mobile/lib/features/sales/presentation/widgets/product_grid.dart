@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
@@ -203,7 +204,10 @@ class _ProductCard extends ConsumerWidget {
                   Positioned(
                     top: 6,
                     right: 6,
-                    child: TweenAnimationBuilder<int>(
+                    child: PopIn(
+                        child: BadgeBounce(
+                      value: quantityInCart,
+                      child: TweenAnimationBuilder<int>(
                       duration: DesignAnimation.fast,
                       tween: IntTween(begin: 0, end: quantityInCart),
                       builder: (context, value, child) {
@@ -229,14 +233,14 @@ class _ProductCard extends ConsumerWidget {
                           child: Text(
                             'x$value',
                             style: const TextStyle(
-                              color: Colors.black,
+                              color: Colors.white,
                               fontSize: 11,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         );
                       },
-                    ),
+                    ))),
                   ),
               ],
             ),

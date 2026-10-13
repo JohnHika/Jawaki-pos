@@ -358,8 +358,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'receipt/:saleId',
                 name: 'receipt',
-                builder: (context, state) =>
-                    ReceiptScreen(saleId: state.pathParameters['saleId']!),
+                builder: (context, state) => ReceiptScreen(
+                  saleId: state.pathParameters['saleId']!,
+                  // ?fresh=1 is set by the payment screen right after a sale:
+                  // that is the only time the receipt celebrates.
+                  celebrate: state.uri.queryParameters['fresh'] == '1',
+                ),
               ),
             ],
           ),

@@ -76,7 +76,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: DesignColors.darkSurface,
+          backgroundColor: context.themed(DesignColors.darkSurface),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusXl)),
           title: Text(
@@ -84,7 +84,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
             style: Theme.of(ctx)
                 .textTheme
                 .titleMedium
-                ?.copyWith(color: DesignColors.darkTextPrimary),
+                ?.copyWith(color: context.themed(DesignColors.darkTextPrimary)),
           ),
           content: TextField(
             controller: controller,
@@ -94,16 +94,16 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
             style: Theme.of(ctx)
                 .textTheme
                 .bodyMedium
-                ?.copyWith(color: DesignColors.darkTextPrimary),
+                ?.copyWith(color: context.themed(DesignColors.darkTextPrimary)),
             decoration: InputDecoration(
               hintText: 'https://your-backend.com/api/v1',
-              hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
+              hintStyle: TextStyle(color: context.themed(DesignColors.darkTextTertiary)),
               labelText: 'Backend API URL',
               labelStyle:
-                  const TextStyle(color: DesignColors.darkTextSecondary),
+                  TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
-                borderSide: const BorderSide(color: DesignColors.darkBorder),
+                borderSide: BorderSide(color: context.themed(DesignColors.darkBorder)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
@@ -172,7 +172,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
+        backgroundColor: context.themed(DesignColors.darkBg),
         body: SafeArea(
           child: Stack(
             children: [
@@ -241,7 +241,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                                     onPressed: _showServerUrlDialog,
                                     style: TextButton.styleFrom(
                                       foregroundColor:
-                                          DesignColors.darkTextTertiary,
+                                          context.themed(DesignColors.darkTextTertiary),
                                     ),
                                     icon: const Icon(Icons.tune_rounded,
                                         size: 16),
@@ -266,7 +266,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                                 .textTheme
                                 .labelMedium
                                 ?.copyWith(
-                                  color: DesignColors.darkTextTertiary,
+                                  color: context.themed(DesignColors.darkTextTertiary),
                                   letterSpacing: 0.2,
                                 ),
                           ),
@@ -303,7 +303,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
               style: DesignType.numeric(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: DesignColors.darkTextSecondary,
+                color: context.themed(DesignColors.darkTextSecondary),
                 letterSpacing: 1.2,
               ),
             ),
@@ -314,7 +314,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
           style: DesignType.numeric(
             fontSize: 10,
             fontWeight: FontWeight.w600,
-            color: DesignColors.darkTextTertiary,
+            color: context.themed(DesignColors.darkTextTertiary),
             letterSpacing: 1,
           ),
         ),
@@ -342,7 +342,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                   height: isCompact ? 102 : 122,
                   padding: const EdgeInsets.all(21),
                   decoration: BoxDecoration(
-                    color: DesignColors.darkSurface.withValues(alpha: 0.92),
+                    color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.92),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: DesignColors.brand.withValues(alpha: 0.55),
@@ -373,7 +373,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                     ? Theme.of(context).textTheme.headlineMedium
                     : Theme.of(context).textTheme.headlineLarge)
                 ?.copyWith(
-              color: DesignColors.darkTextPrimary,
+              color: context.themed(DesignColors.darkTextPrimary),
               height: 1.04,
               fontWeight: FontWeight.w800,
               letterSpacing: -1.5,
@@ -386,7 +386,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
               'Connect your counter, your team, and every sale in one calm operating system.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: DesignColors.darkTextSecondary,
+                    color: context.themed(DesignColors.darkTextSecondary),
                     height: 1.5,
                   ),
             ),
@@ -407,10 +407,10 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
   }) {
     final borderColor = isPrimary
         ? DesignColors.accent.withValues(alpha: 0.72)
-        : DesignColors.darkBorder;
+        : context.themed(DesignColors.darkBorder);
     final surfaceColor = isPrimary
         ? DesignColors.accentSubtle.withValues(alpha: 0.86)
-        : DesignColors.darkSurface.withValues(alpha: 0.94);
+        : context.themed(DesignColors.darkSurface).withValues(alpha: 0.94);
 
     return Material(
       color: Colors.transparent,
@@ -433,7 +433,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                 decoration: BoxDecoration(
                   color: isPrimary
                       ? DesignColors.accent
-                      : DesignColors.darkSurfaceElevated,
+                      : context.themed(DesignColors.darkSurfaceElevated),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                 ),
                 child: Icon(
@@ -441,7 +441,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                   size: 25,
                   color: isPrimary
                       ? DesignColors.textInverse
-                      : DesignColors.darkTextPrimary,
+                      : context.themed(DesignColors.darkTextPrimary),
                 ),
               ),
               const SizedBox(width: 15),
@@ -456,7 +456,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                         fontWeight: FontWeight.w700,
                         color: isPrimary
                             ? DesignColors.accentLight
-                            : DesignColors.darkTextTertiary,
+                            : context.themed(DesignColors.darkTextTertiary),
                         letterSpacing: 0.8,
                       ),
                     ),
@@ -464,7 +464,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                     Text(
                       title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: DesignColors.darkTextPrimary,
+                            color: context.themed(DesignColors.darkTextPrimary),
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.2,
                           ),
@@ -473,7 +473,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: DesignColors.darkTextSecondary,
+                            color: context.themed(DesignColors.darkTextSecondary),
                             height: 1.35,
                           ),
                     ),
@@ -483,7 +483,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: isPrimary
                                 ? DesignColors.accentLight
-                                : DesignColors.darkTextTertiary,
+                                : context.themed(DesignColors.darkTextTertiary),
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.2,
                           ),
@@ -497,7 +497,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                 size: 21,
                 color: isPrimary
                     ? DesignColors.accentLight
-                    : DesignColors.darkTextTertiary,
+                    : context.themed(DesignColors.darkTextTertiary),
               ),
             ],
           ),

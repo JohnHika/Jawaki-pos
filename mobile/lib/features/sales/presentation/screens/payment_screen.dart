@@ -442,7 +442,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ref.invalidate(productsProvider);
       ref.invalidate(filteredProductsProvider);
       ref.invalidate(favoriteProductsProvider);
-      context.go('/receipt/$result');
+      context.go('/receipt/$result?fresh=1');
       // Shown after navigating so the cashier still sees the change figure on
       // the receipt screen while handing the money back.
       if (cashChangeDue > 0) {

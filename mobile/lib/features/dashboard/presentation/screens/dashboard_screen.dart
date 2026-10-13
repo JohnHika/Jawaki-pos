@@ -11,6 +11,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/services/export_document_service.dart';
@@ -251,7 +252,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    FadeSlideIn(
+                        from: SlideFrom.left,
+                        distance: 18,
+                        child: Text(
                       identity.userFirstName.isNotEmpty
                           ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
                           : 'Good ${_getGreeting()}',
@@ -265,7 +269,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                     ? DesignColors.darkTextPrimary
                                     : DesignColors.textPrimary,
                           ),
-                    ),
+                    )),
                     const SizedBox(height: DesignSpacing.xs - 2),
                     Text(
                       identity.companyName,

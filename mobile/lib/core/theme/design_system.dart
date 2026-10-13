@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../widgets/motion.dart';
+import '../widgets/motion_kit.dart';
 
 /// ═══════════════════════════════════════════════════════════════
 /// AXON POS DESIGN SYSTEM — v2
@@ -106,16 +107,18 @@ class DesignColors {
 
   // Light-mode surfaces (used only where a screen forces light mode,
   // e.g. printable receipts) — warm paper, not cold gray.
-  static const Color surface = Color(0xFFFBF9F4);
-  static const Color surfaceMuted = Color(0xFFF3F0E8);
-  static const Color surfaceSubtle = Color(0xFFEDEADF);
-  static const Color surfaceBorder = Color(0xFFDDD8C8);
-  static const Color surfaceBorderLight = Color(0xFFE7E3D5);
+  static const Color surface = Color(0xFFFFFDFA);
+  static const Color surfaceMuted = Color(0xFFF8F3EC);
+  static const Color surfaceSubtle = Color(0xFFF1E9DE);
+  static const Color surfaceBorder = Color(0xFFE6DDCF);
+  static const Color surfaceBorderLight = Color(0xFFEFE8DC);
+  // Peach wash behind hero areas / selected chips in light mode.
+  static const Color peach = Color(0xFFFFEFE2);
 
   // Light-mode text
   static const Color textPrimary = Color(0xFF1A1610);
   static const Color textSecondary = Color(0xFF6B6455);
-  static const Color textTertiary = Color(0xFF9A9280);
+  static const Color textTertiary = Color(0xFF8C8473);
   static const Color textInverse = Color(0xFF0B0A0F);
   static const Color textOnBrand = Color(0xFFFFFFFF);
 
@@ -165,6 +168,23 @@ class DesignSpacing {
       EdgeInsets.symmetric(horizontal: 16, vertical: 16);
   static const EdgeInsets paddingCard = EdgeInsets.all(16);
   static const EdgeInsets paddingCardLg = EdgeInsets.all(20);
+}
+
+// ─── Shadows ──────────────────────────────────────────────────────
+class DesignShadows {
+  /// Soft, warm lift for white cards on the cream light-mode page. Dark mode
+  /// stays flat (borders carry the separation there).
+  static List<BoxShadow> soft(bool isDark) => isDark
+      ? const []
+      : const [
+          BoxShadow(
+              color: Color(0x178A6B45),
+              blurRadius: 22,
+              spreadRadius: -2,
+              offset: Offset(0, 8)),
+          BoxShadow(
+              color: Color(0x0D8A6B45), blurRadius: 3, offset: Offset(0, 1)),
+        ];
 }
 
 // ─── Animations ───────────────────────────────────────────────────
@@ -315,11 +335,11 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
     final base = widget.baseColor ??
         (isDark
             ? DesignColors.darkSurfaceElevated
-            : const Color(0xFFE2E8F0));
+            : DesignColors.surfaceSubtle);
     final highlight = widget.highlightColor ??
         (isDark
             ? DesignColors.darkBorder
-            : const Color(0xFFF1F5F9));
+            : const Color(0xFFFFFBF5));
 
     return AnimatedBuilder(
       animation: _animation,
@@ -482,7 +502,9 @@ class GlassCard extends StatelessWidget {
     final effectiveTint =
         isDark ? rawTint : Color.alphaBlend(rawTint, Colors.white);
     final effectiveBorder = borderColor ??
-        (isDark ? DesignColors.glassDarkBorder : DesignColors.glassBorder);
+        (isDark
+            ? DesignColors.glassDarkBorder
+            : DesignColors.surfaceBorderLight);
 
     final card = Container(
       padding: padding,
@@ -495,14 +517,16 @@ class GlassCard extends StatelessWidget {
         boxShadow: boxShadow ??
             [
               BoxShadow(
-                color: (isDark ? Colors.black : Colors.black)
-                    .withValues(alpha: isDark ? 0.3 : 0.06),
-                blurRadius: blur,
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.3)
+                    : const Color(0xFF8A6B45).withValues(alpha: 0.10),
+                blurRadius: isDark ? blur : blur * 2.5,
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: (isDark ? Colors.black : Colors.black)
-                    .withValues(alpha: isDark ? 0.2 : 0.03),
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.2)
+                    : const Color(0xFF8A6B45).withValues(alpha: 0.05),
                 blurRadius: blur * 0.5,
                 offset: const Offset(0, 2),
               ),
@@ -774,7 +798,7 @@ class MetricCard extends StatelessWidget {
         : DesignColors.textTertiary;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -785,6 +809,7 @@ class MetricCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: surface,
               border: Border.all(color: border),
+            boxShadow: DesignShadows.soft(isDark),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             ),
             child: Column(
@@ -822,7 +847,7 @@ class MetricCard extends StatelessWidget {
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: CountUpText(
                     value,
                     style: DesignType.numeric(
                       fontSize: 21,
@@ -885,7 +910,10 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return PopIn(
+        beginScale: 0.85,
+        duration: const Duration(milliseconds: 380),
+        child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
@@ -913,20 +941,20 @@ class StatusBadge extends StatelessWidget {
               ),
             ),
           if (icon != null) ...[
-            Icon(icon, color: textColor ?? color, size: 12),
+            Icon(icon, color: textColor ?? context.readable(color), size: 12),
             const SizedBox(width: 4),
           ],
           Text(
             label,
             style: TextStyle(
-              color: textColor ?? color,
+              color: textColor ?? context.readable(color),
               fontSize: fontSize,
               fontWeight: FontWeight.w700,
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -955,12 +983,17 @@ class SectionHeader extends StatelessWidget {
     final subtitleColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
 
-    return Padding(
+    return FadeSlideIn(
+        from: SlideFrom.left,
+        distance: 10,
+        child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, color: DesignColors.accent, size: 18),
+            PopIn(
+                delay: const Duration(milliseconds: 120),
+                child: Icon(icon, color: DesignColors.accent, size: 18)),
             const SizedBox(width: 10),
           ],
           Expanded(
@@ -995,7 +1028,7 @@ class SectionHeader extends StatelessWidget {
             ),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -1035,40 +1068,54 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: color.withValues(alpha: 0.12)),
+            PopIn(
+              child: Floating(
+                child: Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: isDark ? 0.08 : 0.10),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: color.withValues(alpha: 0.14)),
+                  ),
+                  child: Icon(icon,
+                      size: 34, color: color.withValues(alpha: 0.65)),
+                ),
               ),
-              child: Icon(icon, size: 32, color: color.withValues(alpha: 0.5)),
             ),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: titleColor,
+            const SizedBox(height: 16),
+            FadeSlideIn(
+              delay: const Duration(milliseconds: 120),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: titleColor,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 8),
-              Text(
-                subtitle!,
-                style: TextStyle(fontSize: 14, color: subtitleColor),
-                textAlign: TextAlign.center,
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 200),
+                child: Text(
+                  subtitle!,
+                  style: TextStyle(fontSize: 14, color: subtitleColor),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 20),
-              GradientButton(
-                label: actionLabel!,
-                icon: Icons.refresh_rounded,
-                onPressed: onAction,
-                height: 44,
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 300),
+                child: GradientButton(
+                  label: actionLabel!,
+                  icon: Icons.refresh_rounded,
+                  onPressed: onAction,
+                  height: 44,
+                ),
               ),
             ],
           ],
@@ -1358,9 +1405,11 @@ class QuickActionTile extends StatelessWidget {
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
 
-    return Material(
+    return TapScale(
+        enabled: onTap != null,
+        child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -1371,6 +1420,7 @@ class QuickActionTile extends StatelessWidget {
             color: surface,
             borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             border: Border.all(color: border),
+            boxShadow: DesignShadows.soft(isDark),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1401,7 +1451,7 @@ class QuickActionTile extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -1536,10 +1586,12 @@ class ListCard extends StatelessWidget {
     final chevronColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
-    return Material(
+    return TapScale(
+        enabled: onTap != null,
+        child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -1550,6 +1602,7 @@ class ListCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: surface,
             border: Border.all(color: border),
+            boxShadow: DesignShadows.soft(isDark),
             // Every other list row/card in the app is rounded; this one was
             // square, with a ripple that spilled past its corners.
             borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
@@ -1595,7 +1648,7 @@ class ListCard extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -1610,17 +1663,27 @@ class GroupedCard extends StatelessWidget {
   final List<Widget> children;
   final EdgeInsetsGeometry margin;
 
+  /// Hairline between rows. Turn off when the children are one logical row
+  /// split in two (e.g. a person row plus its role badges).
+  final bool showDividers;
+
+  /// Left inset of the hairline: 60 aligns under an icon badge's text; use a
+  /// small value for rows that start with plain text.
+  final double dividerIndent;
+
   const GroupedCard({
     super.key,
     required this.children,
     this.margin = const EdgeInsets.only(bottom: 20),
+    this.showDividers = true,
+    this.dividerIndent = 60,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
@@ -1629,17 +1692,18 @@ class GroupedCard extends StatelessWidget {
         color: surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border),
+            boxShadow: DesignShadows.soft(isDark),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           for (var i = 0; i < children.length; i++) ...[
             children[i],
-            if (i != children.length - 1)
+            if (showDividers && i != children.length - 1)
               Divider(
                 height: 1,
                 thickness: 1,
-                indent: 60,
+                indent: dividerIndent,
                 color: border.withValues(alpha: 0.6),
               ),
           ],
@@ -1823,7 +1887,7 @@ class SettingsSheetScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorderLight;
     final subtitleColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
@@ -1883,7 +1947,10 @@ class SettingsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AlertDialog(
+    return PopIn(
+        beginScale: 0.9,
+        duration: const Duration(milliseconds: 340),
+        child: AlertDialog(
       backgroundColor: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 4),
@@ -1900,7 +1967,7 @@ class SettingsDialog extends StatelessWidget {
       ),
       content: content,
       actions: actions,
-    );
+    ));
   }
 }
 
@@ -1924,7 +1991,9 @@ class SettingsPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fill = color ?? DesignColors.accent;
-    return FilledButton(
+    return TapScale(
+        enabled: onPressed != null && !isLoading,
+        child: FilledButton(
       onPressed: isLoading ? null : onPressed,
       style: FilledButton.styleFrom(
         backgroundColor: fill,
@@ -1944,7 +2013,7 @@ class SettingsPrimaryButton extends StatelessWidget {
               ),
             )
           : Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-    );
+    ));
   }
 }
 
@@ -2011,7 +2080,10 @@ Future<bool> showConfirmDialog(
           isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
       final messageColor =
           isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-      return AlertDialog(
+      return PopIn(
+        beginScale: 0.88,
+        duration: const Duration(milliseconds: 340),
+        child: AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         ),
@@ -2020,10 +2092,14 @@ Future<bool> showConfirmDialog(
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: confirmColor ?? DesignColors.error,
-              size: 36,
+            PopIn(
+              delay: const Duration(milliseconds: 140),
+              beginScale: 0.3,
+              child: Icon(
+                Icons.warning_amber_rounded,
+                color: confirmColor ?? DesignColors.error,
+                size: 36,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -2077,7 +2153,7 @@ Future<bool> showConfirmDialog(
             ],
           ),
         ],
-      );
+      ));
     },
   );
 
@@ -2102,7 +2178,10 @@ void showGlassSnackBar(
       content: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, color: color ?? DesignColors.success, size: 20),
+            PopIn(
+              beginScale: 0.2,
+              child: Icon(icon, color: color ?? DesignColors.success, size: 20),
+            ),
             const SizedBox(width: 10),
           ],
           Expanded(
@@ -2497,6 +2576,16 @@ class _BackButton extends StatelessWidget {
 /// mode and its light-theme counterpart otherwise, so the screen follows the
 /// app's Light/Dark setting without being rewritten token by token.
 extension ThemedDarkTokens on BuildContext {
+  /// A bright semantic colour (success green, warning amber, info sky…) is
+  /// fine on dark surfaces but washes out on white. In light mode this
+  /// returns a deeper shade of the same hue so text/icons stay readable.
+  Color readable(Color c) {
+    if (Theme.of(this).brightness == Brightness.dark) return c;
+    final hsl = HSLColor.fromColor(c);
+    if (hsl.lightness <= 0.45) return c;
+    return hsl.withLightness(0.36).withSaturation((hsl.saturation * 0.95).clamp(0.0, 1.0)).toColor();
+  }
+
   Color themed(Color darkToken) {
     if (Theme.of(this).brightness == Brightness.dark) return darkToken;
     if (darkToken == DesignColors.darkBg) return DesignColors.surfaceMuted;

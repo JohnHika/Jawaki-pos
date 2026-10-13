@@ -95,7 +95,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
+        backgroundColor: context.themed(DesignColors.darkBg),
         body: SafeArea(
           child: Stack(
             children: [
@@ -108,7 +108,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   Text(
                     'Choose your plan',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: DesignColors.darkTextPrimary,
+                          color: context.themed(DesignColors.darkTextPrimary),
                           fontWeight: FontWeight.w800,
                           height: 1.05,
                         ),
@@ -119,7 +119,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         ? 'Your 7-day trial is active. Choose the plan that should continue after the trial ends.'
                         : '${widget.companyName} is activated. Choose the plan that should continue after your 7-day trial.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: DesignColors.darkTextSecondary,
+                        color: context.themed(DesignColors.darkTextSecondary),
                         height: 1.45,
                     ),
                   ),
@@ -156,7 +156,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                     'The KSh 35,000 activation payment is complete. Your first 7 days are free; monthly billing begins when the trial ends.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DesignColors.darkTextTertiary,
+                        color: context.themed(DesignColors.darkTextTertiary),
                         height: 1.4,
                     ),
                   ),
@@ -195,10 +195,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'AXON / SUBSCRIPTION',
                 style: TextStyle(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.6,
                 ),
@@ -238,7 +238,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               ? LinearGradient(
                   colors: [
                     DesignColors.brand.withValues(alpha: 0.24),
-                    DesignColors.darkSurfaceElevated,
+                    context.themed(DesignColors.darkSurfaceElevated),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -246,12 +246,12 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               : null,
           color: isSelected
               ? null
-              : DesignColors.darkSurface.withValues(alpha: 0.82),
+              : context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: isSelected
                 ? DesignColors.brand.withValues(alpha: 0.55)
-                : DesignColors.darkBorder,
+                : context.themed(DesignColors.darkBorder),
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
@@ -272,7 +272,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                           Text(
                             plan.name,
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                color: DesignColors.darkTextPrimary,
+                                color: context.themed(DesignColors.darkTextPrimary),
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 1.2,
                             ),
@@ -305,7 +305,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       Text(
                         plan.tagline,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: DesignColors.darkTextSecondary,
+                            color: context.themed(DesignColors.darkTextSecondary),
                             height: 1.35,
                         ),
                       ),
@@ -344,7 +344,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       style: DesignType.numeric(
                         fontSize: 30,
                         fontWeight: FontWeight.w900,
-                        color: DesignColors.darkTextPrimary,
+                        color: context.themed(DesignColors.darkTextPrimary),
                       ),
                     ),
                   ),
@@ -355,7 +355,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   child: Text(
                     '/month',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: DesignColors.darkTextTertiary,
+                        color: context.themed(DesignColors.darkTextTertiary),
                     ),
                   ),
                 ),
@@ -364,7 +364,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             const SizedBox(height: 14),
             Container(
               height: 1,
-              color: DesignColors.darkBorder,
+              color: context.themed(DesignColors.darkBorder),
             ),
             const SizedBox(height: 14),
             ...plan.features.map(
@@ -384,7 +384,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         feature.text,
                         style: Theme.of(context).textTheme.bodySmall
                             ?.copyWith(
-                          color: DesignColors.darkTextSecondary,
+                          color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.3,
                         ),
                       ),
@@ -426,7 +426,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 Text(
                   'One-time setup fee',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: DesignColors.darkTextPrimary,
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -434,7 +434,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 Text(
                   '${_setupFeeKsh()} gets your business fully onboarded before your trial starts.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: DesignColors.darkTextSecondary,
+                      color: context.themed(DesignColors.darkTextSecondary),
                       height: 1.35,
                   ),
                 ),
@@ -461,7 +461,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
         Text(
           'Compare features',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: DesignColors.darkTextPrimary,
+                color: context.themed(DesignColors.darkTextPrimary),
                 fontWeight: FontWeight.w800,
               ),
         ),
@@ -469,29 +469,29 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
         Text(
           'See exactly what you get with each plan.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: DesignColors.darkTextTertiary,
+              color: context.themed(DesignColors.darkTextTertiary),
               height: 1.4,
           ),
         ),
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: DesignColors.darkSurface.withValues(alpha: 0.82),
+            color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: DesignColors.darkBorder),
+            border: Border.all(color: context.themed(DesignColors.darkBorder)),
           ),
           child: Column(
             children: [
               // Header row — feature-name column + one column per plan.
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                decoration: const BoxDecoration(
-                  color: DesignColors.darkSurfaceElevated,
-                  borderRadius: BorderRadius.vertical(
+                decoration: BoxDecoration(
+                  color: context.themed(DesignColors.darkSurfaceElevated),
+                  borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
                   border: Border(
-                    bottom: BorderSide(color: DesignColors.darkBorder),
+                    bottom: BorderSide(color: context.themed(DesignColors.darkBorder)),
                   ),
                 ),
                 child: Row(
@@ -501,13 +501,13 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                       child: Text(
                         'Feature',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: DesignColors.darkTextTertiary,
+                            color: context.themed(DesignColors.darkTextTertiary),
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.5,
                         ),
                       ),
                     ),
-                    _buildPlanColumnHeader('CORE', DesignColors.darkTextPrimary),
+                    _buildPlanColumnHeader('CORE', context.themed(DesignColors.darkTextPrimary)),
                     _buildPlanColumnHeader('BUSINESS', DesignColors.accent),
                     _buildPlanColumnHeader('ENTERPRISE', DesignColors.brand),
                   ],
@@ -552,8 +552,8 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
         child: included
             ? const Icon(Icons.check_circle_rounded,
                 color: DesignColors.success, size: 20)
-            : const Icon(Icons.remove_rounded,
-                color: DesignColors.darkTextTertiary, size: 18),
+            : Icon(Icons.remove_rounded,
+                color: context.themed(DesignColors.darkTextTertiary), size: 18),
       ),
     );
   }
@@ -564,7 +564,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       decoration: BoxDecoration(
         border: Border(
           bottom:
-              BorderSide(color: DesignColors.darkBorder.withValues(alpha: 0.5)),
+              BorderSide(color: context.themed(DesignColors.darkBorder).withValues(alpha: 0.5)),
         ),
       ),
       child: Row(
@@ -574,7 +574,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             child: Text(
               feature.text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                   height: 1.35,
               ),
             ),

@@ -450,7 +450,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final minStock = (item['minStock'] as int?) ?? 0;
     final category = item['categoryName'] as String? ?? 'Uncategorised';
     final productId = item['id'] as String? ?? '';
-    final stockColor = _stockColor(stock, minStock);
+    final stockColor = context.readable(_stockColor(stock, minStock));
     final stockIcon = _stockIcon(stock, minStock);
     final stockPresentation = buildStockQuantityPresentation(
       baseQuantity: stock,

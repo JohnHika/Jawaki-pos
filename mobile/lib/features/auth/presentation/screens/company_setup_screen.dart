@@ -280,7 +280,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         splashFactory: InkRipple.splashFactory,
       ),
       child: Scaffold(
-        backgroundColor: DesignColors.darkBg,
+        backgroundColor: context.themed(DesignColors.darkBg),
         body: SafeArea(
           child: Form(
             key: _formKey,
@@ -531,7 +531,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           style: Theme.of(context)
               .textTheme
               .labelMedium
-              ?.copyWith(color: DesignColors.darkTextTertiary, height: 1.4),
+              ?.copyWith(color: context.themed(DesignColors.darkTextTertiary), height: 1.4),
         ),
       ],
     );
@@ -575,7 +575,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(color: DesignColors.darkTextSecondary)),
+              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary))),
           const SizedBox(height: 8),
           TextFormField(
             controller: controller,
@@ -584,16 +584,16 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             maxLines: maxLines,
             inputFormatters: inputFormatters,
             autovalidateMode: autovalidateMode,
-            style: const TextStyle(color: DesignColors.darkTextPrimary),
+            style: TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: const TextStyle(color: DesignColors.darkTextTertiary),
-              prefixIcon: Icon(icon, color: DesignColors.darkTextSecondary),
+              hintStyle: TextStyle(color: context.themed(DesignColors.darkTextTertiary)),
+              prefixIcon: Icon(icon, color: context.themed(DesignColors.darkTextSecondary)),
               filled: true,
-              fillColor: DesignColors.darkSurfaceElevated,
+              fillColor: context.themed(DesignColors.darkSurfaceElevated),
               errorMaxLines: 2,
-              border: _inputBorder(DesignColors.darkBorder),
-              enabledBorder: _inputBorder(DesignColors.darkBorder),
+              border: _inputBorder(context.themed(DesignColors.darkBorder)),
+              enabledBorder: _inputBorder(context.themed(DesignColors.darkBorder)),
               focusedBorder: _inputBorder(DesignColors.brand, width: 1.5),
               errorBorder: _inputBorder(DesignColors.error),
               focusedErrorBorder: _inputBorder(DesignColors.error, width: 1.5),
@@ -673,13 +673,13 @@ class _Header extends StatelessWidget {
             IconButton(
               tooltip: 'Back',
               onPressed: onBack,
-              icon: const Icon(Icons.arrow_back_rounded,
-                  color: DesignColors.darkTextPrimary),
+              icon: Icon(Icons.arrow_back_rounded,
+                  color: context.themed(DesignColors.darkTextPrimary)),
             ),
-            const Expanded(
+            Expanded(
               child: Text('AXON / SETUP',
                   style: TextStyle(
-                      color: DesignColors.darkTextSecondary,
+                      color: context.themed(DesignColors.darkTextSecondary),
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2)),
             ),
@@ -703,7 +703,7 @@ class _Header extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: index <= step
                                 ? DesignColors.accent
-                                : DesignColors.darkBorder,
+                                : context.themed(DesignColors.darkBorder),
                             borderRadius:
                                 BorderRadius.circular(DesignSpacing.radiusFull),
                           ),
@@ -716,7 +716,7 @@ class _Header extends StatelessWidget {
                 style: Theme.of(context)
                     .textTheme
                     .labelMedium
-                    ?.copyWith(color: DesignColors.darkTextTertiary)),
+                    ?.copyWith(color: context.themed(DesignColors.darkTextTertiary))),
           ),
         ]),
       );
@@ -738,13 +738,13 @@ class _StepContent extends StatelessWidget {
         itemKey: 'setup-step-title-$title',
         child: Text(title,
             style: theme.textTheme.headlineMedium?.copyWith(
-                color: DesignColors.darkTextPrimary,
+                color: context.themed(DesignColors.darkTextPrimary),
                 fontWeight: FontWeight.w800)),
       ),
       const SizedBox(height: DesignSpacing.md),
       Text(subtitle,
           style: theme.textTheme.titleMedium
-              ?.copyWith(color: DesignColors.darkTextSecondary, height: 1.4)),
+              ?.copyWith(color: context.themed(DesignColors.darkTextSecondary), height: 1.4)),
       const SizedBox(height: DesignSpacing.xxxl - 4),
       ...children,
     ]);
@@ -766,21 +766,21 @@ class _VerificationCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: DesignColors.darkSurfaceElevated,
+          color: context.themed(DesignColors.darkSurfaceElevated),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          border: Border.all(color: DesignColors.darkBorder),
+          border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(icon, color: DesignColors.accent),
           const SizedBox(height: 12),
           Text(title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: DesignColors.darkTextPrimary,
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: DesignSpacing.sm - 2),
           Text(subtitle,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: DesignColors.darkTextSecondary, height: 1.4)),
+                  color: context.themed(DesignColors.darkTextSecondary), height: 1.4)),
           const SizedBox(height: DesignSpacing.lg + 2),
           child,
         ]),
@@ -809,12 +809,12 @@ class _ErrorPanel extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
                 child: Text(message,
-                    style: const TextStyle(
-                        color: DesignColors.darkTextSecondary))),
+                    style: TextStyle(
+                        color: context.themed(DesignColors.darkTextSecondary)))),
             IconButton(tooltip: 'Dismiss', 
                 onPressed: onDismiss,
-                icon: const Icon(Icons.close_rounded,
-                    color: DesignColors.darkTextTertiary)),
+                icon: Icon(Icons.close_rounded,
+                    color: context.themed(DesignColors.darkTextTertiary))),
           ]),
         ),
       );

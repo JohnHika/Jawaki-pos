@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../subscription/domain/subscription_plans.dart';
 import '../../domain/billing_entitlement.dart';
 import '../providers/entitlement_provider.dart';
@@ -471,22 +472,29 @@ class _SubscriptionBillingScreenState
     final badgeColor = _statusColor(entitlement.status);
     final days = entitlement.daysRemaining ?? 0;
     final nextPayment = entitlement.paidUntil;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    return FadeSlideIn(
+        child: Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            DesignColors.brand.withValues(alpha: 0.14),
-            context.themed(DesignColors.darkSurfaceElevated),
-          ],
+          colors: isDark
+              ? [
+                  DesignColors.brand.withValues(alpha: 0.14),
+                  DesignColors.darkSurfaceElevated,
+                ]
+              : const [Color(0xFFFFE6D2), Colors.white],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
         border: Border.all(
-          color: DesignColors.brand.withValues(alpha: 0.32),
+          color: isDark
+              ? DesignColors.brand.withValues(alpha: 0.32)
+              : DesignColors.accent.withValues(alpha: 0.28),
         ),
+        boxShadow: DesignShadows.soft(isDark),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -498,12 +506,13 @@ class _SubscriptionBillingScreenState
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha: 0.15),
+                  color: (isDark ? DesignColors.brand : DesignColors.accent)
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.subscriptions_rounded,
-                  color: DesignColors.brand,
+                  color: isDark ? DesignColors.brand : DesignColors.accent,
                   size: 24,
                 ),
               ),
@@ -552,7 +561,7 @@ class _SubscriptionBillingScreenState
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
+              CountUpText(
                 _amountLabel(entitlement),
                 style: DesignType.numeric(
                   fontSize: 28,
@@ -602,7 +611,7 @@ class _SubscriptionBillingScreenState
           _buildDaysProgressBar(days),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
@@ -679,7 +688,7 @@ class _SubscriptionBillingScreenState
                 letterSpacing: 0.6,
               ),
             ),
-            Text(
+            CountUpText(
               '$daysRemaining',
               style: DesignType.numeric(
                 fontSize: 12,
@@ -690,14 +699,11 @@ class _SubscriptionBillingScreenState
           ],
         ),
         const SizedBox(height: DesignSpacing.sm),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
-          child: LinearProgressIndicator(
-            value: fraction,
-            minHeight: 6,
-            backgroundColor: context.themed(DesignColors.darkBorder),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
+        AnimatedProgressBar(
+          value: fraction,
+          height: 6,
+          color: color,
+          trackColor: context.themed(DesignColors.darkBorder),
         ),
       ],
     );

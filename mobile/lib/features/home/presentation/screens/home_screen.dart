@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/auth/app_roles.dart';
@@ -327,21 +328,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
+      // Floating pill bar: the active tab is an orange chip that springs in,
+      // the bar itself hovers above the page on a soft warm shadow.
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: isDark ? DesignColors.darkBg : DesignColors.surface,
-          border: Border(
-            top: BorderSide(
-              color:
-                  isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
-              width: 1,
-            ),
-          ),
-        ),
+        color: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
         child: SafeArea(
           top: false,
-          child: SizedBox(
-            height: 64,
+          minimum: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            height: 66,
+            decoration: BoxDecoration(
+              color: isDark ? DesignColors.darkSurface : Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                color: isDark
+                    ? DesignColors.darkBorder
+                    : DesignColors.surfaceBorderLight,
+              ),
+              boxShadow: DesignShadows.soft(isDark),
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -446,8 +452,8 @@ class _NavItemWidget extends ConsumerWidget {
                           ? DesignColors.accent
                           : (isDark
                               ? DesignColors.darkSurfaceElevated
-                              : DesignColors.surfaceMuted),
-                      borderRadius: BorderRadius.circular(16),
+                              : Colors.white),
+                      borderRadius: BorderRadius.circular(18),
                       border: isSelected
                           ? null
                           : Border.all(
@@ -456,6 +462,20 @@ class _NavItemWidget extends ConsumerWidget {
                                   : DesignColors.surfaceBorder,
                               width: 1.2,
                             ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: DesignColors.accent
+                              .withValues(alpha: isSelected ? 0.35 : 0.0),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                        if (!isDark && !isSelected)
+                          const BoxShadow(
+                            color: Color(0x228A6B45),
+                            blurRadius: 14,
+                            offset: Offset(0, 5),
+                          ),
+                      ],
                     ),
                     child: Center(
                       child: AxonAiIcon(
@@ -486,43 +506,46 @@ class _NavItemWidget extends ConsumerWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: Container(
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: isSelected ? DesignColors.accent : Colors.transparent,
-                width: 2,
-              ),
-            ),
-          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                isSelected ? item.activeIcon : item.icon,
-                color: isSelected
-                    ? (isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary)
-                    : inactiveColor,
-                size: 22,
+              GlowOnSelect(
+                selected: isSelected,
+                radius: 16,
+                child: AnimatedContainer(
+                  duration: DesignAnimation.normal,
+                  curve: Curves.easeOutBack,
+                  width: isSelected ? 54 : 38,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: isSelected ? DesignColors.accent : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: SpringIcon(
+                      icon: isSelected ? item.activeIcon : item.icon,
+                      color: isSelected ? Colors.white : inactiveColor,
+                      size: 21,
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               FittedBox(
                 fit: BoxFit.scaleDown,
-                child: Text(item.label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w600,
-                      color: isSelected
-                          ? (isDark
-                              ? DesignColors.darkTextPrimary
-                              : DesignColors.textPrimary)
-                          : inactiveColor,
-                    )),
+                child: AnimatedDefaultTextStyle(
+                  duration: DesignAnimation.fast,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? DesignColors.accent : inactiveColor,
+                  ),
+                  child: Text(item.label),
+                ),
               ),
             ],
           ),

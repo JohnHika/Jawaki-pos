@@ -501,7 +501,7 @@ class ProductsScreen extends ConsumerWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
         // Pressed state: the InkWell ripple doubles as press feedback while
         // the container keeps its selected/unselected styling.
         child: ConstrainedBox(
@@ -515,12 +515,17 @@ class ProductsScreen extends ConsumerWidget {
                 horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
             decoration: BoxDecoration(
               color: selected
-                  ? DesignColors.accent
+                  ? (isDark
+                      ? DesignColors.accent.withValues(alpha: 0.18)
+                      : DesignColors.peach)
                   : isDark
                       ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceSubtle,
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-              border: Border.all(color: borderColor),
+                      : Colors.white,
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
+              border: Border.all(
+                  color: selected
+                      ? DesignColors.accent.withValues(alpha: 0.55)
+                      : borderColor),
             ),
             child: Center(
               child: Text(
@@ -528,7 +533,7 @@ class ProductsScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected
-                          ? Colors.black
+                          ? DesignColors.accentDark
                           : (isDark
                               ? DesignColors.darkTextPrimary
                               : DesignColors.textPrimary),

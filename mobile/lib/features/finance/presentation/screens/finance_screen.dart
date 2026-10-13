@@ -927,7 +927,8 @@ class _MetricCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     FinanceScreen.currencyFmt.format(value),
-                    style: DesignType.numeric(fontSize: 20, color: color),
+                    style: DesignType.numeric(
+                        fontSize: 20, color: context.readable(color)),
                   ),
                 ),
               ])));
@@ -941,11 +942,12 @@ class _CountCard extends StatelessWidget {
       child: ListTile(
           minTileHeight: DesignSpacing.huge,
           leading:
-              const Icon(Icons.event_busy_rounded, color: DesignColors.warning),
+              Icon(Icons.event_busy_rounded,
+                  color: context.readable(DesignColors.warning)),
           title: const Text('Overdue'),
           trailing: Text('$overdue',
               style: DesignType.numeric(
-                  fontSize: 22, color: DesignColors.warning))));
+                  fontSize: 22, color: context.readable(DesignColors.warning)))));
 }
 
 class _LedgerCard extends StatelessWidget {

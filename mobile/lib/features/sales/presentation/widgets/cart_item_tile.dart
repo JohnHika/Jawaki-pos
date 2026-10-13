@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../providers/cart_provider.dart';
 import 'price_adjustment_widget.dart';
 import '../../../../core/utils/format.dart';
@@ -273,17 +274,25 @@ class _QuantityControls extends ConsumerWidget {
           Container(
             constraints: const BoxConstraints(minWidth: 36),
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              item.saleUnit != null && item.saleQuantity != null
+            child: Builder(builder: (_) {
+              final label = item.saleUnit != null && item.saleQuantity != null
                   ? item.saleQuantity!.toStringAsFixed(
                       item.saleQuantity!.truncateToDouble() == item.saleQuantity
                           ? 0
                           : 1,
                     )
-                  : '${item.quantity}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-            ),
+                  : '${item.quantity}';
+              // The number slides up/fades whenever it changes.
+              return SlideSwitcher(
+                child: Text(
+                  label,
+                  key: ValueKey(label),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              );
+            }),
           ),
           _QuantityButton(
             icon: Icons.add,

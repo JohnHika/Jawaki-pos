@@ -269,6 +269,7 @@ class _InventoryForecastingScreenState
                                 .toDouble()),
                     ],
                     isCurved: true,
+                    preventCurveOverShooting: true,
                     gradient: const LinearGradient(
                       colors: [DesignColors.brand, DesignColors.brandLight],
                     ),

@@ -12,13 +12,18 @@ import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/share_format_sheet.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../providers/sales_provider.dart';
 
 class ReceiptScreen extends ConsumerWidget {
   final String saleId;
 
-  const ReceiptScreen({super.key, required this.saleId});
+  /// Play the success celebration (tick, ripples, confetti). Only true right
+  /// after a sale is completed — never when re-opening an old receipt.
+  final bool celebrate;
+
+  const ReceiptScreen({super.key, required this.saleId, this.celebrate = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,20 +143,28 @@ class ReceiptScreen extends ConsumerWidget {
         ],
       ),
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      body: receiptAsync.when(
-        data: (receipt) =>
-            _buildReceipt(context, receipt, ref.watch(tenantIdentityProvider).logoUrl),
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: DesignColors.accent),
-        ),
-        error: (e, _) => EmptyState(
-          icon: Icons.error_outline_rounded,
-          title: 'Failed to load receipt',
-          subtitle: 'Check your connection and try again.',
-          actionLabel: 'Retry',
-          iconColor: DesignColors.error,
-          onAction: () => ref.refresh(receiptProvider(saleId)),
-        ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: receiptAsync.when(
+              data: (receipt) => _buildReceipt(
+                  context, receipt, ref.watch(tenantIdentityProvider).logoUrl),
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: DesignColors.accent),
+              ),
+              error: (e, _) => EmptyState(
+                icon: Icons.error_outline_rounded,
+                title: 'Failed to load receipt',
+                subtitle: 'Check your connection and try again.',
+                actionLabel: 'Retry',
+                iconColor: DesignColors.error,
+                onAction: () => ref.refresh(receiptProvider(saleId)),
+              ),
+            ),
+          ),
+          if (celebrate && receiptAsync.hasValue)
+            const Positioned.fill(child: ConfettiBurst()),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -194,6 +207,28 @@ class ReceiptScreen extends ConsumerWidget {
       child: Center(
         child: Column(
           children: [
+            if (celebrate && !isVoided) ...[
+              const RippleRings(
+                size: 150,
+                child: AnimatedCheckmark(
+                    size: 76, delay: Duration(milliseconds: 150)),
+              ),
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 500),
+                child: Text(
+                  'Sale complete',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: isDark
+                        ? DesignColors.darkTextPrimary
+                        : DesignColors.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.lg),
+            ],
             // A little "Preview of printed receipt (58mm)" caption so it's
             // clear this mirrors the physical printout.
             Text(

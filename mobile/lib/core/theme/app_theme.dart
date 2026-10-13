@@ -41,7 +41,7 @@ class AppTheme {
         ),
         toolbarHeight: 60,
         shape: const Border(
-          bottom: BorderSide(color: DesignColors.surfaceBorder, width: 1),
+          bottom: BorderSide(color: DesignColors.surfaceBorderLight, width: 1),
         ),
       ),
       // Plain SnackBar()s used the stock flat white/grey bar, which clashed
@@ -62,13 +62,13 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: DesignColors.surface,
+        color: Colors.white,
         elevation: 0,
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          side:
-              const BorderSide(color: DesignColors.surfaceBorder, width: 0.75),
+          side: const BorderSide(
+              color: DesignColors.surfaceBorderLight, width: 0.75),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -119,7 +119,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: DesignColors.surface,
+        fillColor: Colors.white,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         border: OutlineInputBorder(
@@ -128,11 +128,11 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          borderSide: const BorderSide(color: DesignColors.surfaceBorder),
+          borderSide: const BorderSide(color: DesignColors.surfaceBorderLight),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-          borderSide: const BorderSide(color: DesignColors.accent, width: 2),
+          borderSide: const BorderSide(color: DesignColors.accent, width: 1.6),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -178,11 +178,16 @@ class AppTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: DesignColors.surfaceSubtle,
-        selectedColor: DesignColors.brand.withValues(alpha: 0.14),
-        checkmarkColor: DesignColors.brandDark,
+        backgroundColor: Colors.white,
+        selectedColor: DesignColors.peach,
+        checkmarkColor: DesignColors.accentDark,
         side: const BorderSide(color: DesignColors.surfaceBorder),
         deleteIconColor: DesignColors.textSecondary,
+        secondaryLabelStyle: const TextStyle(
+          color: DesignColors.accentDark,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
         labelStyle: const TextStyle(
           color: DesignColors.textPrimary,
           fontSize: 13,
@@ -194,8 +199,8 @@ class AppTheme {
         ),
       ),
       dividerTheme: const DividerThemeData(
-        color: DesignColors.surfaceBorder,
-        thickness: 0.5,
+        color: DesignColors.surfaceBorderLight,
+        thickness: 0.75,
         space: 1,
       ),
       textTheme: DesignType.textTheme
