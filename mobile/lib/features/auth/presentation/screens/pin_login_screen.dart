@@ -536,7 +536,8 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         isSmallScreen ? DesignSpacing.md : DesignSpacing.lg;
     final slotGap = isSmallScreen ? 5.0 : 8.0;
     final availableWidth =
-        screenWidth - 40 - (outerMargin * 2) - (horizontalPadding * 2);
+        // -2 for the card's 1dp border on each side (it used to overflow by 2px)
+        screenWidth - 40 - (outerMargin * 2) - (horizontalPadding * 2) - 4;
     final slotWidth =
         ((availableWidth - (slotGap * (_maxPinLength - 1))) / _maxPinLength)
             .clamp(38.0, isSmallScreen ? 48.0 : 54.0)

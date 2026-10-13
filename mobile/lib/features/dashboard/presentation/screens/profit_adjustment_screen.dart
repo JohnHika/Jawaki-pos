@@ -96,7 +96,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
     final fieldFill = isDark
         ? DesignColors.darkSurfaceElevated
-        : DesignColors.surfaceSubtle;
+        : Colors.white;
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -202,11 +202,11 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                         children: [
                           Text('Your Adjusted Profit:',
                               style: DesignType.numeric(
-                                color: DesignColors.success,
+                                color: context.readable(DesignColors.success),
                               )),
                           Text(currencyFmt.format(_newProfit),
                               style: DesignType.numeric(
-                            color: DesignColors.success,
+                            color: context.readable(DesignColors.success),
                             fontSize: 18,
                           )),
                         ],
@@ -283,15 +283,15 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                   ),
                   child: Column(
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.info_outline_rounded, color: DesignColors.info, size: 20),
-                          SizedBox(width: 8),
+                          Icon(Icons.info_outline_rounded, color: context.readable(DesignColors.info), size: 20),
+                          const SizedBox(width: 8),
                           Text(
                             'Simple Profit Formula',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: DesignColors.info,
+                              color: context.readable(DesignColors.info),
                             ),
                           ),
                         ],

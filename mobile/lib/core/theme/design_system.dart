@@ -1249,7 +1249,7 @@ class PageContainer extends StatelessWidget {
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 960),
-                child: child,
+                child: FadeSlideIn(distance: 10, child: child),
               ),
             ),
           ),
@@ -1525,7 +1525,10 @@ class PaymentChip extends StatelessWidget {
     final idleBorder =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
-    return GestureDetector(
+    return TapScale(
+      enabled: onTap != null,
+      scale: 0.95,
+      child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: DesignAnimation.fast,
@@ -1556,7 +1559,7 @@ class PaymentChip extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -1782,14 +1785,18 @@ class SettingsRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: resolvedIconColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
+                PopIn(
+                  beginScale: 0.7,
+                  duration: const Duration(milliseconds: 420),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: resolvedIconColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: resolvedIconColor, size: 18),
                   ),
-                  child: Icon(icon, color: resolvedIconColor, size: 18),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -1856,17 +1863,21 @@ class SettingsGroupLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: padding,
-      child: Text(
-        label.toUpperCase(),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
-          color: isDark
-              ? DesignColors.darkTextTertiary
-              : DesignColors.textTertiary,
+    return FadeSlideIn(
+      from: SlideFrom.left,
+      distance: 8,
+      child: Padding(
+        padding: padding,
+        child: Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+            color: isDark
+                ? DesignColors.darkTextTertiary
+                : DesignColors.textTertiary,
+          ),
         ),
       ),
     );

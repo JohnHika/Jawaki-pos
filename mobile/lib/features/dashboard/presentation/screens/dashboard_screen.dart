@@ -422,6 +422,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       children: [
                                         Text(
                                           sale.receiptNumber,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodyMedium
