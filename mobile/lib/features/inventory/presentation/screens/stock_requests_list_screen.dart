@@ -113,13 +113,16 @@ class _StockRequestsListScreenState
                     ? DesignColors.darkSurfaceElevated
                     : DesignColors.surfaceBorder.withValues(alpha: 0.3),
                 border: Border.all(color: border),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               ),
               child: TabBar(
                 controller: _tabController,
-                isScrollable: true,
                 labelColor: Colors.black,
                 unselectedLabelColor: secondaryColor,
-                indicator: const BoxDecoration(color: DesignColors.accent),
+                indicator: BoxDecoration(
+                  color: DesignColors.accent,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+                ),
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 indicatorPadding: const EdgeInsets.all(4),

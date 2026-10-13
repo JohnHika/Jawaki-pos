@@ -12,6 +12,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
+import '../../../sales/presentation/providers/catalog_provider.dart' show syncCatalogCacheFromApi;
 import '../widgets/product_picker_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -42,6 +43,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   void initState() {
     super.initState();
     _loadData();
+    // Stock levels live in the local cache that the POS/Products screens fill
+    // from the server. Opened first on a fresh install, Inventory showed every
+    // product at 0 with "20 alerts" and a KES 0 stock value. Refresh the cache
+    // here too (best effort - offline simply keeps whatever is already cached);
+    // the stock stream below reloads the screen when new levels arrive.
+    unawaited(_refreshCatalogCache());
     _stockSubscription = getIt<AppDatabase>().watchAllStock().listen((_) {
       _stockRefreshDebounce?.cancel();
       _stockRefreshDebounce = Timer(const Duration(milliseconds: 100), () {
@@ -56,6 +63,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     _stockRefreshDebounce?.cancel();
     _transferQtyController.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshCatalogCache() async {
+    try {
+      await syncCatalogCacheFromApi();
+      if (mounted) await _loadData(showLoading: false);
+    } catch (e) {
+      debugPrint('Inventory catalog refresh skipped: $e');
+    }
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
@@ -167,7 +183,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ' — reorder below ${_formatUnitQty(reorderPackagingQty)} $tierUnit';
     }
 
-    return '$quantity ${pluralizeUnit(unit, quantity)} left (reorder below $minStock ${pluralizeUnit(unit, minStock)})';
+    return '${_formatUnitQty(quantity.toDouble())} ${pluralizeUnit(unit, quantity)} in stock · reorder below ${_formatUnitQty(minStock.toDouble())}';
   }
 
   List<Map<String, dynamic>> get _filteredInventoryItems {
@@ -280,11 +296,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ? DesignColors.darkSurfaceElevated
                       : DesignColors.surfaceBorder.withValues(alpha: 0.3),
                   border: Border.all(color: border),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
                 child: TabBar(
                   labelColor: Colors.black,
                   unselectedLabelColor: secondaryColor,
-                  indicator: const BoxDecoration(color: DesignColors.accent),
+                  indicator: BoxDecoration(
+                  color: DesignColors.accent,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+                ),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
                   indicatorPadding: const EdgeInsets.all(DesignSpacing.xs),
@@ -693,6 +713,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             isActive: _lowStockItems.isNotEmpty,
           ),
         ),
+        // The restock suggestions screen existed but nothing linked to it.
+        if (permissions.canRecordRestock && _lowStockItems.isNotEmpty) ...[
+          const SizedBox(height: DesignSpacing.sm),
+          OutlinedButton.icon(
+            key: const ValueKey('open-restock-suggestions'),
+            onPressed: () => context.push('/inventory/restock-suggestions'),
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text('See what to reorder'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(DesignSpacing.huge),
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.sm),
+        ],
         if (_lowStockItems.isEmpty)
           Builder(builder: (context) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -856,6 +890,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         decoration: BoxDecoration(
           color: surface,
           border: Border.all(color: severityColor.withValues(alpha: 0.3)),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
         ),
         child: Row(
           children: [
@@ -909,7 +944,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           .textTheme
                           .labelSmall!
                           .copyWith(color: tertiaryColor),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -949,7 +984,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
               ),
               child: Text(
-                quantity == 0 ? 'OUT' : '$quantity left',
+                quantity == 0 ? 'OUT' : '${_formatUnitQty(quantity)} left',
                 style: Theme.of(context).textTheme.labelMedium!.copyWith(
                       color: severityColor,
                       fontWeight: FontWeight.w700,

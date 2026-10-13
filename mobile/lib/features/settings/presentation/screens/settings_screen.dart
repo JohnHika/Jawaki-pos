@@ -26,6 +26,7 @@ import '../../../../core/services/export_document_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/utils/format.dart';
 
 // Settings keys for SharedPreferences. Printer keys delegate to
 // PrinterSettingsKeys (receipt_printer_service.dart) so this screen and
@@ -1720,7 +1721,7 @@ class SettingsScreen extends ConsumerWidget {
         final bytes = await ExportDocumentService.buildPdfReport(
           title: 'Inventory Export',
           companyName: identity.companyName,
-          subtitle: '${data.length} items',
+          subtitle: countLabel(data.length, 'item'),
           logoBytes: logoBytes,
           sections: [
             PdfReportSection(
@@ -1782,7 +1783,7 @@ class SettingsScreen extends ConsumerWidget {
         final bytes = await ExportDocumentService.buildPdfReport(
           title: 'Products Export',
           companyName: identity.companyName,
-          subtitle: '${products.length} products',
+          subtitle: countLabel(products.length, 'product'),
           logoBytes: logoBytes,
           sections: [
             PdfReportSection(heading: 'Products', headers: headers, rows: rows),

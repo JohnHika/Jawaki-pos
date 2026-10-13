@@ -361,7 +361,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                       ),
                       const SizedBox(width: DesignSpacing.sm),
                       PaymentChip(
-                          method: _capitalize(sale.paymentMethod),
+                          method: paymentMethodLabel(sale.paymentMethod),
                           compact: true),
                     ],
                   ),
@@ -428,8 +428,4 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
     );
   }
 
-  String _capitalize(String input) {
-    if (input.isEmpty) return input;
-    return input[0].toUpperCase() + input.substring(1).toLowerCase();
-  }
 }

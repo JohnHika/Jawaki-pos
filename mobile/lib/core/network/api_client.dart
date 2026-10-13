@@ -944,6 +944,41 @@ class ApiClient {
         if (branchId != null) 'branchId': branchId,
       };
 
+  /// `GET /reports/sales/trend` — one row per hour/day/week in the range.
+  Future<List<dynamic>> getSalesTrendReport({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+    String groupBy = 'DAY',
+  }) async {
+    final response = await _dio.get('/reports/sales/trend', queryParameters: {
+      ..._reportFilterParams(
+          startDate: startDate,
+          endDate: endDate,
+          period: period,
+          branchId: branchId),
+      'groupBy': groupBy,
+    });
+    return response.data as List<dynamic>;
+  }
+
+  /// `GET /reports/sales/summary` — totals for the range.
+  Future<Map<String, dynamic>> getSalesSummaryReport({
+    String? startDate,
+    String? endDate,
+    String? period,
+    String? branchId,
+  }) async {
+    final response = await _dio.get('/reports/sales/summary',
+        queryParameters: _reportFilterParams(
+            startDate: startDate,
+            endDate: endDate,
+            period: period,
+            branchId: branchId));
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<List<dynamic>> getCategorySalesReport({
     String? startDate,
     String? endDate,

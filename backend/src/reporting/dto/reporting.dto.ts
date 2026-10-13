@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsUUID, IsEnum, IsNumber, IsArray, IsString } from 'class-validator';
+import { IsDateString, IsOptional, IsUUID, IsEnum, IsNumber, IsArray, IsString, IsInt, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -82,6 +82,19 @@ export class ReportFilterDto {
   @IsOptional()
   @IsEnum(ReportGroupBy)
   groupBy?: ReportGroupBy;
+
+  /**
+   * Row cap for ranked reports (top products). Declared here because the global
+   * ValidationPipe forbids unknown query properties: with `limit` only read via
+   * @Query('limit'), every request that sent it was rejected with a 400.
+   */
+  @ApiPropertyOptional({ minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }
 
 export class SalesSummaryDto {

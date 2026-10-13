@@ -8,6 +8,10 @@ import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/format.dart';
+import 'package:intl/intl.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../reports/domain/analytics_mapping.dart';
 
 class PaymentAnalyticsScreen extends ConsumerStatefulWidget {
   const PaymentAnalyticsScreen({super.key});
@@ -37,60 +41,112 @@ class _PaymentAnalyticsScreenState
   Future<void> _loadPaymentData() async {
     setState(() => _isLoading = true);
 
+    final now = DateTime.now();
+    final DateTime from;
+    final DateTime to;
+    switch (_selectedPeriod) {
+      case 0:
+        from = DateTime(now.year, now.month, now.day);
+        to = from;
+      case 1:
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        from = DateTime(monday.year, monday.month, monday.day);
+        to = DateTime(now.year, now.month, now.day);
+      default:
+        from = DateTime(now.year, now.month, 1);
+        to = DateTime(now.year, now.month, now.day);
+    }
+
     try {
-      final database = getIt<AppDatabase>();
-      final now = DateTime.now();
-
-      switch (_selectedPeriod) {
-        case 0: // Today
-          final startOfDay = DateTime(now.year, now.month, now.day);
-          final endOfDay = startOfDay.add(const Duration(days: 1));
-
-          _paymentSummary =
-              await database.getPaymentSummary(startOfDay, endOfDay);
-          _paymentMethodBreakdown =
-              await database.getSalesByPaymentMethod(startOfDay, endOfDay);
-          _transactionTrends =
-              await database.getHourlySales(startOfDay, endOfDay);
-          _peakHours = await database.getPeakHours(startOfDay, endOfDay);
-
-        case 1: // This Week
-          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-          final endOfWeek = startOfWeek.add(const Duration(days: 7));
-
-          _paymentSummary =
-              await database.getPaymentSummary(startOfWeek, endOfWeek);
-          _paymentMethodBreakdown =
-              await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
-          _transactionTrends =
-              await database.getDailySales(startOfWeek, endOfWeek);
-          _peakHours = await database.getPeakHours(startOfWeek, endOfWeek);
-
-        case 2: // This Month
-          final startOfMonth = DateTime(now.year, now.month, 1);
-          final endOfMonth = DateTime(now.year, now.month + 1, 1);
-
-          _paymentSummary =
-              await database.getPaymentSummary(startOfMonth, endOfMonth);
-          _paymentMethodBreakdown =
-              await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
-          _transactionTrends =
-              await database.getDailySales(startOfMonth, endOfMonth);
-          _peakHours = await database.getPeakHours(startOfMonth, endOfMonth);
-      }
-
-      setState(() => _isLoading = false);
+      // Prefer the server (covers every device); use this device's own records
+      // if offline or the request fails.
+      await _loadFromServer(from, to);
     } catch (e) {
-      if (!kReleaseMode) debugPrint('Payment analytics load error: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-        showGlassSnackBar(
-          context,
-          "Couldn't load payment analytics. Check your connection and try again.",
-          icon: Icons.error_outline_rounded,
-          color: DesignColors.error,
-        );
+      if (!kReleaseMode) debugPrint('Payment analytics server load failed, using local: $e');
+      try {
+        await _loadFromLocal(now);
+      } catch (e2) {
+        if (!kReleaseMode) debugPrint('Payment analytics load error: $e2');
+        if (mounted) {
+          setState(() => _isLoading = false);
+          showGlassSnackBar(
+            context,
+            "Couldn't load payment analytics. Check your connection and try again.",
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
+          );
+        }
+        return;
       }
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadFromServer(DateTime from, DateTime to) async {
+    final api = getIt<ApiClient>();
+    final branchId = getIt<AuthService>().branchId;
+    final fromIso = DateFormat('yyyy-MM-dd').format(from);
+    final toIso = DateFormat('yyyy-MM-dd').format(to);
+    final isToday = _selectedPeriod == 0;
+
+    final results = await Future.wait<Object?>([
+      api.getSalesSummaryReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getPaymentMethodReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getSalesTrendReport(
+          startDate: fromIso,
+          endDate: toIso,
+          branchId: branchId,
+          groupBy: isToday ? 'HOUR' : 'DAY'),
+      // Peak hours always need hourly resolution, even for week/month views.
+      api.getSalesTrendReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId, groupBy: 'HOUR'),
+    ]);
+
+    _paymentMethodBreakdown = paymentsFromServer(results[1]);
+    _paymentSummary = paymentSummaryFromServer(results[0], _paymentMethodBreakdown);
+    _transactionTrends =
+        isToday ? hourlyFromServer(results[2], from) : dailyFromServer(results[2]);
+    _peakHours = peakHoursFromHourly(hourlyFromServer(results[3], from));
+  }
+
+  Future<void> _loadFromLocal(DateTime now) async {
+    final database = getIt<AppDatabase>();
+    switch (_selectedPeriod) {
+      case 0: // Today
+        final startOfDay = DateTime(now.year, now.month, now.day);
+        final endOfDay = startOfDay.add(const Duration(days: 1));
+
+        _paymentSummary =
+            await database.getPaymentSummary(startOfDay, endOfDay);
+        _paymentMethodBreakdown =
+            await database.getSalesByPaymentMethod(startOfDay, endOfDay);
+        _transactionTrends =
+            await database.getHourlySales(startOfDay, endOfDay);
+        _peakHours = await database.getPeakHours(startOfDay, endOfDay);
+
+      case 1: // This Week
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+
+        _paymentSummary =
+            await database.getPaymentSummary(startOfWeek, endOfWeek);
+        _paymentMethodBreakdown =
+            await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
+        _transactionTrends =
+            await database.getDailySales(startOfWeek, endOfWeek);
+        _peakHours = await database.getPeakHours(startOfWeek, endOfWeek);
+
+      case 2: // This Month
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 1);
+
+        _paymentSummary =
+            await database.getPaymentSummary(startOfMonth, endOfMonth);
+        _paymentMethodBreakdown =
+            await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
+        _transactionTrends =
+            await database.getDailySales(startOfMonth, endOfMonth);
+        _peakHours = await database.getPeakHours(startOfMonth, endOfMonth);
     }
   }
 
@@ -263,7 +319,7 @@ class _PaymentAnalyticsScreenState
               Expanded(
                 child: MetricCard(
                   title: 'Total Payments',
-                  value: formatMoney(totalPayments, symbol: 'KSh '),
+                  value: formatMoney(totalPayments),
                   icon: Icons.payments_rounded,
                   color: DesignColors.brand,
                 ),
@@ -285,7 +341,7 @@ class _PaymentAnalyticsScreenState
               Expanded(
                 child: MetricCard(
                   title: 'Avg Payment',
-                  value: formatMoney(avgPayment, symbol: 'KSh '),
+                  value: formatMoney(avgPayment),
                   icon: Icons.calculate_rounded,
                   color: DesignColors.accent,
                 ),
@@ -386,7 +442,7 @@ class _PaymentAnalyticsScreenState
                         const SizedBox(width: DesignSpacing.md),
                         Flexible(
                           child: Text(
-                            '$count transactions',
+                            countLabel(count, 'transaction'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
@@ -414,7 +470,7 @@ class _PaymentAnalyticsScreenState
                         ),
                         const SizedBox(width: DesignSpacing.md),
                         Text(
-                          formatMoney(total, symbol: 'KSh '),
+                          formatMoney(total),
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600,
                               color: color,
@@ -514,6 +570,13 @@ class _PaymentAnalyticsScreenState
                       getTitlesWidget: (value, meta) {
                         if (_transactionTrends.isEmpty) return const Text('');
                         final index = value.toInt();
+                        // Label every few points so neighbours never overprint.
+                        final step = _transactionTrends.length > 24
+                            ? 5
+                            : _transactionTrends.length > 12
+                                ? 4
+                                : (_transactionTrends.length > 7 ? 2 : 1);
+                        if (index % step != 0) return const SizedBox.shrink();
                         if (index >= 0 && index < _transactionTrends.length) {
                           final date = DateTime.parse(
                               _transactionTrends[index]['date'] ?? '').toLocal();
@@ -537,11 +600,18 @@ class _PaymentAnalyticsScreenState
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
+                      // Without a reserved width the label column collapsed and
+                      // each label wrapped letter-by-letter ("K E S 1k").
+                      reservedSize: 44,
                       getTitlesWidget: (value, meta) {
+                        // Skip the topmost (padding) tick and any non-round tick.
+                        if (value == meta.max || value == meta.min && value != 0) {
+                          return const SizedBox.shrink();
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(right: DesignSpacing.sm),
                           child: Text(
-                            'KSh ${(value as num).toInt() ~/ 1000}k',
+                            _compactMoney(value),
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                 color: tertiaryColor,
                             ),
@@ -684,7 +754,7 @@ class _PaymentAnalyticsScreenState
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
-                            '$count transactions',
+                            countLabel(count, 'transaction'),
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: secondaryColor,
                             ),
@@ -700,7 +770,7 @@ class _PaymentAnalyticsScreenState
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              formatMoney(total, symbol: 'KSh '),
+                              formatMoney(total),
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: color,
@@ -751,11 +821,21 @@ class _PaymentAnalyticsScreenState
     return DesignColors.info;
   }
 
-  String _formatPaymentMethod(String method) {
-    return method.split('_').map((word) {
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+
+  /// 1,500 -> "1.5k", 800 -> "800", 2,000,000 -> "2M" (axis ticks stay short).
+  String _compactMoney(double v) {
+    if (v >= 1000000) {
+      final m = v / 1000000;
+      return '${m == m.roundToDouble() ? m.toInt() : m.toStringAsFixed(1)}M';
+    }
+    if (v >= 1000) {
+      final k = v / 1000;
+      return '${k == k.roundToDouble() ? k.toInt() : k.toStringAsFixed(1)}k';
+    }
+    return v.toInt().toString();
   }
+
+  String _formatPaymentMethod(String method) => paymentMethodLabel(method);
 
   String _formatHourLabel(int hour) {
     final period = hour >= 12 ? 'PM' : 'AM';

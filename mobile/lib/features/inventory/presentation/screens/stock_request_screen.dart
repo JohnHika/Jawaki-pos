@@ -618,7 +618,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 96),
         ],
       ),
       );

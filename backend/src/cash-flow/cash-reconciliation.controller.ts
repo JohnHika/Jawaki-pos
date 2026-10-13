@@ -30,7 +30,7 @@ export class CashReconciliationController {
 
   @Get(':branchId')
   @UseGuards(PermissionsGuard)
-  @RequirePermissions('cash_reconciliation.read')
+  @RequirePermissions('cash_reconciliation.view')
   @ApiOperation({ summary: 'Get reconciliation history for a branch' })
   @ApiResponse({ status: 200, description: 'Paginated reconciliation history' })
   async getReconciliations(

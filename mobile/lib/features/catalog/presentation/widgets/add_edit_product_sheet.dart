@@ -360,7 +360,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               height: 52,
               borderRadius: DesignSpacing.radiusMd,
             ),
-            const SizedBox(height: DesignSpacing.sm),
+            const SizedBox(height: 96),
           ],
         ),
       ),

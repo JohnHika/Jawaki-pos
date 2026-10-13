@@ -391,6 +391,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       labelText: labelText,
       hintText: hintText,
       helperText: helperText,
+      helperMaxLines: 2,
+      errorMaxLines: 3,
       helperStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
         color: tertiaryColor,
       ),
@@ -484,6 +486,7 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                     color: surface,
                     border: Border.all(
                         color: DesignColors.brand.withValues(alpha: 0.25)),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

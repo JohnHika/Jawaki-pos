@@ -8,6 +8,7 @@ import '../../../../core/widgets/motion.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../providers/reports_provider.dart';
+import '../../../../core/utils/format.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -288,10 +289,11 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
                 child:
-                    StatusBadge(label: range.label, color: DesignColors.brand),
+                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.brand),
               ),
               const SizedBox(height: DesignSpacing.sm),
               // Report navigation tabs
@@ -341,7 +343,7 @@ class ReportsScreen extends ConsumerWidget {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Total: ${sales.length} sales',
+                              Text('Total: ${countLabel(sales.length, 'sale')}',
                                   style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       color: titleColor)),
@@ -427,10 +429,11 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
                 child:
-                    StatusBadge(label: range.label, color: DesignColors.accent),
+                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.accent),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -501,7 +504,7 @@ class ReportsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: DesignSpacing.xs),
                               Text(
-                                  '${d['count']} transactions  ${pct.toStringAsFixed(1)}%',
+                                  '${countLabel(d['count'], 'transaction')}  ${pct.toStringAsFixed(1)}%',
                                   style: Theme.of(ctx).textTheme.bodySmall),
                             ],
                           ),
@@ -543,10 +546,11 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
                 child:
-                    StatusBadge(label: range.label, color: DesignColors.accent),
+                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.accent),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -572,7 +576,7 @@ class ReportsScreen extends ConsumerWidget {
                                     fontWeight: FontWeight.bold)),
                           ),
                           title: d['cashierId'] as String,
-                          subtitle: '${d['count']} transactions',
+                          subtitle: countLabel(d['count'], 'transaction'),
                           trailing: Text(_currencyFmt.format(d['totalAmount']),
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold,
@@ -615,10 +619,11 @@ class ReportsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: DesignSpacing.sm),
               Align(
                 alignment: Alignment.centerRight,
                 child:
-                    StatusBadge(label: range.label, color: DesignColors.info),
+                    StatusBadge(label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.info),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -689,7 +694,7 @@ class ReportsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: DesignSpacing.xs),
                               Text(
-                                  '${d['totalQty']} items  ${pct.toStringAsFixed(1)}%',
+                                  '${countLabel(d['totalQty'], 'item')}  ${pct.toStringAsFixed(1)}%',
                                   style: Theme.of(ctx).textTheme.bodySmall),
                             ],
                           ),
@@ -734,7 +739,7 @@ class ReportsScreen extends ConsumerWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: StatusBadge(
-                    label: range.label, color: DesignColors.warning),
+                    label: range.label, icon: Icons.calendar_today_rounded, color: DesignColors.warning),
               ),
               const SizedBox(height: DesignSpacing.md),
               Expanded(
@@ -1162,7 +1167,7 @@ class _GlassCardTile extends StatelessWidget {
                       fontSize: 13,
                       color: secondaryColor,
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],

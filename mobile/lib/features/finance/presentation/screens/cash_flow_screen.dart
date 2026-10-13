@@ -147,6 +147,7 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
                           icon: Icons.calculate_outlined,
                           title: m.label,
                           subtitle: m.description,
+                          subtitleMaxLines: 5,
                           trailing: _isChangingMode
                               ? const SizedBox(
                                   width: 18,

@@ -7,6 +7,11 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/utils/format.dart';
+import 'package:intl/intl.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../domain/analytics_mapping.dart';
 
 class AnalyticsDashboardScreen extends ConsumerStatefulWidget {
   const AnalyticsDashboardScreen({super.key});
@@ -37,63 +42,116 @@ class _AnalyticsDashboardScreenState
   Future<void> _loadAnalyticsData() async {
     setState(() => _isLoading = true);
 
+    final now = DateTime.now();
+    final DateTime from;
+    final DateTime to;
+    switch (_selectedPeriod) {
+      case 0:
+        from = DateTime(now.year, now.month, now.day);
+        to = from;
+      case 1:
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        from = DateTime(monday.year, monday.month, monday.day);
+        to = DateTime(now.year, now.month, now.day);
+      default:
+        from = DateTime(now.year, now.month, 1);
+        to = DateTime(now.year, now.month, now.day);
+    }
+
     try {
-      final database = getIt<AppDatabase>();
-      final now = DateTime.now();
-
-      switch (_selectedPeriod) {
-        case 0: // Today
-          final startOfDay = DateTime(now.year, now.month, now.day);
-          final endOfDay = startOfDay.add(const Duration(days: 1));
-
-          _summary = await database.getDashboardSummary();
-          _hourlySales = await database.getHourlySales(startOfDay, endOfDay);
-          _topProducts =
-              await database.getTopProducts(startOfDay, endOfDay, limit: 10);
-          _salesByPayment =
-              await database.getSalesByPaymentMethod(startOfDay, endOfDay);
-          _salesByCategory =
-              await database.getSalesByCategory(startOfDay, endOfDay);
-
-        case 1: // This Week
-          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-          final endOfWeek = startOfWeek.add(const Duration(days: 7));
-
-          _summary = await database.getWeeklySummary(startOfWeek, endOfWeek);
-          _hourlySales = await database.getDailySales(startOfWeek, endOfWeek);
-          _topProducts =
-              await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
-          _salesByPayment =
-              await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
-          _salesByCategory =
-              await database.getSalesByCategory(startOfWeek, endOfWeek);
-
-        case 2: // This Month
-          final startOfMonth = DateTime(now.year, now.month, 1);
-          final endOfMonth = DateTime(now.year, now.month + 1, 0);
-
-          _summary = await database.getMonthlySummary(startOfMonth, endOfMonth);
-          _hourlySales = await database.getDailySales(startOfMonth, endOfMonth);
-          _topProducts = await database.getTopProducts(startOfMonth, endOfMonth,
-              limit: 10);
-          _salesByPayment =
-              await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
-          _salesByCategory =
-              await database.getSalesByCategory(startOfMonth, endOfMonth);
-      }
-
-      setState(() => _isLoading = false);
+      // The shop's own figures come from the server, so a second phone or a
+      // fresh install sees real data; fall back to this device's records when
+      // offline (or the request fails).
+      await _loadFromServer(from, to);
     } catch (e) {
-      if (!kReleaseMode) debugPrint('Analytics load error: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-        showGlassSnackBar(
-          context,
-          "Couldn't load analytics. Check your connection and try again.",
-          icon: Icons.error_outline_rounded,
-          color: DesignColors.error,
-        );
+      if (!kReleaseMode) debugPrint('Analytics server load failed, using local: $e');
+      try {
+        await _loadFromLocal(now);
+      } catch (e2) {
+        if (!kReleaseMode) debugPrint('Analytics load error: $e2');
+        if (mounted) {
+          setState(() => _isLoading = false);
+          showGlassSnackBar(
+            context,
+            "Couldn't load analytics. Check your connection and try again.",
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
+          );
+        }
+        return;
       }
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadFromServer(DateTime from, DateTime to) async {
+    final api = getIt<ApiClient>();
+    final branchId = getIt<AuthService>().branchId;
+    final fromIso = DateFormat('yyyy-MM-dd').format(from);
+    final toIso = DateFormat('yyyy-MM-dd').format(to);
+    final isToday = _selectedPeriod == 0;
+
+    final results = await Future.wait<Object?>([
+      api.getSalesSummaryReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getSalesTrendReport(
+          startDate: fromIso,
+          endDate: toIso,
+          branchId: branchId,
+          groupBy: isToday ? 'HOUR' : 'DAY'),
+      api.getTopProductsReport(
+          startDate: fromIso, endDate: toIso, branchId: branchId, limit: 10),
+      api.getPaymentMethodReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+      api.getCategorySalesReport(startDate: fromIso, endDate: toIso, branchId: branchId),
+    ]);
+
+    _summary = summaryFromServer(results[0]);
+    _hourlySales = isToday ? hourlyFromServer(results[1], from) : dailyFromServer(results[1]);
+    _topProducts = topProductsFromServer(results[2]);
+    _salesByPayment = paymentsFromServer(results[3]);
+    _salesByCategory = categoriesFromServer(results[4]);
+  }
+
+  Future<void> _loadFromLocal(DateTime now) async {
+    final database = getIt<AppDatabase>();
+    switch (_selectedPeriod) {
+      case 0: // Today
+        final startOfDay = DateTime(now.year, now.month, now.day);
+        final endOfDay = startOfDay.add(const Duration(days: 1));
+
+        _summary = await database.getDashboardSummary();
+        _hourlySales = await database.getHourlySales(startOfDay, endOfDay);
+        _topProducts =
+            await database.getTopProducts(startOfDay, endOfDay, limit: 10);
+        _salesByPayment =
+            await database.getSalesByPaymentMethod(startOfDay, endOfDay);
+        _salesByCategory =
+            await database.getSalesByCategory(startOfDay, endOfDay);
+
+      case 1: // This Week
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+
+        _summary = await database.getWeeklySummary(startOfWeek, endOfWeek);
+        _hourlySales = await database.getDailySales(startOfWeek, endOfWeek);
+        _topProducts =
+            await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
+        _salesByPayment =
+            await database.getSalesByPaymentMethod(startOfWeek, endOfWeek);
+        _salesByCategory =
+            await database.getSalesByCategory(startOfWeek, endOfWeek);
+
+      case 2: // This Month
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 0);
+
+        _summary = await database.getMonthlySummary(startOfMonth, endOfMonth);
+        _hourlySales = await database.getDailySales(startOfMonth, endOfMonth);
+        _topProducts = await database.getTopProducts(startOfMonth, endOfMonth,
+            limit: 10);
+        _salesByPayment =
+            await database.getSalesByPaymentMethod(startOfMonth, endOfMonth);
+        _salesByCategory =
+            await database.getSalesByCategory(startOfMonth, endOfMonth);
     }
   }
 
@@ -280,7 +338,7 @@ class _AnalyticsDashboardScreenState
               Expanded(
                 child: MetricCard(
                   title: 'Total Revenue',
-                  value: 'KSh ${revenue.toStringAsFixed(0)}',
+                  value: formatMoney(revenue),
                   icon: Icons.attach_money_rounded,
                   color: DesignColors.success,
                 ),
@@ -302,7 +360,7 @@ class _AnalyticsDashboardScreenState
               Expanded(
                 child: MetricCard(
                   title: 'Avg Ticket',
-                  value: 'KSh ${avgTicket.toStringAsFixed(0)}',
+                  value: formatMoney(avgTicket),
                   icon: Icons.trending_up_rounded,
                   color: DesignColors.accent,
                 ),
@@ -401,6 +459,14 @@ class _AnalyticsDashboardScreenState
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
+                      // Explicit spacing so labels never overlap, whatever the
+                      // range: every 4th hour, every 2nd day for a week-sized
+                      // range, every 5th for a month.
+                      interval: _hourlySales.length > 24
+                          ? 5
+                          : _hourlySales.length > 12
+                              ? 4
+                              : (_hourlySales.length > 7 ? 2 : 1),
                       getTitlesWidget: (value, meta) {
                         if (_hourlySales.isEmpty) return const Text('');
                         final index = value.toInt();
@@ -578,7 +644,7 @@ class _AnalyticsDashboardScreenState
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'KSh ${revenue.toStringAsFixed(0)}',
+                          formatMoney(revenue),
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: DesignColors.success,
@@ -695,7 +761,7 @@ class _AnalyticsDashboardScreenState
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
-                            '$count transactions',
+                            countLabel(count, 'transaction'),
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: secondaryColor,
                             ),
@@ -707,7 +773,7 @@ class _AnalyticsDashboardScreenState
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'KSh ${total.toStringAsFixed(0)}',
+                          formatMoney(total),
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: titleColor,
@@ -813,7 +879,7 @@ class _AnalyticsDashboardScreenState
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
                             child: Text(
-                              'KSh ${total.toStringAsFixed(0)}',
+                              formatMoney(total),
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   fontWeight: FontWeight.w600,
                                   color: titleColor,
@@ -905,7 +971,7 @@ class _AnalyticsDashboardScreenState
                       tooltipMargin: 8,
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
                         return BarTooltipItem(
-                          'KSh ${(rod.toY).toStringAsFixed(0)}',
+                          formatMoney((rod.toY)),
                           const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -919,16 +985,29 @@ class _AnalyticsDashboardScreenState
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
+                        // A label under every bar overprinted itself (24 hourly
+                        // bars -> "1AM2AM3AM..."). Label every few bars so each
+                        // one has room, scaling with how many there are.
                         getTitlesWidget: (value, meta) {
                           if (_hourlySales.isEmpty) return const Text('');
                           final index = value.toInt();
+                          // fl_chart asks for a label for every bar group, so the
+                          // thinning has to happen here, not via `interval`.
+                          final step = _hourlySales.length > 12
+                              ? 3
+                              : (_hourlySales.length > 7 ? 2 : 1);
+                          if (index % step != 0) return const SizedBox.shrink();
                           if (index >= 0 && index < _hourlySales.length) {
                             final date = DateTime.parse(
                                 _hourlySales[index]['date'] ?? '').toLocal();
                             final hour = date.hour;
-                            final time = hour >= 12
-                                ? '${hour > 12 ? hour - 12 : 12} PM'
-                                : '$hour AM';
+                            final time = hour == 0
+                                ? '12a'
+                                : hour < 12
+                                    ? '${hour}a'
+                                    : hour == 12
+                                        ? '12p'
+                                        : '${hour - 12}p';
                             return Padding(
                               padding: const EdgeInsets.only(top: DesignSpacing.sm),
                               child: Text(
@@ -1031,11 +1110,7 @@ class _AnalyticsDashboardScreenState
     }
   }
 
-  String _formatPaymentMethod(String method) {
-    return method.split('_').map((word) {
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
-  }
+  String _formatPaymentMethod(String method) => paymentMethodLabel(method);
 
   Color _getCategoryColor(String category) {
     switch (category.toLowerCase()) {

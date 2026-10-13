@@ -86,9 +86,8 @@ export class ReportingController {
   async getTopProducts(
     @CurrentUser() user: any,
     @Query() filter: ReportFilterDto,
-    @Query('limit') limit?: number,
   ): Promise<TopProductDto[]> {
-    return this.reportingService.getTopProducts(user.tenantId, filter, limit || 10);
+    return this.reportingService.getTopProducts(user.tenantId, filter, filter.limit ?? 10);
   }
 
   @Get('categories')

@@ -229,28 +229,48 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                       )
                     ),
 
-                    if (ref
-                        .watch(permissionsProvider)
-                        .has('payments.view_status')) ...[
-                      const SizedBox(height: DesignSpacing.md),
-                      StaggeredItem(
-                        itemKey: 'payments-quick-manual',
-                        index: 3,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: QuickActionTile(
-                                icon: Icons.fact_check_rounded,
-                                label: 'Manual Payments',
-                                subtitle: 'Request & approve',
-                                color: DesignColors.accent,
-                                onTap: () => context.push('/payments/manual'),
+                    Builder(builder: (context) {
+                      final perms = ref.watch(permissionsProvider);
+                      final tiles = <Widget>[
+                        if (perms.has('payments.view_status'))
+                          QuickActionTile(
+                            icon: Icons.fact_check_rounded,
+                            label: 'Manual Payments',
+                            subtitle: 'Request & approve',
+                            color: DesignColors.accent,
+                            onTap: () => context.push('/payments/manual'),
+                          ),
+                        if (perms.canViewCashFlow)
+                          QuickActionTile(
+                            icon: Icons.account_balance_wallet_rounded,
+                            label: 'Cash Flow',
+                            subtitle: 'Till & restock cash',
+                            color: DesignColors.info,
+                            onTap: () => context.push('/cash-flow'),
+                          ),
+                      ];
+                      if (tiles.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: DesignSpacing.md),
+                        child: StaggeredItem(
+                          itemKey: 'payments-quick-more',
+                          index: 3,
+                          // Two columns always, so a lone tile keeps the same
+                          // width as its neighbours above instead of stretching.
+                          child: Row(
+                            children: [
+                              Expanded(child: tiles[0]),
+                              const SizedBox(width: DesignSpacing.md),
+                              Expanded(
+                                child: tiles.length > 1
+                                    ? tiles[1]
+                                    : const SizedBox.shrink(),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      );
+                    }),
 
                     const SizedBox(height: DesignSpacing.xxl),
 

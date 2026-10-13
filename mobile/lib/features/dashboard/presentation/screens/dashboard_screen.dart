@@ -27,9 +27,41 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
 ) async* {
   final db = getIt<AppDatabase>();
   await for (final _ in db.watchTodaysSales()) {
-    yield await db.getDashboardSummary();
+    final local = await db.getDashboardSummary();
+    // The local database only knows this device's sales, so a freshly installed
+    // or second phone showed "KES 0" while the shop had real takings. Ask the
+    // server too and show whichever figure is higher per tile: the server covers
+    // every device, the local one covers a sale made offline that hasn't synced.
+    // Offline or on error the local figures are used unchanged.
+    try {
+      final data = await getIt<ApiClient>().getDashboard();
+      final sales = (data['sales'] as Map<String, dynamic>?) ?? const {};
+      yield mergeDashboardSummary(local, sales);
+    } catch (_) {
+      yield local;
+    }
   }
 });
+
+/// Per-tile maximum of the device's own figures and the server's `sales` block.
+@visibleForTesting
+Map<String, dynamic> mergeDashboardSummary(
+  Map<String, dynamic> local,
+  Map<String, dynamic> serverSales,
+) {
+  num pick(String localKey, String serverKey) {
+    final a = (local[localKey] as num?) ?? 0;
+    final b = (serverSales[serverKey] as num?) ?? 0;
+    return a >= b ? a : b;
+  }
+
+  return {
+    'transactionCount': pick('transactionCount', 'totalSales'),
+    'totalRevenue': pick('totalRevenue', 'totalRevenue'),
+    'avgTicket': pick('avgTicket', 'averageTicket'),
+    'itemsSold': pick('itemsSold', 'itemsSold'),
+  };
+}
 
 final _todaysCostProvider = FutureProvider.autoDispose<double>((ref) async {
   final branchId = getIt<AuthService>().branchId;

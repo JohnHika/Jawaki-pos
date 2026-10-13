@@ -1422,13 +1422,12 @@ class PaymentChip extends StatelessWidget {
   });
 
   Color get _color {
-    switch (method.toUpperCase()) {
+    switch (method.toUpperCase().replaceAll(RegExp(r'[^A-Z]'), '')) {
       case 'MPESA':
         return DesignColors.mpesa;
       case 'PESAPAL':
         return DesignColors.pesapal;
       case 'TOURISTTAP':
-      case 'TOURIST TAP':
         return DesignColors.touristtap;
       case 'CASH':
         return DesignColors.cash;
@@ -1440,13 +1439,12 @@ class PaymentChip extends StatelessWidget {
   }
 
   IconData get _icon {
-    switch (method.toUpperCase()) {
+    switch (method.toUpperCase().replaceAll(RegExp(r'[^A-Z]'), '')) {
       case 'MPESA':
         return Icons.phone_android_rounded;
       case 'PESAPAL':
         return Icons.payments_rounded;
       case 'TOURISTTAP':
-      case 'TOURIST TAP':
         return Icons.nfc_rounded;
       case 'CASH':
         return Icons.money_rounded;
@@ -1656,6 +1654,10 @@ class SettingsRow extends StatelessWidget {
   final Color? iconColor;
   final String title;
   final String? subtitle;
+
+  /// Lines the subtitle may wrap to before truncating (2 by default; raise it
+  /// for rows whose description must be read in full, e.g. option pickers).
+  final int subtitleMaxLines;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool isDestructive;
@@ -1667,6 +1669,7 @@ class SettingsRow extends StatelessWidget {
     this.iconColor,
     required this.title,
     this.subtitle,
+    this.subtitleMaxLines = 2,
     this.trailing,
     this.onTap,
     this.isDestructive = false,
@@ -1726,7 +1729,7 @@ class SettingsRow extends StatelessWidget {
                           subtitle!,
                           style:
                               TextStyle(fontSize: 12.5, color: subtitleColor),
-                          maxLines: 1,
+                          maxLines: subtitleMaxLines,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
