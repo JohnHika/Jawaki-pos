@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 
 /// One (x, y) point for a bar/line chart, mirroring the backend's ChartPoint.
 class AiChartPoint {
@@ -162,7 +163,7 @@ class _BarChart extends StatelessWidget {
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final maxValue = chart.points.map((p) => p.value).reduce((a, b) => a > b ? a : b);
 
-    return BarChart(
+    return RevealBarChart(
       BarChartData(
         alignment: BarChartAlignment.spaceAround,
         maxY: maxValue * 1.2,
@@ -221,7 +222,7 @@ class _LineChart extends StatelessWidget {
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
     final maxValue = chart.points.map((p) => p.value).reduce((a, b) => a > b ? a : b);
 
-    return LineChart(
+    return RevealLineChart(
       LineChartData(
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),

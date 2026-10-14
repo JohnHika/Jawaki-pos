@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
@@ -257,7 +258,7 @@ class _InventoryForecastingScreenState
           const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 280,
-            child: LineChart(
+            child: RevealLineChart(
               LineChartData(
                 lineBarsData: [
                   LineChartBarData(

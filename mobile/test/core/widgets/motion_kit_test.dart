@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  chartRevealTests();
   group('CountUpText.parse', () {
     test('splits prefix, grouped number and suffix', () {
       final p = CountUpText.parse('KES 12,345.50 today')!;
@@ -73,5 +74,44 @@ void main() {
     expect(find.text('w'), findsOneWidget);
     expect(find.text('b'), findsOneWidget);
     expect(find.text('s'), findsOneWidget);
+  });
+}
+
+void chartRevealTests() {
+  group('ChartReveal', () {
+    testWidgets('sweeps in, then settles to the plain child', (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Align(alignment: Alignment.topLeft, child: ChartReveal(child: SizedBox(key: Key('chart'), width: 200, height: 100))),
+      ));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(ClipRect), findsWidgets);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('chart')), findsOneWidget);
+      expect(tester.getSize(find.byKey(const Key('chart'))).width, 200);
+    });
+
+    testWidgets('grow style scales up from the baseline', (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: ChartReveal(
+          style: ChartRevealStyle.grow,
+          child: SizedBox(key: Key('bars'), width: 200, height: 100),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(Opacity), findsWidgets);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('bars')), findsOneWidget);
+    });
+
+    testWidgets('shows the chart instantly when animations are off', (tester) async {
+      await tester.pumpWidget(const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: ChartReveal(child: SizedBox(key: Key('chart'), width: 200, height: 100)),
+        ),
+      ));
+      expect(find.byKey(const Key('chart')), findsOneWidget);
+      expect(find.byType(ClipRect), findsNothing);
+    });
   });
 }

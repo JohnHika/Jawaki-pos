@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -1419,4 +1420,75 @@ class DrawIn extends StatelessWidget {
       ),
     );
   }
+}
+
+// ───────────────────────────────────────────────────────────────
+// 22. ChartReveal — a chart draws itself in once: lines sweep left to
+//     right, bars grow up from the baseline (`ChartRevealStyle.grow`)
+// ───────────────────────────────────────────────────────────────
+enum ChartRevealStyle { sweep, grow }
+
+class ChartReveal extends StatelessWidget {
+  const ChartReveal({
+    super.key,
+    required this.child,
+    this.style = ChartRevealStyle.sweep,
+    this.duration = const Duration(milliseconds: 900),
+  });
+
+  final Widget child;
+  final ChartRevealStyle style;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    if (reducedMotion(context)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, t, child) {
+        if (t >= 1) return child!;
+        if (style == ChartRevealStyle.grow) {
+          return Opacity(
+            opacity: t.clamp(0.0, 1.0),
+            child: Transform.scale(
+              scaleY: 0.15 + 0.85 * t,
+              alignment: Alignment.bottomCenter,
+              child: child,
+            ),
+          );
+        }
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: t,
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Drop-in replacements for fl_chart's [LineChart] / [BarChart] that draw
+/// themselves in once. Swapping the class name is all a call site needs.
+class RevealLineChart extends StatelessWidget {
+  const RevealLineChart(this.data, {super.key});
+  final LineChartData data;
+
+  @override
+  Widget build(BuildContext context) => ChartReveal(child: LineChart(data));
+}
+
+class RevealBarChart extends StatelessWidget {
+  const RevealBarChart(this.data, {super.key});
+  final BarChartData data;
+
+  @override
+  Widget build(BuildContext context) => ChartReveal(
+        style: ChartRevealStyle.grow,
+        child: BarChart(data),
+      );
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
@@ -417,7 +418,7 @@ class _AnalyticsDashboardScreenState
           const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 250,
-            child: LineChart(
+            child: RevealLineChart(
               LineChartData(
                 lineBarsData: [
                   LineChartBarData(
@@ -951,7 +952,7 @@ class _AnalyticsDashboardScreenState
           else
             SizedBox(
               height: 200,
-              child: BarChart(
+              child: RevealBarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
                   maxY: (_hourlySales.isNotEmpty
