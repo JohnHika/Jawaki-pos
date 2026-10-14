@@ -259,7 +259,7 @@ class _UpdateSummary extends StatelessWidget {
                 child: _VersionColumn(
                   label: 'Current',
                   value: _cleanVersion(updateService.currentVersion),
-                  color: DesignColors.darkTextSecondary,
+                  color: context.themed(DesignColors.darkTextSecondary),
                 ),
               ),
               const Icon(
@@ -278,14 +278,14 @@ class _UpdateSummary extends StatelessWidget {
           ),
           if (notes.isNotEmpty) ...[
             const SizedBox(height: DesignSpacing.lg),
-            const Divider(color: DesignColors.darkBorder, height: 1),
+            Divider(color: context.themed(DesignColors.darkBorder), height: 1),
             const SizedBox(height: DesignSpacing.lg),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 "What's new",
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: DesignColors.darkTextPrimary,
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w700,
                     ),
               ),
@@ -377,7 +377,7 @@ class _ReleaseNoteRow extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: DesignColors.darkTextSecondary,
+                    color: context.themed(DesignColors.darkTextSecondary),
                     height: 1.4,
                   ),
             ),
@@ -433,7 +433,7 @@ class _DownloadTelemetry extends StatelessWidget {
               Text(
                 updateService.isInstalling ? 'Installing' : 'Downloading',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: DesignColors.darkTextPrimary,
+                      color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w700,
                     ),
               ),
@@ -458,7 +458,7 @@ class _DownloadTelemetry extends StatelessWidget {
                     sizeLabel,
                     style: DesignType.numeric(
                       fontSize: 13,
-                      color: DesignColors.darkTextSecondary,
+                      color: context.themed(DesignColors.darkTextSecondary),
                     ),
                   ),
                 if (speedLabel != null)
