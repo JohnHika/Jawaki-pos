@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
@@ -145,9 +146,26 @@ class _BalanceCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: DesignSpacing.xs),
-          CountUpText(
-            formatMoney(statement.outstanding),
-            style: DesignType.numeric(fontSize: 34).copyWith(color: accent),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: CountUpText(
+                  formatMoney(statement.outstanding),
+                  style:
+                      DesignType.numeric(fontSize: 34).copyWith(color: accent),
+                ),
+              ),
+              // The share of the original debt already paid back.
+              ArcGauge(
+                value: statement.progress,
+                size: 54,
+                strokeWidth: 6,
+                color: settled ? DesignColors.success : DesignColors.accent,
+                child: Text('${(statement.progress * 100).round()}%',
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+              ),
+            ],
           ),
           const SizedBox(height: DesignSpacing.md),
           AnimatedProgressBar(

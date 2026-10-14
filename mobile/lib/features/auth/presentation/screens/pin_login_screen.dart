@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
@@ -431,16 +432,19 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           ),
         ),
         const SizedBox(height: DesignSpacing.md),
-        Text(
-          _workspaceIdentity.companyName,
-          style: TextStyle(
-            fontSize: isSmallScreen ? 20 : 24,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
+        BlurIn(
+          delay: const Duration(milliseconds: 120),
+          child: Text(
+            _workspaceIdentity.companyName,
+            style: TextStyle(
+              fontSize: isSmallScreen ? 20 : 24,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -459,13 +463,17 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           ],
         ),
         const SizedBox(height: 10),
-        Text(
-          'Enter your 4–6 digit PIN for this workspace',
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.white.withValues(alpha: 0.68),
+        WipeIn(
+          alignment: Alignment.center,
+          delay: const Duration(milliseconds: 320),
+          child: Text(
+            'Enter your 4–6 digit PIN for this workspace',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withValues(alpha: 0.68),
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
         ),
       ],
     );

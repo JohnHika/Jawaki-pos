@@ -5,6 +5,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../catalog/presentation/widgets/add_edit_product_sheet.dart';
 
 typedef OnboardingLoader = Future<Map<String, dynamic>> Function();
@@ -134,10 +135,11 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
               StaggeredItem(
                 itemKey: 'welcome-title',
                 index: 1,
-                child: Text(
+                child: LetterRise(
                   name?.isNotEmpty == true
                       ? 'Welcome, $name'
                       : 'Welcome to Axon POS',
+                  delay: const Duration(milliseconds: 300),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.headlineMedium?.copyWith(
                       color: context.themed(DesignColors.darkTextPrimary),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../domain/bulk_allocation.dart';
 import '../../domain/collections_ledger.dart';
 import '../providers/finance_hub_controller.dart';
@@ -192,7 +193,7 @@ class _InstallmentFormState extends State<_InstallmentForm> {
                       Row(
                         children: <Widget>[
                           const Expanded(child: Text('Balance after')),
-                          Text(formatMoney(after),
+                          RollingNumber(formatMoney(after),
                               style: DesignType.numeric(fontSize: 14)),
                         ],
                       ),

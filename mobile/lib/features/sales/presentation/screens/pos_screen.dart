@@ -10,6 +10,7 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
 import '../widgets/category_chips.dart';
@@ -120,7 +121,10 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 Positioned(
                   right: 2,
                   top: 0,
-                  child: Container(
+                  child: BumpOnChange(
+                    trigger: cart.itemCount,
+                    scale: 1.45,
+                    child: Container(
                     padding: const EdgeInsets.all(2),
                     constraints:
                         const BoxConstraints(minWidth: 15, minHeight: 15),
@@ -137,6 +141,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       ),
                       textAlign: TextAlign.center,
                     ),
+                  ),
                   ),
                 ),
             ],

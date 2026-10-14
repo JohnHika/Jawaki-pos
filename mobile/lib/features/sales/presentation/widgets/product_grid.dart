@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../providers/catalog_provider.dart';
 import '../providers/cart_provider.dart';
@@ -65,8 +66,11 @@ class ProductGrid extends ConsumerWidget {
             mainAxisSpacing: 10,
           ),
           itemCount: products.length,
-          itemBuilder: (context, index) =>
-              _ProductCard(product: products[index], compact: !hasPhotos),
+          // Cards pop in from the centre in turn on first load.
+          itemBuilder: (context, index) => CascadeScale(
+            index: index,
+            child: _ProductCard(product: products[index], compact: !hasPhotos),
+          ),
         );
       },
       loading: () => GridView.builder(
