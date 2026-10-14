@@ -562,20 +562,26 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ),
         child: child,
       ),
-      child: GlassCard(
+      // This screen is always dark. A themed GlassCard turns solid white in
+      // light mode, which made the white-tinted PIN slots and the digit counter
+      // invisible, so the card is drawn explicitly here.
+      child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: horizontalPadding,
           vertical: isSmallScreen ? DesignSpacing.md : DesignSpacing.lg,
         ),
         margin: EdgeInsets.symmetric(horizontal: outerMargin),
-        blur: 24,
-        tint: Colors.white.withValues(alpha: 0.055),
-        borderColor: _showError
-            ? DesignColors.error.withValues(alpha: 0.48)
-            : isReady
-                ? DesignColors.accent.withValues(alpha: 0.46)
-                : Colors.white.withValues(alpha: 0.12),
-        borderRadius: DesignSpacing.radiusXl,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+          border: Border.all(
+            color: _showError
+                ? DesignColors.error.withValues(alpha: 0.48)
+                : isReady
+                    ? DesignColors.accent.withValues(alpha: 0.46)
+                    : Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
         child: Column(
           children: [
             Row(
