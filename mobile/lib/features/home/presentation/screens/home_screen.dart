@@ -145,6 +145,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

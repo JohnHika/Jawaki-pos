@@ -227,6 +227,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
 
   Future<void> _pickAndScanReceipt() async {
     final source = await showModalBottomSheet<ImageSource>(
+      useRootNavigator: true,
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
@@ -272,6 +273,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final contact = TextEditingController();
     String? error;
     await showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -314,6 +316,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     String? amountError;
     String? shopError;
     await showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -393,6 +396,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     String method = 'CASH';
     String? error;
     await showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -467,6 +471,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     bool saving = false;
 
     await showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

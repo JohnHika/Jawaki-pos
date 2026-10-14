@@ -16,6 +16,7 @@ Future<double?> showShopInstallmentSheet(
   required FinanceHubController controller,
 }) {
   return showModalBottomSheet<double>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

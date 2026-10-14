@@ -2257,6 +2257,7 @@ class GlassBottomSheet {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return showModalBottomSheet<T>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       // Keep the sheet header below the Android status bar. The explicit

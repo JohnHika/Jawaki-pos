@@ -331,6 +331,7 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
     final reason = TextEditingController();
     String? error;
     await showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -400,6 +401,7 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
     bool saving = false;
 
     final created = await showModalBottomSheet<bool>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

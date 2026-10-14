@@ -50,6 +50,7 @@ Future<ShareFormat?> showShareFormatSheet(
   required List<ShareFormatOption> formats,
 }) {
   return showModalBottomSheet<ShareFormat>(
+    useRootNavigator: true,
     context: context,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

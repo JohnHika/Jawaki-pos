@@ -75,6 +75,7 @@ class _AiMemoryScreenState extends State<AiMemoryScreen> {
 
   Future<void> _addMemory() async {
     final result = await showModalBottomSheet<bool>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

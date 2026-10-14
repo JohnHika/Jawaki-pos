@@ -8,6 +8,7 @@ import '../../domain/cash_tender.dart';
 /// to give back. Resolves to the amount received, or null if cancelled.
 Future<double?> showCashTenderSheet(BuildContext context, {required double total}) {
   return showModalBottomSheet<double>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

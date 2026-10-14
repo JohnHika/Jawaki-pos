@@ -409,6 +409,7 @@ class SettingsScreen extends ConsumerWidget {
   // ===== SYNC SETTINGS =====
   void _showSyncSettings(BuildContext context, SyncService syncService) {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -494,6 +495,7 @@ class SettingsScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -519,6 +521,7 @@ class SettingsScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -534,6 +537,7 @@ class SettingsScreen extends ConsumerWidget {
   // ===== APPEARANCE SETTINGS =====
   void _showAppearanceSettings(BuildContext context) {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -916,6 +920,7 @@ class SettingsScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -940,6 +945,7 @@ class SettingsScreen extends ConsumerWidget {
   // ===== HELP & SUPPORT =====
   void _showHelpSupport(BuildContext context) {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1547,6 +1553,7 @@ class SettingsScreen extends ConsumerWidget {
 
   void _showBranchManagement(BuildContext context) {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1565,6 +1572,7 @@ class SettingsScreen extends ConsumerWidget {
   // ===== ADMIN-ONLY: DATA EXPORT =====
   void _showDataExport(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1802,6 +1810,7 @@ class SettingsScreen extends ConsumerWidget {
   // ===== ADMIN-ONLY: AUDIT TRAIL =====
   void _showAuditTrail(BuildContext context) {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(

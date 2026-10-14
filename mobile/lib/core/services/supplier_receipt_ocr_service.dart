@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 class SupplierReceiptScan {
@@ -57,8 +59,13 @@ class SupplierReceiptLineItem {
 }
 
 class SupplierReceiptOcrService {
-  static final RegExp _moneyRegex =
-      RegExp(r'(?<!\d)(\d{1,3}(?:[, ]\d{3})*|\d+)(?:\.\d{1,2})?(?!\d)');
+  // Commas are stripped before matching, and a space is never a thousands
+  // separator ("40 960" is 40 and 960). A number is money/quantity only when
+  // it is not part of a size such as
+  // "1kg", "5L" or "500ml" — those belong to the product name.
+  static final RegExp _moneyRegex = RegExp(
+      r'(?<!\d)(?<!\d\.)(\d+)(?:\.\d{1,2})?(?!\d)(?!\.\d)(?!\s?(?:kg|ml|ltr|g|l)\b)',
+      caseSensitive: false);
   static final RegExp _invoiceRegex = RegExp(
       r'(invoice|receipt|ref|no\.?|number)\s*[:#-]?\s*([A-Z0-9\-/]{3,})',
       caseSensitive: false);
@@ -110,6 +117,11 @@ class SupplierReceiptOcrService {
       await recognizer.close();
     }
   }
+
+  /// Line-item parsing on its own, for tests.
+  @visibleForTesting
+  List<SupplierReceiptLineItem> parseItems(List<String> lines) =>
+      _extractItems(lines);
 
   String _extractSupplierName(List<String> lines) {
     for (final line in lines.take(6)) {

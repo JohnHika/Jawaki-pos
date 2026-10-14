@@ -142,6 +142,7 @@ class _CashReconciliationScreenState
 
     if (!mounted) return;
     final confirmed = await showModalBottomSheet<bool>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

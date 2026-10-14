@@ -49,6 +49,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
 
   Future<void> _addPhoto() async {
     final source = await showModalBottomSheet<ImageSource>(
+      useRootNavigator: true,
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(

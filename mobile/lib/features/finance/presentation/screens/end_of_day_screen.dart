@@ -264,6 +264,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final notesController = TextEditingController();
 
     final confirmed = await showModalBottomSheet<bool>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

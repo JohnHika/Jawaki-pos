@@ -465,6 +465,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     ];
 
     final confirmed = await showModalBottomSheet<bool>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

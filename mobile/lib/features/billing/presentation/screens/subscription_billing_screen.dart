@@ -208,6 +208,7 @@ class _SubscriptionBillingScreenState
     String selectedPlan = currentPlan == 'trial' ? 'core' : currentPlan;
 
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -937,6 +938,7 @@ class _SubscriptionBillingScreenState
 
   void _showPaySheet() {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -959,6 +961,7 @@ class _SubscriptionBillingScreenState
 
   void _showAutoRenewSheet() {
     showModalBottomSheet(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

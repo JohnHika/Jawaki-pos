@@ -182,6 +182,9 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: btnFgColor,
+                        // The theme's buttons are full-width; in this Row that
+                        // means infinite width and a failed layout.
+                        minimumSize: const Size(0, 42),
                         side: BorderSide(
                           color: borderColor,
                         ),
