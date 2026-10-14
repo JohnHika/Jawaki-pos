@@ -30,7 +30,10 @@ class AppTheme {
         backgroundColor: DesignColors.surface,
         foregroundColor: DesignColors.textPrimary,
         elevation: 0,
-        scrolledUnderElevation: 0,
+        // The bar lifts with a soft shadow once content scrolls under it.
+        scrolledUnderElevation: 3,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: const Color(0x1F000000),
         centerTitle: false,
         titleSpacing: 0,
         titleTextStyle: DesignType.display.copyWith(

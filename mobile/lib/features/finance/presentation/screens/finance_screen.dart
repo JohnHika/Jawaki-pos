@@ -1315,7 +1315,14 @@ class _SheetFrame extends StatelessWidget {
                 children: <Widget>[
                   Text(title, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: DesignSpacing.lg),
-                  ...children
+                  // Fields rise in one after another instead of the sheet
+                  // appearing as a single block.
+                  for (var i = 0; i < children.length; i++)
+                    FadeSlideIn(
+                      distance: 10,
+                      delay: Duration(milliseconds: 45 * i.clamp(0, 8)),
+                      child: children[i],
+                    ),
                 ]),
           ),
         ),
