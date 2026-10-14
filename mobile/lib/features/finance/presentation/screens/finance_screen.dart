@@ -708,10 +708,18 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    // Only balances still outstanding can be overdue; a settled debt keeps its
+    // old due date but is nothing to chase.
     final overdue = <DateTime?>[
-      ...snapshot.payables.map((item) => item.dueDate),
-      ...snapshot.retailReceivables.map((item) => item.dueDate),
-      ...snapshot.peerReceivables.map((item) => item.dueDate),
+      ...snapshot.payables
+          .where((item) => item.outstandingAmount > 0)
+          .map((item) => item.dueDate),
+      ...snapshot.retailReceivables
+          .where((item) => item.outstandingAmount > 0)
+          .map((item) => item.dueDate),
+      ...snapshot.peerReceivables
+          .where((item) => item.outstandingAmount > 0)
+          .map((item) => item.dueDate),
     ]
         .where((date) =>
             date?.isBefore(DateTime(now.year, now.month, now.day)) ?? false)

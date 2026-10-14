@@ -103,7 +103,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                         Text(
                           'Recent changes',
                           style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                color: DesignColors.darkTextPrimary,
+                                color: context.themed(DesignColors.darkTextPrimary),
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
@@ -111,10 +111,10 @@ class UpdateSuccessScreen extends StatelessWidget {
                         if (notes.isNotEmpty)
                           CategorizedNotes(releaseNotes: update.releaseNotes)
                         else
-                          const Text(
+                          Text(
                             'Improvements and bug fixes to keep Axon POS fast and reliable.',
                             style: TextStyle(
-                              color: DesignColors.darkTextSecondary,
+                              color: context.themed(DesignColors.darkTextSecondary),
                               fontSize: 13,
                               height: 1.4,
                             ),
