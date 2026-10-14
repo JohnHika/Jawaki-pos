@@ -206,7 +206,20 @@ class _POSAppState extends ConsumerState<POSApp> {
         builder: (context, child) {
           final updateService = getIt<UpdateCheckService>();
           final featureService = getIt<FeatureAnnouncementService>();
-          return AnimatedBuilder(
+          // Status and navigation bars melt into the app and their icons stay
+          // readable in both themes, like a native app rather than a web view.
+          final dark = Theme.of(context).brightness == Brightness.dark;
+          final icons = dark ? Brightness.light : Brightness.dark;
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: icons,
+              statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: icons,
+              systemNavigationBarContrastEnforced: false,
+            ),
+            child: AnimatedBuilder(
             animation: updateService,
             builder: (context, _) => MediaQuery(
               data: MediaQuery.of(context)
@@ -227,6 +240,7 @@ class _POSAppState extends ConsumerState<POSApp> {
                   ),
                 ),
               ),
+            ),
             ),
           );
         },

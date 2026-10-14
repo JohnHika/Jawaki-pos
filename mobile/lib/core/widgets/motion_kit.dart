@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../services/haptic_service.dart';
 import '../theme/design_system.dart';
 import 'motion.dart';
 
@@ -212,6 +213,7 @@ class TapScale extends StatefulWidget {
 
 class _TapScaleState extends State<TapScale> {
   bool _down = false;
+  Offset? _downAt;
 
   void _set(bool v) {
     if (_down != v && mounted) setState(() => _down = v);
@@ -221,9 +223,26 @@ class _TapScaleState extends State<TapScale> {
   Widget build(BuildContext context) {
     final active = widget.enabled && _down && !reducedMotion(context);
     return Listener(
-      onPointerDown: (_) => _set(true),
-      onPointerUp: (_) => _set(false),
-      onPointerCancel: (_) => _set(false),
+      onPointerDown: (e) {
+        _downAt = e.position;
+        _set(true);
+      },
+      onPointerUp: (e) {
+        // A light tick on a real tap only: a finger that travelled is a scroll
+        // or a swipe, not a press.
+        final start = _downAt;
+        if (widget.enabled &&
+            start != null &&
+            (e.position - start).distance < 16) {
+          HapticService().selection();
+        }
+        _downAt = null;
+        _set(false);
+      },
+      onPointerCancel: (_) {
+        _downAt = null;
+        _set(false);
+      },
       child: AnimatedScale(
         scale: active ? widget.scale : 1,
         duration: const Duration(milliseconds: 110),
@@ -786,8 +805,11 @@ class _ShakeState extends State<Shake> with SingleTickerProviderStateMixin {
   @override
   void didUpdateWidget(Shake old) {
     super.didUpdateWidget(old);
-    if (old.trigger != widget.trigger && !reducedMotion(context)) {
-      _c.forward(from: 0);
+    if (old.trigger != widget.trigger) {
+      // The buzz is feedback in its own right, so it fires even with
+      // animations turned off.
+      HapticService().error();
+      if (!reducedMotion(context)) _c.forward(from: 0);
     }
   }
 

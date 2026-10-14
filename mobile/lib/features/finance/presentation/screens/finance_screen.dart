@@ -14,9 +14,11 @@ import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../domain/bulk_allocation.dart';
+import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
 import 'invoice_review_screen.dart';
+import 'shop_ledger_screen.dart';
 import '../../../../core/utils/format.dart';
 
 class FinanceScreen extends ConsumerStatefulWidget {
@@ -147,6 +149,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           ),
         _ => _PeerTab(
             snapshot: snapshot,
+            onOpenShop: (shop) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => ShopLedgerScreen(shopId: shop.id))),
             onAddShop: () => _showPeerShopSheet(controller),
             onAddReceivable: () =>
                 _showPeerReceivableSheet(snapshot, controller),
@@ -314,7 +319,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => _SheetFrame(
-          title: 'Add receivable',
+          title: 'Add debt',
           children: <Widget>[
             DropdownButtonFormField<PeerDebtor>(
               initialValue: selected,
@@ -766,9 +771,119 @@ class _OverviewTab extends StatelessWidget {
         ),
         const SizedBox(height: DesignSpacing.sm),
         _CountCard(overdue: overdue),
+        const SizedBox(height: DesignSpacing.lg),
+        _CollectionsFeed(snapshot: snapshot),
       ],
     );
   }
+}
+
+/// "Collected today" plus the latest money received from customers and shops,
+/// so the owner can see what came in and when without opening each ledger.
+class _CollectionsFeed extends StatelessWidget {
+  const _CollectionsFeed({required this.snapshot});
+  final FinanceSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final all = mergeInstalments(allCollections(snapshot));
+    final today = startOfDay(DateTime.now());
+    final todayTotal = collectedBetween(all, today);
+    final weekTotal =
+        collectedBetween(all, today.subtract(const Duration(days: 6)));
+    final recent = all.take(6).toList();
+    final success = context.readable(DesignColors.success);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        GlassCard(
+          padding: const EdgeInsets.all(DesignSpacing.lg),
+          borderRadius: DesignSpacing.radiusLg,
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('Collected today',
+                        style: theme.textTheme.labelLarge),
+                    const SizedBox(height: 2),
+                    CountUpText(formatMoney(todayTotal),
+                        style: DesignType.numeric(fontSize: 26)
+                            .copyWith(color: success)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text('Last 7 days', style: theme.textTheme.labelSmall),
+                  Text(formatMoney(weekTotal),
+                      style: DesignType.numeric(fontSize: 16)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: DesignSpacing.lg),
+        Text('Recent collections', style: theme.textTheme.titleSmall),
+        const SizedBox(height: DesignSpacing.sm),
+        if (recent.isEmpty)
+          const _EmptyLedger(
+              message: 'Nothing collected yet. Payments from customers and '
+                  'shops will show up here.')
+        else
+          for (var i = 0; i < recent.length; i++)
+            FadeSlideIn(
+              delay: Duration(milliseconds: 50 * i),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
+                child: GlassCard(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: DesignSpacing.lg,
+                      vertical: DesignSpacing.md),
+                  borderRadius: DesignSpacing.radiusMd,
+                  child: Row(children: <Widget>[
+                    Icon(
+                        recent[i].isShop
+                            ? Icons.storefront_rounded
+                            : Icons.person_rounded,
+                        color: DesignColors.brand),
+                    const SizedBox(width: DesignSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(recent[i].who,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall),
+                          Text(
+                              '${_whenLabel(recent[i].paidAt)} · ${paymentMethodLabel(recent[i].method)}',
+                              style: theme.textTheme.labelSmall),
+                        ],
+                      ),
+                    ),
+                    Text('+${formatMoney(recent[i].amount)}',
+                        style: DesignType.numeric(fontSize: 14)
+                            .copyWith(color: success)),
+                  ]),
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+String _whenLabel(DateTime d) {
+  final today = startOfDay(DateTime.now());
+  final diff = today.difference(startOfDay(d)).inDays;
+  final time = DateFormat('h:mm a').format(d);
+  if (diff == 0) return 'Today, $time';
+  if (diff == 1) return 'Yesterday, $time';
+  return '${DateFormat('d MMM').format(d)}, $time';
 }
 
 class _SupplierTab extends StatelessWidget {
@@ -862,54 +977,99 @@ class _PeerTab extends StatelessWidget {
       {required this.snapshot,
       required this.onAddShop,
       required this.onAddReceivable,
-      required this.onCollect});
+      required this.onCollect,
+      required this.onOpenShop});
   final FinanceSnapshot snapshot;
   final VoidCallback onAddShop;
   final VoidCallback onAddReceivable;
   final ValueChanged<PeerReceivable> onCollect;
+  final ValueChanged<PeerDebtor> onOpenShop;
 
   @override
-  Widget build(BuildContext context) =>
-      ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
-        Row(children: <Widget>[
-          Expanded(
-              child: SizedBox(
-                  height: DesignSpacing.huge,
-                  child: OutlinedButton(
-                      onPressed: onAddShop, child: const Text('Add shop')))),
-          const SizedBox(width: DesignSpacing.sm),
-          Expanded(
-              child: SizedBox(
-                  height: DesignSpacing.huge,
-                  child: FilledButton(
-                      onPressed: onAddReceivable,
-                      child: const Text('Add receivable')))),
-        ]),
-        const SizedBox(height: DesignSpacing.lg),
-        Text('Other shops', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: DesignSpacing.sm),
-        if (snapshot.peerDebtors.isEmpty)
-          const _EmptyLedger(message: 'No other shops added yet.')
-        else
-          ...snapshot.peerDebtors.map((shop) => _ShopCard(shop: shop)),
-        const SizedBox(height: DesignSpacing.lg),
-        Text('Receivables', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: DesignSpacing.sm),
-        if (snapshot.peerReceivables.every((r) => r.outstandingAmount <= 0))
-          const _EmptyLedger(message: 'No other-shop receivables yet.')
-        else
-          ...snapshot.peerReceivables
-              .where((r) => r.outstandingAmount > 0)
-              .map((item) => _LedgerCard(
-                title: item.debtor.name,
-                subtitle: item.description,
-                value: item.outstandingAmount,
-                dueDate: item.dueDate,
-                icon: Icons.storefront_rounded,
-                action: 'Collect',
-                onAction: () => onCollect(item),
-              )),
-      ]);
+  Widget build(BuildContext context) {
+    final today = startOfDay(DateTime.now());
+    final shopEntries = allCollections(snapshot).where((e) => e.isShop);
+    final collectedToday = collectedBetween(shopEntries, today);
+    final collectedMonth =
+        collectedBetween(shopEntries, DateTime(today.year, today.month));
+    // Shops that still owe something come first, biggest balance on top.
+    final shops = [...snapshot.peerDebtors]..sort((a, b) =>
+        shopOutstanding(snapshot, b).compareTo(shopOutstanding(snapshot, a)));
+    return ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
+      FadeSlideIn(
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                  child: _MetricCard(
+                      label: 'Shops owe us',
+                      value: snapshot.peerReceivablesOutstanding,
+                      color: DesignColors.brand)),
+              const SizedBox(width: DesignSpacing.sm),
+              Expanded(
+                  child: _MetricCard(
+                      label: 'Collected today',
+                      value: collectedToday,
+                      color: DesignColors.success)),
+            ],
+          ),
+        ),
+      ),
+      if (collectedMonth > 0) ...<Widget>[
+        const SizedBox(height: DesignSpacing.xs),
+        Text('${formatMoney(collectedMonth)} collected this month',
+            style: Theme.of(context).textTheme.labelSmall),
+      ],
+      const SizedBox(height: DesignSpacing.lg),
+      Row(children: <Widget>[
+        Expanded(
+            child: SizedBox(
+                height: DesignSpacing.huge,
+                child: OutlinedButton(
+                    onPressed: onAddShop, child: const Text('Add shop')))),
+        const SizedBox(width: DesignSpacing.sm),
+        Expanded(
+            child: SizedBox(
+                height: DesignSpacing.huge,
+                child: FilledButton(
+                    onPressed: onAddReceivable,
+                    child: const Text('Add debt')))),
+      ]),
+      const SizedBox(height: DesignSpacing.lg),
+      Text('Other shops', style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: DesignSpacing.sm),
+      if (shops.isEmpty)
+        const _EmptyLedger(message: 'No other shops added yet.')
+      else
+        for (var i = 0; i < shops.length; i++)
+          FadeSlideIn(
+            delay: Duration(milliseconds: 60 * i.clamp(0, 8)),
+            child: _ShopCard(
+              shop: shops[i],
+              statement: shopStatement(snapshot, shops[i]),
+              onTap: () => onOpenShop(shops[i]),
+            ),
+          ),
+      const SizedBox(height: DesignSpacing.lg),
+      Text('Open debts', style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: DesignSpacing.sm),
+      if (snapshot.peerReceivables.every((r) => r.outstandingAmount <= 0))
+        const _EmptyLedger(message: 'No other-shop debts yet.')
+      else
+        ...snapshot.peerReceivables
+            .where((r) => r.outstandingAmount > 0)
+            .map((item) => _LedgerCard(
+                  title: item.debtor.name,
+                  subtitle: item.description,
+                  value: item.outstandingAmount,
+                  dueDate: item.dueDate,
+                  icon: Icons.storefront_rounded,
+                  action: 'Collect',
+                  onAction: () => onCollect(item),
+                )),
+    ]);
+  }
 }
 
 class _MetricCard extends StatelessWidget {
@@ -1052,16 +1212,69 @@ class _LedgerCard extends StatelessWidget {
 }
 
 class _ShopCard extends StatelessWidget {
-  const _ShopCard({required this.shop});
+  const _ShopCard(
+      {required this.shop, required this.statement, required this.onTap});
   final PeerDebtor shop;
+  final ShopStatement statement;
+  final VoidCallback onTap;
+
   @override
-  Widget build(BuildContext context) => Card(
-      margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
-      child: ListTile(
-          minTileHeight: DesignSpacing.huge,
-          leading: const Icon(Icons.store_rounded, color: DesignColors.brand),
-          title: Text(shop.name),
-          subtitle: shop.phone == null ? null : Text(shop.phone!)));
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasDebt = statement.originalTotal > 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
+      child: TapScale(
+        child: GlassCard(
+          onTap: onTap,
+          padding: const EdgeInsets.all(DesignSpacing.lg),
+          borderRadius: DesignSpacing.radiusMd,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(children: <Widget>[
+                const Icon(Icons.store_rounded, color: DesignColors.brand),
+                const SizedBox(width: DesignSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(shop.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall),
+                      Text(
+                          hasDebt
+                              ? (statement.isSettled
+                                  ? 'Fully paid'
+                                  : 'Owes ${formatMoney(statement.outstanding)}')
+                              : 'No debts yet',
+                          style: theme.textTheme.labelSmall),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded),
+              ]),
+              if (hasDebt) ...<Widget>[
+                const SizedBox(height: DesignSpacing.md),
+                AnimatedProgressBar(
+                  value: statement.progress,
+                  height: 6,
+                  color: statement.isSettled
+                      ? DesignColors.success
+                      : DesignColors.accent,
+                ),
+                const SizedBox(height: DesignSpacing.xs),
+                Text(
+                    '${formatMoney(statement.paid)} of ${formatMoney(statement.originalTotal)} paid back',
+                    style: theme.textTheme.labelSmall),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _EmptyLedger extends StatelessWidget {

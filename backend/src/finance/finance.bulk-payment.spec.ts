@@ -126,3 +126,54 @@ describe('FinanceService.recordRetailBulkPayment', () => {
     );
   });
 });
+
+describe('FinanceService.recordPeerBulkPayment', () => {
+  const userId = 'user-1';
+  const tenantId = 'tenant-a';
+  const branchId = 'branch-a';
+
+  it('splits one shop instalment across its debts using the peer ledgers', async () => {
+    const debts: Record<string, { outstandingAmount: number; status: string }> = {
+      'd-1': { outstandingAmount: 5000, status: 'OPEN' },
+      'd-2': { outstandingAmount: 2000, status: 'OPEN' },
+    };
+    let seq = 0;
+    const prisma: any = {
+      branch: { findFirst: jest.fn().mockResolvedValue({ id: branchId, tenantId }) },
+      $transaction: jest.fn(async (work: any) => work(prisma)),
+      $executeRaw: jest.fn(),
+      peerReceivable: {
+        findFirst: jest.fn(async ({ where }: any) => ({ id: where.id, tenantId, branchId, ...debts[where.id] })),
+        update: jest.fn(async ({ where, data }: any) => {
+          debts[where.id] = { ...debts[where.id], ...data };
+        }),
+      },
+      peerReceivablePayment: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(async ({ data }: any) => ({ id: `pp-${++seq}`, ...data })),
+      },
+      retailReceivable: { findFirst: jest.fn(), update: jest.fn() },
+      retailReceivablePayment: { findMany: jest.fn(), create: jest.fn() },
+    };
+    const audit: any = { record: jest.fn().mockResolvedValue(undefined) };
+    const cashFlow: any = { recordEntry: jest.fn().mockResolvedValue(undefined) };
+    const service = new FinanceService(prisma, audit, cashFlow);
+
+    const result = await service.recordPeerBulkPayment(userId, tenantId, {
+      branchId,
+      method: 'CASH',
+      allocations: [
+        { receivableId: 'd-1', amount: 5000 },
+        { receivableId: 'd-2', amount: 500 },
+      ],
+    } as any);
+
+    expect(result.totalAmount).toBe(5500);
+    expect(debts['d-1']).toMatchObject({ outstandingAmount: 0, status: 'PAID' });
+    expect(debts['d-2']).toMatchObject({ outstandingAmount: 1500, status: 'PARTIAL' });
+    expect(prisma.retailReceivable.update).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'peer_receivable_bulk_payment' }),
+    );
+  });
+});

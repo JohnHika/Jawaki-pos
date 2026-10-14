@@ -230,19 +230,35 @@ export class FinanceService {
    * allocation is applied or none is. Idempotent per `offlineId` (one derived key per row).
    */
   async recordRetailBulkPayment(userId: string, tenantId: string, dto: BulkRetailPaymentDto) {
+    return this.recordBulkPayment('retail', userId, tenantId, dto);
+  }
+
+  /** One instalment from a peer shop, split across its open debts (the caller picks the order). */
+  async recordPeerBulkPayment(userId: string, tenantId: string, dto: BulkRetailPaymentDto) {
+    return this.recordBulkPayment('peer', userId, tenantId, dto);
+  }
+
+  private async recordBulkPayment(
+    type: 'retail' | 'peer',
+    userId: string,
+    tenantId: string,
+    dto: BulkRetailPaymentDto,
+  ) {
     await this.assertBranch(tenantId, dto.branchId);
     const ids = dto.allocations.map((a) => a.receivableId);
     if (new Set(ids).size !== ids.length) {
       throw new BadRequestException('Each receivable may appear only once in a bulk payment');
     }
     const keyFor = (receivableId: string) => (dto.offlineId ? `${dto.offlineId}:${receivableId}` : undefined);
+    const paymentDelegate: any =
+      type === 'retail' ? this.prisma.retailReceivablePayment : this.prisma.peerReceivablePayment;
 
     if (dto.offlineId) {
-      const existing = await this.prisma.retailReceivablePayment.findMany({
+      const existing = await paymentDelegate.findMany({
         where: { offlineId: { in: ids.map((id) => keyFor(id) as string) } },
       });
       if (existing.length > 0) {
-        const inScope = existing.every((p) => p.tenantId === tenantId && p.branchId === dto.branchId);
+        const inScope = existing.every((p: any) => p.tenantId === tenantId && p.branchId === dto.branchId);
         if (!inScope || existing.length !== ids.length) {
           throw new ConflictException('Bulk payment key was already used for a different request');
         }
@@ -256,7 +272,7 @@ export class FinanceService {
       const created: any[] = [];
       for (const allocation of ordered) {
         created.push(
-          await this.recordPaymentInTransaction(tx, 'retail', userId, tenantId, allocation.receivableId, {
+          await this.recordPaymentInTransaction(tx, type, userId, tenantId, allocation.receivableId, {
             branchId: dto.branchId,
             amount: allocation.amount,
             method: dto.method,
@@ -271,7 +287,7 @@ export class FinanceService {
     await this.auditService.record({
       userId,
       action: 'CREATE',
-      entityType: 'retail_receivable_bulk_payment',
+      entityType: `${type}_receivable_bulk_payment`,
       entityId: payments[0]?.id,
       newValues: {
         branchId: dto.branchId,

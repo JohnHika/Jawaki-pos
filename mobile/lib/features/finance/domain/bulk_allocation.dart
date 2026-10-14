@@ -26,15 +26,43 @@ class BulkAllocationPlan {
 BulkAllocationPlan allocateOldestFirst(
   List<RetailReceivable> receivables,
   double amount,
-) {
+) =>
+    _allocate(
+      receivables
+          .map((r) => _Owed(r.id, r.outstandingAmount, r.dueDate, r.createdAt))
+          .toList(),
+      amount,
+    );
+
+/// Same oldest-due-first split, for what another shop owes us.
+BulkAllocationPlan allocatePeerOldestFirst(
+  List<PeerReceivable> receivables,
+  double amount,
+) =>
+    _allocate(
+      receivables
+          .map((r) => _Owed(r.id, r.outstandingAmount, r.dueDate, r.createdAt))
+          .toList(),
+      amount,
+    );
+
+class _Owed {
+  const _Owed(this.id, this.outstanding, this.dueDate, this.createdAt);
+  final String id;
+  final double outstanding;
+  final DateTime? dueDate;
+  final DateTime? createdAt;
+}
+
+BulkAllocationPlan _allocate(List<_Owed> receivables, double amount) {
   var remaining = _toCents(amount);
-  final open = receivables.where((r) => _toCents(r.outstandingAmount) > 0).toList()
+  final open = receivables.where((r) => _toCents(r.outstanding) > 0).toList()
     ..sort(_oldestFirst);
 
   final allocations = <ReceivableAllocation>[];
   for (final receivable in open) {
     if (remaining <= 0) break;
-    final owed = _toCents(receivable.outstandingAmount);
+    final owed = _toCents(receivable.outstanding);
     final applied = remaining < owed ? remaining : owed;
     allocations.add(ReceivableAllocation(
       receivableId: receivable.id,
@@ -50,7 +78,7 @@ BulkAllocationPlan allocateOldestFirst(
 
 int _toCents(double value) => (value * 100).round();
 
-int _oldestFirst(RetailReceivable a, RetailReceivable b) {
+int _oldestFirst(_Owed a, _Owed b) {
   final aDue = a.dueDate;
   final bDue = b.dueDate;
   if (aDue != null && bDue != null) {

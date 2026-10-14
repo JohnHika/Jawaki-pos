@@ -150,7 +150,7 @@ void main() {
     await tester.tap(find.text('Other Shops'));
     // The tab body cross-fades now, so let the switch finish first.
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add receivable'));
+    await tester.tap(find.text('Add debt'));
     await tester.pumpAndSettle();
     final create = find.text('Create receivable');
     await tester.scrollUntilVisible(create, 420,
@@ -308,5 +308,12 @@ class _FakeFinanceHubDataSource implements FinanceHubDataSource {
   Future<void> recordRetailBulkCollection(
       BulkCollectionRequest request) async {
     bulkRequest = request;
+  }
+
+  BulkCollectionRequest? peerBulkRequest;
+
+  @override
+  Future<void> recordPeerBulkCollection(BulkCollectionRequest request) async {
+    peerBulkRequest = request;
   }
 }

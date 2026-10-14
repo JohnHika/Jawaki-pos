@@ -1175,6 +1175,29 @@ class ApiClient {
     );
   }
 
+  /// Splits one instalment from another shop across its open debts in a
+  /// single all-or-nothing request. [offlineId] makes retries idempotent.
+  Future<void> recordPeerBulkPayment({
+    required String branchId,
+    required String method,
+    required List<Map<String, dynamic>> allocations,
+    String? reference,
+    String? notes,
+    String? offlineId,
+  }) async {
+    await _dio.post(
+      '/finance/peer-receivables/bulk-payments',
+      data: <String, dynamic>{
+        'branchId': branchId,
+        'method': method,
+        'allocations': allocations,
+        if (reference != null) 'reference': reference,
+        if (notes != null) 'notes': notes,
+        if (offlineId != null) 'offlineId': offlineId,
+      },
+    );
+  }
+
   Future<List<ManualPaymentRequest>> getManualPaymentRequests({
     String? branchId,
     String? status,

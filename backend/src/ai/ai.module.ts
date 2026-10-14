@@ -6,6 +6,8 @@ import { AiCognitiveService } from './ai-cognitive.service';
 import { AiConversationService } from './ai-conversation.service';
 import { AiMemoryService } from './ai-memory.service';
 import { AiToolsService } from './ai-tools.service';
+import { AiActionsService } from './ai-actions.service';
+import { FinanceModule } from '../finance/finance.module';
 import { AiDailyBriefTask } from './ai-daily-brief.task';
 import { AiProactiveNotificationsTask } from './ai-proactive-notifications.task';
 import { AiBillingModule } from '../ai-billing/ai-billing.module';
@@ -29,6 +31,7 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     forwardRef(() => InventoryModule),
     // New tool-backing modules (none import AiModule, so no cycle).
     ExpensesModule,
+    FinanceModule,
     CustomersModule,
     SalesModule,
     NotificationsModule,
@@ -41,6 +44,7 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     AiConversationService,
     AiMemoryService,
     AiToolsService,
+    AiActionsService,
     AiDailyBriefTask,
     AiProactiveNotificationsTask,
   ],

@@ -66,6 +66,17 @@ export class FinanceController {
     return this.financeService.recordRetailBulkPayment(userId, tenantId, dto);
   }
 
+  @Post('peer-receivables/bulk-payments')
+  @RequirePermissions('finance.manage_receivables')
+  @ApiOperation({ summary: 'Split one shop instalment across several peer receivables' })
+  recordPeerBulkPayment(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() dto: BulkRetailPaymentDto,
+  ) {
+    return this.financeService.recordPeerBulkPayment(userId, tenantId, dto);
+  }
+
   @Get('peer-debtors')
   @RequirePermissions('finance.view')
   @ApiOperation({ summary: 'List tenant peer-shop debtors' })

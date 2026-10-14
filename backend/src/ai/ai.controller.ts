@@ -102,7 +102,15 @@ export class AiController {
       }
     }
 
-    const toolCtx = tenantId ? { tenantId, branchId, userId: user.sub as string | undefined } : undefined;
+    const toolCtx = tenantId
+      ? {
+          tenantId,
+          branchId,
+          userId: user.sub as string | undefined,
+          // The agent acts as this user, so it is limited to their permissions.
+          permissions: Array.isArray(user.permissions) ? (user.permissions as string[]) : [],
+        }
+      : undefined;
     const result = await this.aiService.chat(workingDto, toolCtx);
 
     // Persist turns to the shop's shared thread so every staff member sees

@@ -123,6 +123,7 @@ abstract class FinanceHubDataSource {
   Future<void> recordRetailCollection(ReceivableCollectionRequest request);
   Future<void> recordPeerCollection(ReceivableCollectionRequest request);
   Future<void> recordRetailBulkCollection(BulkCollectionRequest request);
+  Future<void> recordPeerBulkCollection(BulkCollectionRequest request);
 }
 
 class FinanceHubController extends StateNotifier<FinanceHubState> {
@@ -226,6 +227,24 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     await refresh();
   }
 
+  /// One instalment from another shop, split across its open debts.
+  Future<void> recordPeerBulkCollection(BulkCollectionRequest request) async {
+    if (request.branchId.trim().isEmpty || _branchId.isEmpty) {
+      throw const FinanceFormException('Branch is required');
+    }
+    if (request.allocations.isEmpty) {
+      throw const FinanceFormException('Select at least one debt to collect');
+    }
+    if (request.allocations.length > 50) {
+      throw const FinanceFormException('Collect at most 50 debts at a time');
+    }
+    if (request.allocations.any((a) => a.amount <= 0)) {
+      throw const FinanceFormException('Amount must be greater than zero');
+    }
+    await _requireSource().recordPeerBulkCollection(request);
+    await refresh();
+  }
+
   FinanceHubDataSource _requireSource() {
     final source = _source;
     if (source == null) {
@@ -311,6 +330,22 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
       amount: request.amount,
       method: request.method,
       reference: request.reference,
+    );
+  }
+
+  @override
+  Future<void> recordPeerBulkCollection(BulkCollectionRequest request) async {
+    await _apiClient.recordPeerBulkPayment(
+      branchId: request.branchId,
+      method: request.method,
+      reference: request.reference,
+      offlineId: request.offlineId,
+      allocations: request.allocations
+          .map((a) => <String, dynamic>{
+                'receivableId': a.receivableId,
+                'amount': a.amount,
+              })
+          .toList(),
     );
   }
 

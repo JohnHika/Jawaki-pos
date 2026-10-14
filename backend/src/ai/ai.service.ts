@@ -313,7 +313,8 @@ export class AiService {
     try {
       const systemPrompt = this.buildSystemPrompt(dto) + this.buildToolUsageInstructions(dto);
       const messages = this.buildAnthropicMessages(dto);
-      const toolDefs = this.tools.getToolDefinitions();
+      // Only offer tools this user could use themselves (their role's permissions).
+      const toolDefs = this.tools.getToolDefinitions(toolCtx.permissions ?? []);
       const anthropicTools = toolDefs.map((t) => ({
         name: t.name,
         description: t.description,
@@ -339,7 +340,7 @@ export class AiService {
         );
       }
 
-      const maxIterations = 4;
+      const maxIterations = 8;
       for (let i = 0; i < maxIterations; i++) {
         // POS-dedicated endpoint: its own GLM model + business-partner
         // persona + skill library, isolated in the gateway's axon/pos module.
@@ -601,11 +602,37 @@ export class AiService {
         }
 
         if (toolDef?.mutating) {
+          let pendingInput: Record<string, any> = toolUseBlock.input;
+          let summary: string | null = null;
+          if (this.tools.isActionTool(toolUseBlock.name) && toolUseBlock.name !== 'create_stock_reorder') {
+            // Reject a malformed action BEFORE asking the user to confirm it, and
+            // carry the cleaned-up input forward so what they approve is exactly
+            // what will run.
+            const checked = this.tools.validateAction(toolUseBlock.name, toolUseBlock.input);
+            if (!checked.ok) {
+              messages.push(
+                { role: 'assistant', content: [toolUseBlock] },
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'tool_result',
+                      tool_use_id: toolUseBlock.id,
+                      content: `Error: ${checked.error} Ask the user for the missing detail, or fix the input and try again.`,
+                    },
+                  ],
+                },
+              );
+              continue;
+            }
+            pendingInput = checked.input;
+            summary = await this.tools.describeAction(toolUseBlock.name, pendingInput, toolCtx);
+          }
           return {
             kind: 'pending_confirmation',
             model,
-            pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input },
-            summary: this.describeMutatingToolCall(toolUseBlock.name, toolUseBlock.input),
+            pendingToolCall: { id: toolUseBlock.id, name: toolUseBlock.name, input: pendingInput },
+            summary: summary ?? this.describeMutatingToolCall(toolUseBlock.name, pendingInput),
           };
         }
 
@@ -698,7 +725,7 @@ export class AiService {
     }
 
     try {
-      const result = await this.tools.executeStockReorder(pending.input as any, toolCtx);
+      const result = await this.tools.executeMutatingTool(pending.name, pending.input as any, toolCtx, pending.id);
       return {
         toolUseBlock,
         toolResultBlock: {
@@ -725,6 +752,8 @@ export class AiService {
 Tool use:
 - You have tools to fetch fresher or more specific POS data (get_sales_summary, get_low_stock_items, get_top_products) than what was pre-attached to this message — use them when the question needs a different date range or more current figures than what's already provided.
 - Use ask_user_question when a request is genuinely ambiguous (e.g. which product, which branch, which date range) instead of guessing — but don't ask when the answer is already obvious from context.
+- You act on behalf of the person you are talking to, strictly within their role: you only have the tools their permissions allow, and if they ask for something you have no tool for, say it is outside what their role can do instead of improvising.
+- Wholesale shop debts: use get_shop_debts to see what other shops owe, how much each has paid back and when. To record that a shop took goods on credit use add_shop_debt; to record money a shop has paid use record_shop_instalment (it deducts from their debts, oldest first, and logs today's date). Never guess a debtorId — get it from get_shop_debts. create_expense records a business expense. Each of these asks the user to confirm before anything is saved, so call it as soon as you have the details, and then tell the user plainly what was saved.
 - create_stock_reorder raises a real stock request that a supervisor must approve. Only call it after the user has explicitly confirmed they want to raise it, with a clear product and quantity. Never call it speculatively or as a suggestion.
 - Use todo_write proactively for any request with 3+ distinct steps (e.g. "check stock, then sales, then suggest a promotion") so the user can see progress — keep exactly one item in_progress, mark items completed immediately as you finish them, and always send the full current list, not just changed items.
 - For multi-step or ambiguous work, use propose_plan to lay out what you intend to check/do (a short markdown list, in order) and wait for approval before proceeding — don't use ask_user_question to ask "is this plan okay?", propose_plan itself is the approval request. Skip it for a single simple question or a single tool call.`;

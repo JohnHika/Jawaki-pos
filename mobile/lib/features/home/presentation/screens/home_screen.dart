@@ -10,6 +10,7 @@ import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../billing/presentation/widgets/subscription_entitlement_host.dart';
+import '../../../../core/services/haptic_service.dart';
 import 'home_nav_keys.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -362,7 +363,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         item: item,
                         isSelected: isSelected,
                         isPrimary: item.path == '/ai',
-                        onTap: () => context.go(item.path),
+                        onTap: () {
+                          if (!isSelected) HapticService().selection();
+                          context.go(item.path);
+                        },
                         isDark: isDark),
                   ));
                 }),
@@ -378,7 +382,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           path: ''),
                       isSelected: currentIndex >= maxVisible,
                       isPrimary: false,
-                      onTap: () => _showMoreSheet(moreItems),
+                      onTap: () {
+                        HapticService().selection();
+                        _showMoreSheet(moreItems);
+                      },
                       isDark: isDark,
                     ),
                   )),

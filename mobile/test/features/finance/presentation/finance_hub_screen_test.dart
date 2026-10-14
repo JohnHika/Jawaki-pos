@@ -137,6 +137,13 @@ class _StubSource implements FinanceHubDataSource {
       BulkCollectionRequest request) async {
     bulkRequest = request;
   }
+
+  BulkCollectionRequest? peerBulkRequest;
+
+  @override
+  Future<void> recordPeerBulkCollection(BulkCollectionRequest request) async {
+    peerBulkRequest = request;
+  }
 }
 
 Widget _host(FinanceHubController controller) => ProviderScope(

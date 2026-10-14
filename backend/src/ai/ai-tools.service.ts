@@ -5,6 +5,7 @@ import { ExpensesService } from '../expenses/expenses.service';
 import { CustomersService } from '../customers/customers.service';
 import { SalesService } from '../sales/sales.service';
 import { ReportFilterDto, ReportPeriod, ReportGroupBy } from '../reporting/dto/reporting.dto';
+import { AiActionsService, canUseAiTool } from './ai-actions.service';
 
 export interface AiToolDefinition {
   name: string;
@@ -22,6 +23,8 @@ export interface AiToolCallContext {
   tenantId: string;
   branchId?: string;
   userId?: string;
+  /** The caller's effective permissions; the agent may only use tools they could use themselves. */
+  permissions?: string[];
 }
 
 export interface SanitizedTodoItem {
@@ -52,10 +55,20 @@ export class AiToolsService {
     private readonly expenses: ExpensesService,
     private readonly customers: CustomersService,
     private readonly sales: SalesService,
+    private readonly actions: AiActionsService,
   ) {}
 
-  getToolDefinitions(): AiToolDefinition[] {
+  /**
+   * The tools offered to the model. Pass the caller's permissions so a tool they
+   * could not use themselves is never even shown to the model.
+   */
+  getToolDefinitions(permissions?: string[]): AiToolDefinition[] {
+    return this.allToolDefinitions().filter((t) => canUseAiTool(t.name, permissions));
+  }
+
+  private allToolDefinitions(): AiToolDefinition[] {
     return [
+      ...this.actions.getToolDefinitions(),
       {
         name: 'ask_user_question',
         description:
@@ -424,6 +437,10 @@ export class AiToolsService {
     input: Record<string, any>,
     ctx: AiToolCallContext,
   ): Promise<unknown> {
+    if (!canUseAiTool(toolName, ctx.permissions)) {
+      throw new Error('You do not have permission to see this information.');
+    }
+    if (toolName === 'get_shop_debts') return this.actions.executeRead(toolName, input, ctx);
     switch (toolName) {
       case 'get_sales_summary':
         return this.reporting.getSalesSummary(ctx.tenantId, this.toFilter(input, ctx));
@@ -560,7 +577,38 @@ export class AiToolsService {
       .filter((t): t is SanitizedTodoItem => Boolean(t));
   }
 
-  /** Executes the one mutating tool. Only called after explicit user confirmation. */
+  /** True when [name] is a mutating tool that [executeMutatingTool] can run. */
+  isActionTool(name: string): boolean {
+    return name === 'create_stock_reorder' || this.actions.toolNames.has(name);
+  }
+
+  /** Plain-language confirmation text for a proposed mutating call, or null if unknown. */
+  describeAction(name: string, input: Record<string, any>, ctx: AiToolCallContext): Promise<string | null> {
+    return this.actions.describe(name, input, ctx);
+  }
+
+  /** Checks a proposed mutating call before the user is asked to confirm it. */
+  validateAction(name: string, input: Record<string, any>) {
+    return this.actions.validate(name, input);
+  }
+
+  /**
+   * Runs a user-confirmed mutating tool. The pending call is echoed back by the
+   * client, so the tool name is checked against the real tool list and the
+   * caller's permissions are re-checked here.
+   */
+  async executeMutatingTool(
+    name: string,
+    input: Record<string, any>,
+    ctx: AiToolCallContext,
+    idempotencyKey: string,
+  ): Promise<unknown> {
+    if (!this.isActionTool(name)) throw new Error(`${name} is not an action the assistant can run.`);
+    if (name === 'create_stock_reorder') return this.executeStockReorder(input as any, ctx);
+    return this.actions.executeMutation(name, input, ctx, idempotencyKey);
+  }
+
+  /** Executes the stock-reorder mutating tool. Only called after explicit user confirmation. */
   async executeStockReorder(
     input: { productId: string; quantity: number; reason?: string; priority?: string },
     ctx: AiToolCallContext,

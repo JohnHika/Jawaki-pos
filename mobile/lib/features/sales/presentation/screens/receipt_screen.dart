@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/services/haptic_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/database/app_database.dart';
@@ -36,6 +37,7 @@ class ReceiptScreen extends ConsumerWidget {
     // the provider, not at build time.
     ref.listen(receiptProvider(saleId), (previous, next) {
       if (previous?.value == null && next.value != null) {
+        if (celebrate) HapticService().medium();
         _autoPrintIfEnabled(next.value!);
       }
     });
