@@ -9,6 +9,7 @@ import '../../../../core/widgets/motion.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
@@ -154,7 +155,9 @@ class CartScreen extends ConsumerWidget {
                         key: ValueKey('cart-item-${item.productId}'),
                         itemKey: 'cart-${item.productId}',
                         index: index,
-                        child: CartItemTile(item: item),
+                        child: index == 0
+                            ? SwipeNudge(child: CartItemTile(item: item))
+                            : CartItemTile(item: item),
                       );
                     },
                   ),
@@ -274,7 +277,7 @@ class CartScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              Text(
+              RollingNumber(
                 formatMoney(cart.total),
                 style: DesignType.numeric(
                   fontSize: 26,

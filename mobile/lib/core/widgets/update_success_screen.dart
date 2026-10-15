@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../services/update_check_service.dart';
 import '../theme/design_system.dart';
 import 'release_notes.dart';
+import 'motion_kit_extras.dart';
 
 /// Full-screen "you're up to date" moment shown once, right after the app
 /// relaunches on a version it just installed. Reuses the same
@@ -160,7 +161,7 @@ class _SuccessMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return CircleReveal(child: Center(
       child: Container(
         width: 96,
         height: 96,
@@ -193,6 +194,6 @@ class _SuccessMark extends StatelessWidget {
             curve: Curves.easeOutBack,
           )
           .fadeIn(duration: 400.ms),
-    );
+    ));
   }
 }

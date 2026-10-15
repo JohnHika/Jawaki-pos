@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 
 /// Dismissible global banner shown when the subscription is in restricted
 /// mode (`entitlement.restrictedMode == true`).
@@ -74,7 +75,7 @@ class SubscriptionRestrictedBanner extends StatelessWidget {
     final bodyColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
 
-    return Container(
+    return DropIn(distance: 24, child: Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
       decoration: BoxDecoration(
@@ -178,7 +179,7 @@ class SubscriptionRestrictedBanner extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

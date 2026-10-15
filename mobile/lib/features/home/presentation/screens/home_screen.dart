@@ -196,7 +196,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Container(
                       padding: const EdgeInsets.all(DesignSpacing.sm),
                       decoration: BoxDecoration(
-                        gradient: DesignGradients.brand,
+                        gradient: const LinearGradient(
+                          colors: [DesignColors.accent, DesignColors.accentLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusLg - 6),
                       ),
@@ -235,11 +239,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                          color: DesignColors.brandSubtle,
+                          color: isDark
+                              ? DesignColors.brandSubtle
+                              : DesignColors.accent.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(
                               DesignSpacing.radiusLg - 6)),
                       child:
-                          Icon(item.icon, color: DesignColors.brand, size: 20),
+                          Icon(item.icon,
+                              color: isDark
+                                  ? DesignColors.brand
+                                  : DesignColors.accent,
+                              size: 20),
                     ),
                     title: Text(item.label,
                         style: const TextStyle(

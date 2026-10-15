@@ -8,6 +8,7 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -581,7 +582,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                   final c = _customers[index];
                                   final balance =
                                       (c['balance'] as num?)?.toDouble() ?? 0;
-                                  return Padding(
+                                  return UnfoldIn(delay: Duration(milliseconds: 40 * (index < 8 ? index : 8)), child: Padding(
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: Material(
                                       color: Colors.transparent,
@@ -699,7 +700,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                         ),
                                       ),
                                     ),
-                                  );
+                                  ));
                                 },
                               ),
                             ),

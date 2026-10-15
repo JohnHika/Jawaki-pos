@@ -22,6 +22,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
 import '../../../../core/utils/format.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -516,12 +517,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-revenue',
                 index: 0,
-                child: MetricCard(
+                child: FlashOnChange(trigger: summary['totalRevenue'], radius: 20, child: MetricCard(
                   title: "Today's Revenue",
                   value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
                   icon: Icons.trending_up_rounded,
                   color: DesignColors.success,
-                ),
+                )),
               ),
             ),
             // Transactions
@@ -530,12 +531,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-transactions',
                 index: 1,
-                child: MetricCard(
+                child: FlipIn(delay: const Duration(milliseconds: 160), child: MetricCard(
                   title: 'Transactions',
                   value: '${summary['transactionCount'] ?? 0}',
                   icon: Icons.receipt_long_rounded,
                   color: DesignColors.brand,
-                ),
+                )),
               ),
             ),
             // Avg. Ticket
@@ -544,12 +545,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-avg-ticket',
                 index: 2,
-                child: MetricCard(
+                child: SwingIn(angle: 0.12, delay: const Duration(milliseconds: 240), child: MetricCard(
                   title: 'Avg. Ticket',
                   value: _currencyFmt.format(summary['avgTicket'] ?? 0),
                   icon: Icons.shopping_cart_rounded,
                   color: DesignColors.info,
-                ),
+                )),
               ),
             ),
             // Items Sold
@@ -558,12 +559,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-items-sold',
                 index: 3,
-                child: MetricCard(
+                child: ZoomSettle(delay: const Duration(milliseconds: 320), child: MetricCard(
                   title: 'Items Sold',
                   value: '${summary['itemsSold'] ?? 0}',
                   icon: Icons.inventory_2_rounded,
                   color: DesignColors.accent,
-                ),
+                )),
               ),
             ),
           ],
@@ -605,7 +606,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
     final cardBorder =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    return ClipRRect(
+    return BorderDraw(radius: 18, color: DesignColors.accent.withValues(alpha: 0.55), delay: const Duration(milliseconds: 300), child: ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: Stack(
         children: [
@@ -701,7 +702,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildBriefSnippets(List<String> snippets, bool isDark) {

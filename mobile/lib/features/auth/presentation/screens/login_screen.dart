@@ -340,10 +340,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: DesignColors.brand.withValues(alpha: 0.08),
+                  color: DesignColors.accent.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   border: Border.all(
-                    color: DesignColors.brand.withValues(alpha: 0.22),
+                    color: DesignColors.accent.withValues(alpha: 0.22),
                   ),
                 ),
                 child: Row(
@@ -976,7 +976,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         'Forgot Password?',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: DesignColors.brand,
+                              color: DesignColors.accent,
                             ),
                       ),
                     ),
@@ -992,7 +992,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   isLoading: authState.isLoading,
                   height: 48,
                   borderRadius: DesignSpacing.radiusMd,
-                  gradient: const [DesignColors.brand, DesignColors.brandDark],
+                  gradient: const [DesignColors.accent, DesignColors.accentDark],
                 ),
 
                 const SizedBox(height: DesignSpacing.lg),
@@ -1050,7 +1050,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   child: Text(
                     'Have an invitation code?',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: DesignColors.brand,
+                          color: DesignColors.accent,
                           fontWeight: FontWeight.w600,
                         ),
                   ),
@@ -1084,7 +1084,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Widget _defaultLogoIcon(double size) => Icon(
         Icons.store_rounded,
         size: size * 0.55,
-        color: DesignColors.brand,
+        color: DesignColors.accent,
       );
 
   Widget _buildPremiumTextField({
@@ -1131,7 +1131,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ? DesignColors.darkTextPrimary
                     : DesignColors.textPrimary,
               ),
-          cursorColor: DesignColors.brand,
+          cursorColor: DesignColors.accent,
           decoration: InputDecoration(
             prefixIcon: Icon(
               prefixIcon,
@@ -1179,7 +1179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
               borderSide: BorderSide(
-                color: DesignColors.brand.withValues(alpha: 0.6),
+                color: DesignColors.accent.withValues(alpha: 0.6),
                 width: 1.5,
               ),
             ),

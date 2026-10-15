@@ -14,6 +14,7 @@ import '../../../../core/utils/format.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart' show syncCatalogCacheFromApi;
 import '../widgets/product_picker_dialog.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -431,7 +432,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    return _buildStockItemCard(item, permissions);
+                    return CascadeScale(index: index, child: _buildStockItemCard(item, permissions));
                   },
                 ),
         ),
