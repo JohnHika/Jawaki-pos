@@ -35,6 +35,7 @@ import { BugReportModule } from './bug-report/bug-report.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
 import { CardBillingModule } from './billing/card-billing.module';
 import { BillingModule } from './billing/billing.module';
+import { PartnersModule } from './partners/partners.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -98,6 +99,7 @@ import { AppController } from './app.controller';
     PlatformAdminModule,
     CardBillingModule,
     BillingModule,
+    PartnersModule,
   ],
   controllers: [AppController],
 })

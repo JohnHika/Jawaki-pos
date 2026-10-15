@@ -58,6 +58,8 @@ model Tenant {
   retailReceivables     RetailReceivable[]
   peerDebtors           PeerDebtor[]
   peerReceivables       PeerReceivable[]
+  partnershipsRequested TradePartnership[] @relation("PartnershipRequester")
+  partnershipsReceived  TradePartnership[] @relation("PartnershipAddressee")
 
   @@map("tenants")
 }
@@ -323,6 +325,7 @@ model User {
   retailReceivablePayments   RetailReceivablePayment[] @relation("RetailReceivablePaymentCreatedBy")
   peerReceivablesCreated     PeerReceivable[] @relation("PeerReceivableCreatedBy")
   peerReceivablePayments     PeerReceivablePayment[] @relation("PeerReceivablePaymentCreatedBy")
+  appNotifications           AppNotification[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -1798,4 +1801,69 @@ model DailyClose {
   @@unique([branchId, date])
   @@index([branchId, closedAt])
   @@map("daily_closes")
+}
+
+// ==================== NOTIFICATION INBOX ====================
+
+// Persisted in-app notification. Every push sent via NotificationsService
+// is first stored here so users can review them later (inbox) even if the
+// push was missed or Firebase is not configured.
+model AppNotification {
+  id        String    @id @default(uuid())
+  userId    String
+  tenantId  String?
+  type      String
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("app_notifications")
+}
+
+// ==================== TRADE PARTNERS ====================
+
+// A connection between two businesses (tenants) that trade together.
+// Connected by company code (Tenant.slug). status: PENDING | ACCEPTED |
+// DECLINED | REMOVED.
+model TradePartnership {
+  id                 String    @id @default(uuid())
+  requesterTenantId  String
+  addresseeTenantId  String
+  requestedById      String
+  message            String?
+  status             String    @default("PENDING")
+  respondedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  requesterTenant Tenant @relation("PartnershipRequester", fields: [requesterTenantId], references: [id], onDelete: Cascade)
+  addresseeTenant Tenant @relation("PartnershipAddressee", fields: [addresseeTenantId], references: [id], onDelete: Cascade)
+  messages        PartnerMessage[]
+
+  @@unique([requesterTenantId, addresseeTenantId])
+  @@index([requesterTenantId])
+  @@index([addresseeTenantId])
+  @@map("trade_partnerships")
+}
+
+model PartnerMessage {
+  id             String    @id @default(uuid())
+  partnershipId  String
+  senderTenantId String
+  senderUserId   String
+  senderName     String
+  body           String
+  createdAt      DateTime  @default(now())
+  readAt         DateTime?
+
+  partnership TradePartnership @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+
+  @@index([partnershipId, createdAt])
+  @@map("partner_messages")
 }

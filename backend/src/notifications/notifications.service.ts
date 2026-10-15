@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { cert, initializeApp, type App } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
+import { LegacyUserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 
 export interface PushNotificationPayload {
@@ -81,25 +82,40 @@ export class NotificationsService {
   }
 
   /**
-   * Sends a push to every device the given user has registered a token
-   * from. Fails soft: notification delivery is never allowed to break the
-   * caller's primary action (e.g. resolving a stock request) — errors are
-   * logged, and tokens Firebase reports as invalid/unregistered are pruned.
+   * Stores the notification in the user's inbox (always) and then sends a
+   * push to every device the user has registered a token from. Fails soft:
+   * neither persistence nor delivery is allowed to break the caller's
+   * primary action (e.g. resolving a stock request) - errors are logged, and
+   * tokens Firebase reports as invalid/unregistered are pruned.
    */
-  async sendToUser(userId: string, payload: PushNotificationPayload): Promise<void> {
+  async sendToUser(
+    userId: string,
+    payload: PushNotificationPayload,
+    opts?: { tenantId?: string },
+  ): Promise<void> {
+    const notificationId = await this.persist(userId, payload, opts?.tenantId);
+
     if (!this.app) return;
 
-    const tokens = await this.prisma.pushToken.findMany({
-      where: { userId },
-      select: { token: true },
-    });
-    if (tokens.length === 0) return;
-
     try {
+      const tokens = await this.prisma.pushToken.findMany({
+        where: { userId },
+        select: { token: true },
+      });
+      if (tokens.length === 0) return;
+
+      const data: Record<string, string> = {};
+      for (const [key, value] of Object.entries(payload.data ?? {})) {
+        if (value === undefined || value === null) continue;
+        data[key] = typeof value === 'string' ? value : JSON.stringify(value);
+      }
+      data.type = data.type ?? 'general';
+      if (notificationId) data.notificationId = notificationId;
+
       const response = await getMessaging(this.app).sendEachForMulticast({
         tokens: tokens.map((t) => t.token),
         notification: { title: payload.title, body: payload.body },
-        data: payload.data,
+        data,
         android: { priority: 'high' },
       });
 
@@ -127,6 +143,102 @@ export class NotificationsService {
       }
     } catch (error) {
       this.logger.error(`Failed to send push notification to user ${userId}: ${error}`);
+    }
+  }
+
+  /** Best-effort inbox insert. Returns the new row id, or null on failure. */
+  private async persist(
+    userId: string,
+    payload: PushNotificationPayload,
+    tenantId?: string,
+  ): Promise<string | null> {
+    try {
+      const { type, ...rest } = (payload.data ?? {}) as Record<string, string>;
+      const row = await this.prisma.appNotification.create({
+        data: {
+          userId,
+          tenantId: tenantId ?? null,
+          type: type || 'general',
+          title: payload.title,
+          body: payload.body,
+          data: Object.keys(rest).length > 0 ? (rest as Prisma.InputJsonValue) : undefined,
+        },
+        select: { id: true },
+      });
+      return row.id;
+    } catch (error) {
+      this.logger.error(`Failed to persist notification for user ${userId}: ${error}`);
+      return null;
+    }
+  }
+
+  /** Notifies every active user of a tenant holding one of the given roles. */
+  async sendToTenantRoles(
+    tenantId: string,
+    roles: LegacyUserRole[],
+    payload: PushNotificationPayload,
+  ): Promise<void> {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: { tenantId, isActive: true, role: { in: roles } },
+        select: { id: true },
+      });
+      await Promise.all(
+        users.map((u) => this.sendToUser(u.id, payload, { tenantId })),
+      );
+    } catch (error) {
+      this.logger.error(`Failed to notify roles ${roles.join(',')} of tenant ${tenantId}: ${error}`);
+    }
+  }
+
+  async list(userId: string, limit = 50, before?: string) {
+    const take = Math.min(Math.max(Math.trunc(Number(limit)) || 50, 1), 100);
+    let beforeDate: Date | undefined;
+    if (before) {
+      const d = new Date(before);
+      if (!Number.isNaN(d.getTime())) beforeDate = d;
+    }
+    const [rows, unreadCount] = await Promise.all([
+      this.prisma.appNotification.findMany({
+        where: { userId, ...(beforeDate ? { createdAt: { lt: beforeDate } } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take,
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          body: true,
+          data: true,
+          readAt: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.appNotification.count({ where: { userId, readAt: null } }),
+    ]);
+    return { items: rows, unreadCount };
+  }
+
+  async markAllRead(userId: string): Promise<void> {
+    await this.prisma.appNotification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
+
+  async markRead(userId: string, id: string): Promise<void> {
+    const existing = await this.prisma.appNotification.findFirst({
+      where: { id, userId },
+      select: { id: true, readAt: true },
+    });
+    // Plain HttpException (not NotFoundException): the global
+    // TransformInterceptor rewrites NotFoundException to 401 for
+    // authenticated requests, which would hide this real 404.
+    if (!existing) throw new HttpException('Notification not found', HttpStatus.NOT_FOUND);
+    if (!existing.readAt) {
+      await this.prisma.appNotification.update({
+        where: { id },
+        data: { readAt: new Date() },
+      });
     }
   }
 }

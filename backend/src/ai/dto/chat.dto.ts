@@ -248,7 +248,7 @@ export class ChatRequestDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  context?: 'sales' | 'inventory' | 'customers' | 'general';
+  context?: 'sales' | 'inventory' | 'customers' | 'general' | 'daily_brief';
 
   @IsOptional()
   @IsBoolean()

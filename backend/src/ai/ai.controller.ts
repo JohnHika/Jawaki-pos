@@ -7,6 +7,7 @@ import { AiMemoryService } from './ai-memory.service';
 import { AiDailyBriefTask } from './ai-daily-brief.task';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ScanReceiptDto } from './dto/receipt-scan.dto';
+import { IdentifyProductDto } from './dto/product-identify.dto';
 import { VisionChatRequestDto } from './dto/vision-chat.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
@@ -124,7 +125,10 @@ export class AiController {
     // guessing positions in a list that may differ from the server's.
     let userMessageId: string | null = null;
     let assistantMessageId: string | null = null;
-    if (tenantId) {
+    // The dashboard's live-brief fallback asks through this same endpoint;
+    // its canned question and answer belong on the dashboard card, not in
+    // the shop's shared chat thread.
+    if (tenantId && dto.context !== 'daily_brief') {
       try {
         const userName = (user.email as string | undefined) || null;
         if (dto.user_question && !dto.pending_tool_call) {
@@ -518,7 +522,18 @@ export class AiController {
   @UseGuards(AiAccessGuard)
   @HttpCode(HttpStatus.OK)
   async scanReceipt(@Body() dto: ScanReceiptDto) {
-    const data = await this.aiService.parseReceiptImage(dto.imageUrl);
+    const data = await this.aiService.parseReceiptImage({
+      imageUrl: dto.imageUrl,
+      imageBase64: dto.imageBase64,
+    });
+    return { success: true, data };
+  }
+
+  @Post('products/identify')
+  @UseGuards(AiAccessGuard)
+  @HttpCode(HttpStatus.OK)
+  async identifyProduct(@Body() dto: IdentifyProductDto) {
+    const data = await this.aiService.identifyProductImage(dto.imageBase64);
     return { success: true, data };
   }
 

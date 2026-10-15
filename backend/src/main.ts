@@ -21,6 +21,9 @@ async function bootstrap() {
   // which must be computed over the exact bytes Paystack sent.
   app.use(
     express.json({
+      // Photos (receipts, product shots) arrive inline as base64 for AI
+      // vision; Express's 100kb default rejects any real phone photo.
+      limit: '12mb',
       verify: (req: any, _res, buf) => {
         req.rawBody = buf;
       },
