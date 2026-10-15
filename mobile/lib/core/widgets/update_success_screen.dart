@@ -32,7 +32,7 @@ class UpdateSuccessScreen extends StatelessWidget {
     final notes = parseReleaseNotes(update.releaseNotes);
 
     return Material(
-      color: DesignColors.darkBg,
+      color: context.themed(DesignColors.darkBg),
       child: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(vertical: DesignSpacing.md),
@@ -54,7 +54,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                     'What\'s new in Axon POS',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: DesignColors.darkTextPrimary,
+                          color: context.themed(DesignColors.darkTextPrimary),
                           fontWeight: FontWeight.w700,
                         ),
                   )
@@ -72,7 +72,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                     'Your update is installed and ready. Here are the latest changes.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: DesignColors.darkTextSecondary,
+                          color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.45,
                         ),
                   )
@@ -130,7 +130,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                     'For security, you have been signed out. Sign in again to continue.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: DesignColors.darkTextTertiary,
+                          color: context.themed(DesignColors.darkTextTertiary),
                           height: 1.4,
                         ),
                   ),
@@ -166,7 +166,9 @@ class _SuccessMark extends StatelessWidget {
         width: 96,
         height: 96,
         decoration: BoxDecoration(
-          color: DesignColors.successSubtle,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? DesignColors.successSubtle
+              : DesignColors.success.withValues(alpha: 0.14),
           shape: BoxShape.circle,
           border: Border.all(
             color: DesignColors.success.withValues(alpha: 0.5),

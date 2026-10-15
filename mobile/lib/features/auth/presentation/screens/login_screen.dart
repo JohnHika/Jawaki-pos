@@ -442,7 +442,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        color: DesignColors.darkBg,
+        color: context.themed(DesignColors.darkBg),
         child: SafeArea(
           minimum: const EdgeInsets.only(
               top: DesignSpacing.sm, bottom: DesignSpacing.lg),
@@ -472,7 +472,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   // the shop badge would sit on the company name.
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
-                    opacity: MediaQuery.viewInsetsOf(context).bottom > 0
+                    // The icon artwork has an opaque dark plate, which reads as
+                    // a grey box on the light canvas, so it is dark-theme only.
+                    opacity: (!isDark || MediaQuery.viewInsetsOf(context).bottom > 0)
                         ? 0.0
                         : 0.35,
                     child: Image.asset(
@@ -496,17 +498,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     child: Container(
                       padding: const EdgeInsets.all(DesignSpacing.md),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : Colors.white,
                         borderRadius:
                             BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.18),
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.18)
+                              : DesignColors.surfaceBorder,
                           width: 1,
                         ),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_back_rounded,
-                        color: Colors.white,
+                        color: isDark ? Colors.white : DesignColors.textPrimary,
                         size: 24,
                       ),
                     ),
@@ -565,7 +571,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         child: Text(
                           _companyName ?? 'Join your business',
                           style: theme.textTheme.headlineLarge?.copyWith(
-                            color: Colors.white,
+                            color:
+                                isDark ? Colors.white : DesignColors.textPrimary,
                             letterSpacing: 0.5,
                           ),
                           textAlign: TextAlign.center,
@@ -581,7 +588,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               ? 'CONNECT YOUR STAFF ACCOUNT'
                               : 'READY FOR STAFF SIGN IN',
                           style: theme.textTheme.labelMedium?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.7)
+                                : DesignColors.textSecondary,
                             letterSpacing: 2,
                           ),
                         ),
@@ -1274,14 +1283,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           'Secure business access',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: DesignColors.darkTextSecondary,
+                color: context.themed(DesignColors.darkTextSecondary),
               ),
         ),
         const SizedBox(height: DesignSpacing.sm - 2),
         Text(
           'Point of Sale System',
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: DesignColors.darkTextTertiary,
+                color: context.themed(DesignColors.darkTextTertiary),
               ),
         ),
       ],

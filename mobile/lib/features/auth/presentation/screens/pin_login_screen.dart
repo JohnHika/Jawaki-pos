@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -296,7 +297,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final isSmallScreen = size.height < 800;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent), child: Scaffold(
       backgroundColor: DesignColors.darkBg,
       body: Container(
         width: double.infinity,
@@ -402,7 +403,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildLogoSection(bool isSmallScreen) {

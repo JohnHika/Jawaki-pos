@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../domain/analytics_mapping.dart';
 
 /// Date range for reports.
 class DateRangeState {
@@ -81,12 +82,7 @@ final dashboardSummaryProvider =
     // picker below it — matches the previous local behavior exactly.
   );
   final sales = (data['sales'] as Map<String, dynamic>?) ?? {};
-  return {
-    'transactionCount': sales['totalSales'] ?? 0,
-    'totalRevenue': sales['totalRevenue'] ?? 0,
-    'avgTicket': sales['averageTicket'] ?? 0,
-    'itemsSold': sales['itemsSold'] ?? 0,
-  };
+  return summaryFromServer(sales);
 });
 
 // -- Sales list for date range --

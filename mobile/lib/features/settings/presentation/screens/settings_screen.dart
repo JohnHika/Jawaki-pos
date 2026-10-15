@@ -2480,7 +2480,7 @@ class _NotificationSettingsSheetState
                               .textTheme
                               .bodySmall
                               ?.copyWith(
-                                  color: DesignColors.darkTextSecondary,
+                                  color: context.themed(DesignColors.darkTextSecondary),
                                   height: 1.4),
                           maxLines: 4,
                           overflow: TextOverflow.ellipsis,

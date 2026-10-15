@@ -197,16 +197,16 @@ export class ReportingService {
     });
 
     return {
-      totalSales: (salesAgg._count as any)?.id || salesAgg._count || 0,
+      totalSales: (salesAgg._count as any)?.id ?? 0,
       totalRevenue: Number(salesAgg._sum.totalAmount) || 0,
       totalDiscount: Number(salesAgg._sum.discountAmount) || 0,
       netRevenue: Number(salesAgg._sum.subtotal) || 0,
       averageTicket: Number(salesAgg._avg.totalAmount) || 0,
       itemsSold: Number(itemsAgg._sum.quantity) || 0,
       uniqueCustomers: customersCount.length,
-      refundsCount: (refundsAgg._count as any)?.id || refundsAgg._count || 0,
+      refundsCount: (refundsAgg._count as any)?.id ?? 0,
       refundsAmount: Number(refundsAgg._sum.totalAmount) || 0,
-      voidedSalesCount: (voidedAgg._count as any)?.id || voidedAgg._count || 0,
+      voidedSalesCount: (voidedAgg._count as any)?.id ?? 0,
       voidedSalesAmount: Number(voidedAgg._sum.totalAmount) || 0,
     };
   }
@@ -565,7 +565,7 @@ export class ReportingService {
       results.push({
         branchId: branch.id,
         branchName: branch.name,
-        salesCount: (salesAgg._count as any)?.id || salesAgg._count || 0,
+        salesCount: (salesAgg._count as any)?.id ?? 0,
         revenue: Number(salesAgg._sum.totalAmount) || 0,
         averageTicket: Number(salesAgg._avg.totalAmount) || 0,
         topProduct: topProductName,

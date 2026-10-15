@@ -6,7 +6,12 @@
 /// skipped or zeroed rather than throwing, since these feed charts.
 library;
 
-num _num(Object? v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
+/// Tolerates a Prisma `{id: n}` count wrapper as well as a plain number.
+num _num(Object? v) => v is num
+    ? v
+    : v is Map
+        ? _num(v['id'])
+        : num.tryParse(v?.toString() ?? '') ?? 0;
 
 List<Map<String, dynamic>> _rows(Object? v) => v is List
     ? v.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()

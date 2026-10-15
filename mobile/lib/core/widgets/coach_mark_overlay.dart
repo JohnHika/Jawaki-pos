@@ -201,7 +201,7 @@ class _TourCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: DesignColors.darkSurfaceElevated,
+            color: context.themed(DesignColors.darkSurfaceElevated),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: DesignColors.brand.withValues(alpha: 0.3)),
             boxShadow: [
@@ -231,7 +231,7 @@ class _TourCard extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: i < stepNumber
                                 ? DesignColors.brand
-                                : DesignColors.darkTextTertiary.withValues(alpha: 0.4),
+                                : context.themed(DesignColors.darkTextTertiary).withValues(alpha: 0.4),
                           ),
                         ),
                       ),
@@ -244,10 +244,10 @@ class _TourCard extends StatelessWidget {
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text(
+                    child: Text(
                       'Skip',
                       style: TextStyle(
-                        color: DesignColors.darkTextTertiary,
+                        color: context.themed(DesignColors.darkTextTertiary),
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -258,8 +258,8 @@ class _TourCard extends StatelessWidget {
               const SizedBox(height: 14),
               Text(
                 step.title,
-                style: const TextStyle(
-                  color: DesignColors.darkTextPrimary,
+                style: TextStyle(
+                  color: context.themed(DesignColors.darkTextPrimary),
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
@@ -267,8 +267,8 @@ class _TourCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 step.description,
-                style: const TextStyle(
-                  color: DesignColors.darkTextSecondary,
+                style: TextStyle(
+                  color: context.themed(DesignColors.darkTextSecondary),
                   fontSize: 14,
                   height: 1.4,
                 ),

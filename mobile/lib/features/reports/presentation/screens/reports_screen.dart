@@ -100,7 +100,7 @@ class ReportsScreen extends ConsumerWidget {
                 icon: Icons.pie_chart_rounded,
                 title: 'Payment Methods',
                 subtitle: 'Breakdown of payment methods used',
-                color: DesignColors.credit,
+                color: DesignColors.accent,
                 onTap: () => _showPaymentMethodsReport(context, ref),
               )
             ),

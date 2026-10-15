@@ -657,7 +657,7 @@ class _FinanceStatusBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(
               horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
           decoration: BoxDecoration(
-              color: DesignColors.warningSubtle,
+              color: DesignColors.warning.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusMd)),
           child: Row(children: <Widget>[
             const Icon(Icons.wifi_off_rounded,

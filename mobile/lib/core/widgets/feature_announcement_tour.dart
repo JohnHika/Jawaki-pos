@@ -208,7 +208,7 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
     final card = Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: DesignColors.darkSurfaceElevated,
+        color: context.themed(DesignColors.darkSurfaceElevated),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: a.accentColor.withValues(alpha: 0.2),
@@ -246,7 +246,7 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
                         shape: BoxShape.circle,
                         color: i < widget.stepNumber
                             ? a.accentColor
-                            : DesignColors.darkTextTertiary
+                            : context.themed(DesignColors.darkTextTertiary)
                                 .withValues(alpha: 0.35),
                       ),
                     ),
@@ -255,10 +255,10 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
               ),
               GestureDetector(
                 onTap: widget.onSkip,
-                child: const Text(
+                child: Text(
                   'Skip',
                   style: TextStyle(
-                    color: DesignColors.darkTextTertiary,
+                    color: context.themed(DesignColors.darkTextTertiary),
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -271,8 +271,8 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
           // Title
           Text(
             a.title,
-            style: const TextStyle(
-              color: DesignColors.darkTextPrimary,
+            style: TextStyle(
+              color: context.themed(DesignColors.darkTextPrimary),
               fontSize: 20,
               fontWeight: FontWeight.w700,
               height: 1.2,
@@ -283,8 +283,8 @@ class _AnimatedFeatureCardState extends State<_AnimatedFeatureCard>
           // Description
           Text(
             a.description,
-            style: const TextStyle(
-              color: DesignColors.darkTextSecondary,
+            style: TextStyle(
+              color: context.themed(DesignColors.darkTextSecondary),
               fontSize: 14,
               height: 1.5,
             ),

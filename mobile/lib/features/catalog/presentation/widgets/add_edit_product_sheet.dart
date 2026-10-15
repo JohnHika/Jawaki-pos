@@ -413,7 +413,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     return Container(
       height: 56,
       decoration: BoxDecoration(
-        color: DesignColors.errorSubtle,
+        color: DesignColors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         border: Border.all(
           color: DesignColors.error.withValues(alpha: 0.3),

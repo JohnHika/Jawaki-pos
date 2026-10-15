@@ -483,7 +483,7 @@ class _SubscriptionBillingScreenState
           colors: isDark
               ? [
                   DesignColors.brand.withValues(alpha: 0.14),
-                  DesignColors.darkSurfaceElevated,
+                  context.themed(DesignColors.darkSurfaceElevated),
                 ]
               : const [Color(0xFFFFE6D2), Colors.white],
           begin: Alignment.topLeft,

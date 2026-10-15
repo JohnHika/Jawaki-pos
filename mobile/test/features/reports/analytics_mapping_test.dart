@@ -20,6 +20,11 @@ void main() {
     expect(summaryFromServer({'totalSales': '5'})['transactionCount'], 5);
   });
 
+  test('summary unwraps a Prisma {id: n} count instead of printing the map', () {
+    expect(summaryFromServer({'totalSales': {'id': 0}})['transactionCount'], 0);
+    expect(summaryFromServer({'totalSales': {'id': 7}})['transactionCount'], 7);
+  });
+
   test('hourly rows always cover 24 hours, filling quiet hours with zero', () {
     final rows = hourlyFromServer([
       {'period': '2026-10-13 14:00', 'salesCount': 2, 'revenue': 500},

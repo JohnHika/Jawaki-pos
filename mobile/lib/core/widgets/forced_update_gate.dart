@@ -30,7 +30,7 @@ class ForcedUpdateGate extends StatelessWidget {
     final isBusy = updateService.isDownloading || updateService.isInstalling;
 
     return Material(
-      color: DesignColors.darkBg,
+      color: context.themed(DesignColors.darkBg),
       child: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -50,7 +50,7 @@ class ForcedUpdateGate extends StatelessWidget {
                     isBusy ? 'Updating Axon POS' : 'Update Required',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: DesignColors.darkTextPrimary,
+                          color: context.themed(DesignColors.darkTextPrimary),
                           fontWeight: FontWeight.w700,
                         ),
                   )
@@ -69,7 +69,7 @@ class ForcedUpdateGate extends StatelessWidget {
                         : 'A newer version is available. Update now to keep using Axon POS.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: DesignColors.darkTextSecondary,
+                          color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.45,
                         ),
                   )
@@ -145,7 +145,7 @@ class ForcedUpdateGate extends StatelessWidget {
                   TextButton(
                     onPressed: updateService.openDownloadFallback,
                     style: TextButton.styleFrom(
-                      foregroundColor: DesignColors.darkTextSecondary,
+                      foregroundColor: context.themed(DesignColors.darkTextSecondary),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     child: const Text('Open fallback download link'),
@@ -155,7 +155,7 @@ class ForcedUpdateGate extends StatelessWidget {
                     TextButton(
                       onPressed: SystemNavigator.pop,
                       style: TextButton.styleFrom(
-                        foregroundColor: DesignColors.darkTextTertiary,
+                        foregroundColor: context.themed(DesignColors.darkTextTertiary),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       child: const Text('Close app'),
@@ -334,8 +334,8 @@ class _VersionColumn extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            color: DesignColors.darkTextTertiary,
+          style: TextStyle(
+            color: context.themed(DesignColors.darkTextTertiary),
             fontSize: 11,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.6,
@@ -491,8 +491,8 @@ class _AnimatedProgressBar extends StatelessWidget {
         children: [
           Container(
             height: 8,
-            decoration: const BoxDecoration(
-              color: DesignColors.darkSurfaceElevated,
+            decoration: BoxDecoration(
+              color: context.themed(DesignColors.darkSurfaceElevated),
             ),
           ),
           if (clamped != null)
@@ -548,7 +548,7 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
-        color: DesignColors.errorSubtle,
+        color: DesignColors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
         border: Border.all(
           color: DesignColors.error.withValues(alpha: 0.3),

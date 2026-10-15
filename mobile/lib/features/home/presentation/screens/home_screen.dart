@@ -287,8 +287,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
+    final atDashboard =
+        GoRouterState.of(context).uri.path == '/dashboard';
 
-    return Scaffold(
+    // Tabs are reached with context.go, so the stack holds a single page and
+    // the system Back would close the app from every screen (go_router skips
+    // PopScope on a one-page stack). Send Back to the Dashboard first; Back on
+    // the Dashboard itself still leaves the app.
+    return BackButtonListener(
+      onBackButtonPressed: () async {
+        if (atDashboard) return false;
+        context.go('/dashboard');
+        return true;
+      },
+      child: Scaffold(
       body: Column(
         children: [
           // Offline Banner
@@ -405,7 +417,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

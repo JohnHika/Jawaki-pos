@@ -76,11 +76,11 @@ class DesignType {
 // Indigo remains as the brand identifier (logo mark, splash) but does
 // not carry interactive weight the way orange does.
 class DesignColors {
-  // Brand mark — Axon indigo, identity only (logo, splash, About)
-  static const Color brand = Color(0xFF7C6CFF);
-  static const Color brandLight = Color(0xFF9C90FF);
-  static const Color brandDark = Color(0xFF5B4CD6);
-  static const Color brandSubtle = Color(0xFF1A1730);
+  // Brand tokens now alias the orange accent so every legacy "brand" use matches the one-accent palette
+  static const Color brand = Color(0xFFFF7A33);
+  static const Color brandLight = Color(0xFFFFA166);
+  static const Color brandDark = Color(0xFFE0611E);
+  static const Color brandSubtle = Color(0xFF2A1B10);
 
   // Accent — signal orange, the app's one interactive color
   static const Color accent = Color(0xFFFF7A33);
@@ -2610,7 +2610,6 @@ extension ThemedDarkTokens on BuildContext {
   Color themed(Color darkToken) {
     if (Theme.of(this).brightness == Brightness.dark) return darkToken;
     if (darkToken == DesignColors.accentSubtle) return DesignColors.peach;
-    if (darkToken == DesignColors.brandSubtle) return const Color(0xFFEEEBFF);
     if (darkToken == DesignColors.darkBg) return DesignColors.surfaceMuted;
     if (darkToken == DesignColors.darkSurface) return Colors.white;
     if (darkToken == DesignColors.darkSurfaceElevated) {
