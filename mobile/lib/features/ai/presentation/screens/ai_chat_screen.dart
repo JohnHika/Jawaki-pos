@@ -682,67 +682,184 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     );
   }
 
+  /// Empty-state "assistant hub": instead of a blank chat with a greeting, it
+  /// offers things the AI can actually do for the shop right now — each card
+  /// either asks the AI (sending a ready-made question) or jumps into a
+  /// camera / scan flow where the AI reads a photo.
   Widget _buildWelcomeScreen() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(DesignSpacing.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-              ),
-              child: Center(
-                child: AxonAiIcon(
-                  tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
-                  size: 44,
+    final theme = Theme.of(context);
+    final primary = context.themed(DesignColors.darkTextPrimary);
+    final secondary = context.themed(DesignColors.darkTextSecondary);
+    final firstName = ref.watch(tenantIdentityProvider).userFirstName;
+    final hour = DateTime.now().hour;
+    final period = hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
+
+    AiSkillCommand skill(String command) =>
+        aiSkillCommands.firstWhere((c) => c.command == command);
+
+    final actions = <_AiHubAction>[
+      _AiHubAction(
+        icon: Icons.wb_sunny_outlined,
+        title: "Today's brief",
+        subtitle: 'How the shop is doing',
+        onTap: () => _sendMessage(skill('brief').prompt),
+      ),
+      _AiHubAction(
+        icon: Icons.document_scanner_rounded,
+        title: 'Scan a receipt',
+        subtitle: 'AI reads supplier invoices',
+        badge: 'Photo',
+        onTap: () => context.push('/finance'),
+      ),
+      _AiHubAction(
+        icon: Icons.photo_camera_rounded,
+        title: 'Snap a photo',
+        subtitle: 'Product, shelf or receipt',
+        badge: 'Photo',
+        onTap: _openAddToChat,
+      ),
+      _AiHubAction(
+        icon: Icons.inventory_2_outlined,
+        title: 'What to restock',
+        subtitle: 'Reorder list within budget',
+        onTap: () => _sendMessage(skill('reorder').prompt),
+      ),
+      _AiHubAction(
+        icon: Icons.payments_outlined,
+        title: 'Who owes me',
+        subtitle: 'Debts to collect first',
+        onTap: () => _sendMessage(skill('debtors').prompt),
+      ),
+      _AiHubAction(
+        icon: Icons.star_outline_rounded,
+        title: 'Best sellers',
+        subtitle: "What's moving right now",
+        onTap: () => _sendMessage(skill('bestsellers').prompt),
+      ),
+    ];
+
+    final quickAsks = <AiSkillCommand>[
+      skill('profit'),
+      skill('weekly'),
+      skill('cashup'),
+      skill('topcustomers'),
+      skill('expenses'),
+    ];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.lg, DesignSpacing.xl, DesignSpacing.lg, DesignSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: DesignColors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
                 ),
-              ),
-            ).animateEntrance(
-              context,
-              effects: () => [
-                const ScaleEffect(
-                  duration: DesignAnimation.slowest,
-                  curve: DesignAnimation.bounce,
-                ),
-              ],
-            ),
-            const SizedBox(height: DesignSpacing.xl),
-            Text(
-              'Axon AI Assistant',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                child: Center(
+                  child: AxonAiIcon(
+                    tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
+                    size: 30,
                   ),
-            ).animateEntrance(
-              context,
-              delay: DesignAnimation.fast,
-              effects: () => [
-                const FadeEffect(duration: DesignAnimation.fast),
-              ],
+                ),
+              ).animateEntrance(
+                context,
+                effects: () => [
+                  const ScaleEffect(
+                    duration: DesignAnimation.slowest,
+                    curve: DesignAnimation.bounce,
+                  ),
+                ],
+              ),
+              const SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      firstName.isNotEmpty
+                          ? 'Good $period, $firstName'
+                          : 'Good $period',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                          color: primary, fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      'What shall we sort out?',
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: secondary),
+                    ),
+                  ],
+                ).animateEntrance(
+                  context,
+                  delay: DesignAnimation.fast,
+                  effects: () => [const FadeEffect(duration: DesignAnimation.fast)],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: DesignSpacing.xl),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = DesignSpacing.md;
+              final width = (constraints.maxWidth - gap) / 2;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (var i = 0; i < actions.length; i++)
+                    SizedBox(
+                      width: width,
+                      child: _AiHubCard(action: actions[i]).animateEntrance(
+                        context,
+                        delay: DesignAnimation.staggerInterval * (i + 1),
+                        effects: () => [
+                          const FadeEffect(duration: DesignAnimation.fast),
+                          const MoveEffect(
+                            begin: Offset(0, 10),
+                            end: Offset.zero,
+                            duration: DesignAnimation.fast,
+                            curve: DesignAnimation.smooth,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: DesignSpacing.xl),
+          Text(
+            'OR ASK',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: context.themed(DesignColors.darkTextTertiary),
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.0,
             ),
-            const SizedBox(height: DesignSpacing.sm),
-            Text(
-              'Your intelligent business companion.\nAsk me anything about your sales, inventory, and customers.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: secondaryColor, fontSize: DesignType.chatBody),
-            ).animateEntrance(
-              context,
-              delay: DesignAnimation.normal,
-              effects: () => [
-                const FadeEffect(duration: DesignAnimation.fast),
-              ],
-            ),
-            const SizedBox(height: DesignSpacing.xxl),
-          ],
-        ),
+          ),
+          const SizedBox(height: DesignSpacing.sm),
+          Wrap(
+            spacing: DesignSpacing.sm,
+            runSpacing: DesignSpacing.sm,
+            children: [
+              for (final cmd in quickAsks)
+                ActionChip(
+                  avatar: Icon(cmd.icon, size: 16, color: DesignColors.accentDark),
+                  label: Text(cmd.label),
+                  onPressed: () => _sendMessage(cmd.prompt),
+                ),
+            ],
+          ),
+          const SizedBox(height: DesignSpacing.lg),
+          Text(
+            'Type / for every skill, or tap + to add a photo.',
+            style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+          ),
+        ],
       ),
     );
   }
@@ -1821,6 +1938,107 @@ class _TypingIndicatorState extends State<_TypingIndicator>
             }),
           );
         },
+      ),
+    );
+  }
+}
+
+class _AiHubAction {
+  const _AiHubAction({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final String? badge;
+}
+
+/// One tappable "do this" card on the AI hub: icon tile, title, one-line hint.
+class _AiHubCard extends StatelessWidget {
+  const _AiHubCard({required this.action});
+
+  final _AiHubAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Material(
+      color: context.themed(DesignColors.darkSurface),
+      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          action.onTap();
+        },
+        child: Container(
+          padding: const EdgeInsets.all(DesignSpacing.md + 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(color: context.themed(DesignColors.darkBorder)),
+            boxShadow: DesignShadows.soft(isDark),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: DesignColors.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    child: Icon(action.icon,
+                        size: 20, color: DesignColors.accentDark),
+                  ),
+                  const Spacer(),
+                  if (action.badge != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.sm, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent.withValues(alpha: 0.12),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusFull),
+                      ),
+                      child: Text(
+                        action.badge!,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: DesignColors.accentDark,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              Text(
+                action.title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: context.themed(DesignColors.darkTextPrimary),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                action.subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: context.themed(DesignColors.darkTextSecondary),
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

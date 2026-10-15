@@ -23,6 +23,7 @@ import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../notifications/presentation/widgets/notification_bell.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -208,6 +209,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           child: TenantBrandMark(logoUrl: identity.logoUrl, size: 34),
         ),
         actions: [
+          const NotificationBell(),
           IconButton(
             tooltip: 'Browse a previous day',
             icon: const Icon(Icons.calendar_month_rounded),

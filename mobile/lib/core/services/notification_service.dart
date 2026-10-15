@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -57,6 +59,51 @@ class NotificationService {
   bool _initialized = false;
   String? _registeredToken;
 
+  // Tapping a notification (system tray, or the local one shown while the
+  // app is open) emits its `data` map here so the app can deep-link — e.g.
+  // a partner message opens that chat. Broadcast + a one-slot buffer so a
+  // tap that cold-started the app isn't lost before anyone is listening.
+  final StreamController<Map<String, dynamic>> _opens =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Map<String, dynamic>? _pendingOpen;
+
+  /// Taps on notifications, as the push's `data` payload.
+  Stream<Map<String, dynamic>> get opens => _opens.stream;
+
+  /// A tap that arrived before the app UI was listening (cold start from a
+  /// notification). Returns it once, then clears it.
+  Map<String, dynamic>? takePendingOpen() {
+    final pending = _pendingOpen;
+    _pendingOpen = null;
+    return pending;
+  }
+
+  /// Bumps every time a push arrives while the app is open, so the inbox
+  /// badge can refresh immediately instead of waiting for its next poll.
+  final ValueNotifier<int> pushArrived = ValueNotifier<int>(0);
+
+  static const String _promptedKey = 'notif_permission_prompted_v1';
+
+  /// Whether the app has already shown its own "turn on alerts" explainer.
+  Future<bool> hasBeenPrompted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_promptedKey) ?? false;
+  }
+
+  Future<void> markPrompted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_promptedKey, true);
+  }
+
+  void _emitOpen(Map<String, dynamic> data) {
+    if (data.isEmpty) return;
+    if (_opens.hasListener) {
+      _opens.add(data);
+    } else {
+      _pendingOpen = data;
+    }
+  }
+
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
@@ -72,6 +119,14 @@ class NotificationService {
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload == null || payload.isEmpty) return;
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map) _emitOpen(Map<String, dynamic>.from(decoded));
+        } catch (_) {}
+      },
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
@@ -79,6 +134,16 @@ class NotificationService {
         ?.createNotificationChannel(_defaultChannel);
 
     FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+    // Tapped while the app was in the background...
+    FirebaseMessaging.onMessageOpenedApp
+        .listen((message) => _emitOpen(Map<String, dynamic>.from(message.data)));
+    // ...or tapped to launch the app from a fully closed state.
+    try {
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _pendingOpen = Map<String, dynamic>.from(initial.data);
+      }
+    } catch (_) {}
   }
 
   /// True if the OS has actually granted notification permission — separate
@@ -152,6 +217,10 @@ class NotificationService {
   }
 
   void _showForegroundNotification(RemoteMessage message) async {
+    // Always refresh the in-app inbox/badge, even if the user muted this
+    // category's system alerts — it is still in their notification list.
+    pushArrived.value++;
+
     final notification = message.notification;
     if (notification == null) return;
 
@@ -170,6 +239,7 @@ class NotificationService {
           priority: Priority.high,
         ),
       ),
+      payload: jsonEncode(message.data),
     );
   }
 

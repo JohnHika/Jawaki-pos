@@ -15,11 +15,9 @@ import 'ai_chat_prefs.dart';
 /// access) shown when the user taps the "+" in the AI chat input, mirroring
 /// the reference design. Camera/Photos capture an image and extract its
 /// text on-device (OCR) first — fast, offline, ideal for receipts/labels/
-/// documents. When OCR finds nothing (a product photo, damaged item, a
-/// scene — not a document), it falls back to sending the photo itself to
-/// the AI's vision endpoint so the chat still understands what's in the
-/// picture instead of just reporting "no text found". [onAttachmentText]
-/// receives (label, text) for either path.
+/// documents. Axon AI's vision model reads the photo first (it recognises
+/// receipts, products and scenes); on-device OCR is the offline fallback.
+/// [onAttachmentText] receives (label, text) for either path.
 Future<void> showAddToChatSheet(
   BuildContext context, {
   required void Function(String label, String extractedText) onAttachmentText,
@@ -59,9 +57,42 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
         return;
       }
 
-      // On-device text recognition — extract any text from the photo so the
-      // AI can read receipts, invoices, labels, shelf tags, etc. This works
-      // offline and needs no gateway vision entitlement.
+      // Axon AI looks at the photo itself first: it works out what it is (a
+      // receipt, invoice, product, shelf, damaged goods…) and reads it. Raw
+      // on-device OCR is only the offline / AI-unavailable fallback, since it
+      // hands the chat a jumble of text with no idea what the picture is.
+      final bytes = await File(picked.path).readAsBytes();
+      final branchId = getIt<AuthService>().branchId;
+      String description = '';
+      try {
+        final vision = await getIt<ApiClient>().analyzeImage(
+          imageBase64: base64Encode(bytes),
+          prompt: 'You are looking at a photo from a small shop in Kenya. '
+              'First say in one short sentence what it is. Then: if it is a '
+              'receipt, invoice or delivery note, list the supplier/shop, '
+              'date, each item with quantity and price, and the total in KES. '
+              'If it is a product or shelf, give the product name, brand, size '
+              'and anything notable (stock level, damage, price tag). '
+              'Otherwise describe it in enough detail that a shop assistant '
+              'could act on it. Only state what is visible; never guess numbers.',
+          branchId: branchId,
+        );
+        if (vision['model'] != 'unavailable') {
+          description = (vision['reply'] as String?)?.trim() ?? '';
+        }
+      } catch (_) {
+        // AI unreachable or not on this plan — fall through to OCR below.
+      }
+
+      if (description.isNotEmpty) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        widget.onAttachmentText('$label (read by Axon AI)', description);
+        return;
+      }
+
+      // Offline fallback: on-device text recognition so receipts, labels and
+      // shelf tags can still be read without a connection.
       final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       String extracted = '';
       try {
@@ -72,30 +103,9 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
         await recognizer.close();
       }
 
-      if (extracted.isNotEmpty) {
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        widget.onAttachmentText('$label attachment', extracted);
-        return;
-      }
-
-      // No text found — this is likely a photo of a thing, not a document.
-      // Fall back to sending it to the AI's vision model so the chat still
-      // understands the picture instead of just reporting "no text found".
-      final bytes = await File(picked.path).readAsBytes();
-      final branchId = getIt<AuthService>().branchId;
-      final vision = await getIt<ApiClient>().analyzeImage(
-        imageBase64: base64Encode(bytes),
-        prompt: 'Describe what is in this photo in a few sentences, in enough '
-            'detail that a shop assistant could act on it (e.g. note any '
-            'visible damage, labels, brand, condition, or anything unusual).',
-        branchId: branchId,
-      );
-      final description = (vision['reply'] as String?)?.trim() ?? '';
-
       if (!mounted) return;
       Navigator.of(context).pop();
-      if (description.isEmpty) {
+      if (extracted.isEmpty) {
         showGlassSnackBar(
           context,
           "Couldn't read that image — no text or recognizable content found.",
@@ -104,7 +114,7 @@ class _AddToChatBodyState extends State<_AddToChatBody> {
         );
         return;
       }
-      widget.onAttachmentText('$label (photo)', description);
+      widget.onAttachmentText('$label attachment', extracted);
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);

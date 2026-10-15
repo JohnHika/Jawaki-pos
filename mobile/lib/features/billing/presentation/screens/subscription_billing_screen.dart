@@ -212,7 +212,11 @@ class _SubscriptionBillingScreenState
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: context.themed(DesignColors.darkSurface),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
@@ -256,14 +260,16 @@ class _SubscriptionBillingScreenState
                   for (final plan in kAvailablePlans) ...[
                     _PlanRadioTile(
                       name: plan.name,
-                      priceLabel: '${formatKes(plan.priceKes)}/month · ${plan.tagline}',
+                      priceLabel: '${formatKes(plan.priceKes)}/month',
+                      tagline: plan.tagline,
+                      isCurrent: plan.id == currentPlan,
                       isSelected: selectedPlan == plan.id,
                       onTap: _isChangingPlan
                           ? null
                           : () => setSheetState(() => selectedPlan = plan.id),
                     ),
                     if (plan != kAvailablePlans.last)
-                      Divider(color: context.themed(DesignColors.darkBorder), height: 1),
+                      const SizedBox(height: DesignSpacing.sm),
                   ],
                   const SizedBox(height: DesignSpacing.lg),
                   SizedBox(
@@ -475,8 +481,7 @@ class _SubscriptionBillingScreenState
     final nextPayment = entitlement.paidUntil;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return FadeSlideIn(
-        child: Container(
+    return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -612,7 +617,7 @@ class _SubscriptionBillingScreenState
           _buildDaysProgressBar(days),
         ],
       ),
-    ));
+    );
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
@@ -942,7 +947,11 @@ class _SubscriptionBillingScreenState
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: context.themed(DesignColors.darkSurface),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) => _PayWithMpesaSheet(
         monthlyAmount: _settings?['plan'] != null
             ? _monthlyAmountFromSettings(_settings!)
@@ -965,7 +974,11 @@ class _SubscriptionBillingScreenState
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: context.themed(DesignColors.darkSurface),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) => _AutoRenewSheet(
         initialAutoRenew: _settings?['autoRenewEnabled'] == true,
         initialPhone: _settings?['billingPhone']?.toString() ?? '',
@@ -1190,48 +1203,107 @@ class _PlanRadioTile extends StatelessWidget {
   const _PlanRadioTile({
     required this.name,
     required this.priceLabel,
+    required this.tagline,
     required this.isSelected,
+    required this.isCurrent,
     required this.onTap,
   });
 
   final String name;
   final String priceLabel;
+  final String tagline;
   final bool isSelected;
+  final bool isCurrent;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Material(
-      color: Colors.transparent,
+      color: isSelected
+          ? DesignColors.accent.withValues(alpha: 0.1)
+          : context.themed(DesignColors.darkSurfaceElevated),
+      borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: DesignSpacing.sm),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        child: Container(
+          padding: const EdgeInsets.all(DesignSpacing.md + 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(
+              color: isSelected
+                  ? DesignColors.accent
+                  : context.themed(DesignColors.darkBorder),
+              width: isSelected ? 1.6 : 1,
+            ),
+          ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                isSelected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                color: isSelected
-                    ? DesignColors.accent
-                    : context.themed(DesignColors.darkTextTertiary),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  isSelected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: isSelected
+                      ? DesignColors.accent
+                      : context.themed(DesignColors.darkTextTertiary),
+                ),
               ),
               const SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: context.themed(DesignColors.darkTextPrimary),
-                        fontWeight: FontWeight.w800,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          name,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (isCurrent) ...[
+                          const SizedBox(width: DesignSpacing.sm),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: DesignSpacing.sm, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: DesignColors.success.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(
+                                  DesignSpacing.radiusFull),
+                            ),
+                            child: Text(
+                              'Current',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: context.readable(DesignColors.success),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       priceLabel,
-                      style: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isSelected
+                            ? DesignColors.accentDark
+                            : context.themed(DesignColors.darkTextPrimary),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      tagline,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: context.themed(DesignColors.darkTextSecondary),
+                        height: 1.3,
+                      ),
                     ),
                   ],
                 ),

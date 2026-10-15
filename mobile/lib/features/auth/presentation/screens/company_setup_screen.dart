@@ -463,7 +463,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 ? 'Recommended — Google verifies your identity before workspace creation.'
                 : 'Verified Google account: $_verifiedGoogleEmail',
             child: GradientButton(
-              label: 'Verify with Google & create workspace',
+              label: 'Verify with Google',
               icon: Icons.g_mobiledata_rounded,
               isLoading: _isLoading,
               onPressed: _isLoading ? null : _createWithGoogle,

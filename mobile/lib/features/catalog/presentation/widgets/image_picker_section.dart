@@ -18,12 +18,17 @@ class ImagePickerSection extends StatefulWidget {
   final void Function(String? url, String? publicId) onImageChanged;
   final String label;
 
+  /// Called with the local path as soon as a photo is chosen (before the
+  /// upload), so callers can run on-photo AI such as product recognition.
+  final void Function(String path)? onPhotoPicked;
+
   const ImagePickerSection({
     super.key,
     this.initialImageUrl,
     required this.type,
     required this.onImageChanged,
     this.label = 'Add image',
+    this.onPhotoPicked,
   });
 
   @override
@@ -105,6 +110,7 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       _localImagePath = file!.path;
       _isUploading = true;
     });
+    widget.onPhotoPicked?.call(file.path);
 
     try {
       final result = await getIt<ApiClient>().uploadImage(

@@ -27,7 +27,12 @@ class PlanSelectionScreen extends ConsumerStatefulWidget {
 }
 
 class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
-  String? _selectedPlanId;
+  // The popular plan is pre-selected so "Continue" works straight away.
+  String? _selectedPlanId = kAvailablePlans
+      .firstWhere((p) => p.isPopular, orElse: () => kAvailablePlans.first)
+      .id;
+  final Set<String> _expandedPlans = {};
+  static const _collapsedFeatureCount = 5;
   bool _isSubmitting = false;
   String? _error;
 
@@ -205,7 +210,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                'STEP 4 · CHOOSE PLAN',
+                'FINAL STEP · CHOOSE PLAN',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: DesignColors.accent,
                     fontWeight: FontWeight.w700,
@@ -367,7 +372,11 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               color: context.themed(DesignColors.darkBorder),
             ),
             const SizedBox(height: 14),
-            ...plan.features.map(
+            ...plan.features
+                .take(_expandedPlans.contains(plan.id)
+                    ? plan.features.length
+                    : _collapsedFeatureCount)
+                .map(
               (feature) => Padding(
                 padding: const EdgeInsets.only(bottom: 9),
                 child: Row(
@@ -393,6 +402,33 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 ),
               ),
             ),
+            if (plan.features.length > _collapsedFeatureCount)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () => setState(() {
+                    if (!_expandedPlans.remove(plan.id)) {
+                      _expandedPlans.add(plan.id);
+                    }
+                  }),
+                  icon: Icon(
+                    _expandedPlans.contains(plan.id)
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 20,
+                  ),
+                  label: Text(
+                    _expandedPlans.contains(plan.id)
+                        ? 'Show less'
+                        : 'See all ${plan.features.length} features',
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -414,7 +450,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       child: Row(
         children: [
           const Icon(
-            Icons.info_outline_rounded,
+            Icons.check_circle_rounded,
             color: DesignColors.accent,
             size: 22,
           ),
@@ -424,7 +460,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'One-time setup fee',
+                  'Setup fee paid',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w700,
@@ -432,7 +468,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${_setupFeeKsh()} gets your business fully onboarded before your trial starts.',
+                  'Your ${_setupFeeKsh()} one-time setup is done. Nothing more is due until your free trial ends.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: context.themed(DesignColors.darkTextSecondary),
                       height: 1.35,

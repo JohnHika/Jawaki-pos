@@ -6,6 +6,7 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -29,6 +30,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     HomeNavKeys.moreSheetOpenRequest.addListener(_handleMoreSheetRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerNotifications());
+  }
+
+  /// First time a signed-in user lands in the app, explain what alerts are
+  /// for and ask for the OS permission in context — instead of leaving it
+  /// buried behind a Settings toggle most people never find. Asked once.
+  Future<void> _offerNotifications() async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    try {
+      final service = getIt<NotificationService>();
+      if (await service.hasBeenPrompted() || await service.hasPermission()) {
+        return;
+      }
+      if (!mounted) return;
+      await service.markPrompted();
+      if (!mounted) return;
+      final accept = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.notifications_active_rounded,
+              color: DesignColors.accent, size: 32),
+          title: const Text('Stay in the loop'),
+          content: const Text(
+            'Turn on alerts to hear about low stock, stock request decisions, '
+            'and messages from the businesses you trade with — even when the '
+            'app is closed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Turn on alerts'),
+            ),
+          ],
+        ),
+      );
+      if (accept == true) await service.requestPermission();
+    } catch (_) {
+      // Notifications unavailable (e.g. debug build without Firebase) —
+      // the app works fine without them.
+    }
   }
 
   @override
@@ -113,6 +159,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           activeIcon: Icons.account_balance_wallet_rounded,
           label: 'Finance',
           path: '/finance'));
+      // Businesses this shop trades with: connect by company code and chat.
+      items.add(_NavItem(
+          icon: Icons.handshake_outlined,
+          activeIcon: Icons.handshake_rounded,
+          label: 'Trade Partners',
+          path: '/partners'));
     }
     return items;
   }
@@ -296,6 +348,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // the Dashboard itself still leaves the app.
     return BackButtonListener(
       onBackButtonPressed: () async {
+        // A sheet or dialog is on top of the shell: Back closes it instead of
+        // jumping to the Dashboard.
+        if (ModalRoute.of(context)?.isCurrent == false) {
+          // go_router would pop the shell's own page first, leaving the sheet
+          // open over the wrong screen — close the top modal explicitly.
+          await Navigator.of(context, rootNavigator: true).maybePop();
+          return true;
+        }
+        // A screen was pushed on top of a tab (Settings -> Plan & Billing):
+        // let Back pop just that one step, like any app.
+        if (GoRouter.of(context).canPop()) return false;
         if (atDashboard) return false;
         context.go('/dashboard');
         return true;

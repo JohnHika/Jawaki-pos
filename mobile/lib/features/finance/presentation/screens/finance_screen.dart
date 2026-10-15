@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
@@ -48,6 +47,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   final ImagePicker _picker = ImagePicker();
   final SupplierReceiptOcrService _ocr = SupplierReceiptOcrService();
   bool _isScanning = false;
+  String? _scanningImagePath;
   bool _prefillHandled = false;
   int _tab = 0;
 
@@ -95,27 +95,35 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: snapshot == null
-            ? _NoSnapshotState(state: hub, onRetry: controller.refresh)
-            : Column(
-                children: <Widget>[
-                  _FinanceStatusBar(
-                    state: hub,
-                    onRetry: controller.refresh,
+      body: Stack(
+        children: <Widget>[
+          SafeArea(
+            top: false,
+            child: snapshot == null
+                ? _NoSnapshotState(state: hub, onRetry: controller.refresh)
+                : Column(
+                    children: <Widget>[
+                      _FinanceStatusBar(
+                        state: hub,
+                        onRetry: controller.refresh,
+                      ),
+                      _FinanceTabs(
+                          index: _tab,
+                          onChanged: (index) => setState(() => _tab = index)),
+                      Expanded(
+                          child: SlideSwitcher(
+                              from: SlideFrom.right,
+                              child: KeyedSubtree(
+                                  key: ValueKey<int>(_tab),
+                                  child: _tabBody(snapshot, controller)))),
+                    ],
                   ),
-                  _FinanceTabs(
-                      index: _tab,
-                      onChanged: (index) => setState(() => _tab = index)),
-                  Expanded(
-                      child: SlideSwitcher(
-                          from: SlideFrom.right,
-                          child: KeyedSubtree(
-                              key: ValueKey<int>(_tab),
-                              child: _tabBody(snapshot, controller)))),
-                ],
-              ),
+          ),
+          if (_isScanning)
+            Positioned.fill(
+              child: _AiScanOverlay(imagePath: _scanningImagePath),
+            ),
+        ],
       ),
     );
   }
@@ -247,24 +255,84 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final image = await _picker.pickImage(
         source: source, imageQuality: 88, maxWidth: 1600);
     if (image == null || !mounted) return;
-    setState(() => _isScanning = true);
+    setState(() {
+      _isScanning = true;
+      _scanningImagePath = image.path;
+    });
     try {
-      final scan = getIt<ConnectivityService>().isOnline
-          ? await getIt<ReceiptVisionService>().scan(
-              imageUrl: (await getIt<ApiClient>().uploadImage(
-                filePath: image.path,
-                fileName: image.name,
-                type: 'supplier-invoice',
-              ))['url'] as String,
-              branchId: ref.read(financeHubProvider).snapshot?.branchId ?? '',
-            )
-          : await _ocr.scan(File(image.path));
+      final file = File(image.path);
+      SupplierReceiptScan scan;
+      if (getIt<ConnectivityService>().isOnline) {
+        try {
+          // Axon AI looks at the photo itself: it decides whether this is a
+          // receipt at all, what kind, and reads the supplier and line items.
+          scan = await getIt<ReceiptVisionService>().scanFile(
+            file,
+            branchId: ref.read(financeHubProvider).snapshot?.branchId,
+          );
+        } on NotAReceiptException catch (e) {
+          if (mounted) await _showNotAReceipt(e.reason);
+          return;
+        } catch (_) {
+          // AI unreachable / no AI plan / unreadable — read it on-device.
+          scan = await _ocr.scan(file);
+          if (mounted) {
+            showGlassSnackBar(
+              context,
+              'Axon AI is unavailable right now, so this was read on your phone. Please check the details.',
+              icon: Icons.info_outline_rounded,
+              color: DesignColors.warning,
+            );
+          }
+        }
+      } else {
+        scan = await _ocr.scan(file);
+      }
       if (mounted) await _openInvoiceReview(scan);
     } catch (_) {
-      final scan = await _ocr.scan(File(image.path));
-      if (mounted) await _openInvoiceReview(scan);
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Could not read that photo. Try again in better light, or enter the invoice manually.',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
+      }
     } finally {
-      if (mounted) setState(() => _isScanning = false);
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+          _scanningImagePath = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _showNotAReceipt(String reason) async {
+    final retake = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.image_not_supported_rounded,
+            color: DesignColors.warning, size: 32),
+        title: const Text("That doesn't look like a receipt"),
+        content: Text(reason),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Enter manually'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Scan again'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (retake == true) {
+      await _pickAndScanReceipt();
+    } else if (retake == false) {
+      await _showManualInvoiceDialog();
     }
   }
 
@@ -1332,4 +1400,119 @@ class _SheetFrame extends StatelessWidget {
           ),
         ),
       ));
+}
+
+/// Full-body "Axon AI is reading your receipt" state shown while a photo is
+/// being scanned: the photo itself with a sweeping scan line over it, so the
+/// wait feels like the AI is actually looking at the receipt.
+class _AiScanOverlay extends StatefulWidget {
+  const _AiScanOverlay({this.imagePath});
+
+  final String? imagePath;
+
+  @override
+  State<_AiScanOverlay> createState() => _AiScanOverlayState();
+}
+
+class _AiScanOverlayState extends State<_AiScanOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _sweep = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _sweep.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final path = widget.imagePath;
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.55),
+      child: Center(
+        child: Container(
+          width: 260,
+          padding: const EdgeInsets.all(DesignSpacing.lg),
+          decoration: BoxDecoration(
+            color: context.themed(DesignColors.darkSurface),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+            boxShadow: DesignShadows.soft(
+                Theme.of(context).brightness == Brightness.dark),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                child: SizedBox(
+                  height: 190,
+                  width: double.infinity,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      if (path != null)
+                        Image.file(File(path),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink()),
+                      AnimatedBuilder(
+                        animation: _sweep,
+                        builder: (context, _) => Align(
+                          alignment: Alignment(0, -1 + 2 * _sweep.value),
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: DesignColors.accent,
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: DesignColors.accent
+                                      .withValues(alpha: 0.7),
+                                  blurRadius: 14,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.lg),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(Icons.auto_awesome_rounded,
+                      color: DesignColors.accent, size: 18),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Flexible(
+                    child: Text(
+                      'Axon AI is reading your receipt',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: DesignSpacing.xs),
+              Text(
+                'Checking it is a receipt, then picking out the supplier and items.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.themed(DesignColors.darkTextSecondary),
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

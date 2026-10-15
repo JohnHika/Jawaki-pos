@@ -48,7 +48,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Verify your ownership'), findsOneWidget);
-    expect(find.text('Verify with Google & create workspace'), findsOneWidget);
+    expect(find.text('Verify with Google'), findsOneWidget);
     expect(find.text('Use an email code instead'), findsOneWidget);
     expect(find.textContaining('password'), findsOneWidget);
   });

@@ -17,6 +17,9 @@ import '../../features/team/presentation/screens/set_password_after_invite_scree
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/home/presentation/screens/staff_tour_screen.dart';
 import '../../features/billing/presentation/screens/subscription_billing_screen.dart';
+import '../../features/notifications/presentation/screens/notifications_screen.dart';
+import '../../features/partners/presentation/screens/partner_chat_screen.dart';
+import '../../features/partners/presentation/screens/partners_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
 import '../../features/dashboard/presentation/screens/day_summary_screen.dart';
@@ -589,6 +592,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 name: 'user-permissions',
                 builder: (context, state) => UserPermissionOverrideScreen(
                   userId: state.pathParameters['userId']!,
+                ),
+              ),
+            ],
+          ),
+
+          // Notification inbox
+          GoRoute(
+            path: '/notifications',
+            name: 'notifications',
+            builder: (context, state) => const NotificationsScreen(),
+          ),
+
+          // Trade partners (business-to-business connections + chat)
+          GoRoute(
+            path: '/partners',
+            name: 'partners',
+            builder: (context, state) => const PartnersScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                name: 'partner-chat',
+                builder: (context, state) => PartnerChatScreen(
+                  partnershipId: state.pathParameters['id']!,
                 ),
               ),
             ],

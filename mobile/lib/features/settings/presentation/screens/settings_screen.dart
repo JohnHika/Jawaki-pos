@@ -15,6 +15,7 @@ import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/storage_service.dart';
@@ -27,6 +28,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../widgets/settings_layout.dart';
 
 // Settings keys for SharedPreferences. Printer keys delegate to
 // PrinterSettingsKeys (receipt_printer_service.dart) so this screen and
@@ -41,9 +43,31 @@ class _SettingsKeys {
   static const notifySync = NotificationService.keyNotifySync;
 }
 
-String _initialFor(dynamic nameOrEmail) {
-  final text = nameOrEmail?.toString().trim() ?? '';
-  return text.isEmpty ? '?' : text[0].toUpperCase();
+String _roleLabel(dynamic role) {
+  final raw = role?.toString().trim() ?? '';
+  if (raw.isEmpty) return 'Cashier';
+  final words = raw.toLowerCase().split(RegExp(r'[_\s]+'));
+  return words
+      .where((w) => w.isNotEmpty)
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+String _companyCodeFor(Map<String, dynamic>? user) {
+  final tenant = user?['tenant'];
+  final tenantMap =
+      tenant is Map<String, dynamic> ? tenant : const <String, dynamic>{};
+  String? storedSlug;
+  try {
+    storedSlug = getIt<StorageService>().getTenantSlug();
+  } catch (_) {
+    storedSlug = null;
+  }
+  for (final value in [user?['tenantSlug'], tenantMap['slug'], storedSlug]) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty) return text.toUpperCase();
+  }
+  return '';
 }
 
 class SettingsScreen extends ConsumerWidget {
@@ -53,333 +77,343 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final perms = ref.watch(permissionsProvider);
+    final identity = ref.watch(tenantIdentityProvider);
+    // Watch the stream so the chip updates live, but read the service for the
+    // value: the provider reads false until its first event, which made a
+    // connected phone briefly show "Offline".
+    ref.watch(isOnlineProvider);
+    final isOnline = getIt<ConnectivityService>().isOnline;
+    final themeMode = ref.watch(themeModeProvider);
     final syncService = getIt<SyncService>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor =
-        isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border =
-        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
 
-    final hasPreferencesSection = perms.canConfigureSync ||
-        perms.canConfigurePrinter ||
-        perms.canConfigureNotifications ||
-        perms.canSeeAppearance;
     final legacyRole = user?['role']?.toString().toUpperCase() ?? '';
     // The billing and plan APIs intentionally enforce the legacy ADMIN role
     // today. Keep the menu honest until those endpoints are fully migrated to
     // granular permission keys.
     final isBillingAdmin = legacyRole == 'ADMIN';
-    final hasBusinessSection = isBillingAdmin ||
-        perms.canManageUsers ||
-        perms.canManageBranches ||
-        perms.canExportData ||
-        perms.canSeeAuditTrail;
 
-    return Scaffold(
-      appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
-            DesignSpacing.lg, DesignSpacing.xxl + DesignSpacing.sm),
-        children: [
-          // ── Profile header ──
-          Container(
-            padding: const EdgeInsets.all(DesignSpacing.xl),
-            decoration: BoxDecoration(
-              color: DesignColors.accent.withValues(alpha: isDark ? 0.1 : 0.07),
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
-              border: Border.all(
-                  color: DesignColors.accent.withValues(alpha: 0.18)),
+    final taxPercent = getIt<AuthService>().taxRatePercent;
+    final taxSubtitle = taxPercent > 0
+        ? '${taxPercent.toStringAsFixed(taxPercent % 1 == 0 ? 0 : 1)}% tax is added to sales'
+        : 'Set the tax charged on sales and shown on receipts';
+
+    final themeLabel = switch (themeMode) {
+      ThemeMode.light => 'Light',
+      ThemeMode.dark => 'Dark',
+      ThemeMode.system => 'Auto',
+    };
+
+    final sections = <SettingsSection>[
+      SettingsSection(
+        id: 'business',
+        title: 'My business',
+        entries: [
+          if (isBillingAdmin)
+            SettingsEntry(
+              id: 'logo',
+              icon: Icons.image_rounded,
+              title: 'Business logo',
+              subtitle: 'Change the logo for your shop',
+              keywords: const ['picture', 'brand', 'photo'],
+              onTap: () => _showLogoDialog(context, ref),
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: DesignColors.accent,
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-                    boxShadow: [
-                      BoxShadow(
-                        color: DesignColors.accent.withValues(alpha: 0.35),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _initialFor(user?['name'] ?? user?['email']),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user?['name'] ?? user?['email'] ?? 'User',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                                fontWeight: FontWeight.w800, color: titleColor),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        user?['email'] ?? '',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: secondaryColor),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: DesignSpacing.sm + 2,
-                            vertical: DesignSpacing.xs - 1),
-                        decoration: BoxDecoration(
-                          color: isDark ? DesignColors.darkBg : Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(DesignSpacing.radiusFull),
-                          border: Border.all(
-                              color:
-                                  DesignColors.accent.withValues(alpha: 0.3)),
-                        ),
-                        child: Text(
-                          (user?['role'] ?? 'CASHIER').toString().toUpperCase(),
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(
-                                  color: DesignColors.accent,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+          if (perms.canManageBranches)
+            SettingsEntry(
+              id: 'branches',
+              icon: Icons.store_rounded,
+              title: 'Branches',
+              subtitle: 'Add or edit your shop locations',
+              keywords: const ['shop', 'location', 'store'],
+              onTap: () => _showBranchManagement(context),
+            ),
+          if (perms.canManageBranches)
+            SettingsEntry(
+              id: 'hours',
+              icon: Icons.schedule_rounded,
+              title: 'Opening hours',
+              subtitle: 'Choose when each branch opens and closes',
+              keywords: const ['open', 'close', 'time', 'days'],
+              onTap: () => context.push('/settings/operating-hours'),
+            ),
+          if (isBillingAdmin)
+            SettingsEntry(
+              id: 'tax',
+              icon: Icons.percent_rounded,
+              title: 'Tax & receipts',
+              subtitle: taxSubtitle,
+              keywords: const ['vat', 'tax rate', 'receipt'],
+              onTap: () => _showTaxRateDialog(context, ref),
+            ),
+        ],
+      ),
+      SettingsSection(
+        id: 'team',
+        title: 'Team',
+        entries: [
+          if (perms.canManageUsers)
+            SettingsEntry(
+              id: 'staff',
+              icon: Icons.people_rounded,
+              title: 'Staff & roles',
+              subtitle: 'Add your team and choose what each person can do',
+              keywords: const [
+                'users',
+                'permissions',
+                'cashier',
+                'manager',
+                'access',
               ],
+              onTap: () => context.push('/users'),
             ),
+        ],
+      ),
+      SettingsSection(
+        id: 'money',
+        title: 'Money & plan',
+        entries: [
+          if (isBillingAdmin)
+            SettingsEntry(
+              id: 'billing',
+              icon: Icons.workspace_premium_rounded,
+              title: 'Plan & billing',
+              subtitle: 'Your plan, renewal date, M-Pesa payments and invoices',
+              keywords: const ['subscription', 'pay', 'mpesa', 'invoice'],
+              onTap: () => context.push('/billing'),
+            ),
+        ],
+      ),
+      SettingsSection(
+        id: 'devices',
+        title: 'Devices & printing',
+        entries: [
+          if (perms.canConfigureSync)
+            SettingsEntry(
+              id: 'sync',
+              icon: Icons.cloud_sync_rounded,
+              title: 'Backup & sync',
+              subtitle: 'See if your sales and stock are safely backed up',
+              keywords: const ['sync', 'upload', 'online', 'offline', 'data'],
+              onTap: () => _showSyncSettings(context, syncService),
+              tileBuilder: (context, entry) => FutureBuilder(
+                future: syncService.getStats(),
+                builder: (context, snapshot) {
+                  final stats = snapshot.data;
+                  final failed = stats?.failedEvents ?? 0;
+                  final pending = stats?.pendingEvents ?? 0;
+                  final subtitle = failed > 0
+                      ? 'Some items could not be backed up'
+                      : pending > 0
+                          ? '$pending item${pending == 1 ? '' : 's'} waiting to be backed up'
+                          : stats?.hasPendingSync == true
+                              ? 'Backing up your latest sales'
+                              : 'Everything is backed up';
+                  return SettingsTile(
+                    key: const ValueKey('settings-tile-sync'),
+                    icon: entry.icon,
+                    title: entry.title,
+                    subtitle: subtitle,
+                    trailing: stats?.isOnline == true
+                        ? const SettingsStatusChip(
+                            text: 'Online', color: DesignColors.success)
+                        : const SettingsStatusChip(
+                            text: 'Offline', color: DesignColors.warning),
+                    onTap: entry.onTap,
+                  );
+                },
+              ),
+            ),
+          if (perms.canConfigurePrinter)
+            SettingsEntry(
+              id: 'printers',
+              icon: Icons.print_rounded,
+              title: 'Receipts & printers',
+              subtitle: 'Connect a Bluetooth printer and set how receipts print',
+              keywords: const ['printer', 'bluetooth', 'paper', 'print'],
+              onTap: () => _showPrinterSettings(context),
+            ),
+          SettingsEntry(
+            id: 'notification-centre',
+            icon: Icons.inbox_rounded,
+            title: 'Notification centre',
+            subtitle: 'Everything the app has told you, in one place',
+            keywords: const ['inbox', 'messages', 'alerts', 'history'],
+            onTap: () => context.push('/notifications'),
           ),
-          const SizedBox(height: 28),
-
-          // ── Business (role-aware) ──
-          if (hasBusinessSection) ...[
-            const SettingsGroupLabel('Business'),
-            GroupedCard(children: [
-              if (isBillingAdmin)
-                SettingsRow(
-                  icon: Icons.receipt_long_rounded,
-                  iconColor: DesignColors.accent,
-                  title: 'Plan & Billing',
-                  subtitle: 'Plan, renewal, M-Pesa payments & invoices',
-                  onTap: () => context.push('/billing'),
-                ),
-              if (perms.canManageUsers)
-                SettingsRow(
-                  icon: Icons.people_rounded,
-                  title: 'Team & Access',
-                  subtitle: 'Staff, roles & permissions',
-                  onTap: () => context.push('/users'),
-                ),
-              if (perms.canManageBranches)
-                SettingsRow(
-                  icon: Icons.store_rounded,
-                  title: 'Branches',
-                  subtitle: 'Store locations and operating hours',
-                  onTap: () => _showBranchManagement(context),
-                ),
-              if (perms.canManageBranches)
-                SettingsRow(
-                  icon: Icons.schedule_rounded,
-                  title: 'Operating Hours',
-                  subtitle: 'Set open and close times per day',
-                  onTap: () => context.push('/settings/operating-hours'),
-                ),
-              if (isBillingAdmin)
-                SettingsRow(
-                  icon: Icons.percent_rounded,
-                  title: 'Tax & Receipts',
-                  subtitle: getIt<AuthService>().taxRatePercent > 0
-                      ? '${getIt<AuthService>().taxRatePercent.toStringAsFixed(getIt<AuthService>().taxRatePercent % 1 == 0 ? 0 : 1)}% tax on sales'
-                      : 'Set tax and receipt display',
-                  onTap: () => _showTaxRateDialog(context, ref),
-                ),
-              if (isBillingAdmin)
-                SettingsRow(
-                  icon: Icons.image_rounded,
-                  title: 'Business Logo',
-                  subtitle: 'Update your storefront identity',
-                  onTap: () => _showLogoDialog(context, ref),
-                ),
-              if (perms.canExportData)
-                SettingsRow(
-                  icon: Icons.download_rounded,
-                  title: 'Data Export',
-                  subtitle: 'Export sales, inventory and products',
-                  onTap: () => _showDataExport(context, ref),
-                ),
-              if (perms.canSeeAuditTrail)
-                SettingsRow(
-                  icon: Icons.history_rounded,
-                  title: 'Audit Trail',
-                  subtitle: 'Review system activity',
-                  onTap: () => _showAuditTrail(context),
-                ),
-            ]),
-          ],
-
-          // ── App & devices ──
-          if (hasPreferencesSection) ...[
-            const SettingsGroupLabel('App & devices'),
-            GroupedCard(children: [
-              if (perms.canConfigureSync)
-                FutureBuilder(
-                  future: syncService.getStats(),
-                  builder: (context, snapshot) {
-                    final stats = snapshot.data;
-                    return SettingsRow(
-                      icon: Icons.sync_rounded,
-                      iconColor: DesignColors.accent,
-                      title: 'Sync Status',
-                      subtitle: stats?.hasPendingSync == true
-                          ? '${stats?.pendingEvents ?? 0} pending events'
-                          : 'All synced',
-                      trailing: stats?.isOnline == true
-                          ? const _StatusBadge(
-                              text: 'Online', color: DesignColors.success)
-                          : const _StatusBadge(
-                              text: 'Offline', color: DesignColors.warning),
-                      onTap: () => _showSyncSettings(context, syncService),
-                    );
-                  },
-                ),
-              if (perms.canConfigurePrinter)
-                SettingsRow(
-                  icon: Icons.print_rounded,
-                  title: 'Receipts & printers',
-                  subtitle: 'Configure receipts and printer connection',
-                  onTap: () => _showPrinterSettings(context),
-                ),
-              if (perms.canConfigureNotifications)
-                SettingsRow(
-                  icon: Icons.notifications_rounded,
-                  title: 'Notifications',
-                  subtitle: 'Manage notification preferences',
-                  onTap: () => _showNotificationSettings(context),
-                ),
-              if (perms.canSeeAppearance)
-                SettingsRow(
-                  icon: Icons.dark_mode_rounded,
-                  title: 'Appearance',
-                  subtitle: 'Light / Dark mode',
-                  onTap: () => _showAppearanceSettings(context),
-                ),
-            ]),
-          ],
-
-          // ── Account & security ──
-          const SettingsGroupLabel('Account & security'),
-          GroupedCard(children: [
-            SettingsRow(
-              icon: Icons.lock_rounded,
-              iconColor: DesignColors.accent,
-              title: 'Quick unlock PIN',
-              subtitle: '4–6 digits for this device and workspace login',
-              onTap: () => _showChangePinDialog(context),
+          if (perms.canConfigureNotifications)
+            SettingsEntry(
+              id: 'notifications',
+              icon: Icons.notifications_rounded,
+              title: 'Notifications',
+              subtitle: 'Choose which alerts you get on this phone',
+              keywords: const ['alerts', 'sound', 'push'],
+              onTap: () => _showNotificationSettings(context),
             ),
-            SettingsRow(
-              icon: Icons.wifi_off_rounded,
-              title: 'Offline server PIN',
-              subtitle: 'Use your account on a phone acting as the local server',
-              onTap: () => _showOfflineAccessPinDialog(context),
+          if (perms.canSeeAppearance)
+            SettingsEntry(
+              id: 'appearance',
+              icon: Icons.palette_rounded,
+              title: 'Appearance',
+              subtitle: 'Light or dark look for the app',
+              keywords: const ['theme', 'dark mode', 'light mode', 'colour'],
+              trailing: SettingsStatusChip(
+                text: themeLabel,
+                color: DesignColors.textTertiary,
+                showDot: false,
+              ),
+              onTap: () => _showAppearanceSettings(context),
             ),
-            SettingsRow(
-              icon: Icons.security_rounded,
-              title: 'Device security',
-              subtitle: 'Biometrics and automatic lock',
-              onTap: () => _showSecuritySettings(context),
+        ],
+      ),
+      SettingsSection(
+        id: 'security',
+        title: 'Security',
+        entries: [
+          SettingsEntry(
+            id: 'pin',
+            icon: Icons.lock_rounded,
+            title: 'Quick-unlock PIN',
+            subtitle: 'A 4–6 digit PIN to open the app on this phone',
+            keywords: const ['password', 'pin', 'unlock', 'change pin'],
+            onTap: () => _showChangePinDialog(context),
+          ),
+          SettingsEntry(
+            id: 'device-security',
+            icon: Icons.fingerprint_rounded,
+            title: 'Fingerprint & auto-lock',
+            subtitle: 'Unlock with your fingerprint and lock the app when idle',
+            keywords: const ['biometric', 'face', 'lock', 'security'],
+            onTap: () => _showSecuritySettings(context),
+          ),
+          SettingsEntry(
+            id: 'offline-pin',
+            icon: Icons.wifi_off_rounded,
+            title: 'Offline login PIN',
+            subtitle:
+                'Sign in on the shop\'s offline server phone, even with no internet',
+            keywords: const ['local server', 'offline', 'hub', 'no internet'],
+            onTap: () => _showOfflineAccessPinDialog(context),
+          ),
+        ],
+      ),
+      SettingsSection(
+        id: 'data',
+        title: 'Data',
+        entries: [
+          if (perms.canExportData)
+            SettingsEntry(
+              id: 'export',
+              icon: Icons.download_rounded,
+              title: 'Download my data',
+              subtitle: 'Save your sales, stock and products as PDF or CSV',
+              keywords: const ['export', 'csv', 'pdf', 'report', 'excel'],
+              onTap: () => _showDataExport(context, ref),
             ),
-          ]),
-          const SettingsGroupLabel('Session'),
-          GroupedCard(children: [
-            SettingsRow(
-              icon: Icons.logout_rounded,
-              title: 'Log out from this device',
-              subtitle: 'Your unsynced data remains saved here',
-              isDestructive: true,
-              onTap: () => _showLogoutDialog(context, ref),
+          if (perms.canSeeAuditTrail)
+            SettingsEntry(
+              id: 'activity',
+              icon: Icons.history_rounded,
+              title: 'Activity history',
+              subtitle: 'See who did what in your shop',
+              keywords: const ['audit', 'log', 'trail', 'changes'],
+              onTap: () => _showAuditTrail(context),
             ),
-            SettingsRow(
-              icon: Icons.devices_rounded,
-              title: 'Log out everywhere',
-              subtitle: 'Sign out on all phones and browsers',
-              isDestructive: true,
-              onTap: () => _showLogoutDialog(context, ref, allDevices: true),
-            ),
-          ]),
-
-          // ── Support ──
-          const SettingsGroupLabel('Support'),
-          GroupedCard(children: [
-            SettingsRow(
-              icon: Icons.help_rounded,
-              iconColor: DesignColors.accent,
-              title: 'Help & Support',
-              subtitle: 'Get help with the app',
-              onTap: () => _showHelpSupport(context),
-            ),
-            SettingsRow(
-              icon: Icons.bug_report_rounded,
-              title: 'Report a Bug',
-              subtitle: 'Submit a bug report to our team',
-              onTap: () => context.push('/settings/report-bug'),
-            ),
-            SettingsRow(
-              icon: Icons.system_update_rounded,
-              title: 'Check for Updates',
-              subtitle: 'See if a newer version is available',
-              onTap: () => _checkForUpdates(context),
-            ),
-            FutureBuilder<PackageInfo>(
+        ],
+      ),
+      SettingsSection(
+        id: 'help',
+        title: 'Help & about',
+        entries: [
+          SettingsEntry(
+            id: 'help',
+            icon: Icons.help_rounded,
+            title: 'Help & support',
+            subtitle: 'Contact us, common questions and guides',
+            keywords: const ['faq', 'guide', 'contact', 'call', 'email'],
+            onTap: () => _showHelpSupport(context),
+          ),
+          SettingsEntry(
+            id: 'report',
+            icon: Icons.bug_report_rounded,
+            title: 'Report a problem',
+            subtitle: 'Tell us if something is not working',
+            keywords: const ['bug', 'issue', 'error', 'feedback'],
+            onTap: () => context.push('/settings/report-bug'),
+          ),
+          SettingsEntry(
+            id: 'updates',
+            icon: Icons.system_update_rounded,
+            title: 'Check for updates',
+            subtitle: 'See if a newer version is available',
+            keywords: const ['upgrade', 'version', 'new'],
+            onTap: () => _checkForUpdates(context),
+          ),
+          SettingsEntry(
+            id: 'about',
+            icon: Icons.info_rounded,
+            title: 'About Axon POS',
+            subtitle: 'Version and company information',
+            keywords: const ['version', 'build'],
+            onTap: () => _showAboutInfo(context),
+            tileBuilder: (context, entry) => FutureBuilder<PackageInfo>(
               future: PackageInfo.fromPlatform(),
               builder: (context, snapshot) {
                 final version = snapshot.data?.version ?? '1.0.3';
-                return SettingsRow(
-                  icon: Icons.info_rounded,
-                  title: 'About',
+                return SettingsTile(
+                  key: const ValueKey('settings-tile-about'),
+                  icon: entry.icon,
+                  title: entry.title,
                   subtitle: 'Version $version',
-                  onTap: () => _showAboutInfo(context),
+                  onTap: entry.onTap,
                 );
               },
-            ),
-          ]),
-
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              'Axon POS',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(fontWeight: FontWeight.w600, color: border),
             ),
           ),
         ],
       ),
+      SettingsSection(
+        id: 'sign-out',
+        title: 'Sign out',
+        entries: [
+          SettingsEntry(
+            id: 'logout',
+            icon: Icons.logout_rounded,
+            title: 'Sign out of this phone',
+            subtitle: 'Anything not yet backed up stays safe on this phone',
+            keywords: const ['log out', 'logout', 'exit'],
+            destructive: true,
+            onTap: () => _showLogoutDialog(context, ref),
+          ),
+          SettingsEntry(
+            id: 'logout-all',
+            icon: Icons.devices_rounded,
+            title: 'Sign out of all devices',
+            subtitle: 'Signs you out on every phone and browser',
+            keywords: const ['log out', 'logout everywhere'],
+            destructive: true,
+            onTap: () => _showLogoutDialog(context, ref, allDevices: true),
+          ),
+        ],
+      ),
+    ];
+
+    return Scaffold(
+      appBar: const BrandedAppBar(title: 'Settings', showBackButton: false),
+      body: SettingsSectionList(
+        header: SettingsProfileHeader(
+          name: (user?['name'] ?? user?['email'] ?? 'User').toString(),
+          email: (user?['email'] ?? '').toString(),
+          roleLabel: _roleLabel(user?['role']),
+          businessName: identity.companyName,
+          companyCode: _companyCodeFor(user),
+          branchName: identity.branchName,
+          isOnline: isOnline,
+        ),
+        sections: sections,
+        footer: const _SettingsFooter(),
+      ),
     );
   }
+
 
   void _showLogoutDialog(BuildContext context, WidgetRef ref,
       {bool allDevices = false}) async {
@@ -389,11 +423,11 @@ class SettingsScreen extends ConsumerWidget {
 
     final confirmed = await showConfirmDialog(
       context,
-      title: allDevices ? 'Log out everywhere' : 'Log out',
+      title: allDevices ? 'Sign out of all devices' : 'Sign out',
       message: allDevices
-          ? 'This will sign out your account on every phone and browser. Any unsynced data will remain saved locally on this device.'
-          : 'Are you sure you want to log out? Any unsynced data will be saved locally.',
-      confirmLabel: allDevices ? 'Log out everywhere' : 'Log out',
+          ? 'This signs you out on every phone and browser. Anything not yet backed up stays saved on this phone.'
+          : 'Sign out of this phone? Anything not yet backed up stays saved on this phone.',
+      confirmLabel: allDevices ? 'Sign out everywhere' : 'Sign out',
       confirmColor: DesignColors.error,
     );
     if (!confirmed) return;
@@ -415,7 +449,7 @@ class SettingsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => SettingsSheetScaffold(
-        title: 'Sync Settings',
+        title: 'Backup & sync',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -428,13 +462,14 @@ class SettingsScreen extends ConsumerWidget {
                 return GroupedCard(
                   margin: EdgeInsets.zero,
                   children: [
-                    _InfoRow('Status',
+                    _InfoRow('Connection',
                         stats?.isOnline == true ? 'Online' : 'Offline'),
-                    _InfoRow('Pending Events', '${stats?.pendingEvents ?? 0}'),
+                    _InfoRow(
+                        'Waiting to back up', '${stats?.pendingEvents ?? 0}'),
                     if ((stats?.failedEvents ?? 0) > 0)
-                      _InfoRow('Failed Events', '${stats?.failedEvents}',
+                      _InfoRow('Could not back up', '${stats?.failedEvents}',
                           valueColor: DesignColors.error),
-                    _InfoRow('Last Sync',
+                    _InfoRow('Last backed up',
                         lastSync != null ? _formatDateTime(lastSync) : 'Never'),
                   ],
                 );
@@ -444,11 +479,11 @@ class SettingsScreen extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: SettingsPrimaryButton(
-                label: 'Sync Now',
+                label: 'Sync now',
                 onPressed: () {
                   syncService.syncPendingEvents();
                   Navigator.pop(context);
-                  showGlassSnackBar(context, 'Syncing...',
+                  showGlassSnackBar(context, 'Syncing your data...',
                       icon: Icons.sync_rounded, color: DesignColors.info);
                 },
               ),
@@ -464,11 +499,11 @@ class SettingsScreen extends ConsumerWidget {
                   child: SizedBox(
                     width: double.infinity,
                     child: SettingsPrimaryButton(
-                      label: 'Retry Failed Items',
+                      label: 'Try failed items again',
                       onPressed: () {
                         syncService.retryFailedItems();
                         Navigator.pop(context);
-                        showGlassSnackBar(context, 'Retrying failed items...',
+                        showGlassSnackBar(context, 'Trying failed items again...',
                             icon: Icons.refresh_rounded,
                             color: DesignColors.warning);
                       },
@@ -553,7 +588,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.light_mode_rounded,
                 iconColor:
                     currentMode == ThemeMode.light ? DesignColors.accent : null,
-                title: 'Light Mode',
+                title: 'Light',
                 showChevron: false,
                 trailing: currentMode == ThemeMode.light
                     ? const Icon(Icons.check_circle_rounded,
@@ -570,7 +605,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.dark_mode_rounded,
                 iconColor:
                     currentMode == ThemeMode.dark ? DesignColors.accent : null,
-                title: 'Dark Mode',
+                title: 'Dark',
                 showChevron: false,
                 trailing: currentMode == ThemeMode.dark
                     ? const Icon(Icons.check_circle_rounded,
@@ -588,9 +623,9 @@ class SettingsScreen extends ConsumerWidget {
                 iconColor: currentMode == ThemeMode.system
                     ? DesignColors.accent
                     : null,
-                title: 'System Default',
+                title: 'Match my phone',
                 showChevron: false,
-                subtitle: 'Follow device theme',
+                subtitle: "Uses your phone's light or dark setting",
                 trailing: currentMode == ThemeMode.system
                     ? const Icon(Icons.check_circle_rounded,
                         color: DesignColors.accent)
@@ -630,15 +665,15 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => SettingsDialog(
-          title: hasExistingPin ? 'Change quick unlock PIN' : 'Set quick unlock PIN',
+          title: hasExistingPin ? 'Change quick-unlock PIN' : 'Set quick-unlock PIN',
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 hasExistingPin
-                    ? 'Use 4–6 digits. Your current PIN confirms this device before the account PIN is updated.'
-                    : 'Use 4–6 digits. This creates a secure unlock on this device and your workspace quick-login PIN.',
+                    ? 'Choose 4–6 digits. Enter your current PIN first to confirm it is you.'
+                    : 'Choose 4–6 digits. You will use this PIN to open the app on this phone and to sign in quickly.',
                 style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
                       color: Theme.of(dialogContext).brightness == Brightness.dark
                           ? DesignColors.darkTextSecondary
@@ -657,7 +692,7 @@ class SettingsScreen extends ConsumerWidget {
                   enableSuggestions: false,
                   autocorrect: false,
                   decoration: const InputDecoration(
-                    labelText: 'Current device PIN',
+                    labelText: 'Current PIN',
                     hintText: '4–6 digits',
                     counterText: '',
                     prefixIcon: Icon(Icons.lock_outline_rounded),
@@ -731,21 +766,21 @@ class SettingsScreen extends ConsumerWidget {
 
                       if (hasExistingPin) {
                         if (!validPin.hasMatch(currentPin)) {
-                          setDialogState(() => error = 'Enter your current 4–6 digit device PIN');
+                          setDialogState(() => error = 'Enter your current 4–6 digit PIN');
                           return;
                         }
                         final isCorrect = await storage.verifyLocalPin(currentPin);
                         if (!isCorrect) {
-                          setDialogState(() => error = 'That current device PIN is incorrect');
+                          setDialogState(() => error = 'That current PIN is not correct');
                           return;
                         }
                       }
                       if (!validPin.hasMatch(newPin)) {
-                        setDialogState(() => error = 'PIN must contain 4–6 digits only');
+                        setDialogState(() => error = 'Your PIN must be 4–6 digits, numbers only');
                         return;
                       }
                       if (newPin != confirmPin) {
-                        setDialogState(() => error = 'The two PIN entries do not match');
+                        setDialogState(() => error = 'The two PINs do not match');
                         return;
                       }
 
@@ -762,14 +797,14 @@ class SettingsScreen extends ConsumerWidget {
                         await storage.setLocalPin(newPin);
                         if (!context.mounted || !dialogContext.mounted) return;
                         Navigator.pop(dialogContext);
-                        _showSnack(context, 'Quick unlock PIN updated on this device and your account');
+                        _showSnack(context, 'Quick-unlock PIN updated');
                       } on DioException catch (e) {
                         if (!dialogContext.mounted) return;
                         setDialogState(() {
                           isSaving = false;
                           error = e.response?.statusCode == 404
-                              ? 'Connect to the Axon cloud before changing your account PIN. Local phone-server mode cannot update it.'
-                              : 'Could not update your account PIN. Check your connection and try again.';
+                              ? 'Connect to the internet before changing your PIN. It cannot be changed while using the offline server phone.'
+                              : 'Could not update your PIN. Check your connection and try again.';
                         });
                       } catch (_) {
                         if (!dialogContext.mounted) return;
@@ -788,7 +823,7 @@ class SettingsScreen extends ConsumerWidget {
 
   // ===== OFFLINE ACCESS PIN =====
   // Authorizes this account to log into ANY phone acting as a local
-  // server (Settings → Backend Server) with no internet connection.
+  // server (the shop's offline server phone) with no internet connection.
   // Distinct from _showChangePinDialog's quick-unlock PIN, which only
   // unlocks an already-authenticated session on this specific device.
   void _showOfflineAccessPinDialog(BuildContext context) {
@@ -803,16 +838,16 @@ class SettingsScreen extends ConsumerWidget {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           return SettingsDialog(
-            title: 'Offline server PIN',
+            title: 'Offline login PIN',
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: DesignSpacing.md),
                   child: Text(
-                    'Set a PIN so you can log in as yourself on a phone '
-                    'that\'s acting as the local server, even with no '
-                    'internet connection. Must be set now, while online.',
+                    'Set a PIN so you can sign in as yourself on the shop\'s '
+                    'offline server phone, even when there is no internet. '
+                    'You must set it now, while you are online.',
                     style: Theme.of(dialogContext).textTheme.bodySmall,
                   ),
                 ),
@@ -825,7 +860,7 @@ class SettingsScreen extends ConsumerWidget {
                   enableSuggestions: false,
                   autocorrect: false,
                   decoration: const InputDecoration(
-                    labelText: 'Offline server PIN',
+                    labelText: 'Offline login PIN',
                     hintText: '4–6 digits',
                     counterText: '',
                     prefixIcon: Icon(Icons.wifi_off_rounded),
@@ -842,7 +877,7 @@ class SettingsScreen extends ConsumerWidget {
                   enableSuggestions: false,
                   autocorrect: false,
                   decoration: const InputDecoration(
-                    labelText: 'Confirm offline server PIN',
+                    labelText: 'Confirm offline login PIN',
                     hintText: 'Enter it again',
                     counterText: '',
                     prefixIcon: Icon(Icons.verified_user_outlined),
@@ -890,7 +925,7 @@ class SettingsScreen extends ConsumerWidget {
                     await getIt<ApiClient>().setOfflineAccessPin(pin);
                     if (!context.mounted || !dialogContext.mounted) return;
                     Navigator.pop(dialogContext);
-                    _showSnack(context, 'Offline access PIN set successfully');
+                    _showSnack(context, 'Offline login PIN saved');
                   } catch (e) {
                     setDialogState(() {
                       isSaving = false;
@@ -952,7 +987,7 @@ class SettingsScreen extends ConsumerWidget {
       ),
       builder: (context) {
         return SettingsSheetScaffold(
-          title: 'Help & Support',
+          title: 'Help & support',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -961,25 +996,25 @@ class SettingsScreen extends ConsumerWidget {
                 children: [
                   const SettingsRow(
                     icon: Icons.email_outlined,
-                    title: 'Email Support',
+                    title: 'Email us',
                     subtitle: 'support@arche-axon.xyz',
                   ),
                   SettingsRow(
                     icon: Icons.phone_outlined,
-                    title: 'Phone Support',
+                    title: 'Call us',
                     subtitle: '0742126582',
                     onTap: () {},
                   ),
                 ],
               ),
-              const SettingsGroupLabel('Resources'),
+              const SettingsGroupLabel('Guides'),
               GroupedCard(
                 margin: EdgeInsets.zero,
                 children: [
                   SettingsRow(
                     icon: Icons.quiz_outlined,
-                    title: 'FAQ',
-                    subtitle: 'Frequently asked questions',
+                    title: 'Common questions',
+                    subtitle: 'Quick answers to what shop owners ask most',
                     onTap: () {
                       Navigator.pop(context);
                       _showFAQ(context);
@@ -988,7 +1023,7 @@ class SettingsScreen extends ConsumerWidget {
                   SettingsRow(
                     icon: Icons.description_outlined,
                     title: 'User Guide',
-                    subtitle: 'How to use the POS system',
+                    subtitle: 'Step-by-step help for using the app',
                     onTap: () {
                       Navigator.pop(context);
                       context.push('/user-guide');
@@ -1007,7 +1042,7 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => SettingsDialog(
-        title: 'FAQ',
+        title: 'Common questions',
         content: const SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,7 +1069,7 @@ class SettingsScreen extends ConsumerWidget {
               Text('Q: How do I change my PIN?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 4),
-              Text('A: Go to Settings > Change PIN.'),
+              Text('A: Go to Settings > Quick-unlock PIN.'),
               SizedBox(height: 16),
               Text('Q: How do I process a refund?',
                   style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1219,13 +1254,13 @@ class SettingsScreen extends ConsumerWidget {
         builder: (dialogContext, setDialogState) {
           final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
           return SettingsDialog(
-            title: 'Tax Rate',
+            title: 'Sales tax',
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Set the VAT/sales tax percentage applied to every sale. Leave at 0 to charge no tax.',
+                  'Enter the VAT (tax) percentage added to every sale. Leave it at 0 if you do not charge tax.',
                   style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
                       color: isDark
                           ? DesignColors.darkTextSecondary
@@ -1252,7 +1287,7 @@ class SettingsScreen extends ConsumerWidget {
                       icon: Icons.receipt_rounded,
                       title: 'Show tax on receipt',
                       subtitle:
-                          'Print the tax amount as its own line on printed receipts',
+                          'Print the tax amount on its own line on receipts',
                       trailing: Switch(
                         value: showOnReceipt,
                         activeThumbColor: DesignColors.accent,
@@ -1363,13 +1398,13 @@ class SettingsScreen extends ConsumerWidget {
           }
 
           return SettingsDialog(
-            title: 'Company Logo',
+            title: 'Business logo',
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Pick a new logo image, or trace your existing one into a crisp scalable SVG.',
+                  'Pick a new logo from your phone, or turn your current one into a sharper, resizable (SVG) logo.',
                   style: Theme.of(dialogContext)
                       .textTheme
                       .bodyMedium
@@ -1578,14 +1613,14 @@ class SettingsScreen extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => SettingsSheetScaffold(
-        title: 'Data Export',
+        title: 'Download my data',
         child: GroupedCard(
           margin: EdgeInsets.zero,
           children: [
             SettingsRow(
               icon: Icons.receipt_long_rounded,
-              title: 'Export Sales Data',
-              subtitle: 'PDF or CSV',
+              title: 'Sales',
+              subtitle: "This month's sales, as PDF or CSV",
               onTap: () async {
                 Navigator.pop(context);
                 await _exportSalesData(context, ref);
@@ -1593,8 +1628,8 @@ class SettingsScreen extends ConsumerWidget {
             ),
             SettingsRow(
               icon: Icons.inventory_rounded,
-              title: 'Export Inventory',
-              subtitle: 'PDF or CSV',
+              title: 'Stock levels',
+              subtitle: 'What you have in stock, as PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
                 await _exportInventory(context, ref);
@@ -1602,8 +1637,8 @@ class SettingsScreen extends ConsumerWidget {
             ),
             SettingsRow(
               icon: Icons.category_rounded,
-              title: 'Export Products',
-              subtitle: 'PDF or CSV',
+              title: 'Product list',
+              subtitle: 'All your products, as PDF or CSV',
               onTap: () async {
                 Navigator.pop(context);
                 await _exportProducts(context, ref);
@@ -1618,13 +1653,13 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _exportSalesData(BuildContext context, WidgetRef ref) async {
     final format = await showShareFormatSheet(
       context,
-      title: 'Export Sales Data',
+      title: 'Download sales',
       formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
     );
     if (format == null || !context.mounted) return;
 
     try {
-      _showSnack(context, 'Generating sales export...');
+      _showSnack(context, 'Preparing your sales file...');
       final db = getIt<AppDatabase>();
       final now = DateTime.now();
       final sales = await db.getSalesByDateRange(
@@ -1680,20 +1715,20 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.sharePdf(bytes, 'sales_export');
       }
     } catch (e) {
-      if (context.mounted) _showSnack(context, 'Export failed: $e');
+      if (context.mounted) _showSnack(context, 'Could not prepare your file: $e');
     }
   }
 
   Future<void> _exportInventory(BuildContext context, WidgetRef ref) async {
     final format = await showShareFormatSheet(
       context,
-      title: 'Export Inventory',
+      title: 'Download stock levels',
       formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
     );
     if (format == null || !context.mounted) return;
 
     try {
-      _showSnack(context, 'Generating inventory export...');
+      _showSnack(context, 'Preparing your stock file...');
       final db = getIt<AppDatabase>();
       final data = await db.getInventoryReport();
 
@@ -1742,20 +1777,20 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.sharePdf(bytes, 'inventory_export');
       }
     } catch (e) {
-      if (context.mounted) _showSnack(context, 'Export failed: $e');
+      if (context.mounted) _showSnack(context, 'Could not prepare your file: $e');
     }
   }
 
   Future<void> _exportProducts(BuildContext context, WidgetRef ref) async {
     final format = await showShareFormatSheet(
       context,
-      title: 'Export Products',
+      title: 'Download product list',
       formats: const [ShareFormatOption.pdf, ShareFormatOption.csv],
     );
     if (format == null || !context.mounted) return;
 
     try {
-      _showSnack(context, 'Generating products export...');
+      _showSnack(context, 'Preparing your product file...');
       final db = getIt<AppDatabase>();
       final products = await db.getAllProducts();
 
@@ -1803,7 +1838,7 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.sharePdf(bytes, 'products_export');
       }
     } catch (e) {
-      if (context.mounted) _showSnack(context, 'Export failed: $e');
+      if (context.mounted) _showSnack(context, 'Could not prepare your file: $e');
     }
   }
 
@@ -1842,13 +1877,13 @@ class SettingsScreen extends ConsumerWidget {
                             borderRadius:
                                 BorderRadius.circular(DesignSpacing.xs)))),
                 const SizedBox(height: 18),
-                Text('Audit Trail',
+                Text('Activity history',
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
                         ?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text('Recent system activity',
+                Text('Recent activity in your shop',
                     style: TextStyle(color: secondaryColor)),
                 const SizedBox(height: 18),
                 Expanded(
@@ -1861,7 +1896,7 @@ class SettingsScreen extends ConsumerWidget {
                       if (snapshot.hasError) {
                         return const EmptyState(
                           icon: Icons.error_outline_rounded,
-                          title: 'Couldn\'t load audit trail',
+                          title: 'Couldn\'t load activity history',
                           subtitle: 'Check your connection and try again.',
                           iconColor: DesignColors.error,
                         );
@@ -2056,7 +2091,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       if (mounted) setState(() => _isDesignatedPrinter = value);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not update printer device: $e',
+        showGlassSnackBar(context, 'Could not update the till printer setting: $e',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {
@@ -2148,7 +2183,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
             bottom:
                 MediaQuery.of(context).viewInsets.bottom + DesignSpacing.sm),
         child: SettingsSheetScaffold(
-          title: 'Printer Settings',
+          title: 'Receipts & printers',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2173,7 +2208,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
               DropdownButtonFormField<String>(
                 initialValue: _paperWidth,
                 decoration: InputDecoration(
-                  labelText: 'Paper Width',
+                  labelText: 'Paper size',
                   prefixIcon: const Icon(Icons.straighten_rounded),
                   border: OutlineInputBorder(
                       borderRadius:
@@ -2192,8 +2227,8 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                 children: [
                   SettingsRow(
                     icon: Icons.receipt_long_rounded,
-                    title: 'Auto-print receipts',
-                    subtitle: 'Print receipt after each sale',
+                    title: 'Print receipts automatically',
+                    subtitle: 'Print a receipt after every sale',
                     trailing: Switch(
                       value: _autoPrint,
                       activeThumbColor: DesignColors.accent,
@@ -2203,17 +2238,17 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                 ],
               ),
               const SizedBox(height: 14),
-              const SettingsGroupLabel('SHARED PRINTER'),
+              const SettingsGroupLabel('Shared printer'),
               GroupedCard(
                 margin: EdgeInsets.zero,
                 children: [
                   SettingsRow(
                     icon: Icons.smartphone_rounded,
-                    title: 'This device is the printer',
+                    title: 'This phone is the till printer',
                     subtitle: _printerMacAddress.isEmpty
                         ? 'Connect a printer above first'
-                        : 'Other staff devices will queue receipts here to print — '
-                            'turn this on only on the phone physically connected '
+                        : 'Other staff phones will send their receipts here to print. '
+                            'Turn this on only on the phone connected '
                             'to the till printer.',
                     trailing: _isDesignatedPrinter == null ||
                             _isSavingDesignation
@@ -2233,7 +2268,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
               ),
               if (_pairedPrinters.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                const SettingsGroupLabel('PAIRED DEVICES'),
+                const SettingsGroupLabel('Paired Bluetooth devices'),
                 GroupedCard(
                   margin: EdgeInsets.zero,
                   children: _pairedPrinters
@@ -2276,7 +2311,7 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Scan Printers'),
+                          : const Text('Find printers'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -2409,12 +2444,12 @@ class _NotificationSettingsSheetState
                         : _osPermissionGranted
                             ? DesignColors.success
                             : DesignColors.error,
-                    title: 'Push Notifications',
+                    title: 'Phone notifications',
                     subtitle: _checkingPermission
                         ? 'Checking…'
                         : _osPermissionGranted
-                            ? 'Enabled — you will receive alerts'
-                            : 'Blocked — enable in phone settings',
+                            ? 'On — you will get alerts'
+                            : 'Blocked — turn them on in your phone settings',
                     trailing: _checkingPermission
                         ? const SizedBox(
                             width: 20,
@@ -2434,7 +2469,7 @@ class _NotificationSettingsSheetState
                       child: SizedBox(
                         width: double.infinity,
                         child: SettingsPrimaryButton(
-                          label: 'Enable Notifications',
+                          label: 'Turn on notifications',
                           onPressed: () async {
                             final granted = await getIt<NotificationService>()
                                 .requestPermission();
@@ -2458,7 +2493,7 @@ class _NotificationSettingsSheetState
                     SettingsRow(
                       icon: Icons.system_update_alt_rounded,
                       iconColor: DesignColors.accent,
-                      title: 'Update Available',
+                      title: 'Update available',
                       subtitle:
                           'Version ${_availableUpdate!.displayVersion} is ready to install',
                       trailing: SettingsPrimaryButton(
@@ -2495,8 +2530,8 @@ class _NotificationSettingsSheetState
                 children: [
                   SettingsRow(
                     icon: Icons.point_of_sale_rounded,
-                    title: 'Sales Alerts',
-                    subtitle: 'Get notified for completed sales',
+                    title: 'Sales alerts',
+                    subtitle: 'Know when a sale is completed',
                     trailing: Switch(
                       value: _notifySales,
                       activeThumbColor: DesignColors.accent,
@@ -2505,7 +2540,7 @@ class _NotificationSettingsSheetState
                   ),
                   SettingsRow(
                     icon: Icons.inventory_rounded,
-                    title: 'Inventory Alerts',
+                    title: 'Stock alerts',
                     subtitle: 'Low stock and reorder reminders',
                     trailing: Switch(
                       value: _notifyInventory,
@@ -2515,8 +2550,8 @@ class _NotificationSettingsSheetState
                   ),
                   SettingsRow(
                     icon: Icons.sync_rounded,
-                    title: 'Sync Alerts',
-                    subtitle: 'Notify when sync completes or fails',
+                    title: 'Backup alerts',
+                    subtitle: 'Know when a backup finishes or fails',
                     trailing: Switch(
                       value: _notifySync,
                       activeThumbColor: DesignColors.accent,
@@ -2634,7 +2669,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
       });
       await getIt<StorageService>().setBiometricEnabled(confirmed);
       if (!confirmed && mounted) {
-        showGlassSnackBar(context, 'Biometric check failed or was cancelled',
+        showGlassSnackBar(context, 'Fingerprint check failed or was cancelled',
             icon: Icons.fingerprint_rounded, color: DesignColors.error);
       }
     } catch (e) {
@@ -2643,7 +2678,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
         _isConfirmingBiometric = false;
       });
       if (mounted) {
-        showGlassSnackBar(context, 'Could not verify biometrics: $e',
+        showGlassSnackBar(context, 'Could not check fingerprint or face unlock: $e',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     }
@@ -2678,7 +2713,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                           borderRadius:
                               BorderRadius.circular(DesignSpacing.xs)))),
               const SizedBox(height: 18),
-              Text('Security',
+              Text('Fingerprint & auto-lock',
                   style: Theme.of(context)
                       .textTheme
                       .titleLarge
@@ -2688,10 +2723,10 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                 children: [
                   SettingsRow(
                     icon: Icons.security_rounded,
-                    title: 'Biometric Login',
+                    title: 'Fingerprint or face unlock',
                     subtitle: widget.biometricAvailable
-                        ? 'Use device fingerprint, face, PIN, or pattern to unlock'
-                        : 'Not available on this device',
+                        ? "Use your phone's fingerprint, face, PIN or pattern to open the app"
+                        : 'Not available on this phone',
                     enabled:
                         widget.biometricAvailable && !_isConfirmingBiometric,
                     trailing: _isConfirmingBiometric
@@ -2710,8 +2745,8 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                   ),
                   SettingsRow(
                     icon: Icons.lock_clock_rounded,
-                    title: 'Require unlock when app reopens',
-                    subtitle: 'Ask for authentication after leaving the app',
+                    title: 'Ask to unlock when I come back',
+                    subtitle: 'Asks for your fingerprint, PIN or pattern after you leave the app',
                     trailing: Switch(
                       value: _requireUnlockOnResume,
                       activeThumbColor: DesignColors.accent,
@@ -2726,7 +2761,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                 children: [
                   SettingsRow(
                     icon: Icons.timer_outlined,
-                    title: 'Auto-lock after',
+                    title: 'Lock the app after',
                     enabled: _requireUnlockOnResume,
                     trailing: DropdownButton<int>(
                       value: _autoLockMinutes,
@@ -3231,7 +3266,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Branch Management',
+                Text('Branches',
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
@@ -3328,6 +3363,41 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SettingsFooter extends StatelessWidget {
+  const _SettingsFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color =
+        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: FutureBuilder<PackageInfo>(
+        future: PackageInfo.fromPlatform(),
+        builder: (context, snapshot) {
+          final info = snapshot.data;
+          final build = info == null || info.buildNumber.isEmpty
+              ? ''
+              : ' (build ${info.buildNumber})';
+          final label = info == null
+              ? 'Axon POS'
+              : 'Axon POS  ·  Version ${info.version}$build';
+          return Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          );
+        },
       ),
     );
   }

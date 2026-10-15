@@ -53,6 +53,25 @@ Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// Cards show their first few features and fold the rest behind a
+/// "See all N features" toggle; this opens every card. Needs a tall surface
+/// so the lazy list builds all three cards.
+Future<void> _useTallSurface(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(800, 8000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Future<void> _expandAllCards(WidgetTester tester) async {
+  for (var i = 0; i < 3; i++) {
+    final toggle = find.textContaining('See all');
+    if (toggle.evaluate().isEmpty) break;
+    await tester.tap(toggle.first);
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   late _SpyApiClient spyApi;
 
@@ -77,7 +96,7 @@ void main() {
 
       // Header
       expect(find.text('AXON / SUBSCRIPTION'), findsOneWidget);
-      expect(find.text('STEP 4 · CHOOSE PLAN'), findsOneWidget);
+      expect(find.text('FINAL STEP · CHOOSE PLAN'), findsOneWidget);
 
       // CORE is the first card — visible at the top.
       expect(find.text('CORE'), findsOneWidget);
@@ -95,8 +114,8 @@ void main() {
 
       // Setup fee notice (asserted while it is on-screen — further scrolling
       // culls it from the lazy list's built range).
-      await _scrollTo(tester, find.text('One-time setup fee'));
-      expect(find.text('One-time setup fee'), findsOneWidget);
+      await _scrollTo(tester, find.text('Setup fee paid'));
+      expect(find.text('Setup fee paid'), findsOneWidget);
       expect(find.text('KES 35,000'), findsOneWidget);
 
       // Action button
@@ -105,22 +124,24 @@ void main() {
     });
 
     testWidgets('shows CORE plan features', (tester) async {
+      await _useTallSurface(tester);
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
+      await _expandAllCards(tester);
 
       // CORE card features (new owner-language catalog copy).
       expect(
         find.text('Sell as many items as you want — no per-sale charge'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
       expect(
         find.text('Keep selling when the internet goes down (works offline)'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
-      expect(find.text('Know your stock level at any moment'), findsOneWidget);
-      expect(find.text('Up to 3 branches'), findsOneWidget);
-      expect(find.text('Up to 10 staff accounts'), findsOneWidget);
-      expect(find.text('Email support'), findsOneWidget);
+      expect(find.text('Know your stock level at any moment'), findsAtLeastNWidgets(1));
+      expect(find.text('Up to 3 branches'), findsAtLeastNWidgets(1));
+      expect(find.text('Up to 10 staff accounts'), findsAtLeastNWidgets(1));
+      expect(find.text('Email support'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('shows the 7-day free trial row on every plan card',
@@ -130,13 +151,11 @@ void main() {
       // only build the visible ones). The comparison table's trial row is
       // '7-day free trial on every plan' — a different exact string — so the
       // card rows count exactly once per plan.
-      tester.view.physicalSize = const Size(800, 3000);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      await _useTallSurface(tester);
 
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
+      await _expandAllCards(tester);
 
       // Prove all three cards are built: 'Everything in ... plus:' lines are
       // card-only copy (not in the comparison table).
@@ -147,62 +166,74 @@ void main() {
     });
 
     testWidgets('shows BUSINESS plan features', (tester) async {
+      await _useTallSurface(tester);
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
+      await _expandAllCards(tester);
 
-      // Scroll the BUSINESS (second) card into view.
-      await _scrollTo(tester, find.text('BUSINESS'));
-
-      expect(find.text('Everything in Core, plus:'), findsOneWidget);
-      expect(find.text('Up to 10 branches'), findsOneWidget);
-      expect(find.text('Up to 50 staff accounts'), findsOneWidget);
-      expect(find.text('Move stock between your shops'), findsOneWidget);
+      expect(find.text('Everything in Core, plus:'), findsAtLeastNWidgets(1));
+      expect(find.text('Up to 10 branches'), findsAtLeastNWidgets(1));
+      expect(find.text('Up to 50 staff accounts'), findsAtLeastNWidgets(1));
+      expect(find.text('Move stock between your shops'), findsAtLeastNWidgets(1));
       expect(
         find.text('Restock suggestions — what to reorder and how much'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
       expect(
         find.text('Track suppliers — who you owe, invoices and payments'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
-      expect(find.text('WhatsApp support from our team'), findsOneWidget);
+      expect(find.text('WhatsApp support from our team'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('shows ENTERPRISE plan features', (tester) async {
+      await _useTallSurface(tester);
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
+      await _expandAllCards(tester);
 
-      // Scroll the ENTERPRISE (third) card into view.
-      await _scrollTo(tester, find.text('ENTERPRISE'));
-
-      expect(find.text('Everything in Business, plus:'), findsOneWidget);
-      expect(find.text('Unlimited branches'), findsOneWidget);
-      expect(find.text('Unlimited staff accounts'), findsOneWidget);
+      expect(find.text('Everything in Business, plus:'), findsAtLeastNWidgets(1));
+      expect(find.text('Unlimited branches'), findsAtLeastNWidgets(1));
+      expect(find.text('Unlimited staff accounts'), findsAtLeastNWidgets(1));
       expect(
         find.text('Books combined across all your branches in one place'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
       expect(find.text('Every action logged — full audit trail'),
-          findsOneWidget);
+          findsAtLeastNWidgets(1));
       expect(
         find.text('Priority phone and WhatsApp support — talk to a human fast'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
     });
 
-    testWidgets('start trial button is disabled when no plan selected',
+    testWidgets('the popular plan is pre-selected so Continue is ready',
         (tester) async {
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
 
-      // Scroll down to reveal the button
       await _scrollTo(tester, find.text('Continue with this plan'));
 
-      // The button should be present but disabled (no plan selected yet)
       final button = tester.widget<GradientButton>(
         find.byType(GradientButton),
       );
-      expect(button.onPressed, isNull);
+      expect(button.onPressed, isNotNull);
+
+      // Continuing without touching a card sends the pre-selected plan.
+      await tester.tap(find.text('Continue with this plan'));
+      await tester.pumpAndSettle();
+      expect(spyApi.lastChangePlanCall!['planId'], 'BUSINESS');
+    });
+
+    testWidgets('a long feature list folds and unfolds', (tester) async {
+      await tester.pumpWidget(_app(_router()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Up to 3 branches'), findsNothing);
+      await tester.tap(find.textContaining('See all').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Up to 3 branches'), findsOneWidget);
+      expect(find.text('Show less'), findsOneWidget);
     });
 
     testWidgets('selecting a plan enables the trial button',

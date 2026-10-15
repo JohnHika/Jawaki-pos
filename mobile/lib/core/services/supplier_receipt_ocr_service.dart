@@ -14,6 +14,17 @@ class SupplierReceiptScan {
   final List<SupplierReceiptLineItem> items;
   final String summary;
 
+  /// True when Axon AI (vision) read the photo, false for the on-device
+  /// OCR fallback or a manual / prefilled invoice.
+  final bool readByAi;
+
+  /// AI-recognised kind of document: supplier_invoice, till_receipt,
+  /// delivery_note, mpesa_message or other.
+  final String? documentType;
+
+  /// Payment method printed on the document (cash, mpesa, card, credit).
+  final String? paymentMethod;
+
   const SupplierReceiptScan({
     required this.imagePath,
     required this.rawText,
@@ -22,7 +33,20 @@ class SupplierReceiptScan {
     required this.totalAmount,
     required this.items,
     required this.summary,
+    this.readByAi = false,
+    this.documentType,
+    this.paymentMethod,
   });
+
+  /// Plain-language label for [documentType].
+  String? get documentTypeLabel => switch (documentType) {
+        'supplier_invoice' => 'Supplier invoice',
+        'till_receipt' => 'Till receipt',
+        'delivery_note' => 'Delivery note',
+        'mpesa_message' => 'M-Pesa message',
+        'other' => 'Document',
+        _ => null,
+      };
 }
 
 class SupplierReceiptLineItem {

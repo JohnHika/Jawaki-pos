@@ -22,6 +22,7 @@ import 'core/widgets/forced_update_gate.dart';
 import 'core/widgets/optional_update_prompt_host.dart';
 import 'core/widgets/feature_announcement_host.dart';
 import 'core/widgets/tap_tracker.dart';
+import 'features/notifications/domain/app_notification.dart';
 
 /// Global error handler for uncaught Flutter errors
 void _setupFlutterErrorHandling() {
@@ -154,6 +155,7 @@ class _POSAppState extends ConsumerState<POSApp> {
   bool _checkedForUpdates = false;
 
   late final LifecycleLockController _lifecycleController;
+  StreamSubscription<Map<String, dynamic>>? _notificationOpens;
 
   @override
   void initState() {
@@ -163,10 +165,46 @@ class _POSAppState extends ConsumerState<POSApp> {
       storageService: getIt<StorageService>(),
     );
     WidgetsBinding.instance.addObserver(_lifecycleController);
+
+    _attachNotificationOpens();
+  }
+
+  /// Tapping a notification deep-links to what it is about (a partner chat,
+  /// the inventory screen, ...). A tap that cold-started the app was
+  /// buffered by the service until now. On a very slow start the service
+  /// may not be registered yet (dependency setup is still finishing), so
+  /// retry briefly instead of crashing the first frame.
+  void _attachNotificationOpens([int attempt = 0]) {
+    if (!getIt.isRegistered<NotificationService>()) {
+      if (attempt < 30 && mounted) {
+        Future<void>.delayed(const Duration(seconds: 1),
+            () => _attachNotificationOpens(attempt + 1));
+      }
+      return;
+    }
+    final notifications = getIt<NotificationService>();
+    _notificationOpens = notifications.opens.listen(_openFromNotification);
+    final pending = notifications.takePendingOpen();
+    if (pending != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _openFromNotification(pending));
+    }
+  }
+
+  void _openFromNotification(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final route =
+        routeForNotification((data['type'] ?? '').toString(), data);
+    try {
+      ref.read(appRouterProvider).push(route);
+    } catch (e) {
+      debugPrint('[main] Could not open notification route $route: $e');
+    }
   }
 
   @override
   void dispose() {
+    _notificationOpens?.cancel();
     WidgetsBinding.instance.removeObserver(_lifecycleController);
     super.dispose();
   }

@@ -410,12 +410,29 @@ class UpdateCheckService extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     final noticeKey = update.noticeKey;
+
+    // A brand-new install was never "updated": no earlier build has run
+    // here and no earlier notice was ever shown. Remember this build and
+    // stay quiet, instead of greeting a new user with "Your update is
+    // installed… you have been signed out".
+    final currentBuild = _currentBuildNumber(_currentVersion ?? '');
+    final lastLaunchedBuild = prefs.getInt(_lastLaunchedBuildKey);
+    if (currentBuild != null) {
+      await prefs.setInt(_lastLaunchedBuildKey, currentBuild);
+    }
+    if (lastLaunchedBuild == null &&
+        prefs.getString('last_seen_update_notice') == null) {
+      await prefs.setString('last_seen_update_notice', noticeKey);
+      return null;
+    }
+
     if (prefs.getString('last_seen_update_notice') == noticeKey) return null;
 
     await prefs.setString('last_seen_update_notice', noticeKey);
     return update;
   }
 
+  static const _lastLaunchedBuildKey = 'last_launched_build';
   static const _pendingNoticeBuildKey = 'pending_update_notice_build';
   static const _pendingNoticeVersionKey = 'pending_update_notice_version';
   static const _pendingNoticeReleaseNotesKey =
@@ -624,6 +641,30 @@ class UpdateCheckService extends ChangeNotifier {
         receiveTimeout: const Duration(minutes: 5),
       ),
     );
+
+    // A finished download from an earlier attempt (installer cancelled, app
+    // killed mid-install) is reused instead of pulling the whole APK again.
+    final existing = File(filePath);
+    if (await existing.exists()) {
+      try {
+        final head = await downloader.head(resolvedUrl);
+        final expected =
+            int.tryParse(head.headers.value(Headers.contentLengthHeader) ?? '');
+        final actual = await existing.length();
+        if (expected != null && expected > 0 && expected == actual) {
+          _downloadedBytes = actual;
+          _totalBytes = actual;
+          _downloadProgress = 1;
+          notifyListeners();
+          return existing;
+        }
+      } catch (_) {
+        // Can't verify it — fall through and download fresh.
+      }
+      try {
+        await existing.delete();
+      } catch (_) {}
+    }
 
     await downloader.download(
       resolvedUrl,

@@ -11,6 +11,8 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../../core/widgets/motion_kit.dart';
+import '../../../../core/widgets/motion_kit_extras.dart';
 
 class CompanyActivationScreen extends ConsumerStatefulWidget {
   const CompanyActivationScreen({super.key, this.companyName});
@@ -23,8 +25,7 @@ class CompanyActivationScreen extends ConsumerStatefulWidget {
 }
 
 class _CompanyActivationScreenState
-    extends ConsumerState<CompanyActivationScreen>
-    with WidgetsBindingObserver {
+    extends ConsumerState<CompanyActivationScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? _status;
   bool _isLoading = true;
   bool _isStartingCheckout = false;
@@ -239,12 +240,14 @@ class _CompanyActivationScreenState
                     index: 1,
                     child: Text(
                       'Activate your workspace',
-                      style:
-                          Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                color: context.themed(DesignColors.darkTextPrimary),
-                                fontWeight: FontWeight.w800,
-                                height: 1.05,
-                              ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineMedium
+                          ?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w800,
+                            height: 1.05,
+                          ),
                     ),
                   ),
                   const SizedBox(height: DesignSpacing.md),
@@ -256,7 +259,8 @@ class _CompanyActivationScreenState
                           ? 'Your company is created. One payment unlocks the Axon POS workspace.'
                           : '$companyName is created. Complete activation before using Axon POS.',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: context.themed(DesignColors.darkTextSecondary),
+                            color:
+                                context.themed(DesignColors.darkTextSecondary),
                             height: 1.45,
                           ),
                     ),
@@ -310,14 +314,17 @@ class _CompanyActivationScreenState
                               : 'I completed payment — check status',
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: context.themed(DesignColors.darkTextPrimary),
+                          foregroundColor:
+                              context.themed(DesignColors.darkTextPrimary),
                           side: BorderSide(
-                            color: context.themed(DesignColors.darkTextTertiary)
+                            color: context
+                                .themed(DesignColors.darkTextTertiary)
                                 .withValues(alpha: 0.45),
                           ),
                           minimumSize: const Size.fromHeight(52),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusLg),
                           ),
                         ),
                       ),
@@ -331,6 +338,19 @@ class _CompanyActivationScreenState
                           color: context.themed(DesignColors.darkTextTertiary),
                           height: 1.4,
                         ),
+                  ),
+                  const SizedBox(height: DesignSpacing.md),
+                  // The only other way out of this screen: signed in with the
+                  // wrong account, or not ready to pay yet.
+                  Center(
+                    child: TextButton(
+                      onPressed: () async {
+                        final router = GoRouter.of(context);
+                        await getIt<AuthService>().logout();
+                        router.go('/login');
+                      },
+                      child: const Text('Use a different account'),
+                    ),
                   ),
                 ],
               ),
@@ -374,7 +394,7 @@ class _CompanyActivationScreenState
               ),
               const SizedBox(height: 3),
               Text(
-                'STEP 4 · PAYMENT REQUIRED',
+                'FINAL STEP · PAYMENT REQUIRED',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: DesignColors.accent,
                       fontWeight: FontWeight.w700,
@@ -389,56 +409,60 @@ class _CompanyActivationScreenState
   }
 
   Widget _buildPriceCard() {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            DesignColors.brand.withValues(alpha: 0.24),
-            context.themed(DesignColors.darkSurfaceElevated),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
-        border: Border.all(color: DesignColors.brand.withValues(alpha: 0.55)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.workspace_premium_rounded,
-              color: DesignColors.brand, size: 38),
-          const SizedBox(width: DesignSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Axon workspace activation',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: context.themed(DesignColors.darkTextPrimary),
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: DesignSpacing.xs),
-                Text(
-                  'One-time setup payment',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
-                ),
+    return ShimmerSweep(
+      child: TiltOnDrag(
+        child: Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                DesignColors.brand.withValues(alpha: 0.24),
+                context.themed(DesignColors.darkSurfaceElevated),
               ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
+            border:
+                Border.all(color: DesignColors.brand.withValues(alpha: 0.55)),
           ),
-          Text(
-            'KSh 35,000',
-            style: DesignType.numeric(
-              color: context.themed(DesignColors.darkTextPrimary),
-              fontWeight: FontWeight.w900,
-              fontSize: 18,
-            ),
+          child: Row(
+            children: [
+              const Icon(Icons.workspace_premium_rounded,
+                  color: DesignColors.brand, size: 38),
+              const SizedBox(width: DesignSpacing.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Axon workspace activation',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: DesignSpacing.xs),
+                    Text(
+                      'One-time setup payment',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color:
+                              context.themed(DesignColors.darkTextSecondary)),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                'KSh 35,000',
+                style: DesignType.numeric(
+                  color: context.themed(DesignColors.darkTextPrimary),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -468,8 +492,8 @@ class _CompanyActivationScreenState
                         color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w700)),
                 subtitle: Text(item.$2,
-                    style:
-                        TextStyle(color: context.themed(DesignColors.darkTextSecondary))),
+                    style: TextStyle(
+                        color: context.themed(DesignColors.darkTextSecondary))),
               ),
             )
             .toList(),

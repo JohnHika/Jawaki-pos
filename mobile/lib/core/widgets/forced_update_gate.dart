@@ -53,10 +53,7 @@ class ForcedUpdateGate extends StatelessWidget {
                           color: context.themed(DesignColors.darkTextPrimary),
                           fontWeight: FontWeight.w700,
                         ),
-                  )
-                      .animate()
-                      .fadeIn(duration: 400.ms)
-                      .slideY(
+                  ).animate().fadeIn(duration: 400.ms).slideY(
                         begin: 0.1,
                         end: 0.0,
                         duration: 400.ms,
@@ -72,10 +69,7 @@ class ForcedUpdateGate extends StatelessWidget {
                           color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.45,
                         ),
-                  )
-                      .animate()
-                      .fadeIn(duration: 400.ms, delay: 100.ms)
-                      .slideY(
+                  ).animate().fadeIn(duration: 400.ms, delay: 100.ms).slideY(
                         begin: 0.1,
                         end: 0.0,
                         duration: 400.ms,
@@ -97,10 +91,7 @@ class ForcedUpdateGate extends StatelessWidget {
                     _UpdateSummary(
                       updateService: updateService,
                       update: update,
-                    )
-                        .animate()
-                        .fadeIn(duration: 500.ms)
-                        .slideY(
+                    ).animate().fadeIn(duration: 500.ms).slideY(
                           begin: 0.12,
                           end: 0.0,
                           duration: 500.ms,
@@ -145,7 +136,8 @@ class ForcedUpdateGate extends StatelessWidget {
                   TextButton(
                     onPressed: updateService.openDownloadFallback,
                     style: TextButton.styleFrom(
-                      foregroundColor: context.themed(DesignColors.darkTextSecondary),
+                      foregroundColor:
+                          context.themed(DesignColors.darkTextSecondary),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     child: const Text('Open fallback download link'),
@@ -155,7 +147,8 @@ class ForcedUpdateGate extends StatelessWidget {
                     TextButton(
                       onPressed: SystemNavigator.pop,
                       style: TextButton.styleFrom(
-                        foregroundColor: context.themed(DesignColors.darkTextTertiary),
+                        foregroundColor:
+                            context.themed(DesignColors.darkTextTertiary),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       child: const Text('Close app'),
@@ -200,9 +193,7 @@ class _Mark extends StatelessWidget {
           ],
         ),
         child: Icon(
-          pulsing
-              ? Icons.downloading_rounded
-              : Icons.system_update_alt_rounded,
+          pulsing ? Icons.downloading_rounded : Icons.system_update_alt_rounded,
           color: DesignColors.accent,
           size: 42,
         ),
@@ -238,7 +229,7 @@ class _UpdateSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final notes = _parseReleaseNotes(update.releaseNotes);
+    final notes = cleanReleaseNoteLines(update.releaseNotes);
 
     return GlassCard(
       padding: const EdgeInsets.all(DesignSpacing.xl),
@@ -269,7 +260,10 @@ class _UpdateSummary extends StatelessWidget {
               Expanded(
                 child: _VersionColumn(
                   label: 'New',
-                  value: update.displayVersion,
+                  value: update.latestVersion.isEmpty
+                      ? cleanReleaseName(update.displayVersion,
+                          fallback: 'Latest')
+                      : update.latestVersion,
                   color: DesignColors.accent,
                   alignEnd: true,
                 ),
@@ -447,7 +441,8 @@ class _DownloadTelemetry extends StatelessWidget {
             ],
           ),
           const SizedBox(height: DesignSpacing.md),
-          _AnimatedProgressBar(progress: updateService.isInstalling ? null : progress),
+          _AnimatedProgressBar(
+              progress: updateService.isInstalling ? null : progress),
           if (sizeLabel != null || speedLabel != null) ...[
             const SizedBox(height: DesignSpacing.md),
             Row(
@@ -496,32 +491,27 @@ class _AnimatedProgressBar extends StatelessWidget {
             ),
           ),
           if (clamped != null)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-              height: 8,
-              width: MediaQuery.of(context).size.width * clamped,
-              decoration: BoxDecoration(
-                color: DesignColors.accent,
-                boxShadow: [
-                  BoxShadow(
-                    color: DesignColors.accent.withValues(alpha: 0.45),
-                    blurRadius: 8,
-                    spreadRadius: 1,
+            LayoutBuilder(
+              builder: (context, constraints) => AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOutCubic,
+                height: 8,
+                width: constraints.maxWidth * clamped,
+                decoration: BoxDecoration(
+                  color: DesignColors.accent,
+                  boxShadow: [
+                    BoxShadow(
+                      color: DesignColors.accent.withValues(alpha: 0.45),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ).animate().shimmer(
+                    duration: 1500.ms,
+                    color: DesignColors.accentLight.withValues(alpha: 0.35),
                   ),
-                ],
-              ),
             )
-              .animate()
-              .shimmer(
-                duration: 1500.ms,
-                color: DesignColors.accentLight.withValues(alpha: 0.35),
-              )
-              .shake(
-                hz: 0.6,
-                rotation: 0.0,
-                duration: const Duration(seconds: 2),
-              )
           else
             Container(
               height: 8,
@@ -583,22 +573,6 @@ String _cleanVersion(String? value) {
   if (value == null || value.isEmpty) return 'Unknown';
   final plusIndex = value.indexOf('+');
   return plusIndex < 0 ? value : value.substring(0, plusIndex);
-}
-
-/// Splits release notes into individual bullet lines. Falls back to a
-/// single "row" containing the whole string if it has no newlines, so a
-/// plain sentence still renders instead of looking empty.
-List<String> _parseReleaseNotes(String raw) {
-  final trimmed = raw.trim();
-  if (trimmed.isEmpty) return const [];
-
-  final lines = trimmed
-      .split('\n')
-      .map((line) => line.trim().replaceFirst(RegExp(r'^[-*•]\s*'), ''))
-      .where((line) => line.isNotEmpty)
-      .toList();
-
-  return lines.isEmpty ? [trimmed] : lines;
 }
 
 String _formatBytes(int bytes) {

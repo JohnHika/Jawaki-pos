@@ -1530,13 +1530,127 @@ class ApiClient {
   /// backend's ParsedReceiptResult shape, including isReceipt: false with a
   /// rejectionReason when the image doesn't look like a receipt at all.
   Future<Map<String, dynamic>> scanReceiptImage({
-    required String imageUrl,
+    String? imageUrl,
+    String? imageBase64,
     String? branchId,
   }) async {
-    final response = await _dio.post('/ai/receipts/scan', data: {
-      'imageUrl': imageUrl,
-      if (branchId != null) 'branchId': branchId,
+    assert(imageUrl != null || imageBase64 != null);
+    final response = await _dio.post(
+      '/ai/receipts/scan',
+      data: {
+        if (imageBase64 != null) 'imageBase64': imageBase64,
+        if (imageBase64 == null && imageUrl != null) 'imageUrl': imageUrl,
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      },
+      // Vision models take a while to read a long invoice.
+      options: Options(receiveTimeout: const Duration(seconds: 90)),
+    );
+    return (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
+  }
+
+  // ── Notification inbox ────────────────────────────────────────────────
+
+  /// The signed-in user's saved notifications, newest first, plus how many
+  /// are still unread. `before` pages backwards (ISO date of the oldest
+  /// item already loaded).
+  Future<Map<String, dynamic>> getNotifications({
+    int limit = 50,
+    String? before,
+  }) async {
+    final response = await _dio.get('/notifications', queryParameters: {
+      'limit': limit,
+      if (before != null) 'before': before,
     });
+    return (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    await _dio.post('/notifications/$id/read');
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    await _dio.post('/notifications/read-all');
+  }
+
+  // ── Trade partners (business-to-business) ─────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getTradePartners() async {
+    final response = await _dio.get('/partners');
+    final data = (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
+    return ((data['partners'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> requestTradePartner({
+    required String companyCode,
+    String? message,
+  }) async {
+    final response = await _dio.post('/partners/requests', data: {
+      'companyCode': companyCode,
+      if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+    });
+    return ((response.data as Map<String, dynamic>)['data'] as Map?)
+            ?.cast<String, dynamic>() ??
+        const {};
+  }
+
+  Future<void> acceptTradePartner(String id) async {
+    await _dio.post('/partners/$id/accept');
+  }
+
+  Future<void> declineTradePartner(String id) async {
+    await _dio.post('/partners/$id/decline');
+  }
+
+  Future<void> removeTradePartner(String id) async {
+    await _dio.delete('/partners/$id');
+  }
+
+  Future<List<Map<String, dynamic>>> getPartnerMessages(
+    String id, {
+    String? after,
+    int limit = 50,
+  }) async {
+    final response = await _dio.get('/partners/$id/messages', queryParameters: {
+      'limit': limit,
+      if (after != null) 'after': after,
+    });
+    final data = (response.data as Map<String, dynamic>)['data']
+        as Map<String, dynamic>;
+    return ((data['messages'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> sendPartnerMessage(
+      String id, String body) async {
+    final response =
+        await _dio.post('/partners/$id/messages', data: {'body': body});
+    return ((response.data as Map<String, dynamic>)['data'] as Map)
+        .cast<String, dynamic>();
+  }
+
+  /// Identifies a retail product from a photo (name, brand, category, size,
+  /// barcode) so "Add product" can be pre-filled. Returns the backend's
+  /// IdentifiedProduct shape; `identified: false` when it isn't a product.
+  Future<Map<String, dynamic>> identifyProductImage({
+    required String imageBase64,
+    String? branchId,
+  }) async {
+    final response = await _dio.post(
+      '/ai/products/identify',
+      data: {
+        'imageBase64': imageBase64,
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      },
+      options: Options(receiveTimeout: const Duration(seconds: 60)),
+    );
     return (response.data as Map<String, dynamic>)['data']
         as Map<String, dynamic>;
   }

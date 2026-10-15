@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -67,6 +69,9 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
     _paidController = TextEditingController(text: '0');
     _termsController = TextEditingController(text: 'Pay later');
     _dueDate = DateTime.now().add(const Duration(days: 30));
+    if (scan.paymentMethod?.toLowerCase() == 'credit') {
+      _fundingSource = InvoiceFundingSource.creditSupplier;
+    }
     _itemRows = scan.items.isEmpty
         ? [_InvoiceItemDraft()]
         : scan.items.map((item) => _InvoiceItemDraft.fromScan(item)).toList();
@@ -195,6 +200,12 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (widget.scan.readByAi) ...[
+                            _AiReadBadge(
+                              label: widget.scan.documentTypeLabel,
+                            ),
+                            const SizedBox(height: DesignSpacing.md),
+                          ],
                           if (widget.scan.imagePath.startsWith('http'))
                             ClipRRect(
                               borderRadius:
@@ -207,8 +218,21 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
                                 errorBuilder: (_, __, ___) =>
                                     const SizedBox.shrink(),
                               ),
+                            )
+                          else if (widget.scan.imagePath.isNotEmpty)
+                            ClipRRect(
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
+                              child: Image.file(
+                                File(widget.scan.imagePath),
+                                height: 160,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
                             ),
-                          if (widget.scan.imagePath.startsWith('http'))
+                          if (widget.scan.imagePath.isNotEmpty)
                             const SizedBox(height: DesignSpacing.md),
                           if (widget.scan.summary.isNotEmpty)
                             Text(widget.scan.summary,
@@ -737,6 +761,46 @@ class _InvoiceTotalsCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// "Read by Axon AI" chip on the invoice review header, with the document
+/// kind the AI recognised (supplier invoice, till receipt, ...).
+class _AiReadBadge extends StatelessWidget {
+  const _AiReadBadge({this.label});
+
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: DesignSpacing.md, vertical: DesignSpacing.xs + 2),
+      decoration: BoxDecoration(
+        color: DesignColors.accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
+        border: Border.all(color: DesignColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.auto_awesome_rounded,
+              size: 14, color: DesignColors.accent),
+          const SizedBox(width: DesignSpacing.xs + 2),
+          Flexible(
+            child: Text(
+              label == null ? 'Read by Axon AI' : 'Axon AI · $label',
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: DesignColors.accentDark,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                  ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

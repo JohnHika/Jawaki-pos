@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
@@ -44,6 +47,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   late List<_UnitPriceTier> _unitPriceTiers;
   late String _minStockUnit;
   bool _isSaving = false;
+
+  // Axon AI product recognition from the photo the owner just took.
+  bool _aiLooking = false;
+  Map<String, dynamic>? _aiSuggestion;
+  String? _aiMessage;
 
   final _units = [
     'piece',
@@ -134,6 +142,68 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     return baseQty / factor;
   }
 
+  /// Sends the freshly-picked photo to Axon AI to recognise the product, so
+  /// the owner can fill the name/category/description in one tap. Never
+  /// blocks saving: any failure just means no suggestion is shown.
+  Future<void> _identifyFromPhoto(String path) async {
+    if (isEditing) return;
+    setState(() {
+      _aiLooking = true;
+      _aiSuggestion = null;
+      _aiMessage = null;
+    });
+    try {
+      final bytes = await File(path).readAsBytes();
+      final result = await getIt<ApiClient>()
+          .identifyProductImage(imageBase64: base64Encode(bytes));
+      if (!mounted) return;
+      setState(() {
+        if (result['identified'] == true) {
+          _aiSuggestion = result;
+        } else {
+          _aiMessage = (result['reason'] as String?)?.trim().isNotEmpty == true
+              ? "Axon AI couldn't recognise a product here: ${result['reason']}"
+              : "Axon AI couldn't recognise a product in that photo.";
+        }
+      });
+    } catch (_) {
+      // AI offline or not on this plan — the form still works by hand.
+    } finally {
+      if (mounted) setState(() => _aiLooking = false);
+    }
+  }
+
+  void _applyAiSuggestion(List<dynamic> categories) {
+    final s = _aiSuggestion;
+    if (s == null) return;
+    final name = (s['name'] as String?)?.trim();
+    final description = (s['description'] as String?)?.trim();
+    final category = (s['category'] as String?)?.trim().toLowerCase();
+    String? categoryId;
+    if (category != null && category.isNotEmpty) {
+      for (final c in categories) {
+        final cName = (c.name as String).toLowerCase();
+        if (c.isActive == true &&
+            (cName == category ||
+                cName.contains(category) ||
+                category.contains(cName))) {
+          categoryId = c.id as String;
+          break;
+        }
+      }
+    }
+    setState(() {
+      if (name != null && name.isNotEmpty) _nameController.text = name;
+      if (description != null &&
+          description.isNotEmpty &&
+          _descriptionController.text.trim().isEmpty) {
+        _descriptionController.text = description;
+      }
+      if (categoryId != null) _selectedCategoryId = categoryId;
+      _aiSuggestion = null;
+    });
+  }
+
   String _formatQty(double qty) {
     return qty % 1 == 0 ? qty.toStringAsFixed(0) : qty.toStringAsFixed(2);
   }
@@ -203,6 +273,17 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               ],
             ),
             const SizedBox(height: DesignSpacing.xl),
+
+            if (_aiLooking || _aiSuggestion != null || _aiMessage != null) ...[
+              _AiProductCard(
+                looking: _aiLooking,
+                suggestion: _aiSuggestion,
+                message: _aiMessage,
+                onUse: () => _applyAiSuggestion(
+                    categoriesAsync.valueOrNull ?? const <dynamic>[]),
+              ),
+              const SizedBox(height: DesignSpacing.md + 2),
+            ],
 
             // ── Product Name ──────────────────────────────────────────
             TextFormField(
@@ -344,6 +425,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               initialImageUrl: _imageUrl,
               type: 'product',
               label: 'Add product image (optional)',
+              onPhotoPicked: _identifyFromPhoto,
               onImageChanged: (url, publicId) => setState(() {
                 _imageUrl = url;
                 _imagePublicId = publicId;
@@ -1023,5 +1105,97 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     // to whatever the dropdown's first entry is; the admin can still
     // change it manually.
     return _units.first;
+  }
+}
+
+/// "Axon AI sees…" card on the Add Product form: a thinking state while the
+/// photo is analysed, then the recognised product with a one-tap "Use these
+/// details", or a short note when the photo isn't a product.
+class _AiProductCard extends StatelessWidget {
+  const _AiProductCard({
+    required this.looking,
+    required this.suggestion,
+    required this.message,
+    required this.onUse,
+  });
+
+  final bool looking;
+  final Map<String, dynamic>? suggestion;
+  final String? message;
+  final VoidCallback onUse;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = context.themed(DesignColors.darkTextPrimary);
+    final secondary = context.themed(DesignColors.darkTextSecondary);
+
+    String? detail;
+    final s = suggestion;
+    if (s != null) {
+      detail = [
+        for (final key in ['brand', 'category', 'size'])
+          if ((s[key] as String?)?.trim().isNotEmpty == true)
+            (s[key] as String).trim(),
+      ].join(' · ');
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md + 2),
+      decoration: BoxDecoration(
+        color: DesignColors.accent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.accent.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (looking)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            const Icon(Icons.auto_awesome_rounded,
+                color: DesignColors.accent, size: 20),
+          const SizedBox(width: DesignSpacing.md),
+          Expanded(
+            child: looking
+                ? Text('Axon AI is looking at your photo…',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        color: primary, fontWeight: FontWeight.w600))
+                : s != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Axon AI sees',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                  color: DesignColors.accentDark,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.4)),
+                          const SizedBox(height: 2),
+                          Text(s['name'] as String,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                  color: primary, fontWeight: FontWeight.w800)),
+                          if (detail != null && detail.isNotEmpty)
+                            Text(detail,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: secondary)),
+                          const SizedBox(height: DesignSpacing.sm),
+                          FilledButton.icon(
+                            onPressed: onUse,
+                            icon: const Icon(Icons.check_rounded, size: 18),
+                            label: const Text('Use these details'),
+                          ),
+                        ],
+                      )
+                    : Text(message ?? '',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: secondary)),
+          ),
+        ],
+      ),
+    );
   }
 }
