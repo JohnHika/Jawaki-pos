@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/services/pricing_service.dart';
 import '../../../../core/theme/design_system.dart';
-import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
 import '../providers/catalog_provider.dart';
@@ -57,11 +56,16 @@ class ProductGrid extends ConsumerWidget {
         // Photos make tall cards worthwhile; without them the empty image block
         // just wastes space, so use shorter cards and fit ~50% more per screen.
         final hasPhotos = products.any((p) => p['imageUrl'] != null);
+        // Larger system text makes the name/price/stock block taller, so the
+        // card has to grow with it or its column overflows (seen at 360dp with
+        // the text at 130%).
+        final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+        final growth = 1 + (textScale - 1).clamp(0.0, 1.0) * 1.5;
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
-            childAspectRatio: hasPhotos ? 0.78 : 1.12,
+            childAspectRatio: (hasPhotos ? 0.78 : 1.12) / growth,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
@@ -132,6 +136,13 @@ class _ProductCard extends ConsumerWidget {
     final quantityInCart = cartState.items
         .where((item) => item.productId == productId)
         .fold<int>(0, (sum, item) => sum + item.quantity);
+    final lineInCart =
+        cartState.items.where((item) => item.productId == productId);
+    final quantityLabel = lineInCart.isEmpty
+        ? ''
+        : _formatCount(
+            lineInCart.first.saleQuantity ?? lineInCart.first.quantity.toDouble(),
+          );
 
     return GlassCard(
       onTap: () => _addToCart(context, ref),
@@ -203,48 +214,21 @@ class _ProductCard extends ConsumerWidget {
                     ),
                   ),
 
-                // Quantity Badge
-                if (quantityInCart > 0)
+                // Quick add: one tap puts one in the cart; once it is in the
+                // cart the same spot becomes a - qty + stepper. Tapping the card
+                // itself still opens the full sheet (box or pack units, price).
+                if (!isOutOfStock)
                   Positioned(
-                    top: 6,
                     right: 6,
-                    child: PopIn(
-                        child: BadgeBounce(
-                      value: quantityInCart,
-                      child: TweenAnimationBuilder<int>(
-                      duration: DesignAnimation.fast,
-                      tween: IntTween(begin: 0, end: quantityInCart),
-                      builder: (context, value, child) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: DesignColors.accent,
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd),
-                            boxShadow: [
-                              BoxShadow(
-                                color: DesignColors.accent.withValues(
-                                  alpha: 0.4,
-                                ),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Text(
-                            'x$value',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        );
-                      },
-                    ))),
+                    bottom: 6,
+                    child: _QuickAddControl(
+                      productName: productName,
+                      quantityLabel: quantityLabel,
+                      inCart: quantityInCart > 0,
+                      onAdd: () => _quickAdd(context, ref),
+                      onMore: () => _step(context, ref, 1),
+                      onLess: () => _step(context, ref, -1),
+                    ),
                   ),
               ],
             ),
@@ -308,6 +292,56 @@ class _ProductCard extends ConsumerWidget {
       ),
     );
   }
+
+  /// Adds one base unit straight to the cart, no sheet.
+  Future<void> _quickAdd(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    final productId = product['id'] as String;
+    final productName = product['name'] as String;
+    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+    final trackInventory = product['trackInventory'] as bool? ?? true;
+    if (trackInventory && stock <= 0) {
+      _showStockBlocked(context, productName, stock);
+      return;
+    }
+    final base = PricingService.getAllPricingTiers(product).first;
+    final result = await ref.read(cartProvider.notifier).addItem(
+          productId: productId,
+          productName: productName,
+          sku: product['sku'] as String? ?? '',
+          unitPrice: base.price,
+          quantity: 1,
+          notes: base.unitTypeLabel,
+          saleUnit: base.unit,
+          saleQuantity: 1,
+          unitConversionFactor: 1,
+        );
+    if (!context.mounted || result.success) return;
+    _showStockBlocked(context, productName, result.currentStock);
+  }
+
+  /// Steps a line already in the cart by one of the unit it was sold in (one
+  /// more box if it was sold by the box), keeping its price.
+  Future<void> _step(BuildContext context, WidgetRef ref, int direction) async {
+    HapticFeedback.selectionClick();
+    final productId = product['id'] as String;
+    final line = ref
+        .read(cartProvider)
+        .items
+        .where((item) => item.productId == productId);
+    if (line.isEmpty) return;
+    final factor = (line.first.unitConversionFactor ?? 1).round();
+    final step = factor < 1 ? 1 : factor;
+    final result = await ref
+        .read(cartProvider.notifier)
+        .changeQuantityBy(productId, direction * step);
+    if (!context.mounted || result.success) return;
+    _showStockBlocked(context, product['name'] as String, result.currentStock);
+  }
+
+  static String _formatCount(double value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(1);
 
   void _addToCart(BuildContext context, WidgetRef ref) {
     final productId = product['id'] as String;
@@ -389,6 +423,108 @@ class _ProductCard extends ConsumerWidget {
       '$productName is out of stock. Receive inventory before selling.',
       icon: Icons.inventory_2_outlined,
       color: DesignColors.error,
+    );
+  }
+}
+
+/// The round "+" on a product card, which turns into a "- qty +" stepper once
+/// the product is in the cart.
+class _QuickAddControl extends StatelessWidget {
+  const _QuickAddControl({
+    required this.productName,
+    required this.quantityLabel,
+    required this.inCart,
+    required this.onAdd,
+    required this.onMore,
+    required this.onLess,
+  });
+
+  final String productName;
+  final String quantityLabel;
+  final bool inCart;
+  final VoidCallback onAdd;
+  final VoidCallback onMore;
+  final VoidCallback onLess;
+
+  static const double _size = 40;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!inCart) {
+      return Semantics(
+        button: true,
+        label: 'Add $productName to cart',
+        child: Material(
+          key: const ValueKey('quick-add'),
+          color: DesignColors.accent,
+          elevation: 3,
+          shadowColor: DesignColors.accent.withValues(alpha: 0.5),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onAdd,
+            child: const SizedBox(
+              width: _size + 4,
+              height: _size + 4,
+              child: Icon(Icons.add_rounded, color: Colors.white, size: 26),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      key: const ValueKey('quick-stepper'),
+      color: DesignColors.accent,
+      elevation: 3,
+      shadowColor: DesignColors.accent.withValues(alpha: 0.5),
+      shape: const StadiumBorder(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            button: true,
+            label: 'Remove one $productName',
+            child: InkWell(
+              key: const ValueKey('quick-less'),
+              customBorder: const CircleBorder(),
+              onTap: onLess,
+              child: const SizedBox(
+                width: _size,
+                height: _size,
+                child: Icon(Icons.remove_rounded, color: Colors.white, size: 22),
+              ),
+            ),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 22),
+            child: Text(
+              quantityLabel,
+              key: const ValueKey('quick-qty'),
+              textAlign: TextAlign.center,
+              style: DesignType.numeric(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Semantics(
+            button: true,
+            label: 'Add one more $productName',
+            child: InkWell(
+              key: const ValueKey('quick-more'),
+              customBorder: const CircleBorder(),
+              onTap: onMore,
+              child: const SizedBox(
+                width: _size,
+                height: _size,
+                child: Icon(Icons.add_rounded, color: Colors.white, size: 22),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

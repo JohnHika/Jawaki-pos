@@ -201,15 +201,25 @@ final parkedSalesProvider =
 // ════════ CART NOTIFIER ════════
 
 class CartNotifier extends StateNotifier<CartState> {
-  final AppDatabase _database = getIt<AppDatabase>();
+  AppDatabase get _database => getIt<AppDatabase>();
 
-  CartNotifier() : super(const CartState());
+  /// Replaces the database-backed stock check; used by tests.
+  final Future<Map<String, dynamic>> Function(String productId, int quantity)?
+      _stockValidator;
+
+  CartNotifier({
+    Future<Map<String, dynamic>> Function(String productId, int quantity)?
+        stockValidator,
+  })  : _stockValidator = stockValidator,
+        super(const CartState());
 
   // Stock validation method
   Future<Map<String, dynamic>> _validateStockAvailability(
     String productId,
     int quantity,
   ) async {
+    final override = _stockValidator;
+    if (override != null) return override(productId, quantity);
     try {
       final product = await _database.getProduct(productId);
       if (product != null && !product.trackInventory) {
@@ -298,10 +308,14 @@ class CartNotifier extends StateNotifier<CartState> {
       );
     }
 
-    if (existingIndex >= 0) {
+    // The stock check above is asynchronous, so look the line up again: a fast
+    // second tap on a product that was not yet in the cart must add to the line
+    // the first tap created, not start a duplicate one.
+    final freshIndex = state.items.indexWhere((i) => i.productId == productId);
+    if (freshIndex >= 0) {
       final updatedItems = [...state.items];
-      final existing = updatedItems[existingIndex];
-      updatedItems[existingIndex] = existing.copyWith(
+      final existing = updatedItems[freshIndex];
+      updatedItems[freshIndex] = existing.copyWith(
         quantity: existing.quantity + quantity,
         unitPrice: unitPrice,
         notes: notes,
@@ -362,6 +376,53 @@ class CartNotifier extends StateNotifier<CartState> {
       return item;
     }).toList();
 
+    state = state.copyWith(items: updatedItems);
+    return const CartMutationResult.success();
+  }
+
+  /// Moves a line already in the cart up or down by [delta] BASE units,
+  /// keeping that line's price and unit. The result is worked out from the cart
+  /// as it is AFTER the stock check, so rapid taps accumulate instead of
+  /// overwriting each other. Going to zero or below removes the line.
+  Future<CartMutationResult> changeQuantityBy(String productId, int delta) async {
+    final index = state.items.indexWhere((i) => i.productId == productId);
+    if (index < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Item is not in the cart',
+      );
+    }
+    if (delta == 0) return const CartMutationResult.success();
+
+    if (delta > 0) {
+      final wanted = state.items[index].quantity + delta;
+      final stockCheck = await _validateStockAvailability(productId, wanted);
+      if (!stockCheck['available']) {
+        return CartMutationResult(
+          success: false,
+          message: stockCheck['message'] as String? ?? 'Insufficient stock',
+          currentStock: (stockCheck['currentStock'] as num?)?.floor() ?? 0,
+        );
+      }
+    }
+
+    final latest = state.items.indexWhere((i) => i.productId == productId);
+    if (latest < 0) return const CartMutationResult.success();
+    final newQuantity = state.items[latest].quantity + delta;
+    if (newQuantity <= 0) {
+      removeItem(productId);
+      return const CartMutationResult.success('Removed item');
+    }
+
+    final updatedItems = [...state.items];
+    final item = updatedItems[latest];
+    final conversion = item.unitConversionFactor;
+    updatedItems[latest] = item.copyWith(
+      quantity: newQuantity,
+      saleQuantity: conversion != null && conversion > 0
+          ? newQuantity / conversion
+          : item.saleQuantity,
+    );
     state = state.copyWith(items: updatedItems);
     return const CartMutationResult.success();
   }
