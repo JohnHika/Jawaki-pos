@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
@@ -337,28 +336,28 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                       math.sin(_orbitController.value * math.pi * 2) * 0.025;
                   return Transform.rotate(angle: angle, child: child);
                 },
+                // The same orange icon as the launcher, so the first screen
+                // matches the app a person just tapped.
                 child: Container(
-                  width: isCompact ? 102 : 122,
-                  height: isCompact ? 102 : 122,
-                  padding: const EdgeInsets.all(21),
+                  width: isCompact ? 104 : 124,
+                  height: isCompact ? 104 : 124,
                   decoration: BoxDecoration(
-                    color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.92),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: DesignColors.brand.withValues(alpha: 0.55),
-                      width: 1.5,
-                    ),
+                    borderRadius: BorderRadius.circular(isCompact ? 28 : 33),
                     boxShadow: [
                       BoxShadow(
-                        color: DesignColors.brand.withValues(alpha: 0.18),
+                        color: DesignColors.brand.withValues(alpha: 0.30),
                         blurRadius: 34,
-                        spreadRadius: 3,
+                        spreadRadius: 2,
                       ),
                     ],
                   ),
-                  child: SvgPicture.asset(
-                    'assets/images/axon_logo_mark.svg',
-                    semanticsLabel: 'Axon POS',
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(isCompact ? 28 : 33),
+                    child: Image.asset(
+                      'assets/images/axon_app_icon_512.png',
+                      fit: BoxFit.cover,
+                      semanticLabel: 'Axon POS',
+                    ),
                   ),
                 ),
               ),
