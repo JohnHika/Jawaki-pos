@@ -43,6 +43,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
+        with:
+          # Enough history to read the commits in this push for the release notes.
+          fetch-depth: 50
 
       - name: Setup Java
         uses: actions/setup-java@v5.6.0
@@ -309,6 +312,75 @@ jobs:
               except json.JSONDecodeError:
                   existing = {}
 
+          import re
+          import subprocess
+
+          TYPE_LABELS = {
+              'feat': 'Adds',
+              'fix': 'Fixes',
+              'perf': 'Improves',
+              'refactor': 'Improves',
+              'style': 'Improves',
+              'ui': 'Improves',
+          }
+
+          def split_top_level(text):
+              # Split on commas/semicolons that are not inside brackets.
+              parts, depth, buf = [], 0, ''
+              for ch in text:
+                  if ch in '([':
+                      depth += 1
+                  elif ch in ')]':
+                      depth = max(0, depth - 1)
+                  if ch in ',;' and depth == 0:
+                      parts.append(buf)
+                      buf = ''
+                  else:
+                      buf += ch
+              parts.append(buf)
+              return [x.strip() for x in parts if x.strip()]
+
+          def auto_release_notes(inputs, event_file):
+              # Builds the in-app "Recent changes" list from the commit
+              # subjects in this push, so every release describes itself.
+              before = ''
+              if event_file:
+                  try:
+                      before = str(json.loads(Path(event_file).read_text(encoding='utf-8')).get('before') or '')
+                  except (OSError, json.JSONDecodeError, TypeError):
+                      before = ''
+              rev_range = 'HEAD~1..HEAD'
+              if before and set(before) != {'0'}:
+                  rev_range = f'{before}..HEAD'
+              try:
+                  raw = subprocess.run(
+                      ['git', 'log', '--no-merges', '--pretty=%s', rev_range],
+                      capture_output=True, text=True, check=True,
+                  ).stdout
+              except (subprocess.CalledProcessError, OSError):
+                  try:
+                      raw = subprocess.run(
+                          ['git', 'log', '--no-merges', '--pretty=%s', '-1'],
+                          capture_output=True, text=True, check=True,
+                      ).stdout
+                  except (subprocess.CalledProcessError, OSError):
+                      return ''
+              lines, seen = [], set()
+              for subject in raw.splitlines():
+                  m = re.match(r'^(\w+)(?:\([^)]*\))?!?:\s*(.+)$', subject.strip())
+                  if not m or m.group(1).lower() not in TYPE_LABELS:
+                      continue  # chore/docs/test/ci/build/version bumps are not user-facing
+                  label = TYPE_LABELS[m.group(1).lower()]
+                  desc = re.sub(r'\s*\(\d+\.\d+\.\d+\+\d+\)\s*$', '', m.group(2)).strip()
+                  for part in split_top_level(desc):
+                      part = part[0].upper() + part[1:]
+                      key = part.lower()
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      lines.append(f'{label}: {part}')
+              return '\n'.join(lines[:8])
+
           workflow_inputs = {}
           event_path = os.environ.get('GITHUB_EVENT_PATH')
           if event_path:
@@ -336,6 +408,8 @@ jobs:
               min_supported_build_number = existing_build if isinstance(existing_build, int) else None
 
           release_notes = str(workflow_inputs.get('release_notes') or '').strip()
+          if not release_notes:
+              release_notes = auto_release_notes(workflow_inputs, event_path)
           if not release_notes:
               short_sha = os.environ.get('GITHUB_SHA', '')[:7]
               branch = os.environ.get('GITHUB_REF_NAME', 'unknown')
@@ -366,6 +440,7 @@ jobs:
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'latest_manifest_path={latest_path.as_posix()}\n')
+              fh.write(f'release_notes<<NOTES_EOF\n{release_notes}\nNOTES_EOF\n')
           PY
 
       - name: Publish APK to Cloudflare R2
@@ -450,7 +525,7 @@ jobs:
             1. **Cloudflare R2** (Primary): `${{ env.R2_PUBLIC_BASE_URL }}/android/latest.json`
             2. **GitHub Releases** (Secondary): GitHub Releases API
 
-            ${{ github.event.inputs.release_notes || 'Automated Android build from GitHub Actions.' }}
+            ${{ steps.manifest.outputs.release_notes || 'Automated Android build from GitHub Actions.' }}
           files: |
             mobile/build/app/outputs/flutter-apk/app-release.apk
             ${{ steps.manifest.outputs.latest_manifest_path }}
