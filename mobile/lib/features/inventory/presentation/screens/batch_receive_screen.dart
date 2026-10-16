@@ -69,8 +69,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
     try {
       final branchId = widget.branchId ?? getIt<AuthService>().branchId;
       if (branchId == null || widget.productId == null) return;
-      final stock =
-          await getIt<AppDatabase>().getProductStock(widget.productId!, branchId);
+      final stock = await getIt<AppDatabase>()
+          .getProductStock(widget.productId!, branchId);
       if (mounted) setState(() => _onHand = stock?.quantity.toDouble());
     } catch (_) {
       // Purely informational; the receipt works without it.
@@ -428,8 +428,8 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       helperMaxLines: 2,
       errorMaxLines: 3,
       helperStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: tertiaryColor,
-      ),
+            color: tertiaryColor,
+          ),
       hintStyle: TextStyle(color: tertiaryColor),
       labelStyle: TextStyle(color: secondaryColor, fontWeight: FontWeight.w500),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
@@ -546,19 +546,25 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                               children: [
                                 Text(
                                   _resolvedProductName ?? 'Selected Product',
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: titleColor,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: titleColor,
+                                      ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   _onHand == null
                                       ? 'Counted in ${_unitConfig?.baseUnit ?? 'units'}'
                                       : 'On hand now: ${kitCount(_onHand!, _unitConfig?.baseUnit ?? 'unit')}',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: secondaryColor,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: secondaryColor,
+                                      ),
                                 ),
                               ],
                             ),
@@ -592,10 +598,13 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                   ),
                                   child: Text(
                                     '1 ${unit.name} = ${unit.conversionFactor} ${_unitConfig!.baseUnit}',
-                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                        color: DesignColors.brand,
-                                        fontWeight: FontWeight.w500,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: DesignColors.brand,
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                   ),
                                 ),
                               )
@@ -627,12 +636,11 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                             minimumSize: const Size.fromHeight(48),
                             foregroundColor: DesignColors.accent,
                             side: BorderSide(
-                              color:
-                                  DesignColors.accent.withValues(alpha: 0.5),
+                              color: DesignColors.accent.withValues(alpha: 0.5),
                             ),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                  DesignSpacing.radiusMd),
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
                             ),
                           ),
                         ),
@@ -702,326 +710,348 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with batch number and delete button
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: DesignColors.brand,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${index + 1}',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Batch ${index + 1}',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: titleColor,
-                  ),
-                ),
-                const Spacer(),
-                if (_batches.length > 1)
-                  GestureDetector(
-                    onTap: () => _removeBatch(index),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: DesignColors.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.delete_outline_rounded,
-                        color: DesignColors.error,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // Quantity with Unit Selector
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: TextFormField(
-                    controller: batch.quantityController,
-                    style: DesignType.numeric(
-                      fontSize: 20,
-                      color: titleColor,
-                      fontWeight: FontWeight.w800,
-                    ),
-                    decoration: kitFieldDecoration(
-                      context,
-                      label: 'Quantity received',
-                      hint: 'e.g. 24',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Enter how many';
-                      }
-                      final qty = double.tryParse(value);
-                      if (qty == null) return 'Numbers only';
-                      if (qty <= 0) return 'Must be more than 0';
-                      return null;
-                    },
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<String>(
-                    key: ValueKey('unit-${batch.selectedUnit}'),
-                    initialValue: batch.selectedUnit,
-                    isExpanded: true,
-                    decoration: kitFieldDecoration(context, label: 'Unit').copyWith(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 22),
-                    ),
-                    dropdownColor:
-                        isDark ? DesignColors.darkSurface : Colors.white,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: titleColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                    items: _unitConfig!.availableUnits
-                        .map((unit) => DropdownMenuItem(
-                              value: unit.name,
-                              child: Text(unit.name),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => batch.selectedUnit = value);
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            QuickAddChips(
-              amounts: const [1, 5, 10, 20, 50],
-              onAdd: (n) {
-                kitAddToField(batch.quantityController, n);
-                setState(() {});
-              },
-            ),
-
-            // Conversion Preview
-            if (batch.quantityController.text.isNotEmpty &&
-                _unitConfig != null &&
-                batch.selectedUnit != _unitConfig!.baseUnit) ...[
-              const SizedBox(height: 12),
-              _buildConversionPreview(batch),
-            ],
-
-            const SizedBox(height: 14),
-
-            // Expiry Date
-            InkWell(
-              onTap: () => _selectDate(context, batch, isExpiry: true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.calendar_today_rounded,
-                        color: tertiaryColor, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Expiry Date',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                                fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            batch.expiryDate == null
-                                ? 'Select date'
-                                : DateFormat(
-                                    'MMM d, yyyy',
-                                  ).format(batch.expiryDate!),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: batch.expiryDate == null
-                                ? tertiaryColor
-                                : titleColor,
-                                fontWeight: batch.expiryDate != null
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.chevron_right_rounded,
-                        color: tertiaryColor, size: 20),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // Collapsible Additional Details
-            Theme(
-              data: Theme.of(
-                context,
-              ).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                title: Text(
-                  'Additional Details (Optional)',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: secondaryColor,
-                  ),
-                ),
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(top: 12),
-                iconColor: tertiaryColor,
-                collapsedIconColor: tertiaryColor,
+      // A Material (not a decorated Container) so the Additional Details
+      // tile inside keeps its tap ripple.
+      child: Material(
+        color: surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          side: BorderSide(color: border),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with batch number and delete button
+              Row(
                 children: [
-                  // Manufacture Date
-                  InkWell(
-                    onTap: () => _selectDate(context, batch, isExpiry: false),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? DesignColors.darkSurfaceElevated
-                            : DesignColors.surfaceBorder
-                                .withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_month_rounded,
-                              color: tertiaryColor, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Manufacture Date',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: secondaryColor,
-                                      fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  batch.manufactureDate == null
-                                      ? 'Select date'
-                                      : DateFormat(
-                                          'MMM d, yyyy',
-                                        ).format(batch.manufactureDate!),
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: batch.manufactureDate == null
-                                      ? tertiaryColor
-                                      : titleColor,
-                                      fontWeight: batch.manufactureDate != null
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                  ),
-                                ),
-                              ],
-                            ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: DesignColors.brand,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
                           ),
-                          Icon(Icons.chevron_right_rounded,
-                              color: tertiaryColor, size: 20),
-                        ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Batch ${index + 1}',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: titleColor,
+                        ),
+                  ),
+                  const Spacer(),
+                  if (_batches.length > 1)
+                    GestureDetector(
+                      onTap: () => _removeBatch(index),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: DesignColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: DesignColors.error,
+                          size: 18,
+                        ),
                       ),
                     ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Quantity with Unit Selector
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: batch.quantityController,
+                      style: DesignType.numeric(
+                        fontSize: 20,
+                        color: titleColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      decoration: kitFieldDecoration(
+                        context,
+                        label: 'Quantity received',
+                        hint: 'e.g. 24',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Enter how many';
+                        }
+                        final qty = double.tryParse(value);
+                        if (qty == null) return 'Numbers only';
+                        if (qty <= 0) return 'Must be more than 0';
+                        return null;
+                      },
+                      onChanged: (_) => setState(() {}),
+                    ),
                   ),
-
-                  const SizedBox(height: 14),
-
-                  // Cost Price
-                  TextFormField(
-                    controller: batch.costPriceController,
-                    style: TextStyle(color: titleColor),
-                    decoration: _fieldDecoration(
-                      context,
-                      labelText:
-                          'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
-                      prefixText: 'KES ',
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('unit-${batch.selectedUnit}'),
+                      initialValue: batch.selectedUnit,
+                      isExpanded: true,
+                      decoration:
+                          kitFieldDecoration(context, label: 'Unit').copyWith(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 22),
+                      ),
+                      dropdownColor:
+                          isDark ? DesignColors.darkSurface : Colors.white,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: titleColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                      items: _unitConfig!.availableUnits
+                          .map((unit) => DropdownMenuItem(
+                                value: unit.name,
+                                child: Text(unit.name),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => batch.selectedUnit = value);
+                        }
+                      },
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Supplier Reference
-                  TextFormField(
-                    controller: batch.supplierRefController,
-                    style: TextStyle(color: titleColor),
-                    decoration: _fieldDecoration(
-                      context,
-                      labelText: 'Supplier Reference / Invoice #',
-                      hintText: 'e.g., INV-001',
-                      prefixIcon: Icons.receipt_rounded,
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Notes
-                  TextFormField(
-                    controller: batch.notesController,
-                    style: TextStyle(color: titleColor),
-                    decoration: _fieldDecoration(
-                      context,
-                      labelText: 'Notes',
-                      hintText: 'Any additional notes...',
-                      prefixIcon: Icons.notes_rounded,
-                    ),
-                    maxLines: 2,
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              QuickAddChips(
+                amounts: const [1, 5, 10, 20, 50],
+                onAdd: (n) {
+                  kitAddToField(batch.quantityController, n);
+                  setState(() {});
+                },
+              ),
+
+              // Conversion Preview
+              if (batch.quantityController.text.isNotEmpty &&
+                  _unitConfig != null &&
+                  batch.selectedUnit != _unitConfig!.baseUnit) ...[
+                const SizedBox(height: 12),
+                _buildConversionPreview(batch),
+              ],
+
+              const SizedBox(height: 14),
+
+              // Expiry Date
+              InkWell(
+                onTap: () => _selectDate(context, batch, isExpiry: true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : DesignColors.surfaceBorder.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_today_rounded,
+                          color: tertiaryColor, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Expiry Date',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: secondaryColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              batch.expiryDate == null
+                                  ? 'Select date'
+                                  : DateFormat(
+                                      'MMM d, yyyy',
+                                    ).format(batch.expiryDate!),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: batch.expiryDate == null
+                                        ? tertiaryColor
+                                        : titleColor,
+                                    fontWeight: batch.expiryDate != null
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded,
+                          color: tertiaryColor, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Collapsible Additional Details
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  title: Text(
+                    'Additional Details (Optional)',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: secondaryColor,
+                        ),
+                  ),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: 12),
+                  iconColor: tertiaryColor,
+                  collapsedIconColor: tertiaryColor,
+                  children: [
+                    // Manufacture Date
+                    InkWell(
+                      onTap: () => _selectDate(context, batch, isExpiry: false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? DesignColors.darkSurfaceElevated
+                              : DesignColors.surfaceBorder
+                                  .withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_month_rounded,
+                                color: tertiaryColor, size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Manufacture Date',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: secondaryColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    batch.manufactureDate == null
+                                        ? 'Select date'
+                                        : DateFormat(
+                                            'MMM d, yyyy',
+                                          ).format(batch.manufactureDate!),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: batch.manufactureDate == null
+                                              ? tertiaryColor
+                                              : titleColor,
+                                          fontWeight:
+                                              batch.manufactureDate != null
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded,
+                                color: tertiaryColor, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Cost Price
+                    TextFormField(
+                      controller: batch.costPriceController,
+                      style: TextStyle(color: titleColor),
+                      decoration: _fieldDecoration(
+                        context,
+                        labelText:
+                            'Cost Price per ${_unitConfig?.baseUnit ?? 'unit'}',
+                        prefixText: 'KES ',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Supplier Reference
+                    TextFormField(
+                      controller: batch.supplierRefController,
+                      style: TextStyle(color: titleColor),
+                      decoration: _fieldDecoration(
+                        context,
+                        labelText: 'Supplier Reference / Invoice #',
+                        hintText: 'e.g., INV-001',
+                        prefixIcon: Icons.receipt_rounded,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Notes
+                    TextFormField(
+                      controller: batch.notesController,
+                      style: TextStyle(color: titleColor),
+                      decoration: _fieldDecoration(
+                        context,
+                        labelText: 'Notes',
+                        hintText: 'Any additional notes...',
+                        prefixIcon: Icons.notes_rounded,
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1057,9 +1087,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
             child: Text(
               '= $baseQty ${_unitConfig!.baseUnit}${baseQty > 1 ? 's' : ''}',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: DesignColors.brand,
-                  fontWeight: FontWeight.w600,
-              ),
+                    color: DesignColors.brand,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
           ),
         ],
