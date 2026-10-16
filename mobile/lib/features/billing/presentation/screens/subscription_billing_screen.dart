@@ -598,10 +598,12 @@ class _SubscriptionBillingScreenState
               Icons.calendar_today_rounded,
               'Next payment: ${_formatDate(nextPayment)}',
             ),
-          _buildInfoRow(
-            Icons.hourglass_bottom_rounded,
-            days > 0 ? '$days days remaining' : 'Due for renewal',
-          ),
+          // The progress bar below already shows the days left.
+          if (days <= 0)
+            _buildInfoRow(
+              Icons.hourglass_bottom_rounded,
+              'Due for renewal',
+            ),
           if (entitlement.maxBranches != null)
             _buildInfoRow(
               Icons.store_rounded,
@@ -805,9 +807,9 @@ class _SubscriptionBillingScreenState
         const SizedBox(height: DesignSpacing.sm),
         ..._pendingClaims.map((rawClaim) {
           final claim = Map<String, dynamic>.from(rawClaim as Map);
-          final amount = (claim['amount'] as num?) ??
-              ((claim['invoice'] as Map?)?['amount'] as num?) ??
-              0;
+          final amount = claim['amount'] != null
+              ? parseBillingAmount(claim['amount'])
+              : parseBillingAmount((claim['invoice'] as Map?)?['amount']);
           final plan = ((claim['invoice'] as Map?)?['plan']?.toString() ?? 'Subscription');
           return Container(
             margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
@@ -920,7 +922,7 @@ class _SubscriptionBillingScreenState
                 Text(
                   autoRenew
                       ? (phone.isEmpty
-                          ? 'On — no billing phone set'
+                          ? 'Add a billing phone so we can charge it'
                           : 'On — $phone')
                       : 'Off — pay manually each month',
                   style: theme.textTheme.bodySmall
@@ -994,7 +996,7 @@ class _SubscriptionBillingScreenState
 
   Widget _buildInvoiceRow(Map<String, dynamic> invoice) {
     final theme = Theme.of(context);
-    final amount = invoice['amount'] as num? ?? 0;
+    final amount = parseBillingAmount(invoice['amount']);
     final currency = invoice['currency'] as String? ?? 'KES';
     final status = invoice['status'] as String? ?? '';
     final date =

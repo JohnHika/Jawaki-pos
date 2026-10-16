@@ -91,5 +91,13 @@ class BillingEntitlement {
       );
 }
 
+/// The server serialises money (Prisma Decimal) as a string such as
+/// "3200.00". A hard `as num` cast on it throws while the page builds, which
+/// in a release build paints the whole screen grey. Accept either form.
+num parseBillingAmount(Object? value) {
+  if (value is num) return value;
+  return num.tryParse(value?.toString() ?? '') ?? 0;
+}
+
 /// Where an entitlement snapshot came from.
 enum EntitlementSource { live, offlineCache }

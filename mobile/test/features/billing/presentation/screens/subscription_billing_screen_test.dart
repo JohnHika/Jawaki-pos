@@ -126,7 +126,9 @@ void main() {
       expect(find.text('Active'), findsOneWidget);
       expect(find.text('KES 3,200'), findsOneWidget);
       expect(find.textContaining('Next payment'), findsOneWidget);
-      expect(find.textContaining('13 days remaining'), findsOneWidget);
+      // Shown once, in the progress bar (no duplicate text row).
+      expect(find.textContaining('13 days remaining'), findsNothing);
+      expect(find.text('13'), findsOneWidget);
       expect(find.text('DAYS REMAINING'), findsOneWidget);
     });
 
@@ -252,6 +254,46 @@ void main() {
       // Both invoice rows show the plan price (entitlement card is
       // scrolled out of view by this point).
       expect(find.text('KES 3,200'), findsNWidgets(2));
+    });
+
+    // The live server serialises money (Prisma Decimal) as a string such as
+    // "3200.00". Casting that to a number threw while building the list, and a
+    // release build paints a build error as a plain grey screen.
+    testWidgets('invoice amounts sent as strings render instead of crashing',
+        (tester) async {
+      spyApi.invoices = [
+        {
+          'id': 'inv-1',
+          'plan': 'CORE',
+          'amount': '3200.00',
+          'currency': 'KES',
+          'status': 'PAID',
+          'createdAt': '2026-08-01T00:00:00.000Z',
+          'mpesaReference': 'QGH7XY92K1',
+        },
+        {
+          'id': 'inv-2',
+          'plan': 'CORE',
+          'amount': '3200.00',
+          'currency': 'KES',
+          'status': 'PENDING',
+          'createdAt': '2026-09-01T00:00:00.000Z',
+        },
+      ];
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.scrollUntilVisible(
+        find.text('PAID'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('PAID'), findsOneWidget);
+      expect(find.text('KES 3,200'), findsWidgets);
     });
   });
 }
