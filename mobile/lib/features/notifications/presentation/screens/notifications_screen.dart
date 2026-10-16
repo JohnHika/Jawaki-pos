@@ -48,12 +48,18 @@ class NotificationsScreen extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           const SizedBox(height: 120),
-          Icon(Icons.notifications_none_rounded,
-              size: 56, color: context.themed(DesignColors.darkTextTertiary)),
+          Icon(
+              inbox.error != null
+                  ? Icons.cloud_off_rounded
+                  : Icons.notifications_none_rounded,
+              size: 56,
+              color: context.themed(DesignColors.darkTextTertiary)),
           const SizedBox(height: DesignSpacing.lg),
           Center(
             child: Text(
-              "You're all caught up",
+              inbox.error != null
+                  ? "Couldn't load notifications"
+                  : "You're all caught up",
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: context.themed(DesignColors.darkTextPrimary),
                     fontWeight: FontWeight.w800,
@@ -72,6 +78,18 @@ class NotificationsScreen extends ConsumerWidget {
                   ),
             ),
           ),
+          if (inbox.error != null) ...[
+            const SizedBox(height: DesignSpacing.lg),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: DesignSpacing.xxl),
+              child: OutlinedButton.icon(
+                onPressed: controller.refresh,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Try again'),
+              ),
+            ),
+          ],
         ],
       );
     }

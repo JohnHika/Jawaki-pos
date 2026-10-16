@@ -58,7 +58,9 @@ class NotificationInboxController extends StateNotifier<NotificationInboxState> 
 
   Future<void> refresh() async {
     if (state.isLoading) return;
-    state = state.copyWith(isLoading: true, clearError: true);
+    // Keep an earlier error showing during a retry (the 30-second poll would
+    // otherwise keep flipping the page back to "all caught up").
+    state = state.copyWith(isLoading: true);
     try {
       final data = await getIt<ApiClient>().getNotifications();
       final items = ((data['items'] as List?) ?? const [])
@@ -71,6 +73,7 @@ class NotificationInboxController extends StateNotifier<NotificationInboxState> 
             items.where((n) => n.isUnread).length,
         isLoading: false,
         loadedOnce: true,
+        clearError: true,
       );
     } catch (e) {
       // Offline / signed out / server hiccup: keep what we had.

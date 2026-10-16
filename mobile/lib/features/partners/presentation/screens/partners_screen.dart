@@ -49,7 +49,7 @@ class PartnersScreen extends ConsumerWidget {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (state.partners.isEmpty)
-              _EmptyState(error: state.error)
+              _EmptyState(error: state.error, onRetry: controller.refresh)
             else ...[
               if (state.error != null) _InlineNotice(text: state.error!),
               if (state.incomingRequests.isNotEmpty) ...[
@@ -210,9 +210,10 @@ class _InlineNotice extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.error});
+  const _EmptyState({this.error, this.onRetry});
 
   final String? error;
+  final Future<void> Function()? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -221,11 +222,13 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xxl),
       child: Column(
         children: [
-          Icon(Icons.groups_2_rounded,
+          Icon(error != null ? Icons.cloud_off_rounded : Icons.groups_2_rounded,
               size: 56, color: context.themed(DesignColors.darkTextTertiary)),
           const SizedBox(height: DesignSpacing.lg),
           Text(
-            'Connect with the businesses you trade with',
+            error != null
+                ? "Couldn't load your partners"
+                : 'Connect with the businesses you trade with',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium?.copyWith(
               color: context.themed(DesignColors.darkTextPrimary),
@@ -243,6 +246,14 @@ class _EmptyState extends StatelessWidget {
               height: 1.35,
             ),
           ),
+          if (error != null && onRetry != null) ...[
+            const SizedBox(height: DesignSpacing.lg),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
+          ],
         ],
       ),
     );

@@ -85,13 +85,17 @@ class PartnersController extends StateNotifier<PartnersState> {
 
   Future<void> refresh() async {
     if (state.isLoading) return;
-    state = state.copyWith(isLoading: true, clearError: true);
+    // Keep any earlier error showing while a retry is in flight: clearing it
+    // here made the page flip back to the neutral "no partners yet" text
+    // every 30 seconds, hiding the fact the load had actually failed.
+    state = state.copyWith(isLoading: true);
     try {
       final rows = await _api.getTradePartners();
       state = state.copyWith(
         partners: rows.map(TradePartner.fromJson).toList(),
         isLoading: false,
         loadedOnce: true,
+        clearError: true,
       );
     } catch (e) {
       state = state.copyWith(
