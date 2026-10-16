@@ -372,14 +372,16 @@ jobs:
                       continue  # chore/docs/test/ci/build/version bumps are not user-facing
                   label = TYPE_LABELS[m.group(1).lower()]
                   desc = re.sub(r'\s*\(\d+\.\d+\.\d+\+\d+\)\s*$', '', m.group(2)).strip()
-                  for part in split_top_level(desc):
-                      part = part[0].upper() + part[1:]
-                      key = part.lower()
-                      if key in seen:
-                          continue
-                      seen.add(key)
-                      lines.append(f'{label}: {part}')
-              return '\n'.join(lines[:8])
+                  # One line per commit: a subject is a whole sentence, so it is
+                  # not split at commas (that produced fragments like
+                  # "Fixes: And a debt is only Overdue...").
+                  part = desc[0].upper() + desc[1:]
+                  key = part.lower()
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  lines.append(f'{label}: {part}')
+              return '\n'.join(lines[:12])
 
           workflow_inputs = {}
           event_path = os.environ.get('GITHUB_EVENT_PATH')
