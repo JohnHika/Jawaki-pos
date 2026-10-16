@@ -7,6 +7,9 @@ import { PrismaService } from '../common/prisma/prisma.service';
  * continues the same thread — the AI history is a shop asset, not a
  * per-device silo.
  */
+const DASHBOARD_BRIEF_PROMPT =
+  "Give me a short 2-3 sentence brief on today's business performance";
+
 @Injectable()
 export class AiConversationService {
   constructor(private readonly prisma: PrismaService) {}
@@ -40,8 +43,22 @@ export class AiConversationService {
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    // Return oldest-first for display.
-    const messages = rows.reverse().map((m) => ({
+    // Return oldest-first for display. Older builds saved the dashboard
+    // brief's canned prompt (and its answer) into this thread; hide those
+    // pairs so staff never see the app's internal question as their own.
+    const ordered = rows.reverse();
+    const visible = ordered.filter((m, i) => {
+      if (m.role === 'user' && m.content.startsWith(DASHBOARD_BRIEF_PROMPT)) {
+        return false;
+      }
+      const prev = ordered[i - 1];
+      return !(
+        m.role === 'assistant' &&
+        prev?.role === 'user' &&
+        prev.content.startsWith(DASHBOARD_BRIEF_PROMPT)
+      );
+    });
+    const messages = visible.map((m) => ({
       id: m.id,
       role: m.role,
       content: m.content,
