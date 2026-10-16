@@ -8,7 +8,9 @@ import '../../../../core/services/stock_request_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/form_kit.dart';
 import '../widgets/product_picker_dialog.dart';
 
 /// Stock Request Screen - For cashiers/sellers to request stock from managers
@@ -35,6 +37,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
   String? _selectedProductName;
   String _priority = 'normal';
   String _unit = 'piece';
+  double? _onHand;
   bool _isLoading = false;
   final List<String> _images = [];
   bool _showSuccess = false;
@@ -45,6 +48,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
     super.initState();
     _selectedProductId = widget.productId;
     _selectedProductName = widget.productName;
+    _loadOnHand();
   }
 
   Future<void> _addPhoto() async {
@@ -201,55 +205,11 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
     }
   }
 
-  InputDecoration _fieldDecoration(
-    BuildContext context, {
-    required String labelText,
-    String? hintText,
-    String? suffixText,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondaryColor =
-        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final tertiaryColor =
-        isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final fill = isDark
-        ? DesignColors.darkSurfaceElevated
-        : DesignColors.surfaceBorder.withValues(alpha: 0.15);
-
-    return InputDecoration(
-      labelText: labelText,
-      hintText: hintText,
-      hintStyle: TextStyle(color: tertiaryColor),
-      labelStyle: TextStyle(color: secondaryColor, fontWeight: FontWeight.w500),
-      floatingLabelBehavior: FloatingLabelBehavior.auto,
-      suffixText: suffixText,
-      suffixStyle: suffixText != null
-          ? const TextStyle(color: DesignColors.brand, fontWeight: FontWeight.w600)
-          : null,
-      filled: true,
-      fillColor: fill,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: const BorderSide(color: DesignColors.brand, width: 1.5),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Request Stock'),
       body: PageContainer(
-        withScroll: true,
         child: _showSuccess ? _buildSuccessView() : _buildForm(),
       ),
     );
@@ -263,46 +223,61 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
       final secondaryColor =
           isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
       return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: DesignColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
-                border: Border.all(
-                    color: DesignColors.success.withValues(alpha: 0.2)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: DesignColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl),
+                  border: Border.all(
+                      color: DesignColors.success.withValues(alpha: 0.2)),
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  size: 64,
+                  color: DesignColors.success,
+                ),
               ),
-              child: const Icon(
-                Icons.check_circle_rounded,
-                size: 64,
-                color: DesignColors.success,
+              const SizedBox(height: 24),
+              Text(
+                'Request sent',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: titleColor,
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Request Submitted!',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: titleColor,
+              const SizedBox(height: 8),
+              Text(
+                'Your request for $_selectedProductName is with the manager for approval.',
+                textAlign: TextAlign.center,
+                style:
+                    TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your stock request for $_selectedProductName has been sent to the manager for approval.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: secondaryColor, height: 1.4),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       );
     });
   }
+
+  static const _priorities = <(String, String, Color)>[
+    ('low', 'Low', DesignColors.info),
+    ('normal', 'Normal', DesignColors.accent),
+    ('high', 'High', DesignColors.warning),
+    ('urgent', 'Urgent', DesignColors.error),
+  ];
+
+  static const _quickReasons = <String>[
+    'Running low',
+    'Out of stock',
+    'Customer demand',
+    'Restock the shelf',
+  ];
 
   Widget _buildForm() {
     return Builder(builder: (context) {
@@ -313,303 +288,358 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
           isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
       final tertiaryColor =
           isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-      final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+      final border =
+          isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
       final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+      final quantity = double.tryParse(_quantityController.text.trim());
+      final hasProduct = _selectedProductId != null;
 
       return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionHeader(
-            title: 'Stock Request',
-            subtitle: 'Fill in the details to request stock',
-            icon: Icons.add_shopping_cart_rounded,
-          ),
-
-          // Product Selection
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () async {
-                  final result = await showProductPicker(
-                    context,
-                    initialProductId: _selectedProductId,
-                  );
-                  if (result != null) {
-                    setState(() {
-                      _selectedProductId = result['id'];
-                      _selectedProductName = result['name'];
-                      _unit = result['unit'] ?? 'piece';
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
-                  child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _selectedProductName != null
-                        ? DesignColors.brand.withValues(alpha: 0.1)
-                        : (isDark
-                            ? DesignColors.darkSurfaceElevated
-                            : DesignColors.surfaceBorder.withValues(alpha: 0.3)),
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  ),
-                  child: Icon(
-                    _selectedProductName != null
-                        ? Icons.inventory_2_rounded
-                        : Icons.add_circle_outline_rounded,
-                    color: _selectedProductName != null
-                        ? DesignColors.brand
-                        : tertiaryColor,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _selectedProductName ?? 'Select Product',
-                        style: TextStyle(
-                          color: _selectedProductName == null
-                              ? tertiaryColor
-                              : titleColor,
-                          fontWeight: _selectedProductName != null
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                          fontSize: 15,
+        key: _formKey,
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product
+                    Material(
+                      color: surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg),
+                        side: BorderSide(
+                          color: hasProduct
+                              ? DesignColors.brand.withValues(alpha: 0.35)
+                              : border,
                         ),
                       ),
-                      if (_selectedProductId == null)
-                        Text(
-                          'Tap to select a product',
-                          style: TextStyle(fontSize: 12, color: tertiaryColor),
-                        ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded, color: tertiaryColor, size: 20),
-              ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Quantity, priority and reason share one card: three stacked
-          // cards each wrapping a tinted field looked like boxes in boxes.
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: surface,
-              border: Border.all(color: border),
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-            ),
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _quantityController,
-                  style: TextStyle(color: titleColor),
-                  decoration: _fieldDecoration(
-                    context,
-                    labelText: 'Quantity',
-                    hintText: 'Enter quantity needed',
-                    suffixText: _unit,
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a quantity';
-                    }
-                    if (double.tryParse(value) == null) {
-                      return 'Please enter a valid number';
-                    }
-                    if (double.parse(value) <= 0) {
-                      return 'Quantity must be greater than 0';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  initialValue: _priority,
-                  decoration: _fieldDecoration(context, labelText: 'Priority'),
-                  dropdownColor:
-                      isDark ? DesignColors.darkSurface : Colors.white,
-                  style: TextStyle(color: titleColor, fontSize: 14),
-                  items: const [
-                    DropdownMenuItem(value: 'low', child: Text('Low')),
-                    DropdownMenuItem(value: 'normal', child: Text('Normal')),
-                    DropdownMenuItem(value: 'high', child: Text('High')),
-                    DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _priority = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 14),
-                TextFormField(
-                  controller: _reasonController,
-                  style: TextStyle(color: titleColor),
-                  decoration: _fieldDecoration(
-                    context,
-                    labelText: 'Reason (Optional)',
-                    hintText: 'Why do you need this stock?',
-                  ),
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Image Upload Section
-          Padding(
-            padding: EdgeInsets.zero,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: DesignColors.info.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
-                        ),
-                        child: const Icon(Icons.image_rounded,
-                            size: 18, color: DesignColors.info),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Photos (${_images.length})',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_images.isNotEmpty)
-                        TextButton(
-                          onPressed: () => setState(() => _images.clear()),
-                          child: const Text(
-                            'Clear',
-                            style: TextStyle(
-                              color: DesignColors.error,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      child: InkWell(
+                        key: const ValueKey('pick-product'),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusLg),
+                        onTap: _pickProduct,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 14),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: hasProduct
+                                      ? DesignColors.brand
+                                          .withValues(alpha: 0.1)
+                                      : border.withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusMd),
+                                ),
+                                child: Icon(
+                                  hasProduct
+                                      ? Icons.inventory_2_rounded
+                                      : Icons.search_rounded,
+                                  color: hasProduct
+                                      ? DesignColors.brand
+                                      : tertiaryColor,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _selectedProductName ??
+                                          'Choose a product',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: hasProduct
+                                            ? titleColor
+                                            : secondaryColor,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      !hasProduct
+                                          ? 'Tap to search your products'
+                                          : (_onHand == null
+                                              ? 'Tap to change'
+                                              : 'You have ${kitCount(_onHand!, _unit)} now'),
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: hasProduct &&
+                                                _onHand != null &&
+                                                _onHand! <= 0
+                                            ? DesignColors.error
+                                            : tertiaryColor,
+                                        fontWeight: hasProduct &&
+                                                _onHand != null &&
+                                                _onHand! <= 0
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right_rounded,
+                                  color: tertiaryColor, size: 22),
+                            ],
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Optional: Add photos of empty shelves or low stock',
-                    style: TextStyle(fontSize: 12, color: tertiaryColor),
-                  ),
-                  const SizedBox(height: 14),
+                      ),
+                    ),
 
-                  // Image Grid
-                  if (_images.isNotEmpty)
+                    const SizedBox(height: 22),
+
+                    // Quantity
+                    TextFormField(
+                      key: const ValueKey('request-quantity'),
+                      controller: _quantityController,
+                      onChanged: (_) => setState(() {}),
+                      style: DesignType.numeric(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: titleColor,
+                      ),
+                      decoration: kitFieldDecoration(
+                        context,
+                        label: 'How many do you need?',
+                        hint: 'e.g. 24',
+                        suffixText: _unit,
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Enter how many you need';
+                        }
+                        final qty = double.tryParse(value.trim());
+                        if (qty == null) return 'Numbers only';
+                        if (qty <= 0) return 'Must be more than 0';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    QuickAddChips(
+                      amounts: const [5, 10, 20, 50],
+                      onAdd: (n) {
+                        kitAddToField(_quantityController, n);
+                        setState(() {});
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Priority
+                    const FormLabel('How urgent is it?'),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _images.map((image) {
-                        return Stack(
-                          children: [
-                            Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: border),
-                                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                                child: _buildRequestImage(image),
-                              ),
-                            ),
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() => _images.remove(image));
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: DesignColors.error,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.close,
-                                      size: 14, color: Colors.white),
+                      children: [
+                        for (final (value, label, color) in _priorities)
+                          ChoicePill(
+                            key: ValueKey('priority-$value'),
+                            label: label,
+                            color: color,
+                            selected: _priority == value,
+                            onTap: () => setState(() => _priority = value),
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Reason
+                    const FormLabel('Why do you need it?', trailing: 'optional'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final reason in _quickReasons)
+                          ChoicePill(
+                            label: reason,
+                            selected: _reasonController.text.trim() == reason,
+                            onTap: () => setState(() {
+                              _reasonController.text =
+                                  _reasonController.text.trim() == reason
+                                      ? ''
+                                      : reason;
+                            }),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _reasonController,
+                      onChanged: (_) => setState(() {}),
+                      style: TextStyle(color: titleColor),
+                      decoration: kitFieldDecoration(
+                        context,
+                        label: 'Add a note for the manager',
+                        hint: 'Anything they should know',
+                      ),
+                      minLines: 2,
+                      maxLines: 3,
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Photos
+                    FormLabel('Photos', trailing: 'optional, ${_images.length} added'),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final image in _images)
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: border),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusMd),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusMd),
+                                  child: _buildRequestImage(image),
                                 ),
                               ),
+                              Positioned(
+                                top: -6,
+                                right: -6,
+                                child: GestureDetector(
+                                  onTap: () =>
+                                      setState(() => _images.remove(image)),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: DesignColors.error,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.close,
+                                        size: 14, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        InkWell(
+                          key: const ValueKey('add-photo'),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                          onTap: _addPhoto,
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: surface,
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
+                              border: Border.all(color: border),
                             ),
-                          ],
-                        );
-                      }).toList(),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.add_a_photo_outlined,
+                                    color: secondaryColor, size: 22),
+                                const SizedBox(height: 4),
+                                Text('Add',
+                                    style: TextStyle(
+                                        color: secondaryColor,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-
-                  if (_images.isNotEmpty) const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _addPhoto,
-                    icon: const Icon(Icons.add_a_photo_rounded),
-                    label: Text(
-                        _images.isEmpty ? 'Add Photo' : 'Add Another Photo'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                      ),
-                      side: BorderSide(color: border),
-                      foregroundColor: secondaryColor,
+                    const SizedBox(height: 4),
+                    Text(
+                      'A photo of the empty shelf helps the manager decide faster.',
+                      style: TextStyle(fontSize: 12, color: tertiaryColor),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Submit Button
-          Padding(
-            padding: EdgeInsets.zero,
-            child: GradientButton(
-              label: 'Submit Request',
-              icon: Icons.send_rounded,
-              onPressed: _isLoading ? null : _submitRequest,
-              isLoading: _isLoading,
-              height: 52,
-              borderRadius: 14,
+            PinnedActionBar(
+              summary: (hasProduct && quantity != null && quantity > 0)
+                  ? Text(
+                      'Requesting ${kitCount(quantity, _unit)} of $_selectedProductName',
+                      key: const ValueKey('request-summary'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    )
+                  : null,
+              child: GradientButton(
+                label: 'Send Request',
+                icon: Icons.send_rounded,
+                onPressed: _isLoading ? null : _submitRequest,
+                isLoading: _isLoading,
+                height: 52,
+                borderRadius: 14,
+              ),
             ),
-          ),
-
-          const SizedBox(height: 96),
-        ],
-      ),
+          ],
+        ),
       );
     });
+  }
+
+  Future<void> _pickProduct() async {
+    final result = await showProductPicker(
+      context,
+      initialProductId: _selectedProductId,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedProductId = result['id'];
+      _selectedProductName = result['name'];
+      _unit = result['unit'] ?? 'piece';
+      _onHand = null;
+    });
+    _loadOnHand();
+  }
+
+  /// Tells the requester what is on the shelf now, so they ask for a sensible
+  /// amount. Purely informational: a missing figure is simply not shown.
+  Future<void> _loadOnHand() async {
+    final productId = _selectedProductId;
+    if (productId == null) return;
+    try {
+      final branchId = getIt<AuthService>().branchId;
+      if (branchId == null) return;
+      final db = getIt<AppDatabase>();
+      final stock = await db.getProductStock(productId, branchId);
+      final product = await db.getProduct(productId);
+      if (mounted && productId == _selectedProductId) {
+        setState(() {
+          _onHand = stock?.quantity.toDouble();
+          if (product != null) _unit = product.unit;
+        });
+      }
+    } catch (_) {}
   }
 }

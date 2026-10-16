@@ -8,6 +8,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/form_kit.dart';
 
 /// Enhanced Batch Receive Screen with Multi-Unit Support
 /// Supervisors can receive stock in cartons/boxes and auto-convert to pieces
@@ -37,6 +38,10 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
   // Product unit configuration - loaded from API
   UnitConfig? _unitConfig;
 
+  /// Units in stock right now (in the base unit), shown so a receipt can be
+  /// checked against what the shelf already holds.
+  double? _onHand;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +62,35 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
       return;
     }
     _loadProductConfig();
+    _loadOnHand();
+  }
+
+  Future<void> _loadOnHand() async {
+    try {
+      final branchId = widget.branchId ?? getIt<AuthService>().branchId;
+      if (branchId == null || widget.productId == null) return;
+      final stock =
+          await getIt<AppDatabase>().getProductStock(widget.productId!, branchId);
+      if (mounted) setState(() => _onHand = stock?.quantity.toDouble());
+    } catch (_) {
+      // Purely informational; the receipt works without it.
+    }
+  }
+
+  /// Everything entered so far, in the base unit.
+  double get _totalBaseUnits {
+    var total = 0.0;
+    for (final batch in _batches) {
+      final qty = double.tryParse(batch.quantityController.text.trim());
+      if (qty == null || qty <= 0) continue;
+      final factor = _unitConfig?.availableUnits
+              .where((u) => u.name == batch.selectedUnit)
+              .map((u) => u.conversionFactor)
+              .firstOrNull ??
+          1.0;
+      total += qty * factor;
+    }
+    return total;
   }
 
   Future<void> _loadProductConfig() async {
@@ -519,7 +553,9 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Base Unit: ${_unitConfig?.baseUnit ?? 'N/A'}',
+                                  _onHand == null
+                                      ? 'Counted in ${_unitConfig?.baseUnit ?? 'units'}'
+                                      : 'On hand now: ${kitCount(_onHand!, _unitConfig?.baseUnit ?? 'unit')}',
                                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: secondaryColor,
                                   ),
@@ -577,67 +613,71 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _batches.length,
+                  itemCount: _batches.length + 1,
                   itemBuilder: (context, index) {
+                    if (index == _batches.length) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('add-batch'),
+                          onPressed: _addBatch,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Add another batch'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            foregroundColor: DesignColors.accent,
+                            side: BorderSide(
+                              color:
+                                  DesignColors.accent.withValues(alpha: 0.5),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                  DesignSpacing.radiusMd),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
                     return _buildBatchCard(index);
                   },
                 ),
               ),
 
               // Bottom Submit Section
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 12,
-                      offset: const Offset(0, -4),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Summary
-                      if (_batches.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Total Batches:',
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: secondaryColor,
-                                    fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                '${_batches.length}',
-                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w800,
+              PinnedActionBar(
+                summary: _totalBaseUnits > 0
+                    ? Row(
+                        key: const ValueKey('receive-summary'),
+                        children: [
+                          const Icon(Icons.add_box_rounded,
+                              size: 18, color: DesignColors.success),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _onHand == null
+                                  ? 'Adding ${kitCount(_totalBaseUnits, _unitConfig!.baseUnit)}'
+                                  : 'Adding ${kitCount(_totalBaseUnits, _unitConfig!.baseUnit)}  ·  ${kitNumber(_onHand! + _totalBaseUnits)} on hand after',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
                                     color: titleColor,
-                                ),
-                              ),
-                            ],
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
                           ),
-                        ),
-                      ],
-
-                      // Submit Button
-                      GradientButton(
-                        label: 'Receive Batches',
-                        icon: Icons.check_rounded,
-                        onPressed: _isLoading ? null : _submitBatches,
-                        isLoading: _isLoading,
-                        height: 52,
-                        borderRadius: 14,
-                      ),
-                    ],
-                  ),
+                        ],
+                      )
+                    : null,
+                child: GradientButton(
+                  label: _batches.length > 1
+                      ? 'Receive ${_batches.length} Batches'
+                      : 'Receive Stock',
+                  icon: Icons.check_rounded,
+                  onPressed: _isLoading ? null : _submitBatches,
+                  isLoading: _isLoading,
+                  height: 52,
+                  borderRadius: 14,
                 ),
               ),
             ],
@@ -721,34 +761,29 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  flex: 2,
+                  flex: 3,
                   child: TextFormField(
                     controller: batch.quantityController,
                     style: DesignType.numeric(
-                      fontSize: 18,
+                      fontSize: 20,
                       color: titleColor,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
-                    decoration: _fieldDecoration(
+                    decoration: kitFieldDecoration(
                       context,
-                      labelText: 'Quantity *',
-                      hintText: 'Enter quantity',
-                      helperText: 'How many units are you receiving?',
-                      prefixIcon: Icons.numbers_rounded,
+                      label: 'Quantity received',
+                      hint: 'e.g. 24',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Required';
+                        return 'Enter how many';
                       }
-                      if (double.tryParse(value) == null) {
-                        return 'Invalid';
-                      }
-                      if (double.parse(value) <= 0) {
-                        return 'Must be > 0';
-                      }
+                      final qty = double.tryParse(value);
+                      if (qty == null) return 'Numbers only';
+                      if (qty <= 0) return 'Must be more than 0';
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -756,43 +791,43 @@ class _BatchReceiveScreenState extends ConsumerState<BatchReceiveScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? DesignColors.darkSurfaceElevated
-                          : DesignColors.surfaceBorder.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: border, width: 1),
+                  flex: 2,
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('unit-${batch.selectedUnit}'),
+                    initialValue: batch.selectedUnit,
+                    isExpanded: true,
+                    decoration: kitFieldDecoration(context, label: 'Unit').copyWith(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 22),
                     ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: batch.selectedUnit,
-                        isExpanded: true,
-                        dropdownColor:
-                            isDark ? DesignColors.darkSurface : Colors.white,
-                        icon: Icon(Icons.expand_more_rounded,
-                            color: tertiaryColor),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: titleColor,
-                            fontWeight: FontWeight.w600,
+                    dropdownColor:
+                        isDark ? DesignColors.darkSurface : Colors.white,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: titleColor,
+                          fontWeight: FontWeight.w700,
                         ),
-                        items: _unitConfig!.availableUnits.map((unit) {
-                          return DropdownMenuItem(
-                            value: unit.name,
-                            child: Text(unit.name),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => batch.selectedUnit = value);
-                          }
-                        },
-                      ),
-                    ),
+                    items: _unitConfig!.availableUnits
+                        .map((unit) => DropdownMenuItem(
+                              value: unit.name,
+                              child: Text(unit.name),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => batch.selectedUnit = value);
+                      }
+                    },
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            QuickAddChips(
+              amounts: const [1, 5, 10, 20, 50],
+              onAdd: (n) {
+                kitAddToField(batch.quantityController, n);
+                setState(() {});
+              },
             ),
 
             // Conversion Preview
