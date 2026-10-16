@@ -422,7 +422,44 @@ class AppDatabase extends _$AppDatabase {
             );
           }
         },
+        beforeOpen: (details) async {
+          await _ensureLocalStockUniqueKey();
+        },
       );
+
+  /// Saving stock relies on one row per (product, branch). Databases that went
+  /// through the v12 upgrade have that rule, but a fresh install builds the
+  /// table from its definition, which only had a plain index, so every stock
+  /// save failed ("ON CONFLICT clause does not match"). Check on every open and
+  /// repair, keeping the newest row if a pair was ever duplicated.
+  Future<void> _ensureLocalStockUniqueKey() async {
+    try {
+      final indexes =
+          await customSelect("PRAGMA index_list('local_stock')").get();
+      for (final index in indexes) {
+        if (index.read<int>('unique') != 1) continue;
+        final name = index.read<String>('name');
+        final columns =
+            await customSelect("PRAGMA index_info('$name')").get();
+        final names = columns.map((c) => c.read<String>('name')).toSet();
+        if (names.length == 2 &&
+            names.contains('product_id') &&
+            names.contains('branch_id')) {
+          return;
+        }
+      }
+      await customStatement(
+        'DELETE FROM local_stock WHERE rowid NOT IN '
+        '(SELECT MAX(rowid) FROM local_stock GROUP BY product_id, branch_id)',
+      );
+      await customStatement(
+        'CREATE UNIQUE INDEX IF NOT EXISTS ux_local_stock_product_branch '
+        'ON local_stock (product_id, branch_id)',
+      );
+    } catch (e) {
+      debugPrint('[DB] could not ensure the local stock unique key: $e');
+    }
+  }
 
   Future<void> _createSupplierFinanceTables() async {
     await customStatement('''
