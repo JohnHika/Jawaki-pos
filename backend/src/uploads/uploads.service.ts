@@ -4,7 +4,7 @@ import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
 /**
  * Axon POS Cloudinary Upload Service
- * Handles image uploads for Axon POS by Arche Axon Intelligence
+ * Handles image uploads for Axon POS by Arche Axon
  */
 
 export interface UploadResult {

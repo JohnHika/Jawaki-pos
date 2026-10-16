@@ -1172,7 +1172,7 @@ class SettingsScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text('Powered by Arche Axon Intelligence',
+                      Text('Powered by Arche Axon',
                           textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
@@ -1201,7 +1201,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('© 2026 Arche Axon Intelligence',
+                Text('© 2026 Arche Axon',
                     style: Theme.of(context)
                         .textTheme
                         .labelSmall

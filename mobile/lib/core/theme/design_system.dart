@@ -2368,7 +2368,7 @@ class DesignGradients {
 
 // ═══════════════════════════════════════════════════════════════
 //  AXON LOGO MARK
-//  Renders the Arche Axon Intelligence hex/node brand mark from
+//  Renders the Arche Axon hex/node brand mark from
 //  assets/images/axon_logo_mark(.svg|_light.svg).
 // ═══════════════════════════════════════════════════════════════
 class AxonLogoTitle extends StatelessWidget {
