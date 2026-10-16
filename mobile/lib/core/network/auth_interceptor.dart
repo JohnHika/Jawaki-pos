@@ -49,7 +49,15 @@ class AuthInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     // Don't retry logout or login endpoints
-    final skipRetryPaths = ['/auth/logout', '/auth/login', '/auth/register'];
+    // /auth/refresh must be here too: it travels through this same Dio, so its
+    // own 401 would re-enter this handler and wait on the very refresh it is
+    // part of, hanging until the 30s timeout instead of ending the session.
+    final skipRetryPaths = [
+      '/auth/logout',
+      '/auth/login',
+      '/auth/register',
+      '/auth/refresh',
+    ];
     if (skipRetryPaths.any((path) => err.requestOptions.path.contains(path))) {
       return handler.next(err);
     }
