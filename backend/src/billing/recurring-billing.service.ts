@@ -12,6 +12,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { JengaPaymentService } from '../payments/jenga-payment.service';
 import { SubscriptionRenewalSettler } from './subscription-renewal-settler.service';
 import { PLAN_PRICING, VALID_PLANS } from '../subscription/subscription.service';
+import { describeLicense, resolveLicense } from '../license/license.catalog';
 
 /** Grace days after an unpaid renewal before the tenant is suspended. */
 const GRACE_DAYS = 3;
@@ -484,6 +485,7 @@ export class RecurringBillingService {
         currentPeriodEnd: true,
         maxBranches: true,
         maxUsers: true,
+        settings: true,
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
@@ -539,6 +541,13 @@ export class RecurringBillingService {
       },
       restrictedMode,
       restrictedReason,
+      // Which modules this company has paid for (see src/license). Everything
+      // reads as unlocked until the operator switches enforcement on.
+      license: describeLicense(
+        resolveLicense(tenant, {
+          defaultMode: this.config.get<'off' | 'warn' | 'enforce'>('LICENSE_ENFORCEMENT') ?? 'off',
+        }),
+      ),
     };
   }
 
@@ -551,9 +560,22 @@ export class RecurringBillingService {
   async buildOfflineEntitlement(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, plan: true, subscriptionStatus: true, currentPeriodEnd: true },
+      select: {
+        id: true,
+        plan: true,
+        subscriptionStatus: true,
+        currentPeriodEnd: true,
+        maxBranches: true,
+        maxUsers: true,
+        settings: true,
+      },
     });
     if (!tenant) throw new NotFoundException('Company not found');
+    const license = describeLicense(
+      resolveLicense(tenant, {
+        defaultMode: this.config.get<'off' | 'warn' | 'enforce'>('LICENSE_ENFORCEMENT') ?? 'off',
+      }),
+    );
 
     const now = new Date();
     const paidUntil = tenant.currentPeriodEnd ?? new Date(now.getTime() + OFFLINE_ENTITLEMENT_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -571,6 +593,11 @@ export class RecurringBillingService {
         validUntil.getTime() + OFFLINE_ENTITLEMENT_TTL_DAYS * 24 * 60 * 60 * 1000,
       ).toISOString(),
       issuedAt: now.toISOString(),
+      // Signed so a device that is offline keeps the same module gates and
+      // cannot unlock one by editing local storage.
+      features: license.features,
+      enforced: license.enforced,
+      licenseExpiresAt: license.validUntil,
     };
 
     const secret = this.config.get<string>('ENTITLEMENT_SECRET') || this.config.get<string>('JWT_SECRET') || '';

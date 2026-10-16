@@ -5,9 +5,10 @@ import { ReportExportService } from './report-export.service';
 import { ChartDataService } from './chart-data.service';
 import { PrismaModule } from '../common/prisma/prisma.module';
 import { RedisModule } from '../common/redis/redis.module';
+import { LicenseModule } from '../license/license.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule],
+  imports: [PrismaModule, RedisModule, LicenseModule],
   controllers: [ReportingController],
   providers: [ReportingService, ReportExportService, ChartDataService],
   exports: [ReportingService, ReportExportService, ChartDataService],

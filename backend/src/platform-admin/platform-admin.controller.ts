@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -18,6 +19,7 @@ import {
   MarkInvoicePaidDto,
   ListTenantsQueryDto,
   ListInvoicesQueryDto,
+  UpdateTenantLicenseDto,
 } from './dto/platform-admin.dto';
 import { PlatformAdminGuard } from './guards/platform-admin.guard';
 import { PlatformAdminPublic } from './decorators/platform-admin-public.decorator';
@@ -100,6 +102,37 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Issue a goodwill credit (negative-amount PAID invoice, provider CREDIT)' })
   async creditTenant(@Param('id') id: string, @Body() dto: CreditTenantDto, @Req() req: any) {
     return this.adminService.creditTenant(id, dto.amountKes, dto.reason, req.platformAdmin);
+  }
+
+  @Get('licenses/preview')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      'Dry run: for every company, what switching licence enforcement on would lock today',
+  })
+  async previewLicenses() {
+    return this.adminService.previewLicenses();
+  }
+
+  @Get('tenants/:id/license')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'A company’s licence: plan, enforcement, overrides, limits, key' })
+  async getTenantLicense(@Param('id') id: string) {
+    return this.adminService.getTenantLicense(id);
+  }
+
+  @Put('tenants/:id/license')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary:
+      'Set a company’s licence: enforcement mode, module overrides, expiry, seat limits',
+  })
+  async updateTenantLicense(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantLicenseDto,
+    @Req() req: any,
+  ) {
+    return this.adminService.updateTenantLicense(id, dto, req.platformAdmin);
   }
 
   @Get('invoices')

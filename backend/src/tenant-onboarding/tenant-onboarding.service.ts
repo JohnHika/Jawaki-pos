@@ -1,15 +1,20 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { LegacyUserRole } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { EmailOtpService } from '../identity/email-otp.service';
+import { LicenseService } from '../license/license.service';
 
 interface Actor { sub: string; tenantId: string; permissions?: string[] }
 
 @Injectable()
 export class TenantOnboardingService {
-  constructor(private readonly prisma: PrismaService, private readonly otp: EmailOtpService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly otp: EmailOtpService,
+    @Optional() private readonly license?: LicenseService,
+  ) {}
 
   async get(actor: Actor) {
     const onboarding = await this.prisma.tenantOnboarding.findUnique({
@@ -38,6 +43,8 @@ export class TenantOnboardingService {
 
   async createInvitation(actor: Actor, dto: { email: string; firstName: string; lastName: string; roleId: string; branchId: string }) {
     await this.assertCanInviteStaff(actor);
+    // Plan limit on staff seats (402 only when the licence is enforced).
+    await this.license?.assertWithinLimit(actor.tenantId, 'users');
     const branch = await this.prisma.branch.findFirst({ where: { id: dto.branchId, tenantId: actor.tenantId, isActive: true } });
     if (!branch) throw new ForbiddenException('Branch is not available in this company');
     const role = await this.prisma.role.findFirst({ where: { id: dto.roleId, tenantId: actor.tenantId } });

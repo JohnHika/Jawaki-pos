@@ -4,9 +4,12 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Optional,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
+import { resolveLicense } from '../license/license.catalog';
 import { isTenantRestricted } from './recurring-billing.service';
 import { PUBLIC_SUBSCRIPTION_EXEMPT_KEY } from './subscription-exempt.decorator';
 
@@ -30,6 +33,7 @@ export class SubscriptionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -61,9 +65,30 @@ export class SubscriptionGuard implements CanActivate {
         subscriptionStatus: true,
         currentPeriodEnd: true,
         plan: true,
+        maxBranches: true,
+        maxUsers: true,
+        settings: true,
       },
     });
     if (!tenant) return true;
+
+    // An enforced licence that has run out stops new records the same way an
+    // unpaid subscription does; viewing history stays open (GET passes above).
+    const license = resolveLicense(tenant, {
+      defaultMode:
+        this.config?.get<'off' | 'warn' | 'enforce'>('LICENSE_ENFORCEMENT') ?? 'off',
+    });
+    if (license.enforced && license.expired) {
+      throw new HttpException(
+        {
+          message:
+            'Your licence has expired. Contact support to renew it. Viewing existing data is still available.',
+          code: 'LICENSE_EXPIRED',
+          validUntil: license.validUntil,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
 
     const verdict = isTenantRestricted(tenant);
     if (verdict.restricted) {

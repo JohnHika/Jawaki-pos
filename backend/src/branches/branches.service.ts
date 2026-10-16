@@ -3,10 +3,12 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
+import { LicenseService } from '../license/license.service';
 import { normalizeOperatingHours } from '../common/operating-hours';
 import {
   CreateTenantDto,
@@ -23,6 +25,7 @@ export class BranchesService {
     private prisma: PrismaService,
     private redisService: RedisService,
     private auditService: AuditService,
+    @Optional() private licenseService?: LicenseService,
   ) {}
 
   // ==================== TENANT OPERATIONS ====================
@@ -129,6 +132,8 @@ export class BranchesService {
   // ==================== BRANCH OPERATIONS ====================
 
   async createBranch(tenantId: string, dto: CreateBranchDto, userId?: string) {
+    // Plan limit: refuses with 402 only for a company whose licence is enforced.
+    await this.licenseService?.assertWithinLimit(tenantId, 'branches');
     const existing = await this.prisma.branch.findFirst({
       where: { tenantId, code: dto.code },
     });

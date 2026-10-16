@@ -1,7 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PLAN_PRICING } from '../subscription/subscription.service';
+import { LicensePatch, LicenseService } from '../license/license.service';
 
 /**
  * Credit convention: a goodwill credit is stored as a SubscriptionInvoice
@@ -28,6 +29,7 @@ export class PlatformAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    @Optional() private readonly licenseService?: LicenseService,
   ) {}
 
   async getDashboard() {
@@ -371,6 +373,45 @@ export class PlatformAdminService {
     void actor;
 
     return updated;
+  }
+
+  // ===== Licensing =====
+
+  async previewLicenses() {
+    return this.requireLicense().preview();
+  }
+
+  async getTenantLicense(tenantId: string) {
+    await this.getTenantOrThrow(tenantId);
+    const svc = this.requireLicense();
+    const license = await svc.getForTenant(tenantId);
+    return { ...license, client: await svc.describeForClient(tenantId) };
+  }
+
+  async updateTenantLicense(
+    tenantId: string,
+    patch: LicensePatch,
+    actor: { id: string; email: string },
+  ) {
+    await this.getTenantOrThrow(tenantId);
+    const svc = this.requireLicense();
+    const { before, after } = await svc.update(tenantId, patch);
+    await this.auditService.record({
+      userId: null,
+      action: 'PLATFORM_ADMIN_LICENSE_UPDATED',
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValues: before as any,
+      newValues: { ...after, by: actor.email } as any,
+    });
+    return this.getTenantLicense(tenantId);
+  }
+
+  private requireLicense(): LicenseService {
+    if (!this.licenseService) {
+      throw new Error('Licensing is not available in this deployment');
+    }
+    return this.licenseService;
   }
 
   private async getTenantOrThrow(tenantId: string) {

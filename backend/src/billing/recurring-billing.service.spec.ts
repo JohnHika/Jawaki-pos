@@ -42,6 +42,43 @@ const buildService = (prismaOverrides: Record<string, any> = {}) => {
 const msPerDay = 24 * 60 * 60 * 1000;
 
 describe('RecurringBillingService', () => {
+  describe('entitlement licence block', () => {
+    const tenantRow = (settings: unknown, plan = 'CORE') => ({
+      id: 't1',
+      plan,
+      subscriptionStatus: 'ACTIVE',
+      currentPeriodEnd: new Date(Date.now() + 5 * msPerDay),
+      maxBranches: 1,
+      maxUsers: 3,
+      settings,
+    });
+
+    it('reports every module unlocked while enforcement is off', async () => {
+      const { service, prisma } = buildService();
+      prisma.tenant.findUnique.mockResolvedValue(tenantRow({}, 'TRIAL'));
+      const ent = await service.getEntitlement('t1');
+      expect(ent.license.enforced).toBe(false);
+      expect(Object.values(ent.license.features).every(Boolean)).toBe(true);
+      expect(ent.license.planFeatures.aiAssistant).toBe(false);
+    });
+
+    it('locks modules the plan lacks once enforced, and signs that into the offline token', async () => {
+      const { service, prisma } = buildService();
+      prisma.tenant.findUnique.mockResolvedValue(
+        tenantRow({ license: { enforcement: 'enforce' } }, 'CORE'),
+      );
+      const ent = await service.getEntitlement('t1');
+      expect(ent.license.features).toMatchObject({ analytics: true, aiAssistant: false });
+
+      const offline = await service.buildOfflineEntitlement('t1');
+      expect(offline.enforced).toBe(true);
+      expect(offline.features).toMatchObject({ analytics: true, aiAssistant: false });
+      expect(() =>
+        RecurringBillingService.verifyOfflineEntitlement(offline as any, offline.signature, 'test-secret'),
+      ).toBeDefined();
+    });
+  });
+
   // =========================================================================
   // Invoice idempotency per period
   // =========================================================================

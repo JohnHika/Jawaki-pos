@@ -1,11 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -96,4 +100,51 @@ export class ListInvoicesQueryDto {
   @Min(1)
   @Max(100)
   pageSize?: number = 20;
+}
+
+export class UpdateTenantLicenseDto {
+  @ApiPropertyOptional({
+    enum: ['off', 'warn', 'enforce'],
+    description:
+      'off = report only (default), warn = log would-be blocks, enforce = refuse unlicensed modules/limits',
+  })
+  @IsOptional()
+  @IsIn(['off', 'warn', 'enforce'])
+  enforcement?: 'off' | 'warn' | 'enforce';
+
+  @ApiPropertyOptional({
+    example: { aiAssistant: true, analytics: false },
+    description: 'Per-module grant (true) or revoke (false); null clears the override',
+  })
+  @IsOptional()
+  @IsObject()
+  overrides?: Record<string, boolean | null>;
+
+  @ApiPropertyOptional({ example: '2027-01-01T00:00:00Z', nullable: true })
+  @IsOptional()
+  @IsString()
+  validUntil?: string | null;
+
+  @ApiPropertyOptional({ example: 3, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxBranches?: number | null;
+
+  @ApiPropertyOptional({ example: 10, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxUsers?: number | null;
+
+  @ApiPropertyOptional({ example: 'Setup fee outstanding since 12 Oct' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string | null;
+
+  @ApiPropertyOptional({ description: 'Issue a fresh licence key' })
+  @IsOptional()
+  @IsBoolean()
+  reissueKey?: boolean;
 }

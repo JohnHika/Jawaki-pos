@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, HttpException } from '@nestjs/common';
 import { TenantOnboardingService } from './tenant-onboarding.service';
 
 describe('TenantOnboardingService staff invitations', () => {
@@ -54,5 +54,29 @@ describe('TenantOnboardingService staff invitations', () => {
       tenantId: 't1',
       steps: [],
     });
+  });
+});
+
+describe('TenantOnboardingService seat limits', () => {
+  it('refuses a new invitation with 402 when the plan has no seats left', async () => {
+    const prisma: any = {
+      tenantOnboarding: { findUnique: jest.fn().mockResolvedValue({ ownerUserId: 'owner-1' }) },
+      branch: { findFirst: jest.fn() },
+      role: { findFirst: jest.fn() },
+      tenantStaffInvitation: { create: jest.fn() },
+    };
+    const license = {
+      assertWithinLimit: jest.fn().mockRejectedValue(
+        new HttpException({ code: 'LICENSE_LIMIT_REACHED' }, 402),
+      ),
+    };
+    const service = new TenantOnboardingService(prisma, { request: jest.fn() } as any, license as any);
+
+    await expect(service.createInvitation(
+      { sub: 'owner-1', tenantId: 'tenant-1', permissions: ['users.create'] },
+      { email: 'staff@example.test', firstName: 'S', lastName: 'M', roleId: 'r', branchId: 'b' },
+    )).rejects.toMatchObject({ status: 402 });
+    expect(license.assertWithinLimit).toHaveBeenCalledWith('tenant-1', 'users');
+    expect(prisma.tenantStaffInvitation.create).not.toHaveBeenCalled();
   });
 });

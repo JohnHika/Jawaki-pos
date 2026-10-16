@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { FeatureGuard, RequiresFeature } from '../license/feature.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -67,6 +68,8 @@ export class ReportingController {
     return this.reportingService.getSalesSummary(user.tenantId, filter);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('sales/trend')
   @RequirePermissions('reporting.sales_trend')
   @ApiOperation({ summary: 'Get sales trend over time' })
@@ -78,6 +81,8 @@ export class ReportingController {
     return this.reportingService.getSalesTrend(user.tenantId, filter);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('products/top')
   @RequirePermissions('reporting.top_products')
   @ApiOperation({ summary: 'Get top selling products' })
@@ -90,6 +95,8 @@ export class ReportingController {
     return this.reportingService.getTopProducts(user.tenantId, filter, filter.limit ?? 10);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('categories')
   @RequirePermissions('reporting.category_sales')
   @ApiOperation({ summary: 'Get sales by category' })
@@ -101,6 +108,8 @@ export class ReportingController {
     return this.reportingService.getCategorySales(user.tenantId, filter);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('cashiers')
   @RequirePermissions('reporting.cashier_performance')
   @ApiOperation({ summary: 'Get cashier performance' })
@@ -112,6 +121,8 @@ export class ReportingController {
     return this.reportingService.getCashierPerformance(user.tenantId, filter);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('payments')
   @RequirePermissions('reporting.payment_breakdown')
   @ApiOperation({ summary: 'Get payment method breakdown' })
@@ -123,6 +134,8 @@ export class ReportingController {
     return this.reportingService.getPaymentMethodBreakdown(user.tenantId, filter);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('branches')
   @RequirePermissions('reporting.branch_comparison')
   @ApiOperation({ summary: 'Get branch comparison' })
@@ -145,6 +158,8 @@ export class ReportingController {
     return this.reportingService.getInventoryReport(user.tenantId, branchId);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('inventory/movements')
   @RequirePermissions('reporting.inventory_report')
   @ApiOperation({ summary: 'Get stock movement summary' })
@@ -156,6 +171,7 @@ export class ReportingController {
     return this.reportingService.getStockMovementSummary(user.tenantId, filter);
   }
 
+  // The dashboard profit card reads this one, so it stays open on every plan.
   @Get('profit-loss/:branchId/:date')
   @RequirePermissions('reporting.profit_loss')
   @ApiOperation({ summary: 'Get daily profit and loss report with expense integration' })
@@ -168,6 +184,8 @@ export class ReportingController {
     return this.reportingService.getDailyProfitAndLoss(branchId, date, user.tenantId);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('analytics')
   @Get('profit-loss')
   @RequirePermissions('reporting.profit_loss')
   @ApiOperation({ summary: 'Get profit and loss trend over a date range' })
@@ -179,6 +197,8 @@ export class ReportingController {
     return this.reportingService.getProfitAndLossRange(user.tenantId, filter);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('customReports')
   @Post('export')
   @RequirePermissions('reporting.export')
   @ApiOperation({ summary: 'Generate a downloadable PDF/DOCX/CSV report from real sales data' })
@@ -197,6 +217,8 @@ export class ReportingController {
     res.send(buffer);
   }
 
+  @UseGuards(FeatureGuard)
+  @RequiresFeature('customReports')
   @Post('chart')
   @RequirePermissions('reporting.sales_trend')
   @ApiOperation({ summary: 'Get chart-ready data (trend/bar/heatmap) from real sales data' })
