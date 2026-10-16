@@ -26,6 +26,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _tenantSlugController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  // Explicit order: the Google button sits between the company code and the
+  // email, so the keyboard's Next key would otherwise land on the button.
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _biometricAvailable = false;
@@ -91,6 +95,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _tenantSlugController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -759,7 +765,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 helperText: 'Ask your business owner or manager for this code.',
                 prefixIcon: Icons.business_outlined,
                 keyboardType: TextInputType.text,
-                textInputAction: TextInputAction.next,
+                textInputAction: _showPasswordFallback
+                    ? TextInputAction.next
+                    : TextInputAction.done,
+                onFieldSubmitted: (_) => _showPasswordFallback
+                    ? _emailFocus.requestFocus()
+                    : FocusScope.of(context).unfocus(),
                 textCapitalization: TextCapitalization.none,
                 autocorrect: false,
                 isDark: isDark,
@@ -858,11 +869,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // Email field
                 _buildPremiumTextField(
                   controller: _emailController,
+                  focusNode: _emailFocus,
                   label: 'Email',
                   hint: 'your-email@company.com',
                   prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
                   autocorrect: false,
                   isDark: isDark,
                   validator: (value) {
@@ -880,6 +893,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // Password field
                 _buildPremiumTextField(
                   controller: _passwordController,
+                  focusNode: _passwordFocus,
                   label: 'Password',
                   hint: 'Enter your password',
                   prefixIcon: Icons.lock_outlined,
@@ -1118,6 +1132,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     required String label,
     required String hint,
     required IconData prefixIcon,
+    FocusNode? focusNode,
     bool obscureText = false,
     TextInputAction? textInputAction,
     Widget? suffixIcon,
@@ -1145,6 +1160,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         const SizedBox(height: DesignSpacing.sm - 2),
         TextFormField(
           controller: controller,
+          focusNode: focusNode,
+          // Keep the whole field, not just the caret, clear of the keyboard.
+          scrollPadding: const EdgeInsets.only(bottom: 160),
           obscureText: obscureText,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
