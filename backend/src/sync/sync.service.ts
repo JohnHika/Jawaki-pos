@@ -806,6 +806,15 @@ export class SyncService {
         return { serverId: payment.id };
 
       case SyncEventType.CUSTOMER_CREATED:
+        // A phone that did not get our answer sends the same customer again.
+        // Treat that as done instead of failing on the duplicate id for ever.
+        if (payload.id) {
+          const alreadySaved = await this.prisma.customer.findFirst({
+            where: { id: payload.id, tenantId },
+            select: { id: true },
+          });
+          if (alreadySaved) return { serverId: alreadySaved.id };
+        }
         const newCustomer = await this.prisma.customer.create({
           data: {
             id: payload.id || undefined,
