@@ -6,6 +6,20 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 
+/// The role an invite starts on. Never the first role in the list (that is
+/// usually Admin): start on the least-privileged everyday role, and if there
+/// is none, leave it empty so the person has to choose on purpose.
+String? defaultInviteRoleId(List<Map<String, dynamic>> roles) {
+  for (final preferred in const ['cashier', 'seller', 'staff']) {
+    for (final role in roles) {
+      if ((role['name']?.toString().trim().toLowerCase() ?? '') == preferred) {
+        return role['id']?.toString();
+      }
+    }
+  }
+  return null;
+}
+
 /// A full-screen staff invitation form that loads available roles and branches
 /// on init, then lets the owner fill in email, name, and pick a role + branch
 /// before sending the invitation via the API.
@@ -46,6 +60,9 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
     super.dispose();
   }
 
+  String? _defaultRoleId(List<Map<String, dynamic>> roles) =>
+      defaultInviteRoleId(roles);
+
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
@@ -61,8 +78,7 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
       setState(() {
         _roles = roles;
         _branches = branches;
-        _selectedRoleId =
-            roles.isNotEmpty ? roles.first['id'].toString() : null;
+        _selectedRoleId = _defaultRoleId(roles);
         _selectedBranchId =
             branches.isNotEmpty ? branches.first['id'].toString() : null;
         _isLoading = false;
