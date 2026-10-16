@@ -106,9 +106,12 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     // matching biometric unlock. Only fall back to the server-authenticated
     // PIN login for a device that has never set one up locally.
     final hasLocalPin = await controller.hasLocalPinSet();
+    final updates = getIt<UpdateCheckService>();
+    if (!hasLocalPin) updates.beginPostLoginCheck();
     final result = hasLocalPin
         ? await controller.unlockWithPin(_pin)
         : await controller.loginWithPin(_pin);
+    if (!result) updates.cancelPostLoginCheck();
 
     if (result && mounted) {
       // Only the network-authenticated path is a genuine fresh login —
@@ -116,7 +119,8 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       // entirely offline, so it must not trigger a network-dependent
       // mandatory update check.
       if (!hasLocalPin) {
-        unawaited(getIt<UpdateCheckService>().checkAfterLogin());
+        await getIt<UpdateCheckService>().checkAfterLogin();
+        if (!mounted) return;
       }
       context.go('/');
     } else {
@@ -206,28 +210,36 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     }
   }
 
+  /// Text/outline colour for this screen: white on the dark theme, the
+  /// normal dark ink on the (default) light theme.
+  Color get _fg => Theme.of(context).brightness == Brightness.dark
+      ? Colors.white
+      : DesignColors.textPrimary;
+
   _WorkspaceIdentity _loadWorkspaceIdentity() {
     final storage = getIt<StorageService>();
     final user = storage.getUser();
     final tenant = user?['tenant'];
     final tenantMap =
         tenant is Map<String, dynamic> ? tenant : <String, dynamic>{};
+    final rememberedSlug = storage.getRememberedTenantSlug();
     final companyName = _firstNonEmpty([
       tenantMap['name'],
       user?['tenantName'],
-      storage.getTenantSlug(),
-      'POS Workspace',
+      _titleFromSlug(storage.getTenantSlug()),
+      _titleFromSlug(rememberedSlug),
+      'Your workspace',
     ]);
     final companyCode = _firstNonEmpty([
       user?['tenantSlug'],
       tenantMap['slug'],
       storage.getTenantSlug(),
+      rememberedSlug,
       'workspace',
     ]).toUpperCase();
     final branchName = _firstNonEmpty([
       user?['branchName'],
       _primaryBranchName(user?['branches']),
-      'Default Branch',
     ]);
     final logoUrl = _firstNonEmptyOrNull([
       tenantMap['logoUrl'],
@@ -242,6 +254,17 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       branchName: branchName,
       logoUrl: logoUrl,
     );
+  }
+
+  /// "mama-njeri" -> "Mama Njeri".
+  String? _titleFromSlug(String? slug) {
+    final text = slug?.trim() ?? '';
+    if (text.isEmpty) return null;
+    return text
+        .split(RegExp(r'[-_\s]+'))
+        .where((word) => word.isNotEmpty)
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
   }
 
   String _firstNonEmpty(List<Object?> values) {
@@ -297,12 +320,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final isSmallScreen = size.height < 800;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent), child: Scaffold(
-      backgroundColor: DesignColors.darkBg,
+    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final pageColor = context.themed(DesignColors.darkBg);
+    return AnnotatedRegion<SystemUiOverlayStyle>(value: (isDarkTheme ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.transparent, systemNavigationBarContrastEnforced: false), child: Scaffold(
+      backgroundColor: pageColor,
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        color: DesignColors.darkBg,
+        color: pageColor,
         child: SafeArea(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -321,19 +346,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                     Semantics(
                       label: 'Use email instead',
                       button: true,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _useEmailInstead,
-                          customBorder: const CircleBorder(),
-                          child: SizedBox(
-                            width: 44,
-                            height: 44,
-                            child: Icon(Icons.arrow_back_rounded,
-                                color: Colors.white.withValues(alpha: 0.7),
-                                size: DesignSpacing.lg + 2),
-                          ),
-                        ),
+                      child: AppBackButton(
+                        background: context.themed(DesignColors.darkBg),
+                        color: _fg,
+                        isDark: Theme.of(context).brightness == Brightness.dark,
+                        onPressed: _useEmailInstead,
                       ),
                     ),
                     const Spacer(),
@@ -421,7 +438,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             height: isSmallScreen ? 56 : 68,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: DesignColors.darkSurfaceElevated,
+              color: context.themed(DesignColors.darkSurfaceElevated),
               border: Border.all(
                 color: DesignColors.accent.withValues(alpha: 0.5),
                 width: 2,
@@ -440,7 +457,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             style: TextStyle(
               fontSize: isSmallScreen ? 20 : 24,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: _fg,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -457,10 +474,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
               Icons.badge_outlined,
               _workspaceIdentity.companyCode,
             ),
-            _buildIdentityChip(
-              Icons.storefront_outlined,
-              _workspaceIdentity.branchName,
-            ),
+            if (_workspaceIdentity.branchName.isNotEmpty)
+              _buildIdentityChip(
+                Icons.storefront_outlined,
+                _workspaceIdentity.branchName,
+              ),
           ],
         ),
         const SizedBox(height: 10),
@@ -471,7 +489,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             'Enter your 4–6 digit PIN for this workspace',
             style: TextStyle(
               fontSize: 13,
-              color: Colors.white.withValues(alpha: 0.68),
+              color: _fg.withValues(alpha: 0.68),
             ),
             textAlign: TextAlign.center,
           ),
@@ -514,21 +532,21 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: _fg.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.16),
+          color: _fg.withValues(alpha: 0.16),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.72), size: 15),
+          Icon(icon, color: _fg.withValues(alpha: 0.72), size: 15),
           const SizedBox(width: 6),
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.82),
+              color: _fg.withValues(alpha: 0.82),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -573,14 +591,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ),
         margin: EdgeInsets.symmetric(horizontal: outerMargin),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: _fg.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(
             color: _showError
                 ? DesignColors.error.withValues(alpha: 0.48)
                 : isReady
                     ? DesignColors.accent.withValues(alpha: 0.46)
-                    : Colors.white.withValues(alpha: 0.12),
+                    : _fg.withValues(alpha: 0.12),
           ),
         ),
         child: Column(
@@ -614,15 +632,15 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                         color: isFilled
                             ? null
                             : isActive
-                                ? Colors.white.withValues(alpha: 0.12)
-                                : Colors.white.withValues(alpha: 0.045),
+                                ? _fg.withValues(alpha: 0.12)
+                                : _fg.withValues(alpha: 0.045),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isFilled
                               ? DesignColors.accent.withValues(alpha: 0.9)
                               : isActive
                                   ? DesignColors.accent.withValues(alpha: 0.7)
-                                  : Colors.white.withValues(alpha: 0.1),
+                                  : _fg.withValues(alpha: 0.1),
                           width: isActive ? 1.6 : 1,
                         ),
                         boxShadow: isFilled
@@ -640,17 +658,17 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                         duration: DesignAnimation.fast,
                         switchInCurve: Curves.easeOutBack,
                         child: isFilled
-                            ? const Icon(
+                            ? Icon(
                                 Icons.circle_rounded,
-                                key: ValueKey('filled'),
-                                color: Colors.white,
+                                key: const ValueKey('filled'),
+                                color: _fg,
                                 size: 13,
                               )
                             : Text(
                                 '${index + 1}',
                                 key: ValueKey('empty-$index'),
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.28),
+                                  color: _fg.withValues(alpha: 0.28),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -672,7 +690,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 style: TextStyle(
                   color: isReady
                       ? DesignColors.accent
-                      : Colors.white.withValues(alpha: 0.56),
+                      : _fg.withValues(alpha: 0.56),
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.3,
@@ -778,12 +796,12 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                       end: Alignment.centerRight,
                     )
                   : null,
-              color: isReady ? null : Colors.white.withValues(alpha: 0.08),
+              color: isReady ? null : _fg.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isReady
                     ? DesignColors.accent.withValues(alpha: 0.7)
-                    : Colors.white.withValues(alpha: 0.12),
+                    : _fg.withValues(alpha: 0.12),
               ),
               boxShadow: isReady
                   ? [
@@ -817,7 +835,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                               Icons.lock_open_rounded,
                               color: isReady
                                   ? Colors.white
-                                  : Colors.white.withValues(alpha: 0.35),
+                                  : _fg.withValues(alpha: 0.35),
                               size: 20,
                             ),
                             const SizedBox(width: DesignSpacing.sm),
@@ -826,7 +844,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                               style: TextStyle(
                                 color: isReady
                                     ? Colors.white
-                                    : Colors.white.withValues(alpha: 0.35),
+                                    : _fg.withValues(alpha: 0.35),
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -872,17 +890,17 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             width: width,
             height: height,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.075),
+              color: _fg.withValues(alpha: 0.075),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              border: Border.all(color: _fg.withValues(alpha: 0.12)),
             ),
             child: Center(
               child: Text(
                 digit,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: _fg,
                 ),
               ),
             ),
@@ -912,14 +930,14 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             width: width,
             height: height,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
+              color: _fg.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+              border: Border.all(color: _fg.withValues(alpha: 0.09)),
             ),
             child: Center(
               child: Icon(
                 icon,
-                color: Colors.white.withValues(alpha: 0.68),
+                color: _fg.withValues(alpha: 0.68),
                 size: 21,
               ),
             ),
@@ -948,11 +966,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                     vertical: DesignSpacing.sm + 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: _fg.withValues(alpha: 0.1),
                     borderRadius:
                         BorderRadius.circular(DesignSpacing.radiusFull),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
+                      color: _fg.withValues(alpha: 0.16),
                     ),
                   ),
                   child: Row(
@@ -960,7 +978,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                     children: [
                       Icon(
                         Icons.fingerprint_rounded,
-                        color: Colors.white.withValues(alpha: 0.82),
+                        color: _fg.withValues(alpha: 0.82),
                         size: DesignSpacing.xl,
                       ),
                       const SizedBox(width: DesignSpacing.sm),
@@ -969,7 +987,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.86),
+                          color: _fg.withValues(alpha: 0.86),
                         ),
                       ),
                     ],
@@ -1006,7 +1024,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
             _appVersion,
             style: TextStyle(
               fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.25),
+              color: _fg.withValues(alpha: 0.25),
             ),
           ),
       ],

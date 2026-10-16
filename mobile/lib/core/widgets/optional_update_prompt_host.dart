@@ -108,7 +108,8 @@ class _OptionalUpdatePromptHostState extends State<OptionalUpdatePromptHost> {
     // always clear the local session (AuthService is deliberately fail-soft
     // for offline relaunches). This prevents an old session from surviving a
     // release while still allowing the What's New screen to be read.
-    if (!_forcedFreshLoginAfterUpdate) {
+    if (!_forcedFreshLoginAfterUpdate &&
+        !widget.updateService.sessionResetForUpdate) {
       _forcedFreshLoginAfterUpdate = true;
       try {
         await getIt<AuthService>().logout(allDevices: true);

@@ -120,6 +120,12 @@ void main() async {
       }
     }());
 
+    // A build that was just installed starts signed out. Settle that before
+    // the first frame so the dashboard never flashes up and then vanishes.
+    await getIt<UpdateCheckService>().prepareLaunch(
+      endSession: () => getIt<AuthService>().logout(allDevices: true),
+    );
+
     debugPrint('[main] All initializations complete, launching app...');
 
     runApp(
@@ -139,6 +145,26 @@ void main() async {
     runApp(
       const ProviderScope(
         child: POSApp(),
+      ),
+    );
+  }
+}
+
+/// Shown for a moment right after sign-in while the app finds out whether a
+/// newer build is waiting, so the dashboard is not shown and then covered.
+class _LoginSettlingSplash extends StatelessWidget {
+  const _LoginSettlingSplash();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 3),
+        ),
       ),
     );
   }
@@ -269,6 +295,10 @@ class _POSAppState extends ConsumerState<POSApp> {
                   child: Stack(
                     children: [
                       child!,
+                      if (updateService.isSettlingAfterLogin &&
+                          !updateService.isForceUpdateRequired &&
+                          !updateService.isPostLoginUpdateRequired)
+                        const Positioned.fill(child: _LoginSettlingSplash()),
                       if (updateService.isForceUpdateRequired ||
                           updateService.isPostLoginUpdateRequired)
                         Positioned.fill(

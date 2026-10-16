@@ -174,13 +174,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     if (!_formKey.currentState!.validate()) return;
 
     final tenantSlug = _normalizeCompanyCode(_tenantSlugController.text);
+    final updates = getIt<UpdateCheckService>()..beginPostLoginCheck();
     final result = await ref.read(authControllerProvider.notifier).login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
           tenantSlug: tenantSlug.isNotEmpty ? tenantSlug : null,
         );
+    if (!result) updates.cancelPostLoginCheck();
 
     if (result && mounted) {
+      final settle = updates.checkAfterLogin();
+      // The router moves to the dashboard as soon as sign-in succeeds, which
+      // can dispose this screen before the awaits below finish. Hold the
+      // root navigator's context instead so the welcome dialog still shows.
+      final host = Navigator.of(context, rootNavigator: true).context;
       await getIt<StorageService>().saveRememberedLogin(
         enabled: _rememberMe,
         email: _emailController.text.trim(),
@@ -198,12 +205,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               : tenantSlug;
 
       await _showLoginSuccessDialog(
+        // ignore: use_build_context_synchronously -- root navigator context
+        host,
         companyName: companyName ?? 'Your company',
         companyCode: companyCode,
       );
 
       if (!mounted) return;
-      unawaited(getIt<UpdateCheckService>().checkAfterLogin());
+      await settle;
+      if (!mounted) return;
       context.go('/');
     }
   }
@@ -238,10 +248,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         return;
       }
 
+      final updates = getIt<UpdateCheckService>()..beginPostLoginCheck();
       final result = await ref
           .read(authControllerProvider.notifier)
           .loginWithGoogle(idToken: idToken, tenantSlug: tenantSlug);
-      if (!result || !mounted) return;
+      if (!result || !mounted) {
+        updates.cancelPostLoginCheck();
+        return;
+      }
+      final settle = updates.checkAfterLogin();
+      final host = Navigator.of(context, rootNavigator: true).context;
 
       await getIt<StorageService>().saveRememberedLogin(
         enabled: _rememberMe,
@@ -258,11 +274,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ? (user?['tenantSlug'] as String).trim()
               : tenantSlug;
       await _showLoginSuccessDialog(
+        // ignore: use_build_context_synchronously -- root navigator context
+        host,
         companyName: companyName ?? 'Your company',
         companyCode: companyCode,
       );
       if (!mounted) return;
-      unawaited(getIt<UpdateCheckService>().checkAfterLogin());
+      await settle;
+      if (!mounted) return;
       context.go('/');
     } catch (_) {
       if (!mounted) return;
@@ -275,12 +294,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
   }
 
-  Future<void> _showLoginSuccessDialog({
+  Future<void> _showLoginSuccessDialog(
+    BuildContext host, {
     required String companyName,
     required String companyCode,
   }) async {
     await showDialog<void>(
-      context: context,
+      context: host,
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
@@ -484,41 +504,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
               ),
-              // Top-left back button with visible container.
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                    onTap: () => context.canPop()
-                        ? context.pop()
-                        : context.go('/company-choice'),
-                    child: Container(
-                      padding: const EdgeInsets.all(DesignSpacing.md),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white,
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.18)
-                              : DesignColors.surfaceBorder,
-                          width: 1,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.arrow_back_rounded,
-                        color: isDark ? Colors.white : DesignColors.textPrimary,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
               Center(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -620,6 +605,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     ],
                   ),
+                ),
+              ),
+              // Top-left back button. Declared last so it paints above the scrolling
+              // content instead of text sliding over the arrow.
+              Positioned(
+                top: 8,
+                left: 8,
+                child: AppBackButton(
+                  background: context.themed(DesignColors.darkBg),
+                  color: isDark ? Colors.white : DesignColors.textPrimary,
+                  isDark: isDark,
+                  onPressed: () => context.canPop()
+                      ? context.pop()
+                      : context.go('/company-choice'),
                 ),
               ),
             ],

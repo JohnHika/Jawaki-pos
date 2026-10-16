@@ -282,13 +282,99 @@ class UpdateCheckService extends ChangeNotifier {
   /// this treats ANY newer version as required — the user should not be
   /// able to keep using an outdated build simply because it still meets
   /// the historical floor.
+  ///
+  /// Callers should await this BEFORE navigating home: the gate is a root
+  /// overlay, so settling the answer first means the update screen appears
+  /// straight away instead of the dashboard flashing up and then being
+  /// covered once the network answers. It never throws and is time-boxed so
+  /// a slow network cannot hold the login screen hostage.
   Future<void> checkAfterLogin() async {
+    try {
+      await _settleAfterLogin().timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Timed out or failed: let the user in; the periodic check will catch
+      // the update later.
+    } finally {
+      cancelPostLoginCheck();
+    }
+  }
+
+  /// True from the moment a sign-in starts until the update question is
+  /// answered. The app shows a plain splash over everything meanwhile, so the
+  /// dashboard never flashes up just to be covered by the update screen.
+  bool get isSettlingAfterLogin => _settlingAfterLogin;
+  bool _settlingAfterLogin = false;
+  Timer? _settlingGuard;
+
+  void beginPostLoginCheck() {
+    _settlingAfterLogin = true;
+    _settlingGuard?.cancel();
+    // Whatever happens (a failed sign-in, an exception), never leave the
+    // splash up for long.
+    _settlingGuard = Timer(const Duration(seconds: 12), cancelPostLoginCheck);
+    notifyListeners();
+  }
+
+  void cancelPostLoginCheck() {
+    _settlingGuard?.cancel();
+    _settlingGuard = null;
+    if (_settlingAfterLogin) {
+      _settlingAfterLogin = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _settleAfterLogin() async {
+    // A cold-start check may still be in flight; wait for it instead of
+    // returning its (still empty) answer.
+    while (_isChecking) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
     await checkForUpdates(force: true);
 
     final newer = _optionalUpdate ?? _requiredUpdate;
     if (newer != null) {
       _postLoginUpdate = newer;
       notifyListeners();
+    }
+  }
+
+  /// True once [prepareLaunch] has already signed the user out for a freshly
+  /// installed build, so the notice host must not do it a second time.
+  bool get sessionResetForUpdate => _sessionResetForUpdate;
+  bool _sessionResetForUpdate = false;
+
+  /// Runs before the first frame. When this launch is the first run of a
+  /// build that was just installed through the in-app updater, the old
+  /// session has to end — doing it here (local, no network needed) means the
+  /// app opens straight on the login screen with the "update installed"
+  /// notice, instead of showing the dashboard and then signing out under the
+  /// user's hands.
+  Future<void> prepareLaunch({
+    required Future<void> Function() endSession,
+  }) async {
+    try {
+      final currentVersion = await _resolveCurrentVersion();
+      await _applyPendingInstalledNoticeIfMatches(currentVersion);
+      final notice = _installedUpdateNotice;
+      if (notice == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final firstEverRun = prefs.getInt(_lastLaunchedBuildKey) == null &&
+          prefs.getString('last_seen_update_notice') == null;
+      if (firstEverRun ||
+          prefs.getString('last_seen_update_notice') == notice.noticeKey) {
+        return;
+      }
+
+      try {
+        await endSession().timeout(const Duration(seconds: 6));
+      } catch (_) {
+        // The session is cleared locally even when the server is unreachable.
+      }
+      _sessionResetForUpdate = true;
+    } catch (_) {
+      // Best effort: never block app launch.
     }
   }
 

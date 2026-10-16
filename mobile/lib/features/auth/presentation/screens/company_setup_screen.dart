@@ -236,7 +236,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       companyCode: companyCode,
     );
     if (!mounted) return;
-    unawaited(getIt<UpdateCheckService>().checkAfterLogin());
+    await getIt<UpdateCheckService>().checkAfterLogin();
+    if (!mounted) return;
     await getIt<StorageService>().setHasSeenStaffTour(true);
     if (!mounted) return;
     context.go(
@@ -670,12 +671,12 @@ class _Header extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 20, 0),
         child: Column(children: [
           Row(children: [
-            IconButton(
-              tooltip: 'Back',
+            AppBackButton(
+              color: context.themed(DesignColors.darkTextPrimary),
+              isDark: Theme.of(context).brightness == Brightness.dark,
               onPressed: onBack,
-              icon: Icon(Icons.arrow_back_rounded,
-                  color: context.themed(DesignColors.darkTextPrimary)),
             ),
+            const SizedBox(width: 8),
             Expanded(
               child: Text('AXON / SETUP',
                   style: TextStyle(
