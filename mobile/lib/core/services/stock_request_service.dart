@@ -90,15 +90,17 @@ class StockRequestService {
     }
   }
 
-  /// Approve or reject a stock request (Supervisor/Manager only)
+  /// Approve, reject or fulfil a stock request (Supervisor/Manager only).
+  /// [status] is one of APPROVED, REJECTED, FULFILLED; the server requires
+  /// [resolution], when given, to be at least 10 characters.
   Future<Map<String, dynamic>> resolveRequest(
     String id, {
-    required bool approve,
+    required String status,
     String? resolution,
   }) async {
     try {
       final data = {
-        'approve': approve,
+        'status': status,
         if (resolution != null) 'resolution': resolution,
       };
 

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -769,12 +770,27 @@ class _StockRequestsListScreenState
     );
   }
 
+  /// A readable reason for a failed approve/reject/fulfil, never a raw
+  /// exception dump.
+  String _failureText(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      final message = data is Map ? data['message'] : null;
+      final text = message is List ? message.join(', ') : message?.toString();
+      if (text != null && text.trim().isNotEmpty) return text;
+      if (error.response == null) {
+        return "Couldn't reach the server. Check your connection and try again.";
+      }
+    }
+    return "Couldn't update this request. Please try again.";
+  }
+
   Future<void> _approveRequest(String requestId) async {
     try {
       final stockRequestService = ref.read(stockRequestServiceProvider);
       await stockRequestService.resolveRequest(
         requestId,
-        approve: true,
+        status: 'APPROVED',
         resolution: 'Approved by manager',
       );
 
@@ -790,7 +806,7 @@ class _StockRequestsListScreenState
       if (!mounted) return;
       showGlassSnackBar(
         context,
-        'Error: ${e.toString()}',
+        _failureText(e),
         icon: Icons.error_outline_rounded,
         color: DesignColors.error,
       );
@@ -817,7 +833,7 @@ class _StockRequestsListScreenState
       final stockRequestService = ref.read(stockRequestServiceProvider);
       await stockRequestService.resolveRequest(
         requestId,
-        approve: false,
+        status: 'REJECTED',
         resolution: 'Rejected by manager',
       );
 
@@ -833,7 +849,7 @@ class _StockRequestsListScreenState
       if (!mounted) return;
       showGlassSnackBar(
         context,
-        'Error: ${e.toString()}',
+        _failureText(e),
         icon: Icons.error_outline_rounded,
         color: DesignColors.error,
       );
@@ -855,8 +871,10 @@ class _StockRequestsListScreenState
 
     try {
       final stockRequestService = ref.read(stockRequestServiceProvider);
-      await stockRequestService.updateRequest(
+      await stockRequestService.resolveRequest(
         requestId,
+        status: 'FULFILLED',
+        resolution: 'Marked as fulfilled by manager',
       );
 
       if (!mounted) return;
@@ -871,7 +889,7 @@ class _StockRequestsListScreenState
       if (!mounted) return;
       showGlassSnackBar(
         context,
-        'Error: ${e.toString()}',
+        _failureText(e),
         icon: Icons.error_outline_rounded,
         color: DesignColors.error,
       );
