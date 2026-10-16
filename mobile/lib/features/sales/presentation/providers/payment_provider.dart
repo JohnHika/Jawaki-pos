@@ -608,7 +608,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
 
     try {
-      await _syncSaleToServer(
+      final serverReceiptNumber = await _syncSaleToServer(
         saleId,
         items,
         paymentMethod,
@@ -618,6 +618,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId,
       );
       await _database.markSaleAsSynced(saleId);
+      // The server numbers every sale itself. Adopt that number locally so the
+      // receipt, dashboard, Receipts list and Sales Report all show one ID.
+      if (serverReceiptNumber != null && serverReceiptNumber.isNotEmpty) {
+        await _database.updateSaleReceiptNumber(saleId, serverReceiptNumber);
+      }
       // Refresh canonical stock after a successful online sale. A failed pull
       // is non-fatal: the queued/periodic sync will retry it later.
       try {
@@ -636,7 +641,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  Future<void> _syncSaleToServer(
+  Future<String?> _syncSaleToServer(
     String saleId,
     List<CartItem> items,
     String paymentMethod,
@@ -655,7 +660,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       throw StateError('Cannot sync sale: no branch selected');
     }
 
-    await _apiClient.createSale({
+    final created = await _apiClient.createSale({
       'offlineId': saleId,
       'branchId': branchId,
       if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
@@ -672,11 +677,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
               })
           .toList(),
       'paymentMethod': paymentMethod,
-      'paymentReference': paymentReference,
+      // The server's sale schema has no paymentReference or cashierId (the
+      // cashier comes from the signed-in token). Sending them made every
+      // direct upload fail with 400 and fall back to the slow queue.
       'paidAmount': total,
-      'cashierId': _authService.userId,
       if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
     });
+    // The API wraps payloads as {success, data}; older responses are bare.
+    final payload = created['data'] is Map ? created['data'] as Map : created;
+    final number = payload['receiptNumber'];
+    return number is String ? number : null;
   }
 
   Future<void> _queueSaleForSync(

@@ -80,11 +80,20 @@ export class SyncService {
 
         if (existingEvent) {
           // Event already processed, return success with existing data
+          let replayReceiptNumber: string | undefined;
+          if (existingEvent.entityType === 'Sale' && existingEvent.entityId) {
+            const sale = await this.prisma.sale.findUnique({
+              where: { id: existingEvent.entityId },
+              select: { receiptNumber: true },
+            });
+            replayReceiptNumber = sale?.receiptNumber ?? undefined;
+          }
           results.push({
             eventId: event.eventId,
             success: true,
             serverId: existingEvent.entityId || undefined,
             serverTimestamp: existingEvent.processedAt || undefined,
+            receiptNumber: replayReceiptNumber,
           });
           successCount++;
           continue;
@@ -120,6 +129,7 @@ export class SyncService {
           success: true,
           serverId: result.serverId,
           serverTimestamp: new Date(),
+          receiptNumber: result.receiptNumber,
         });
         successCount++;
       } catch (error) {
@@ -712,7 +722,7 @@ export class SyncService {
     event: SyncEventDto,
     branchId: string,
     deviceId: string,
-  ): Promise<{ serverId: string }> {
+  ): Promise<{ serverId: string; receiptNumber?: string }> {
     const payload = event.payload;
     const tenantId = await this.getTenantIdForBranch(branchId);
     const userId = payload.cashierId || payload.createdById || payload.voidedById || payload.refundedById || payload.adjustedById || '';
@@ -730,7 +740,7 @@ export class SyncService {
           notes: payload.notes,
           offlineId: payload.offlineId || payload.id || event.eventId,
         });
-        return { serverId: sale.id };
+        return { serverId: sale.id, receiptNumber: sale.receiptNumber };
 
       case SyncEventType.SALE_VOIDED:
         await this.salesService.voidSale(

@@ -648,6 +648,12 @@ class AppDatabase extends _$AppDatabase {
     return (select(pendingSales)..where((s) => s.isSynced.equals(false))).get();
   }
 
+  Future<void> updateSaleReceiptNumber(String id, String receiptNumber) {
+    return (update(pendingSales)..where((s) => s.id.equals(id))).write(
+      PendingSalesCompanion(receiptNumber: Value(receiptNumber)),
+    );
+  }
+
   Future<void> markSaleAsSynced(String id) {
     return (update(pendingSales)..where((s) => s.id.equals(id))).write(
       PendingSalesCompanion(

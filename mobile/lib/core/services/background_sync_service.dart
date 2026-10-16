@@ -210,7 +210,11 @@ class BackgroundSyncService {
             serverId,
             serverTimestamp,
           );
-          await _markRelatedLocalDataAsSynced(database, item);
+          await _markRelatedLocalDataAsSynced(
+            database,
+            item,
+            receiptNumber: firstResult['receiptNumber']?.toString(),
+          );
           successCount++;
           debugPrint(
               '[BackgroundSync] ✓ Synced: ${item.entityTable}/${item.action}');
@@ -292,8 +296,9 @@ class BackgroundSyncService {
 
   static Future<void> _markRelatedLocalDataAsSynced(
     AppDatabase database,
-    SyncQueueData item,
-  ) async {
+    SyncQueueData item, {
+    String? receiptNumber,
+  }) async {
     if (item.eventType != 'SALE_CREATED') {
       return;
     }
@@ -305,6 +310,11 @@ class BackgroundSyncService {
 
     if (offlineId.isNotEmpty) {
       await database.markSaleAsSynced(offlineId);
+      // Replace the phone's temporary RCP- number with the server's, so the
+      // receipt, dashboard and reports all quote the same one.
+      if (receiptNumber != null && receiptNumber.isNotEmpty) {
+        await database.updateSaleReceiptNumber(offlineId, receiptNumber);
+      }
     }
   }
 

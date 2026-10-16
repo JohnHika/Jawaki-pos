@@ -94,6 +94,10 @@ export class SyncResultDto {
 
   @ApiPropertyOptional()
   serverTimestamp?: Date;
+
+  /** Set for SALE_CREATED so an offline phone can show the real receipt number. */
+  @ApiPropertyOptional()
+  receiptNumber?: string;
 }
 
 export class PushSyncResponseDto {

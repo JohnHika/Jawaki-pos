@@ -311,9 +311,12 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
   }
 
   Widget _buildReceiptCard(PendingSale sale, bool isDark) {
-    final receiptNumber = sale.id.length >= 8
-        ? sale.id.substring(0, 8).toUpperCase()
-        : sale.id.toUpperCase();
+    // Show the same number the receipt, dashboard and reports use.
+    final receiptNumber = sale.receiptNumber.trim().isNotEmpty
+        ? sale.receiptNumber
+        : (sale.id.length >= 8
+            ? sale.id.substring(0, 8).toUpperCase()
+            : sale.id.toUpperCase());
     final methodColor = _paymentMethodColor(sale.paymentMethod);
     final methodIcon = _paymentMethodIcon(sale.paymentMethod);
     final titleColor =

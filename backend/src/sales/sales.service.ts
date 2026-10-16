@@ -159,6 +159,21 @@ export class SalesService {
         ? Math.max(totalAmount - paidAmount, 0)
         : 0;
 
+    // Clients identify their device by its own uuid; Sale.deviceId is a foreign
+    // key to the Device row id. Resolve it (within this company), and drop it
+    // if unknown rather than failing the whole sale with a foreign-key error.
+    let resolvedDeviceId: string | null = null;
+    if (dto.deviceId) {
+      const device = await this.prisma.device.findFirst({
+        where: {
+          branch: { tenantId },
+          OR: [{ id: dto.deviceId }, { deviceUuid: dto.deviceId }],
+        },
+        select: { id: true },
+      });
+      resolvedDeviceId = device?.id ?? null;
+    }
+
     // Generate receipt number
     const receiptNumber = await this.generateReceiptNumber(dto.branchId);
 
@@ -255,7 +270,7 @@ export class SalesService {
       const newSale = await tx.sale.create({
         data: {
           branchId: dto.branchId,
-          deviceId: dto.deviceId,
+          deviceId: resolvedDeviceId,
           userId,
           receiptNumber,
           customerId: dto.customerId,
