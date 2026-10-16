@@ -23,6 +23,7 @@ Automated Android build from GitHub Actions.
 ''';
 
 void main() {
+  main2();
   group('parseReleaseNotes', () {
     test('a CI-generated release body yields no user-facing notes', () {
       expect(parseReleaseNotes(_ciReleaseBody), isEmpty);
@@ -71,5 +72,37 @@ void main() {
       expect(cleanReleaseName(null, fallback: 'Axon POS 1.0.50'), 'Axon POS 1.0.50');
       expect(cleanReleaseName('  ', fallback: 'Axon POS 1.0.50'), 'Axon POS 1.0.50');
     });
+  });
+}
+
+// Build 2099/2100's GitHub body: the changes follow the "Update Sources"
+// list after a blank line, with no heading of their own.
+const _headinglessChangesBody = '''
+## Axon POS Android Update
+
+**Release:** Axon POS 1.0.57
+**Internal build:** 2100
+**Source:** Dual (Cloudflare R2 + GitHub Releases)
+
+### Download
+- [Cloudflare R2](https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/releases/1.0.57/2100/app-release.apk)
+- [GitHub Release](https://github.com/JohnHika/Jawaki-pos/releases/tag/v1.0.57-2100)
+
+### Update Sources
+1. **Cloudflare R2** (Primary): `https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev/android/latest.json`
+2. **GitHub Releases** (Secondary): GitHub Releases API
+
+Fixes: Approving, rejecting and fulfilling a stock request now works
+Fixes: An expired sign-in now returns you to the login screen
+''';
+
+void main2() {
+  test('changes listed after the technical sections are still shown', () {
+    final lines = cleanReleaseNoteLines(_headinglessChangesBody);
+    expect(lines, [
+      'Fixes: Approving, rejecting and fulfilling a stock request now works',
+      'Fixes: An expired sign-in now returns you to the login screen',
+    ]);
+    expect(parseReleaseNotes(_headinglessChangesBody), hasLength(2));
   });
 }

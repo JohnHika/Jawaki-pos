@@ -64,13 +64,32 @@ final RegExp _technicalLine = RegExp(
 List<String> cleanReleaseNoteLines(String raw) {
   final out = <String>[];
   var inTechnicalSection = false;
+  var afterBlank = false;
+  var sectionHasContent = false;
+  final listItem = RegExp(r'^(?:[-*•+]|\d+[.)])\s+');
   for (final original in raw.split('\n')) {
     var line = original.trim();
-    if (line.isEmpty) continue;
+    if (line.isEmpty) {
+      afterBlank = true;
+      continue;
+    }
+    // A technical section is a heading plus its list. Plain prose after a
+    // blank line is the change list the release workflow appends, not more
+    // installation detail, so it ends the section.
+    if (inTechnicalSection &&
+        sectionHasContent &&
+        afterBlank &&
+        !line.startsWith('#') &&
+        !listItem.hasMatch(line)) {
+      inTechnicalSection = false;
+    }
+    afterBlank = false;
+    if (inTechnicalSection && !line.startsWith('#')) sectionHasContent = true;
 
     final heading = RegExp(r'^#{1,6}\s*(.*)$').firstMatch(line);
     if (heading != null) {
       inTechnicalSection = _technicalHeading.hasMatch(heading.group(1)!);
+      sectionHasContent = false;
       continue;
     }
     if (inTechnicalSection) continue;
