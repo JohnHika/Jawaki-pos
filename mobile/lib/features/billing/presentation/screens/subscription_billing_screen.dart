@@ -392,6 +392,10 @@ class _SubscriptionBillingScreenState
                 const SettingsGroupLabel('Plan'),
                 const SizedBox(height: DesignSpacing.sm),
                 _buildManagePlanTile(),
+                if (_entitlement?.license != null) ...[
+                  const SizedBox(height: DesignSpacing.md),
+                  _buildLicenseCard(_entitlement!.license!),
+                ],
                 const SizedBox(height: DesignSpacing.xl),
               ],
               const SettingsGroupLabel('Renewal'),
@@ -714,6 +718,97 @@ class _SubscriptionBillingScreenState
           trackColor: context.themed(DesignColors.darkBorder),
         ),
       ],
+    );
+  }
+
+  /// What this company's licence covers: modules, seats, key and expiry.
+  Widget _buildLicenseCard(ClientLicense license) {
+    final primary = context.themed(DesignColors.darkTextPrimary);
+    final secondary = context.themed(DesignColors.darkTextSecondary);
+    final modules = LicensedFeature.labels.keys.toList();
+    String seats(int? n) => n == null
+        ? '—'
+        : n >= 1000
+            ? 'Unlimited'
+            : '$n';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your licence',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          if (license.expired)
+            Padding(
+              padding: const EdgeInsets.only(top: DesignSpacing.xs),
+              child: Text(
+                'Your licence has expired. Contact support to renew it.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.readable(DesignColors.error),
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          const SizedBox(height: DesignSpacing.sm),
+          for (final key in modules)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Icon(
+                    (license.planFeatures[key] ?? true) && license.allows(key)
+                        ? Icons.check_circle_rounded
+                        : Icons.lock_outline_rounded,
+                    size: 18,
+                    color: (license.planFeatures[key] ?? true) &&
+                            license.allows(key)
+                        ? DesignColors.success
+                        : secondary,
+                  ),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      LicensedFeature.labels[key]!,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const Divider(height: DesignSpacing.xl),
+          Text(
+            'Up to ${seats(license.maxBranches)} branches · ${seats(license.maxUsers)} users',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: secondary),
+          ),
+          if (license.licenseKey != null) ...[
+            const SizedBox(height: DesignSpacing.xs),
+            SelectableText(
+              'Licence key ${license.licenseKey}',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: secondary),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

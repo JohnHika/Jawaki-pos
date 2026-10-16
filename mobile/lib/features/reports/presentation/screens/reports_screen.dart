@@ -9,6 +9,8 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../providers/reports_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../../../billing/domain/billing_entitlement.dart';
+import '../../../billing/presentation/widgets/feature_locked.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -101,7 +103,14 @@ class ReportsScreen extends ConsumerWidget {
                 title: 'Payment Methods',
                 subtitle: 'Breakdown of payment methods used',
                 color: DesignColors.accent,
-                onTap: () => _showPaymentMethodsReport(context, ref),
+                onTap: () async {
+                  if (!await ensureFeature(
+                      context, ref, LicensedFeature.analytics)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showPaymentMethodsReport(context, ref);
+                },
               )
             ),
             StaggeredItem(
@@ -113,7 +122,14 @@ class ReportsScreen extends ConsumerWidget {
                 title: 'Cashier Performance',
                 subtitle: 'Sales by cashier',
                 color: DesignColors.accent,
-                onTap: () => _showCashierReport(context, ref),
+                onTap: () async {
+                  if (!await ensureFeature(
+                      context, ref, LicensedFeature.analytics)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showCashierReport(context, ref);
+                },
               )
             ),
             StaggeredItem(
@@ -125,7 +141,14 @@ class ReportsScreen extends ConsumerWidget {
                 title: 'Category Sales',
                 subtitle: 'Sales by product category',
                 color: DesignColors.info,
-                onTap: () => _showCategorySalesReport(context, ref),
+                onTap: () async {
+                  if (!await ensureFeature(
+                      context, ref, LicensedFeature.analytics)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showCategorySalesReport(context, ref);
+                },
               )
             ),
             StaggeredItem(
@@ -137,7 +160,14 @@ class ReportsScreen extends ConsumerWidget {
                 title: 'Top Products',
                 subtitle: 'Best selling products',
                 color: DesignColors.warning,
-                onTap: () => _showTopProductsReport(context, ref),
+                onTap: () async {
+                  if (!await ensureFeature(
+                      context, ref, LicensedFeature.analytics)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  _showTopProductsReport(context, ref);
+                },
               )
             ),
             StaggeredItem(
@@ -185,7 +215,14 @@ class ReportsScreen extends ConsumerWidget {
                 subtitle:
                     'Comprehensive sales analytics with multiple chart types',
                 color: DesignColors.brand,
-                onTap: () => context.push('/reports/analytics'),
+                onTap: () async {
+                  if (!await ensureFeature(
+                      context, ref, LicensedFeature.analytics)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  context.push('/reports/analytics');
+                },
               )
             ),
             StaggeredItem(
@@ -210,7 +247,14 @@ class ReportsScreen extends ConsumerWidget {
                 subtitle:
                     'Detailed payment method analysis and transaction trends',
                 color: DesignColors.accent,
-                onTap: () => context.push('/payment-analytics'),
+                onTap: () async {
+                  if (!await ensureFeature(
+                      context, ref, LicensedFeature.analytics)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  context.push('/payment-analytics');
+                },
               )
             ),
 

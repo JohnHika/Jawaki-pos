@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
@@ -18,6 +21,9 @@ Future<BillingEntitlement?> refreshEntitlement() async {
   try {
     final map = await getIt<ApiClient>().getBillingEntitlement();
     final entitlement = BillingEntitlement.fromMap(map);
+    if (entitlement.license != null) {
+      await _cacheLicense(entitlement.license!);
+    }
     // Best-effort: cache the signed offline token so a future offline
     // session can still resolve its own status. Failures here are silent.
     try {
@@ -41,9 +47,48 @@ Future<BillingEntitlement?> _fallbackToCache(EntitlementService service) async {
     // Small allowance: if the token is a few minutes past validUntil but
     // still within graceUntil, resolveCached already returns the GRACE
     // snapshot — no extra handling needed here.
-    return await service.resolveCached();
+    final cached = await service.resolveCached();
+    final license = await _readCachedLicense();
+    if (cached == null) {
+      // No verifiable subscription token, but the last known licence still
+      // keeps the module locks consistent. Status stays neutral (no banner).
+      return license == null
+          ? null
+          : BillingEntitlement(
+              plan: 'UNKNOWN',
+              status: 'ACTIVE',
+              license: license,
+              source: EntitlementSource.offlineCache,
+            );
+    }
+    return license == null ? cached : cached.copyWith(license: license);
   } catch (e) {
     debugPrint('[Entitlement] offline cache resolve failed: $e');
+    return null;
+  }
+}
+
+const _licenseCacheKey = 'license_last_known_v1';
+
+/// The server is the gate; this copy only keeps the app's locks consistent
+/// while offline. Never throws.
+Future<void> _cacheLicense(ClientLicense license) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_licenseCacheKey, jsonEncode(license.toMap()));
+  } catch (_) {}
+}
+
+Future<ClientLicense?> _readCachedLicense() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_licenseCacheKey);
+    if (raw == null || raw.isEmpty) return null;
+    final decoded = jsonDecode(raw);
+    return decoded is Map
+        ? ClientLicense.fromMap(Map<String, dynamic>.from(decoded))
+        : null;
+  } catch (_) {
     return null;
   }
 }
@@ -61,3 +106,15 @@ final entitlementProvider =
 
 /// Bump to force a refetch (login, app resume, pull-to-refresh, payment).
 final entitlementRefreshTickProvider = StateProvider<int>((ref) => 0);
+
+/// The company's licence, or null while loading / unknown. Falls back to the
+/// last known copy when the live fetch fails, so locks stay put offline.
+final licenseProvider = Provider.autoDispose<ClientLicense?>((ref) {
+  return ref.watch(entitlementProvider).valueOrNull?.license;
+});
+
+/// Whether [feature] is available. Fails open until the licence is known.
+final featureAllowedProvider =
+    Provider.autoDispose.family<bool, String>((ref, feature) {
+  return ref.watch(licenseProvider)?.allows(feature) ?? true;
+});
