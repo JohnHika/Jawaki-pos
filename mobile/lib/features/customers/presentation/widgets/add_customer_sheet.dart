@@ -254,12 +254,13 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
                   const SizedBox(height: 14),
                   // Credit is a choice, not a form section: most new customers
                   // do not owe anything yet.
-                  Container(
-                    decoration: BoxDecoration(
-                      color: panel,
+                  Material(
+                    color: panel,
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
                       borderRadius:
                           BorderRadius.circular(DesignSpacing.radiusMd),
-                      border: Border.all(color: border),
+                      side: BorderSide(color: border),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
