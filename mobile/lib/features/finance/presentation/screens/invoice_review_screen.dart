@@ -157,7 +157,7 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Review Supplier Invoice',
+        title: 'Review Invoice',
         actions: [
           IconButton(
             icon: Container(

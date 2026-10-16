@@ -257,7 +257,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   children: [
                     Expanded(
                       child: _InventoryMiniStat(
-                        title: 'Total Items',
+                        title: 'Items',
                         value: _isLoading ? '...' : '$_totalItems',
                         icon: Icons.inventory_2_rounded,
                         color: DesignColors.brand,
@@ -276,7 +276,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _InventoryMiniStat(
-                        title: 'Total Value',
+                        title: 'Value',
                         value:
                             _isLoading ? '...' : _formatCurrency(_totalValue),
                         icon: Icons.account_balance_wallet_rounded,

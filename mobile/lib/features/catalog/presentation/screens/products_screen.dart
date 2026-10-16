@@ -351,7 +351,7 @@ class ProductsScreen extends ConsumerWidget {
                                     DesignSpacing.lg,
                                     0,
                                     DesignSpacing.lg,
-                                    DesignSpacing.xxl),
+                                    DesignSpacing.xxl + 64),
                                 // Photo cards need the tall shape; without any
                                 // photos the same card left a big empty block
                                 // under the price, so size it to its content.
@@ -404,7 +404,7 @@ class ProductsScreen extends ConsumerWidget {
                                     DesignSpacing.lg,
                                     0,
                                     DesignSpacing.lg,
-                                    DesignSpacing.xxl),
+                                    DesignSpacing.xxl + 64),
                                 itemCount: filtered.length,
                                 itemBuilder: (context, index) {
                                   final product = filtered[index];
@@ -447,7 +447,7 @@ class ProductsScreen extends ConsumerWidget {
                 },
                 loading: () => GridView.builder(
                   padding: const EdgeInsets.fromLTRB(
-                      DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xxl),
+                      DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xxl + 64),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount:
                         productGridColumns(MediaQuery.sizeOf(context).width),
@@ -471,16 +471,17 @@ class ProductsScreen extends ConsumerWidget {
           ],
         ),
       ),
-      bottomNavigationBar: perms.canEditProducts
-          ? SafeArea(
-              minimum: const EdgeInsets.fromLTRB(DesignSpacing.lg,
-                  DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.md),
-              child: GradientButton(
-                label: 'Add Product',
-                icon: Icons.add_rounded,
-                onPressed: () => _showAddEditProduct(context, ref),
-                height: 52,
-                borderRadius: DesignSpacing.radiusMd,
+      // A floating button instead of a full-width bar: the bar took a tenth of
+      // a small phone's height and left room for barely one row of products.
+      floatingActionButton: perms.canEditProducts
+          ? FloatingActionButton.extended(
+              onPressed: () => _showAddEditProduct(context, ref),
+              backgroundColor: DesignColors.accent,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Add Product',
+                style: TextStyle(fontWeight: FontWeight.w800),
               ),
             )
           : null,

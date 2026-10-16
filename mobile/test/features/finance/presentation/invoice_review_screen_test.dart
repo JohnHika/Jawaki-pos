@@ -99,7 +99,7 @@ void main() {
   testWidgets('shows the scanned lines and a running total', (tester) async {
     await open(tester);
 
-    expect(find.text('Review Supplier Invoice'), findsOneWidget);
+    expect(find.text('Review Invoice'), findsOneWidget);
     expect(find.text('Scanned 2 lines'), findsOneWidget);
     expect(find.text('INV-204'), findsOneWidget);
     expect(find.text('Omo 1kg'), findsOneWidget);

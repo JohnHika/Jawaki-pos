@@ -24,7 +24,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
     if (!permissions.canManageUsers) {
       return const Scaffold(
-        appBar: BrandedAppBar(title: 'Team & Access', showBackButton: true),
+        appBar: BrandedAppBar(title: 'Team', showBackButton: true),
         body: EmptyState(
           icon: Icons.lock_outline_rounded,
           title: 'Restricted',
@@ -37,7 +37,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Team & Access',
+        title: 'Team',
         showBackButton: true,
         actions: [
           if (permissions.canManageRoles)
