@@ -790,7 +790,15 @@ class ApiClient {
       if (page != null) 'page': page,
       if (limit != null) 'limit': limit,
     });
-    return response.data;
+    // The server answers with a paged envelope ({items, total, page, ...});
+    // older builds returned a bare list. Accept both so the list never
+    // fails with a type error.
+    final data = response.data;
+    if (data is List) return data;
+    if (data is Map && data['items'] is List) {
+      return List<dynamic>.from(data['items'] as List);
+    }
+    return const [];
   }
 
   Future<Map<String, dynamic>> getStockRequest(String id) async {

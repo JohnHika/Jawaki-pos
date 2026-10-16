@@ -329,7 +329,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
 
           // Product Selection
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
@@ -406,86 +406,73 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
 
           const SizedBox(height: 8),
 
-          // Quantity Input
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
-              child: TextFormField(
-                controller: _quantityController,
-                style: TextStyle(color: titleColor),
-                decoration: _fieldDecoration(
-                  context,
-                  labelText: 'Quantity',
-                  hintText: 'Enter quantity needed',
-                  suffixText: _unit,
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a quantity';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'Please enter a valid number';
-                  }
-                  if (double.parse(value) <= 0) {
-                    return 'Quantity must be greater than 0';
-                  }
-                  return null;
-                },
-              ),
+          // Quantity, priority and reason share one card: three stacked
+          // cards each wrapping a tinted field looked like boxes in boxes.
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: surface,
+              border: Border.all(color: border),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Priority Selection
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
-              child: DropdownButtonFormField<String>(
-                initialValue: _priority,
-                decoration: _fieldDecoration(context, labelText: 'Priority'),
-                dropdownColor: isDark ? DesignColors.darkSurface : Colors.white,
-                style: TextStyle(color: titleColor, fontSize: 14),
-                items: const [
-                  DropdownMenuItem(value: 'low', child: Text('Low')),
-                  DropdownMenuItem(value: 'normal', child: Text('Normal')),
-                  DropdownMenuItem(value: 'high', child: Text('High')),
-                  DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _priority = value);
-                  }
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Reason Input
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
-              child: TextFormField(
-                controller: _reasonController,
-                style: TextStyle(color: titleColor),
-                decoration: _fieldDecoration(
-                  context,
-                  labelText: 'Reason (Optional)',
-                  hintText: 'Why do you need this stock?',
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _quantityController,
+                  style: TextStyle(color: titleColor),
+                  decoration: _fieldDecoration(
+                    context,
+                    labelText: 'Quantity',
+                    hintText: 'Enter quantity needed',
+                    suffixText: _unit,
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a quantity';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    if (double.parse(value) <= 0) {
+                      return 'Quantity must be greater than 0';
+                    }
+                    return null;
+                  },
                 ),
-                maxLines: 3,
-                textCapitalization: TextCapitalization.sentences,
-              ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: _priority,
+                  decoration: _fieldDecoration(context, labelText: 'Priority'),
+                  dropdownColor:
+                      isDark ? DesignColors.darkSurface : Colors.white,
+                  style: TextStyle(color: titleColor, fontSize: 14),
+                  items: const [
+                    DropdownMenuItem(value: 'low', child: Text('Low')),
+                    DropdownMenuItem(value: 'normal', child: Text('Normal')),
+                    DropdownMenuItem(value: 'high', child: Text('High')),
+                    DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _priority = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _reasonController,
+                  style: TextStyle(color: titleColor),
+                  decoration: _fieldDecoration(
+                    context,
+                    labelText: 'Reason (Optional)',
+                    hintText: 'Why do you need this stock?',
+                  ),
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+              ],
             ),
           ),
 
@@ -493,7 +480,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
 
           // Image Upload Section
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.zero,
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
@@ -608,7 +595,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
 
           // Submit Button
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.zero,
             child: GradientButton(
               label: 'Submit Request',
               icon: Icons.send_rounded,

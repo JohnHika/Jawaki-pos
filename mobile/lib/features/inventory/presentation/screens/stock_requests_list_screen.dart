@@ -126,6 +126,9 @@ class _StockRequestsListScreenState
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 indicatorPadding: const EdgeInsets.all(4),
+                // Four tabs share the width; the default 16px padding on each side
+                // clipped 'Approved'.
+                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                 labelStyle: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -207,7 +210,7 @@ class _StockRequestsListScreenState
     final requesterName = request['requestedByName'] as String? ?? 'Unknown';
     final branchName = request['branchName'] as String? ?? 'Unknown Branch';
     final reason = request['reason'] as String?;
-    final createdAt = request['createdAt'] as DateTime? ?? DateTime.now();
+    final createdAt = _asDate(request['createdAt']);
     final currentStock = request['currentStock'] as num? ?? 0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
@@ -516,6 +519,14 @@ class _StockRequestsListScreenState
     );
   }
 
+  /// The server sends timestamps as ISO strings; a hard DateTime cast threw
+  /// while the card was built and blanked the whole list.
+  DateTime _asDate(Object? value) {
+    if (value is DateTime) return value;
+    return DateTime.tryParse(value?.toString() ?? '')?.toLocal() ??
+        DateTime.now();
+  }
+
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
@@ -676,7 +687,7 @@ class _StockRequestsListScreenState
               Icons.calendar_today_rounded,
               'Requested On',
               DateFormat('MMM d, yyyy - hh:mm a').format(
-                request['createdAt'] as DateTime? ?? DateTime.now(),
+                _asDate(request['createdAt']),
               ),
               secondaryColor,
               tertiaryColor,
