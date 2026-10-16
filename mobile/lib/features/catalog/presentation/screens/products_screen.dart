@@ -357,7 +357,8 @@ class ProductsScreen extends ConsumerWidget {
                                 // under the price, so size it to its content.
                                 gridDelegate:
                                     SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
+                                  crossAxisCount: productGridColumns(
+                                      MediaQuery.sizeOf(context).width),
                                   crossAxisSpacing: DesignSpacing.sm + 2,
                                   mainAxisSpacing: DesignSpacing.sm + 2,
                                   childAspectRatio: 0.72,
@@ -447,8 +448,9 @@ class ProductsScreen extends ConsumerWidget {
                 loading: () => GridView.builder(
                   padding: const EdgeInsets.fromLTRB(
                       DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xxl),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount:
+                        productGridColumns(MediaQuery.sizeOf(context).width),
                     crossAxisSpacing: DesignSpacing.sm + 2,
                     mainAxisSpacing: DesignSpacing.sm + 2,
                     childAspectRatio: 0.72,

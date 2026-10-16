@@ -234,7 +234,7 @@ class ReceiptScreen extends ConsumerWidget {
             // A little "Preview of printed receipt (58mm)" caption so it's
             // clear this mirrors the physical printout.
             Text(
-              'PREVIEW · 58mm THERMAL',
+              'RECEIPT PREVIEW',
               style: TextStyle(
                 fontSize: 10,
                 letterSpacing: 1.5,

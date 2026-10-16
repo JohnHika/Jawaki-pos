@@ -676,6 +676,13 @@ class _GradientButtonState extends State<GradientButton> {
       ),
     );
 
+    // Unavailable (no handler, not merely busy): dim it so it never reads as
+    // a live call to action.
+    final disabled = widget.onPressed == null && !widget.isLoading;
+    if (disabled) {
+      return Opacity(opacity: 0.45, child: btn);
+    }
+
     // Loading pulse: a soft looping breathe while [isLoading] is true.
     // Reduced-motion gate: when "remove animations" is on the loop never
     // starts — the button shows its final (fully opaque) state and the
@@ -2510,7 +2517,7 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       automaticallyImplyLeading: false,
       leading: leading ??
-          (showBackButton ? _BackButton(color: fg, isDark: isDark) : null),
+          (showBackButton ? AppBackButton(color: fg, isDark: isDark) : null),
       centerTitle: false,
       titleSpacing: hasLeading ? 4 : 20,
       toolbarHeight: preferredSize.height,
@@ -2551,10 +2558,24 @@ class BrandedAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-class _BackButton extends StatelessWidget {
+/// The one back button every screen uses: a compact bordered square with a
+/// 44dp tap target. [onPressed] defaults to popping the current route.
+class AppBackButton extends StatelessWidget {
   final Color color;
   final bool isDark;
-  const _BackButton({required this.color, required this.isDark});
+  final VoidCallback? onPressed;
+
+  /// Fill behind the arrow. Leave null on an app bar; pass the page colour
+  /// when the button floats over scrolling content so text never shows
+  /// through it.
+  final Color? background;
+  const AppBackButton({
+    super.key,
+    required this.color,
+    required this.isDark,
+    this.onPressed,
+    this.background,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2565,7 +2586,7 @@ class _BackButton extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(left: 8),
         child: Material(
-          color: Colors.transparent,
+          color: background ?? Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
             side: BorderSide(
@@ -2575,7 +2596,7 @@ class _BackButton extends StatelessWidget {
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () => Navigator.of(context).maybePop(),
+            onTap: onPressed ?? () => Navigator.of(context).maybePop(),
             child: SizedBox(
               width: 44,
               height: 44,

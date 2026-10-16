@@ -60,7 +60,7 @@ class ProductGrid extends ConsumerWidget {
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
+            crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
             childAspectRatio: hasPhotos ? 0.78 : 1.12,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
@@ -75,8 +75,8 @@ class ProductGrid extends ConsumerWidget {
       },
       loading: () => GridView.builder(
         padding: const EdgeInsets.all(12),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
           childAspectRatio: 0.78,
           crossAxisSpacing: 10,
           mainAxisSpacing: 10,

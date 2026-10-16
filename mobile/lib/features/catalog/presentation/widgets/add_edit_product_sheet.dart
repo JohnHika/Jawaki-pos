@@ -858,7 +858,13 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                       ),
                       dropdownColor:
                           isDark ? DesignColors.darkSurface : Colors.white,
-                      items: _units
+                      // A product saved with a unit that is not in the
+                      // standard list (e.g. "bale") must still be selectable,
+                      // or the dropdown asserts on its own value.
+                      items: [
+                        ..._units,
+                        if (!_units.contains(tier.unit)) tier.unit,
+                      ]
                           .map(
                             (u) => DropdownMenuItem(
                               value: u,

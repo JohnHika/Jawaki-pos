@@ -234,7 +234,7 @@ class SettingsScreen extends ConsumerWidget {
           SettingsEntry(
             id: 'notification-centre',
             icon: Icons.inbox_rounded,
-            title: 'Notification centre',
+            title: 'Inbox',
             subtitle: 'Everything the app has told you, in one place',
             keywords: const ['inbox', 'messages', 'alerts', 'history'],
             onTap: () => context.push('/notifications'),
@@ -243,7 +243,7 @@ class SettingsScreen extends ConsumerWidget {
             SettingsEntry(
               id: 'notifications',
               icon: Icons.notifications_rounded,
-              title: 'Notifications',
+              title: 'Alert settings',
               subtitle: 'Choose which alerts you get on this phone',
               keywords: const ['alerts', 'sound', 'push'],
               onTap: () => _showNotificationSettings(context),

@@ -140,6 +140,7 @@ class _UserPermissionOverrideScreenState
           DesignSpacing.xxl,
         ),
         children: [
+          _EditingUserBanner(userId: widget.userId),
           const SectionHeader(
             title: 'Assigned Roles',
             subtitle: 'A user can hold multiple roles at once',
@@ -178,6 +179,47 @@ class _UserPermissionOverrideScreenState
                 onSetState: _setOverride,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Editing <name> · <email>" so it is always clear whose access is changing.
+class _EditingUserBanner extends ConsumerWidget {
+  const _EditingUserBanner({required this.userId});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final users = ref.watch(managedUsersProvider).valueOrNull ?? const [];
+    final user = users.cast<Map<String, dynamic>?>().firstWhere(
+          (u) => u?['id'] == userId,
+          orElse: () => null,
+        );
+    if (user == null) return const SizedBox.shrink();
+    final name = '${user['firstName'] ?? ''} ${user['lastName'] ?? ''}'.trim();
+    final email = user['email'] as String? ?? '';
+    final label = name.isEmpty ? email : name;
+    if (label.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: DesignSpacing.md),
+      child: Row(
+        children: [
+          const Icon(Icons.person_rounded, size: 18, color: DesignColors.accent),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              name.isEmpty || email.isEmpty ? label : '$name · $email',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: context.themed(DesignColors.darkTextPrimary),
+              ),
+            ),
+          ),
         ],
       ),
     );

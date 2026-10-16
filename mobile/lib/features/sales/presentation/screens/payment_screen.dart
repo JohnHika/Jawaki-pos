@@ -44,22 +44,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: Container(
-          margin: const EdgeInsets.only(left: DesignSpacing.xs),
-          child: IconButton(
-            tooltip: 'Back',
-            icon: Container(
-              padding: const EdgeInsets.all(DesignSpacing.sm),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? DesignColors.darkSurfaceElevated
-                    : DesignColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
-              ),
-              child: const Icon(Icons.arrow_back_rounded, size: 20),
-            ),
-            onPressed: () => context.pop(),
-          ),
+        leadingWidth: 68,
+        leading: AppBackButton(
+          color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+          isDark: isDark,
+          onPressed: () => context.pop(),
         ),
         title: Text(
           'Payment',

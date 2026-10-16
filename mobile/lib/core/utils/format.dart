@@ -1,5 +1,10 @@
 import 'package:intl/intl.dart';
 
+/// How many product cards fit across a screen of [width] logical pixels:
+/// two on a phone, more on a tablet, so cards keep a sensible size instead of
+/// stretching into huge, mostly empty blocks.
+int productGridColumns(double width) => (width / 190).floor().clamp(2, 6);
+
 /// Shared money formatting so figures across the app read consistently with
 /// thousands separators (e.g. 7335500 → "KES 7,335,500") instead of a long
 /// unbroken run of digits that's hard to eyeball at a glance.

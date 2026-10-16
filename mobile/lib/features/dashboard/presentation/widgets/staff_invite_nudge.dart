@@ -94,7 +94,7 @@ class _StaffInviteNudgeState extends State<StaffInviteNudge> {
         splashFactory: InkRipple.splashFactory,
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.only(bottom: 12),
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(

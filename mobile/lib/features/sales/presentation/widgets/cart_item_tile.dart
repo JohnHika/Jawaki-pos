@@ -107,35 +107,41 @@ class CartItemTile extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   _buildDetailBlock(context),
+                  const SizedBox(height: 8),
+                  // Line total and stepper share their own row so the name
+                  // above keeps the full width of the card.
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      InkWell(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusSm),
+                        onTap: () => _showPriceAdjustment(context, item),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          child: Text(
+                            formatMoney(item.total),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: DesignColors.brand,
+                                ),
+                          ),
+                        ),
+                      ),
+                      _QuantityControls(item: item),
+                    ],
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-
-            // Quantity Controls
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
-                  onTap: () => _showPriceAdjustment(context, item),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 2,
-                    ),
-                    child: Text(
-                      formatMoney(item.total),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: DesignColors.brand,
-                          ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _QuantityControls(item: item),
-              ],
             ),
           ],
         ),

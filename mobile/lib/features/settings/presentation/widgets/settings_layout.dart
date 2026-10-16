@@ -100,7 +100,7 @@ class SettingsIconTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(11),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, color: color, size: size * 0.5),
+      child: Icon(icon, color: context.readable(color), size: size * 0.5),
     );
   }
 }
@@ -192,7 +192,7 @@ class SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
-        destructive ? DesignColors.error : _primaryTextFor(isDark);
+        destructive ? context.readable(DesignColors.error) : _primaryTextFor(isDark);
 
     return Material(
       color: Colors.transparent,

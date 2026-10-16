@@ -215,23 +215,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             icon: const Icon(Icons.calendar_month_rounded),
             onPressed: () => _openDayPicker(context),
           ),
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () {
-              ref.invalidate(_dashboardSummaryProvider);
-              ref.invalidate(_recentSalesProvider);
+          // Refresh / share / log out live in one menu so the title keeps
+          // its room on narrow phones and large font sizes.
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (value) {
+              switch (value) {
+                case 'refresh':
+                  ref.invalidate(_dashboardSummaryProvider);
+                  ref.invalidate(_recentSalesProvider);
+                case 'share':
+                  _shareDashboardReport(context, ref);
+                case 'logout':
+                  _showDashboardLogoutDialog(context, ref);
+              }
             },
-          ),
-          IconButton(
-            tooltip: 'Share report',
-            icon: const Icon(Icons.share_rounded),
-            onPressed: () => _shareDashboardReport(context, ref),
-          ),
-          IconButton(
-            tooltip: 'Log out',
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => _showDashboardLogoutDialog(context, ref),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'refresh',
+                child: ListTile(
+                  leading: Icon(Icons.refresh_rounded),
+                  title: Text('Refresh'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'share',
+                child: ListTile(
+                  leading: Icon(Icons.share_rounded),
+                  title: Text('Share report'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout_rounded),
+                  title: Text('Log out'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -248,8 +273,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               // Greeting header
               Padding(
                 padding: const EdgeInsets.only(
-                  left: DesignSpacing.md,
-                  right: DesignSpacing.md,
+                  left: DesignSpacing.xs,
+                  right: DesignSpacing.xs,
                   bottom: DesignSpacing.sm,
                 ),
                 child: Column(
@@ -431,6 +456,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                               .textTheme
                                               .bodyMedium
                                               ?.copyWith(
+                                                fontSize: 13,
                                                 fontWeight: FontWeight.w700,
                                                 color: isDark
                                                     ? DesignColors
@@ -455,7 +481,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       ],
                                     ),
                                   ),
-                                  Flexible(
+                                  const SizedBox(width: DesignSpacing.md),
+                                  // A fixed ceiling (not Flexible): two flexible
+                                  // children split the row in half, which left the
+                                  // amount floating mid-row on wide screens.
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 130),
                                     child: FittedBox(
                                       alignment: Alignment.centerRight,
                                       fit: BoxFit.scaleDown,

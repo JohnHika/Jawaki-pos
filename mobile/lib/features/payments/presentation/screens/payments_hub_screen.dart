@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,28 +33,38 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     _loadData();
   }
 
+  StreamSubscription<List<PendingSale>>? _salesSub;
+
+  @override
+  void dispose() {
+    _salesSub?.cancel();
+    super.dispose();
+  }
+
+  /// Follows today's sales live, so a sale rung up while this tab sits in the
+  /// background shows in "Today's Takings" instead of a stale first read.
   Future<void> _loadData() async {
+    await _salesSub?.cancel();
     setState(() {
       _isLoading = true;
       _error = null;
     });
-    try {
-      final sales = await _db.watchTodaysSales().first;
-
-      if (mounted) {
+    _salesSub = _db.watchTodaysSales().listen(
+      (sales) {
+        if (!mounted) return;
         setState(() {
           _todaysSales = sales;
           _isLoading = false;
         });
-      }
-    } catch (e) {
-      if (mounted) {
+      },
+      onError: (Object e) {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
           _error = e.toString();
         });
-      }
-    }
+      },
+    );
   }
 
   double get _todaysTotal =>
@@ -69,7 +81,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.receipt_long_rounded),
-            onPressed: () => context.go('/receipts'),
+            onPressed: () => context.push('/receipts'),
             tooltip: 'View Receipts',
           ),
         ],
@@ -183,7 +195,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                               label: 'Receipts',
                               subtitle: 'View & share',
                               color: DesignColors.info,
-                              onTap: () => context.go('/receipts'),
+                              onTap: () => context.push('/receipts'),
                             ),
                           ),
                           const SizedBox(width: DesignSpacing.md),
