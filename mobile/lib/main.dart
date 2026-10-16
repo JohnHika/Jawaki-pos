@@ -22,6 +22,7 @@ import 'core/widgets/forced_update_gate.dart';
 import 'core/widgets/optional_update_prompt_host.dart';
 import 'core/widgets/feature_announcement_host.dart';
 import 'core/widgets/tap_tracker.dart';
+import 'core/services/app_icon_service.dart';
 import 'features/notifications/domain/app_notification.dart';
 
 /// Global error handler for uncaught Flutter errors
@@ -177,7 +178,7 @@ class POSApp extends ConsumerStatefulWidget {
   ConsumerState<POSApp> createState() => _POSAppState();
 }
 
-class _POSAppState extends ConsumerState<POSApp> {
+class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
   bool _checkedForUpdates = false;
 
   late final LifecycleLockController _lifecycleController;
@@ -191,6 +192,7 @@ class _POSAppState extends ConsumerState<POSApp> {
       storageService: getIt<StorageService>(),
     );
     WidgetsBinding.instance.addObserver(_lifecycleController);
+    WidgetsBinding.instance.addObserver(this);
 
     _attachNotificationOpens();
   }
@@ -232,7 +234,21 @@ class _POSAppState extends ConsumerState<POSApp> {
   void dispose() {
     _notificationOpens?.cancel();
     WidgetsBinding.instance.removeObserver(_lifecycleController);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// The living app icon only changes as the app goes to the background, so the
+  /// launcher never redraws it under the user's thumb. A no-op unless the
+  /// owner switched it on in Settings.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.paused) return;
+    if (!getIt.isRegistered<AppIconService>()) return;
+    unawaited(getIt<AppIconService>().refresh().then<void>(
+      (_) {},
+      onError: (Object e) => debugPrint('[AppIcon] refresh failed: $e'),
+    ));
   }
 
   @override

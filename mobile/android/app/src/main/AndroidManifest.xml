@@ -38,8 +38,11 @@
         android:usesCleartextTraffic="true"
         android:largeHeap="true"
         android:requestLegacyExternalStorage="true">
+        <!-- The real activity. It is NOT the launcher entry itself: the launcher
+             icon is whichever activity-alias below is enabled (see AppIconPlugin
+             / the "living app icon" setting). -->
         <activity
-            android:name=".MainActivity"
+            android:name=".AppActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -55,10 +58,6 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
             <!-- Paystack callback handoff. The backend callback page opens
                  this URI; Flutter verifies the reference before navigation. -->
             <intent-filter>
@@ -68,6 +67,63 @@
                 <data android:scheme="axonpos" android:host="payment" />
             </intent-filter>
         </activity>
+        <!-- Launcher entries. ".MainActivity" keeps the component name the app has
+             always had, so home-screen shortcuts created before this change keep
+             working; it is the default and the only one enabled out of the box.
+             The others are switched on by AppIconPlugin only when the user opts in
+             to the living icon. Exactly one is enabled at a time. -->
+        <activity-alias
+            android:name=".MainActivity"
+            android:targetActivity=".AppActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:label="Axon POS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconStreak"
+            android:targetActivity=".AppActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_streak"
+            android:roundIcon="@mipmap/ic_launcher_streak"
+            android:label="Axon POS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconAlert"
+            android:targetActivity=".AppActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_alert"
+            android:roundIcon="@mipmap/ic_launcher_alert"
+            android:label="Axon POS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconGold"
+            android:targetActivity=".AppActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_gold"
+            android:roundIcon="@mipmap/ic_launcher_gold"
+            android:label="Axon POS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- FileProvider required for Android 7+ so we can share downloaded APKs
              with the system package installer using a content:// URI. -->
         <provider
@@ -93,7 +149,7 @@
             android:value="axon_pos_default_channel" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_stat_axon" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

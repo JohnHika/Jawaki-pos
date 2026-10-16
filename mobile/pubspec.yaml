@@ -149,5 +149,6 @@ flutter:
   
   assets:
     - assets/images/
+    - assets/images/app_icons/
     - assets/icons/
     - assets/animations/

@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../database/app_database.dart';
+import '../services/app_icon_service.dart';
 import '../network/api_client.dart';
 import '../network/auth_interceptor.dart';
 import '../network/network_retry_interceptor.dart';
@@ -69,6 +70,7 @@ Future<void> configureDependencies() async {
     final database = AppDatabase(getIt<StorageService>());
     getIt.registerSingleton<AppDatabase>(database);
     debugPrint('[DI] AppDatabase registered');
+    getIt.registerSingleton<AppIconService>(AppIconService(database: database));
 
     // ============================================
     // STEP 3: Network Layer

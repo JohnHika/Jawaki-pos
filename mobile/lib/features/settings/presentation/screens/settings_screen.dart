@@ -29,6 +29,7 @@ import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
+import '../widgets/living_icon_card.dart';
 
 // Settings keys for SharedPreferences. Printer keys delegate to
 // PrinterSettingsKeys (receipt_printer_service.dart) so this screen and
@@ -253,7 +254,7 @@ class SettingsScreen extends ConsumerWidget {
               id: 'appearance',
               icon: Icons.palette_rounded,
               title: 'Appearance',
-              subtitle: 'Light or dark look for the app',
+              subtitle: 'Light or dark look, and your app icon',
               keywords: const ['theme', 'dark mode', 'light mode', 'colour'],
               trailing: SettingsStatusChip(
                 text: themeLabel,
@@ -573,6 +574,7 @@ class SettingsScreen extends ConsumerWidget {
   void _showAppearanceSettings(BuildContext context) {
     showModalBottomSheet(
       useRootNavigator: true,
+      isScrollControlled: true,
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -581,7 +583,12 @@ class SettingsScreen extends ConsumerWidget {
         final currentMode = ref.watch(themeModeProvider);
         return SettingsSheetScaffold(
           title: 'Appearance',
-          child: GroupedCard(
+          child: Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+          GroupedCard(
             margin: EdgeInsets.zero,
             children: [
               SettingsRow(
@@ -638,6 +645,12 @@ class SettingsScreen extends ConsumerWidget {
                 },
               ),
             ],
+          ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  const LivingIconCard(),
+                ],
+              ),
+            ),
           ),
         );
       }),
