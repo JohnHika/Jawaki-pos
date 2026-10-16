@@ -118,19 +118,19 @@ void main() {
 
     expect(find.text('Overview'), findsOneWidget);
     expect(find.text('Suppliers'), findsOneWidget);
-    expect(find.text('Customer Credit'), findsOneWidget);
-    expect(find.text('Other Shops'), findsOneWidget);
+    expect(find.text('Customers'), findsOneWidget);
+    expect(find.text('Shops'), findsOneWidget);
     expect(find.text('We owe suppliers'), findsOneWidget);
 
     await tester.tap(find.text('Suppliers'));
     await tester.pump();
     expect(find.text('Fresh Farm'), findsOneWidget);
 
-    await tester.tap(find.text('Customer Credit'));
+    await tester.tap(find.text('Customers'));
     await tester.pump();
     expect(find.text('R-100'), findsOneWidget);
 
-    await tester.tap(find.text('Other Shops'));
+    await tester.tap(find.text('Shops'));
     await tester.pump();
     expect(find.text('Neighbour Shop'), findsWidgets);
   });
@@ -147,7 +147,7 @@ void main() {
     await tester.pumpWidget(_app(controller));
     await tester.pump();
 
-    await tester.tap(find.text('Other Shops'));
+    await tester.tap(find.text('Shops'));
     // The tab body cross-fades now, so let the switch finish first.
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add debt'));

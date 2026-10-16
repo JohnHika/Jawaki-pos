@@ -371,8 +371,10 @@ class _CustomerProfileScreenState
                         ..._installments.map((inst) {
                           final dueDate = DateTime.parse(inst['dueDate']);
                           final isPaid = inst['status'] == 'paid';
+                          final today = DateTime.now();
                           final isOverdue = !isPaid &&
-                              dueDate.isBefore(DateTime.now());
+                              dueDate.isBefore(
+                                  DateTime(today.year, today.month, today.day));
                           final statusColor = isPaid
                               ? DesignColors.success
                               : isOverdue

@@ -250,11 +250,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Fresh Farm'), findsOneWidget);
 
-    await tester.tap(find.text('Customer Credit'));
+    await tester.tap(find.text('Customers'));
     await tester.pumpAndSettle();
     expect(find.text('R-100'), findsOneWidget);
 
-    await tester.tap(find.text('Other Shops'));
+    await tester.tap(find.text('Shops'));
     await tester.pumpAndSettle();
     expect(find.text('Neighbour Shop'), findsWidgets);
     expect(find.text('Wholesale stock'), findsOneWidget);
@@ -275,7 +275,7 @@ void main() {
     await tester.pumpWidget(_host(controller));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Customer Credit'));
+    await tester.tap(find.text('Customers'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Collect for a customer'));
     await tester.pumpAndSettle();
@@ -308,7 +308,7 @@ void main() {
     await tester.pumpWidget(_host(controller));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Customer Credit'));
+    await tester.tap(find.text('Customers'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Collect for a customer'));
     await tester.pumpAndSettle();

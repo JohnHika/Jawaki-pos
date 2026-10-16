@@ -2,6 +2,21 @@
 /// non-sensitive Finance snapshot cache.
 library;
 
+/// A supplier typed or scanned in capitals ("FRESH FARM DISTRIBUTORS") reads
+/// like a different supplier from "Fresh Farm Distributors". Show every
+/// all-caps name in normal capitalisation; mixed-case names are left as typed.
+String tidySupplierName(String name) {
+  final text = name.trim();
+  final hasLetters = text.contains(RegExp(r'[A-Za-z]'));
+  if (!hasLetters || text != text.toUpperCase()) return text;
+  return text
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .map((word) =>
+          word.isEmpty ? word : word[0].toUpperCase() + word.substring(1))
+      .join(' ');
+}
+
 class FinanceSnapshot {
   FinanceSnapshot({
     required this.branchId,

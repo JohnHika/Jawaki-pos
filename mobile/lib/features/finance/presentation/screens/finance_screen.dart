@@ -748,29 +748,34 @@ class _FinanceTabs extends StatelessWidget {
   static const List<String> labels = <String>[
     'Overview',
     'Suppliers',
-    'Customer Credit',
-    'Other Shops'
+    'Customers',
+    'Shops'
   ];
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+  Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
             DesignSpacing.lg, DesignSpacing.sm),
-        child: Row(
+        // Wrap (not a sideways scroller) so every tab is visible at once, even
+        // on a narrow phone or with large text.
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(
+            spacing: 6,
+            runSpacing: DesignSpacing.sm,
             children: List<Widget>.generate(
-                labels.length,
-                (i) => Padding(
-                      padding: EdgeInsets.only(
-                          right: i == labels.length - 1 ? 0 : DesignSpacing.sm),
-                      child: SizedBox(
-                          height: DesignSpacing.huge,
-                          child: ChoiceChip(
-                            label: Text(labels[i]),
-                            selected: index == i,
-                            onSelected: (_) => onChanged(i),
-                          )),
-                    ))),
+              labels.length,
+              (i) => ChoiceChip(
+                label: Text(labels[i]),
+                selected: index == i,
+                showCheckmark: false,
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                onSelected: (_) => onChanged(i),
+              ),
+            ),
+          ),
+        ),
       );
 }
 
@@ -1002,7 +1007,7 @@ class _SupplierTab extends StatelessWidget {
               message: 'No supplier payables yet. Scan a receipt to begin.')
         else
           ...payables.map((item) => _LedgerCard(
-                title: item.supplierName,
+                title: tidySupplierName(item.supplierName),
                 subtitle: item.invoiceNumber ?? 'Supplier invoice',
                 value: item.outstandingAmount,
                 dueDate: item.dueDate,
@@ -1250,8 +1255,10 @@ class _LedgerCard extends StatelessWidget {
                         // so make them stand out instead of reading like any
                         // other date.
                         Builder(builder: (context) {
-                          final isOverdue =
-                              value > 0 && dueDate!.isBefore(DateTime.now());
+                          final today = DateTime.now();
+                          final isOverdue = value > 0 &&
+                              dueDate!.toLocal().isBefore(
+                                  DateTime(today.year, today.month, today.day));
                           final label =
                               'Due ${DateFormat('d MMM y').format(dueDate!.toLocal())}';
                           return Text(

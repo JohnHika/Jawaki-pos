@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 
@@ -20,6 +21,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _overdueInstallments = [];
   bool _isLoading = true;
+  String? _lastQuery;
   String? _loadError;
   bool _showDebtOnly = false;
   final _searchController = TextEditingController();
@@ -42,35 +44,91 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     super.dispose();
   }
 
+  /// Credit sales live on the server's receivables ledger (the same numbers
+  /// Finance shows). The phone's own customer table can lag behind it, so lay
+  /// the larger of the two on each customer. Best effort: offline, the local
+  /// figure stands.
+  Future<List<Map<String, dynamic>>> _withServerBalances(
+    List<Map<String, dynamic>> customers,
+  ) async {
+    try {
+      final branchId = getIt<AuthService>().branchId;
+      if (branchId == null) return customers;
+      final receivables =
+          await getIt<ApiClient>().getRetailReceivables(branchId);
+      final owed = <String, double>{};
+      for (final r in receivables) {
+        final id = r.customerId;
+        if (id == null || r.outstandingAmount <= 0) continue;
+        owed[id] = (owed[id] ?? 0) + r.outstandingAmount;
+      }
+      if (owed.isEmpty) return customers;
+      return customers.map((c) {
+        final server = owed[c['id']];
+        if (server == null) return c;
+        final local = (c['balance'] as num?)?.toDouble() ?? 0;
+        return <String, dynamic>{...c, 'balance': server > local ? server : local};
+      }).toList();
+    } catch (_) {
+      return customers;
+    }
+  }
+
+  /// Debt-only filtering and ordering, shared by the instant local render and
+  /// the later server-balance refresh.
+  List<Map<String, dynamic>> _applyDebtFilter(
+      List<Map<String, dynamic>> customers) {
+    if (!_showDebtOnly) return customers;
+    return customers
+        .where((c) => ((c['balance'] as num?) ?? 0) > 0)
+        .toList()
+      ..sort((a, b) => ((b['balance'] as num?) ?? 0)
+          .compareTo((a['balance'] as num?) ?? 0));
+  }
+
   Future<void> _loadCustomers({String? query}) async {
+    _lastQuery = query;
     setState(() {
       _isLoading = true;
       _loadError = null;
     });
     try {
       final db = getIt<AppDatabase>();
-      final customers = _showDebtOnly
-          ? await db.getCustomersWithDebt()
-          : (query != null && query.isNotEmpty)
-              ? await db.searchCustomers(query)
-              : await db.getAllCustomers();
+      final local = (query != null && query.isNotEmpty)
+          ? await db.searchCustomers(query)
+          : await db.getAllCustomers();
+      // Show the phone's own list straight away. The server balances are
+      // layered on afterwards: waiting for them here left the page on a
+      // spinner for the whole network timeout whenever the phone was offline.
       if (mounted) {
         setState(() {
-          _customers = customers;
+          _customers = _applyDebtFilter(local);
           _isLoading = false;
           _loadError = null;
         });
       }
       _loadOverdue();
+      _refreshServerBalances(local, query);
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
           _loadError =
-              'Couldn\'t load customers. Check your connection and try again.';
+              "Couldn't load customers. Check your connection and try again.";
         });
       }
     }
+  }
+
+  Future<void> _refreshServerBalances(
+    List<Map<String, dynamic>> local,
+    String? query,
+  ) async {
+    final merged = await _withServerBalances(local)
+        .timeout(const Duration(seconds: 6), onTimeout: () => local);
+    // Ignore a late answer if the user has searched again meanwhile.
+    if (!mounted || identical(merged, local) || _lastQuery != query) return;
+    setState(() => _customers = _applyDebtFilter(merged));
   }
 
   // Add customer — captures what a shop actually needs to track a credit

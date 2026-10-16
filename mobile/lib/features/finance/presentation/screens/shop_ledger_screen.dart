@@ -138,11 +138,7 @@ class _BalanceCard extends StatelessWidget {
                 const StatusBadge(
                     label: 'Paid up',
                     color: DesignColors.success,
-                    icon: Icons.check_circle_rounded)
-              else if (statement.collections.isNotEmpty)
-                StatusBadge(
-                    label: '${(statement.progress * 100).round()}% repaid',
-                    color: DesignColors.brand),
+                    icon: Icons.check_circle_rounded),
             ],
           ),
           const SizedBox(height: DesignSpacing.xs),
@@ -255,7 +251,11 @@ class _DebtCard extends StatelessWidget {
         ? 0.0
         : (paid / debt.originalAmount).clamp(0.0, 1.0);
     final due = debt.dueDate;
-    final overdue = !settled && due != null && due.isBefore(DateTime.now());
+    // A debt due today is not overdue until the day is over.
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final overdue =
+        !settled && due != null && due.toLocal().isBefore(startOfToday);
     final created = debt.createdAt;
     return Padding(
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
