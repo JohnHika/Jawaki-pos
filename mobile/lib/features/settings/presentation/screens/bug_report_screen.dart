@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/widgets/motion.dart';
 
 class BugReportScreen extends StatefulWidget {
@@ -91,7 +92,6 @@ class _BugReportScreenState extends State<BugReportScreen> {
 
   Widget _buildResult(bool isDark) {
     final success = _result?['success'] == true;
-    final hulyUrl = _result?['hulyUrl'] as String?;
     final hulyIssueId = _result?['hulyIssueId'] as String?;
     final error = _result?['error'] as String?;
 
@@ -118,7 +118,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
             const SizedBox(height: DesignSpacing.md),
             Text(
               success
-                  ? 'Your report has been logged as $hulyIssueId. We\'ll review it shortly.'
+                  ? 'Thank you. Your report is logged (reference $hulyIssueId) and our team will look at it.'
                   : error ?? 'Something went wrong. Please try again.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -127,16 +127,6 @@ class _BugReportScreenState extends State<BugReportScreen> {
                 height: 1.4,
               ),
             ),
-            if (success && hulyUrl != null) ...[
-              const SizedBox(height: DesignSpacing.sm),
-              TextButton(
-                onPressed: () {/* TODO: open URL */},
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(64, DesignSpacing.xl + 24),
-                ),
-                child: const Text('View in Huly', style: TextStyle(color: DesignColors.accent)),
-              ),
-            ],
             const SizedBox(height: DesignSpacing.xxl),
             StaggeredItem(
               itemKey: 'bug-result-action',
@@ -171,7 +161,8 @@ class _BugReportScreenState extends State<BugReportScreen> {
             // Title
             TextFormField(
               controller: _titleController,
-              decoration: _inputDecoration('Title', 'Brief summary of the issue'),
+              decoration: kitFieldDecoration(context,
+                  label: 'Title', hint: 'Brief summary of the issue'),
               style: TextStyle(color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter a title' : null,
             ),
@@ -193,8 +184,12 @@ class _BugReportScreenState extends State<BugReportScreen> {
             // Description
             TextFormField(
               controller: _descriptionController,
-              decoration: _inputDecoration('Description', 'Describe what happened, steps to reproduce, and expected behavior'),
-              maxLines: 6,
+              decoration: kitFieldDecoration(context,
+                  label: 'What happened?',
+                  hint: 'Describe what you were doing and what went wrong'),
+              minLines: 5,
+              maxLines: 8,
+              textCapitalization: TextCapitalization.sentences,
               style: TextStyle(color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Please describe the issue' : null,
             ),
@@ -311,31 +306,6 @@ class _BugReportScreenState extends State<BugReportScreen> {
           ),
         );
       }).toList(),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, String hint) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      labelStyle: TextStyle(color: isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary),
-      hintStyle: TextStyle(color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary),
-      filled: true,
-      fillColor: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: BorderSide(color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        borderSide: const BorderSide(color: DesignColors.accent, width: 1.5),
-      ),
-      contentPadding: const EdgeInsets.all(DesignSpacing.lg - DesignSpacing.xs),
     );
   }
 }

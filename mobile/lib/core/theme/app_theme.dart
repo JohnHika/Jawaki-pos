@@ -215,6 +215,23 @@ class AppTheme {
           borderRadius: BorderRadius.circular(20),
         ),
       ),
+      checkboxTheme: CheckboxThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        side: WidgetStateBorderSide.resolveWith(
+          (states) => BorderSide(
+            color: states.contains(WidgetState.selected)
+                ? DesignColors.accent
+                : DesignColors.textTertiary,
+            width: 1.6,
+          ),
+        ),
+        fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? DesignColors.accent
+              : Colors.transparent,
+        ),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
+      ),
       dividerTheme: const DividerThemeData(
         color: DesignColors.surfaceBorderLight,
         thickness: 0.75,
@@ -505,6 +522,23 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        side: WidgetStateBorderSide.resolveWith(
+          (states) => BorderSide(
+            color: states.contains(WidgetState.selected)
+                ? DesignColors.accent
+                : DesignColors.darkTextTertiary,
+            width: 1.6,
+          ),
+        ),
+        fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? DesignColors.accent
+              : Colors.transparent,
+        ),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
       ),
       dividerTheme: const DividerThemeData(
         color: DesignColors.darkBorder,
