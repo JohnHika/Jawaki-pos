@@ -29,7 +29,21 @@ final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
 ) async* {
   final db = getIt<AppDatabase>();
-  await for (final _ in db.watchTodaysSales()) {
+  // Recompute when a local sale changes AND on a timer: a first server fetch
+  // that failed (offline, or a token still refreshing at startup) used to stick
+  // until the next local sale, leaving this device's partial figures on screen.
+  final ticks = StreamController<void>();
+  final salesSub = db.watchTodaysSales().listen((_) => ticks.add(null));
+  final timer = Timer.periodic(
+    const Duration(seconds: 45),
+    (_) => ticks.add(null),
+  );
+  ref.onDispose(() {
+    timer.cancel();
+    salesSub.cancel();
+    ticks.close();
+  });
+  await for (final _ in ticks.stream) {
     final local = await db.getDashboardSummary();
     // The local database only knows this device's sales, so a freshly installed
     // or second phone showed "KES 0" while the shop had real takings. Ask the

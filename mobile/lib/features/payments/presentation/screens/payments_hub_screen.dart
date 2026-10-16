@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -23,6 +25,10 @@ class PaymentsHubScreen extends ConsumerStatefulWidget {
 class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   late final AppDatabase _db;
   List<PendingSale> _todaysSales = [];
+  // The shop-wide figures from the server (every device). The local table only
+  // knows this device's sales, so the larger of the two is shown.
+  double _serverTotal = 0;
+  int _serverCount = 0;
   bool _isLoading = true;
   String? _error;
 
@@ -56,6 +62,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           _todaysSales = sales;
           _isLoading = false;
         });
+        unawaited(_refreshServerTotals());
       },
       onError: (Object e) {
         if (!mounted) return;
@@ -67,10 +74,34 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
     );
   }
 
-  double get _todaysTotal =>
-      _todaysSales.fold<double>(0.0, (sum, s) => sum + s.total);
+  Future<void> _refreshServerTotals() async {
+    final branchId = getIt<AuthService>().branchId;
+    if (branchId == null) return;
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    try {
+      final summary = await getIt<ApiClient>()
+          .getSalesDailySummary(branchId, today)
+          .timeout(const Duration(seconds: 6));
+      if (!mounted) return;
+      setState(() {
+        _serverTotal = (summary['totalSales'] as num?)?.toDouble() ?? 0;
+        _serverCount = (summary['totalTransactions'] as num?)?.toInt() ?? 0;
+      });
+    } catch (_) {
+      // Offline or signed out: keep this device's own figures.
+    }
+  }
 
-  int get _todaysTransactionCount => _todaysSales.length;
+  double get _todaysTotal {
+    final local = _todaysSales.fold<double>(0.0, (sum, s) => sum + s.total);
+    return local >= _serverTotal ? local : _serverTotal;
+  }
+
+  int get _todaysTransactionCount => _todaysSales.length >= _serverCount
+      ? _todaysSales.length
+      : _serverCount;
 
   @override
   Widget build(BuildContext context) {
