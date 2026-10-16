@@ -606,7 +606,9 @@ class _SubscriptionBillingScreenState
           if (days <= 0)
             _buildInfoRow(
               Icons.hourglass_bottom_rounded,
-              'Due for renewal',
+              entitlement.daysOverdue > 0
+                  ? 'Overdue by ${entitlement.daysOverdue} ${entitlement.daysOverdue == 1 ? 'day' : 'days'}'
+                  : 'Due for renewal',
             ),
           if (entitlement.maxBranches != null)
             _buildInfoRow(
@@ -620,7 +622,7 @@ class _SubscriptionBillingScreenState
           ],
           const SizedBox(height: DesignSpacing.md),
           // Days-remaining progress bar
-          _buildDaysProgressBar(days),
+          _buildDaysProgressBar(days, overdue: entitlement.daysOverdue),
         ],
       ),
     );
@@ -675,7 +677,7 @@ class _SubscriptionBillingScreenState
     );
   }
 
-  Widget _buildDaysProgressBar(int daysRemaining) {
+  Widget _buildDaysProgressBar(int daysRemaining, {int overdue = 0}) {
     final theme = Theme.of(context);
     // 31-day cycle assumption: the bar depletes as the period runs out.
     const cycleDays = 31;
@@ -693,7 +695,7 @@ class _SubscriptionBillingScreenState
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'DAYS REMAINING',
+              overdue > 0 ? 'OVERDUE' : 'DAYS REMAINING',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: context.themed(DesignColors.darkTextTertiary),
                 fontWeight: FontWeight.w700,
@@ -701,7 +703,7 @@ class _SubscriptionBillingScreenState
               ),
             ),
             CountUpText(
-              '$daysRemaining',
+              overdue > 0 ? '$overdue' : '$daysRemaining',
               style: DesignType.numeric(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,

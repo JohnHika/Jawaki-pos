@@ -114,6 +114,7 @@ class BillingEntitlement {
     required this.status,
     this.paidUntil,
     this.daysRemaining,
+    this.daysOverdue = 0,
     this.graceUntil,
     this.maxBranches,
     this.maxUsers,
@@ -129,11 +130,17 @@ class BillingEntitlement {
   }) {
     final features = map['features'];
     final featuresMap = features is Map<String, dynamic> ? features : null;
+    // An older server counted past the end of the paid period as negative
+    // days. Never show or compare a negative: fold it into "days overdue".
+    final rawDays = (map['daysRemaining'] as num?)?.toInt();
+    final overdue = (map['daysOverdue'] as num?)?.toInt() ??
+        ((rawDays != null && rawDays < 0) ? -rawDays : 0);
     return BillingEntitlement(
       plan: map['plan']?.toString() ?? 'CORE',
       status: map['status']?.toString() ?? 'ACTIVE',
       paidUntil: map['paidUntil']?.toString(),
-      daysRemaining: (map['daysRemaining'] as num?)?.toInt(),
+      daysRemaining: rawDays == null ? null : (rawDays < 0 ? 0 : rawDays),
+      daysOverdue: overdue,
       graceUntil: map['graceUntil']?.toString(),
       maxBranches: (featuresMap?['maxBranches'] as num?)?.toInt(),
       maxUsers: (featuresMap?['maxUsers'] as num?)?.toInt(),
@@ -150,6 +157,9 @@ class BillingEntitlement {
   final String status;
   final String? paidUntil;
   final int? daysRemaining;
+
+  /// Whole days past the end of the paid period (0 while it is still running).
+  final int daysOverdue;
   final String? graceUntil;
   final int? maxBranches;
   final int? maxUsers;
@@ -195,6 +205,7 @@ class BillingEntitlement {
         status: status,
         paidUntil: paidUntil,
         daysRemaining: daysRemaining,
+        daysOverdue: daysOverdue,
         graceUntil: graceUntil,
         maxBranches: maxBranches,
         maxUsers: maxUsers,

@@ -146,7 +146,28 @@ void main() {
 
       expect(find.text('Past Due'), findsOneWidget);
       expect(find.textContaining('grace period'), findsOneWidget);
-      expect(find.textContaining('Due for renewal'), findsOneWidget);
+      // An older server sent -2 here. It must never reach the screen.
+      expect(find.textContaining('Overdue by 2 days'), findsOneWidget);
+      expect(find.text('OVERDUE'), findsOneWidget);
+      expect(find.text('-2'), findsNothing);
+      expect(find.text('DAYS REMAINING'), findsNothing);
+    });
+
+    testWidgets('a lapsed period from the current server reads as overdue, not negative',
+        (tester) async {
+      spyApi.entitlementData = {
+        ...spyApi.entitlementData,
+        'status': 'PAST_DUE',
+        'daysRemaining': 0,
+        'daysOverdue': 1,
+        'restrictedMode': false,
+      };
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Overdue by 1 day'), findsOneWidget);
+      expect(find.textContaining('Overdue by 1 days'), findsNothing);
     });
 
     testWidgets('Pay with M-Pesa sheet: invoice summary, then code entry '

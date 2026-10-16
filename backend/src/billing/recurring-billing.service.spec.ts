@@ -42,6 +42,40 @@ const buildService = (prismaOverrides: Record<string, any> = {}) => {
 const msPerDay = 24 * 60 * 60 * 1000;
 
 describe('RecurringBillingService', () => {
+  describe('entitlement days', () => {
+    it('never reports negative days remaining once the period has lapsed', async () => {
+      const { service, prisma } = buildService();
+      prisma.tenant.findUnique.mockResolvedValue({
+        id: 't1',
+        plan: 'CORE',
+        subscriptionStatus: 'PAST_DUE',
+        currentPeriodEnd: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 60_000),
+        maxBranches: 1,
+        maxUsers: 3,
+        settings: {},
+      });
+      const ent = await service.getEntitlement('t1');
+      expect(ent.daysRemaining).toBe(0);
+      expect(ent.daysOverdue).toBe(3);
+    });
+
+    it('has no overdue days while the period is still running', async () => {
+      const { service, prisma } = buildService();
+      prisma.tenant.findUnique.mockResolvedValue({
+        id: 't1',
+        plan: 'CORE',
+        subscriptionStatus: 'ACTIVE',
+        currentPeriodEnd: new Date(Date.now() + 5.5 * 24 * 60 * 60 * 1000),
+        maxBranches: 1,
+        maxUsers: 3,
+        settings: {},
+      });
+      const ent = await service.getEntitlement('t1');
+      expect(ent.daysRemaining).toBe(5);
+      expect(ent.daysOverdue).toBe(0);
+    });
+  });
+
   describe('entitlement licence block', () => {
     const tenantRow = (settings: unknown, plan = 'CORE') => ({
       id: 't1',

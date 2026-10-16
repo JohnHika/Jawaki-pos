@@ -494,9 +494,16 @@ export class RecurringBillingService {
     const status = tenant.subscriptionStatus ?? 'ACTIVE';
     const paidUntil = tenant.currentPeriodEnd ?? null;
     const msPerDay = 24 * 60 * 60 * 1000;
-    const daysRemaining =
+    // Never negative: a lapsed period has 0 days left, and how late it is goes
+    // in daysOverdue so the app can say "overdue by 3 days" instead of "-3".
+    const rawDays =
       paidUntil !== null
         ? Math.floor((paidUntil.getTime() - Date.now()) / msPerDay)
+        : 0;
+    const daysRemaining = Math.max(0, rawDays);
+    const daysOverdue =
+      paidUntil !== null && paidUntil.getTime() < Date.now()
+        ? Math.floor((Date.now() - paidUntil.getTime()) / msPerDay)
         : 0;
 
     // Within the grace window the tenant keeps full write access even though
@@ -534,6 +541,7 @@ export class RecurringBillingService {
       status,
       paidUntil,
       daysRemaining,
+      daysOverdue,
       graceUntil,
       features: {
         maxBranches: tenant.maxBranches ?? planMeta.features.maxBranches,
