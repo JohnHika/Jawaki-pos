@@ -648,7 +648,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: TextStyle(color: titleColor),
             decoration: InputDecoration(
-              labelText: 'Low-stock alert at',
+              labelText: 'Low stock at',
               hintStyle: TextStyle(color: tertiaryColor),
               labelStyle: TextStyle(
                 color: secondaryColor,

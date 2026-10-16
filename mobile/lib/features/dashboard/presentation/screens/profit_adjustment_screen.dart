@@ -84,6 +84,30 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
     }
   }
 
+  /// A label with its amount on one line. The label wraps and the amount
+  /// shrinks rather than overflowing on a narrow phone with large text.
+  Widget _summaryRow(
+    String label,
+    String value, {
+    required TextStyle labelStyle,
+    required TextStyle valueStyle,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: Text(label, style: labelStyle)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(value, style: valueStyle, maxLines: 1),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currencyFmt = NumberFormat.currency(locale: 'en_KE', symbol: 'KES ');
@@ -100,7 +124,7 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Adjust Profit Calculation',
+        title: 'Adjust Profit',
         actions: [
           IconButton(tooltip: 'Help', 
             icon: const Icon(Icons.help_outline_rounded),
@@ -140,76 +164,56 @@ class _ProfitAdjustmentScreenState extends ConsumerState<ProfitAdjustmentScreen>
                       BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Current Sales:',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: titleColor,
-                              )),
-                          Text(currencyFmt.format(widget.currentRevenue),
-                              style: DesignType.numeric(
-                                  color: titleColor,
-                              )),
-                        ],
+                      _summaryRow(
+                        'Current Sales:',
+                        currencyFmt.format(widget.currentRevenue),
+                        labelStyle: TextStyle(
+                            fontWeight: FontWeight.w600, color: titleColor),
+                        valueStyle: DesignType.numeric(color: titleColor),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Auto-calculated Cost:',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, color: titleColor)),
-                          Text(currencyFmt.format(widget.currentCost),
-                              style: DesignType.numeric(
-                                  color: titleColor,
-                              )),
-                        ],
+                      _summaryRow(
+                        'Auto-calculated Cost:',
+                        currencyFmt.format(widget.currentCost),
+                        labelStyle: TextStyle(
+                            fontWeight: FontWeight.w600, color: titleColor),
+                        valueStyle: DesignType.numeric(color: titleColor),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Auto-calculated Profit:',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, color: titleColor)),
-                          Text(
-                              currencyFmt.format(
-                                  widget.currentRevenue - widget.currentCost),
-                              style: DesignType.numeric(
-                                  fontSize: 14, color: titleColor)),
-                        ],
+                      _summaryRow(
+                        'Auto-calculated Profit:',
+                        currencyFmt
+                            .format(widget.currentRevenue - widget.currentCost),
+                        labelStyle: TextStyle(
+                            fontWeight: FontWeight.w600, color: titleColor),
+                        valueStyle:
+                            DesignType.numeric(fontSize: 14, color: titleColor),
                       ),
                       Divider(height: 24, color: border),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Your Adjusted Cost:', style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: DesignColors.accent,
-                          )),
-                          Text(currencyFmt.format(_adjustedCost),
-                              style: DesignType.numeric(
-                            fontSize: 15,
-                            color: DesignColors.accent,
-                          )),
-                        ],
+                      _summaryRow(
+                        'Your Adjusted Cost:',
+                        currencyFmt.format(_adjustedCost),
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: DesignColors.accent,
+                        ),
+                        valueStyle: DesignType.numeric(
+                          fontSize: 15,
+                          color: DesignColors.accent,
+                        ),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Your Adjusted Profit:',
-                              style: DesignType.numeric(
-                                color: context.readable(DesignColors.success),
-                              )),
-                          Text(currencyFmt.format(_newProfit),
-                              style: DesignType.numeric(
-                            color: context.readable(DesignColors.success),
-                            fontSize: 18,
-                          )),
-                        ],
+                      _summaryRow(
+                        'Your Adjusted Profit:',
+                        currencyFmt.format(_newProfit),
+                        labelStyle: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: context.readable(DesignColors.success),
+                        ),
+                        valueStyle: DesignType.numeric(
+                          color: context.readable(DesignColors.success),
+                          fontSize: 18,
+                        ),
                       ),
                     ],
                   ),

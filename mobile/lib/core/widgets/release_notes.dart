@@ -130,8 +130,9 @@ String cleanReleaseName(String? raw, {required String fallback}) {
 List<String> _splitLongSentence(String text) {
   final cleaned = text.replaceFirst(RegExp(r'^[-*•]\s*'), '');
   final parts = cleaned.split(RegExp(r'(?<=[.!?])\s+'));
-  if (parts.length > 1) return parts;
-  return cleaned.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  // A single long line stays one line: splitting it at commas turned one
+  // change ("Fixes: A, and B") into a note plus a stray, unlabelled fragment.
+  return parts.length > 1 ? parts : [cleaned];
 }
 
 /// Compact release metadata block used by update notices. The build number

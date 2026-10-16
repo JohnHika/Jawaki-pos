@@ -54,6 +54,15 @@ void main() {
       expect(notes.map((n) => n.text), ['Axon POS 1.0.50 starts the clean Axon release line.']);
     });
 
+    test('one long change with commas stays one note', () {
+      final notes = parseReleaseNotes(
+        'Fixes: Report a problem shows its hints and drops a dead link, '
+        'checkboxes follow the app theme',
+      );
+      expect(notes, hasLength(1));
+      expect(notes.single.category, ReleaseCategory.fix);
+    });
+
     test('caps the list and ignores blank input', () {
       expect(parseReleaseNotes('   \n '), isEmpty);
       final many = List.generate(20, (i) => '- Fix number $i').join('\n');
