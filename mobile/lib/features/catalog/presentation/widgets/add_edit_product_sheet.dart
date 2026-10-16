@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
@@ -234,46 +235,21 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final fieldFill =
         isDark ? DesignColors.darkSurfaceElevated : DesignColors.surfaceSubtle;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(DesignSpacing.xxl, DesignSpacing.sm, DesignSpacing.xxl, DesignSpacing.xxl),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: DesignSpacing.sm),
-            // ── Header ──────────────────────────────────────────────────
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(DesignSpacing.sm + 2),
-                  decoration: BoxDecoration(
-                    color: DesignColors.brand.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                  ),
-                  child: Icon(
-                    isEditing
-                        ? Icons.edit_rounded
-                        : Icons.add_circle_outline_rounded,
-                    color: DesignColors.brand,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: DesignSpacing.md),
-                Text(
-                  isEditing ? 'Edit Product' : 'Add New Product',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: titleColor,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: DesignSpacing.xl),
-
+    // The fields scroll; the save button stays pinned above the keyboard so
+    // it is never lost when a long form is half filled in.
+    return Form(
+      key: _formKey,
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(
+                  DesignSpacing.xxl, DesignSpacing.lg, DesignSpacing.xxl, DesignSpacing.xxl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
             if (_aiLooking || _aiSuggestion != null || _aiMessage != null) ...[
               _AiProductCard(
                 looking: _aiLooking,
@@ -433,8 +409,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
             ),
             const SizedBox(height: DesignSpacing.xxl),
 
-            // ── Save button ───────────────────────────────────────────
-            GradientButton(
+                ],
+              ),
+            ),
+          ),
+          PinnedActionBar(
+            child: GradientButton(
               label: isEditing ? 'Save Changes' : 'Add Product',
               icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
               onPressed: _isSaving ? null : _saveProduct,
@@ -442,9 +422,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
               height: 52,
               borderRadius: DesignSpacing.radiusMd,
             ),
-            const SizedBox(height: 96),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

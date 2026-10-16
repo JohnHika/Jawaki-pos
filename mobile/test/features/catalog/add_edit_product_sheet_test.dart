@@ -17,9 +17,7 @@ void main() {
         child: MaterialApp(
           theme: ThemeData.dark(),
           home: const Scaffold(
-            body: SingleChildScrollView(
-              child: AddEditProductSheet(),
-            ),
+            body: SizedBox(height: 700, child: AddEditProductSheet()),
           ),
         ),
       ),
@@ -37,5 +35,29 @@ void main() {
       nameField.decoration?.hintStyle?.color,
       DesignColors.darkTextTertiary,
     );
+  });
+
+  testWidgets('the save button stays on screen on a short phone', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1100); // 800 x 550 dp: short, not narrow
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          categoriesProvider.overrideWith((ref) => Stream.value(const [])),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: AddEditProductSheet()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = find.widgetWithText(GradientButton, 'Add Product');
+    expect(button, findsOneWidget);
+    expect(tester.getRect(button).bottom, lessThanOrEqualTo(550));
   });
 }

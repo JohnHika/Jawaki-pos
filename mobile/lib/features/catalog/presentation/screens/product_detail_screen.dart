@@ -81,12 +81,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       title: 'Edit Product',
       initialSize: 0.85,
       maxSize: 0.95,
-      scrollable: true,
-      child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: AddEditProductSheet(product: product),
-      ),
+      child: AddEditProductSheet(product: product),
     );
     // The sheet syncs the catalog cache and pops itself on success; reload
     // this screen's copy so any changes show immediately.

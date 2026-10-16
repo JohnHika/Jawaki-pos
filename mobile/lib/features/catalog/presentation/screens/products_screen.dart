@@ -578,14 +578,9 @@ class ProductsScreen extends ConsumerWidget {
     GlassBottomSheet.show(
       context,
       title: product == null ? 'Add Product' : 'Edit Product',
-      initialSize: 0.85,
+      initialSize: 0.9,
       maxSize: 0.95,
-      scrollable: true,
-      child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: AddEditProductSheet(product: product),
-      ),
+      child: AddEditProductSheet(product: product),
     );
   }
 

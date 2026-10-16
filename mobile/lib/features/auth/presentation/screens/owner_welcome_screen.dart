@@ -94,12 +94,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
       title: 'Add Product',
       initialSize: 0.85,
       maxSize: 0.95,
-      scrollable: true,
-      child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: const AddEditProductSheet(),
-      ),
+      child: const AddEditProductSheet(),
     );
   }
 
