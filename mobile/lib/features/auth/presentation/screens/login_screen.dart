@@ -466,159 +466,174 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         child: SafeArea(
           minimum: const EdgeInsets.only(
               top: DesignSpacing.sm, bottom: DesignSpacing.lg),
-          child: Stack(
+          // The back button has its own row above the scrolling content, so
+          // the form never slides underneath it.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Decorative 3D-ish brand image in the upper-right background.
-              // Kept small and above the headline: at 55% width it used to run
-              // straight through the title and subtitle (and its orange shop
-              // badge sat on top of the text).
-              Positioned(
-                top: size.height * 0.02,
-                right: size.width * 0.02,
-                width: size.width * 0.34,
-                height: size.width * 0.34,
-                child: AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (context, child) {
-                    return Transform.rotate(
-                      angle: _pulseController.value * 0.06 - 0.03,
-                      child: Transform.scale(
-                        scale: 1.0 + (_pulseController.value * 0.03),
-                        child: child,
-                      ),
-                    );
-                  },
-                  // Hidden while typing: the content scrolls up under it and
-                  // the shop badge would sit on the company name.
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    // The icon artwork has an opaque dark plate, which reads as
-                    // a grey box on the light canvas, so it is dark-theme only.
-                    opacity: (!isDark || MediaQuery.viewInsetsOf(context).bottom > 0)
-                        ? 0.0
-                        : 0.35,
-                    child: Image.asset(
-                      'assets/images/axon_app_icon_512.png',
-                      fit: BoxFit.contain,
-                    ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: 64,
+                  height: 56,
+                  child: AppBackButton(
+                    background: context.themed(DesignColors.darkBg),
+                    color: isDark ? Colors.white : DesignColors.textPrimary,
+                    isDark: isDark,
+                    onPressed: () => context.canPop()
+                        ? context.pop()
+                        : context.go('/company-choice'),
                   ),
                 ),
               ),
-              Center(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: DesignSpacing.xxl,
-                    vertical:
-                        isSmallScreen ? DesignSpacing.md : DesignSpacing.xxxl,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Logo section — first-mount stagger (see StaggeredItem)
-                      StaggeredItem(
-                        itemKey: 'login-logo',
-                        child: AnimatedBuilder(
-                          animation: _pulseController,
-                          builder: (context, child) {
-                            final scale = 1.0 + (_pulseController.value * 0.04);
-                            return Transform.scale(
-                              scale: scale,
+              Expanded(
+                child: Stack(
+                  children: [
+                    // Decorative 3D-ish brand image in the upper-right background.
+                    // Kept small and above the headline: at 55% width it used to run
+                    // straight through the title and subtitle (and its orange shop
+                    // badge sat on top of the text).
+                    Positioned(
+                      top: size.height * 0.02,
+                      right: size.width * 0.02,
+                      width: size.width * 0.34,
+                      height: size.width * 0.34,
+                      child: AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) {
+                          return Transform.rotate(
+                            angle: _pulseController.value * 0.06 - 0.03,
+                            child: Transform.scale(
+                              scale: 1.0 + (_pulseController.value * 0.03),
                               child: child,
-                            );
-                          },
-                          child: Container(
-                            width: isSmallScreen ? 72 : 88,
-                            height: isSmallScreen ? 72 : 88,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.2),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
+                            ),
+                          );
+                        },
+                        // Hidden while typing: the content scrolls up under it and
+                        // the shop badge would sit on the company name.
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          // The icon artwork has an opaque dark plate, which reads as
+                          // a grey box on the light canvas, so it is dark-theme only.
+                          opacity: (!isDark ||
+                                  MediaQuery.viewInsetsOf(context).bottom > 0)
+                              ? 0.0
+                              : 0.35,
+                          child: Image.asset(
+                            'assets/images/axon_app_icon_512.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: DesignSpacing.xxl,
+                          vertical: isSmallScreen
+                              ? DesignSpacing.md
+                              : DesignSpacing.xxxl,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Logo section — first-mount stagger (see StaggeredItem)
+                            StaggeredItem(
+                              itemKey: 'login-logo',
+                              child: AnimatedBuilder(
+                                animation: _pulseController,
+                                builder: (context, child) {
+                                  final scale =
+                                      1.0 + (_pulseController.value * 0.04);
+                                  return Transform.scale(
+                                    scale: scale,
+                                    child: child,
+                                  );
+                                },
+                                child: Container(
+                                  width: isSmallScreen ? 72 : 88,
+                                  height: isSmallScreen ? 72 : 88,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color:
+                                            Colors.black.withValues(alpha: 0.2),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child: _buildLogo(isSmallScreen ? 72 : 88),
+                                  ),
                                 ),
-                              ],
+                              ),
                             ),
-                            child: ClipOval(
-                              child: _buildLogo(isSmallScreen ? 72 : 88),
+                            SizedBox(height: isSmallScreen ? 16 : 24),
+
+                            // Title — dynamic based on fetched company
+                            StaggeredItem(
+                              itemKey: 'login-title',
+                              index: 1,
+                              child: Text(
+                                _companyName ?? 'Join your business',
+                                style: theme.textTheme.headlineLarge?.copyWith(
+                                  color: isDark
+                                      ? Colors.white
+                                      : DesignColors.textPrimary,
+                                  letterSpacing: 0.5,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: DesignSpacing.sm),
+                            StaggeredItem(
+                              itemKey: 'login-subtitle',
+                              index: 2,
+                              child: Text(
+                                _companyName == null
+                                    ? 'CONNECT YOUR STAFF ACCOUNT'
+                                    : 'READY FOR STAFF SIGN IN',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: isDark
+                                      ? Colors.white.withValues(alpha: 0.7)
+                                      : DesignColors.textSecondary,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                                height: isSmallScreen
+                                    ? DesignSpacing.xxl
+                                    : DesignSpacing.xxxl),
+
+                            // Login card
+                            StaggeredItem(
+                              itemKey: 'login-card',
+                              index: 3,
+                              child: _buildLoginCard(
+                                  isSmallScreen, authState, isDark),
+                            ),
+
+                            // Bottom branding
+                            SizedBox(
+                                height: isSmallScreen
+                                    ? DesignSpacing.lg
+                                    : DesignSpacing.xl),
+                            StaggeredItem(
+                              itemKey: 'login-footer',
+                              index: 4,
+                              child: _buildBottomLinks(),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(height: isSmallScreen ? 16 : 24),
-
-                      // Title — dynamic based on fetched company
-                      StaggeredItem(
-                        itemKey: 'login-title',
-                        index: 1,
-                        child: Text(
-                          _companyName ?? 'Join your business',
-                          style: theme.textTheme.headlineLarge?.copyWith(
-                            color:
-                                isDark ? Colors.white : DesignColors.textPrimary,
-                            letterSpacing: 0.5,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                        ),
-                      ),
-                      const SizedBox(height: DesignSpacing.sm),
-                      StaggeredItem(
-                        itemKey: 'login-subtitle',
-                        index: 2,
-                        child: Text(
-                          _companyName == null
-                              ? 'CONNECT YOUR STAFF ACCOUNT'
-                              : 'READY FOR STAFF SIGN IN',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.7)
-                                : DesignColors.textSecondary,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                          height: isSmallScreen
-                              ? DesignSpacing.xxl
-                              : DesignSpacing.xxxl),
-
-                      // Login card
-                      StaggeredItem(
-                        itemKey: 'login-card',
-                        index: 3,
-                        child:
-                            _buildLoginCard(isSmallScreen, authState, isDark),
-                      ),
-
-                      // Bottom branding
-                      SizedBox(
-                          height: isSmallScreen
-                              ? DesignSpacing.lg
-                              : DesignSpacing.xl),
-                      StaggeredItem(
-                        itemKey: 'login-footer',
-                        index: 4,
-                        child: _buildBottomLinks(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Top-left back button. Declared last so it paints above the scrolling
-              // content instead of text sliding over the arrow.
-              Positioned(
-                top: 8,
-                left: 8,
-                child: AppBackButton(
-                  background: context.themed(DesignColors.darkBg),
-                  color: isDark ? Colors.white : DesignColors.textPrimary,
-                  isDark: isDark,
-                  onPressed: () => context.canPop()
-                      ? context.pop()
-                      : context.go('/company-choice'),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1000,7 +1015,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   isLoading: authState.isLoading,
                   height: 48,
                   borderRadius: DesignSpacing.radiusMd,
-                  gradient: const [DesignColors.accent, DesignColors.accentDark],
+                  gradient: const [
+                    DesignColors.accent,
+                    DesignColors.accentDark
+                  ],
                 ),
 
                 const SizedBox(height: DesignSpacing.lg),
