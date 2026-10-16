@@ -260,10 +260,11 @@ class _UpdateSummary extends StatelessWidget {
               Expanded(
                 child: _VersionColumn(
                   label: 'New',
-                  value: update.latestVersion.isEmpty
-                      ? cleanReleaseName(update.displayVersion,
-                          fallback: 'Latest')
-                      : update.latestVersion,
+                  value: releaseVersionFrom(update.releaseName) ??
+                      (update.latestVersion.isEmpty
+                          ? cleanReleaseName(update.displayVersion,
+                              fallback: 'Latest')
+                          : update.latestVersion),
                   color: DesignColors.accent,
                   alignEnd: true,
                 ),

@@ -127,6 +127,14 @@ String cleanReleaseName(String? raw, {required String fallback}) {
   return name.isEmpty ? fallback : name;
 }
 
+/// The visible version inside a release name such as "Axon POS 1.0.68".
+/// The manifest's own latestVersion is an internal, always-increasing
+/// compatibility number (for example 1.0.109) that people should not see.
+String? releaseVersionFrom(String? releaseName) {
+  final match = RegExp(r'\d+\.\d+\.\d+').firstMatch(releaseName ?? '');
+  return match?.group(0);
+}
+
 List<String> _splitLongSentence(String text) {
   final cleaned = text.replaceFirst(RegExp(r'^[-*•]\s*'), '');
   final parts = cleaned.split(RegExp(r'(?<=[.!?])\s+'));
@@ -238,14 +246,6 @@ class UpdateReleaseMeta extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              // The title usually already carries the version; don't repeat it.
-              if (!title.contains(version)) ...[
-                const SizedBox(height: 3),
-                Text(
-                  version,
-                  style: TextStyle(color: tertiary, fontSize: 11),
-                ),
-              ],
             ],
           ),
         ],

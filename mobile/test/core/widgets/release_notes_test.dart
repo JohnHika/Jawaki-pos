@@ -82,6 +82,9 @@ void main() {
       expect(cleanReleaseName('  ', fallback: 'Axon POS 1.0.50'), 'Axon POS 1.0.50');
     });
   });
+
+  main2();
+  main3();
 }
 
 // Build 2099/2100's GitHub body: the changes follow the "Update Sources"
@@ -104,6 +107,16 @@ const _headinglessChangesBody = '''
 Fixes: Approving, rejecting and fulfilling a stock request now works
 Fixes: An expired sign-in now returns you to the login screen
 ''';
+
+void main3() {
+  test('the visible version comes from the release name, not the manifest',
+      () {
+    expect(releaseVersionFrom('Axon POS 1.0.68'), '1.0.68');
+    expect(releaseVersionFrom('Axon POS Android 1.0.68'), '1.0.68');
+    expect(releaseVersionFrom('Latest build'), isNull);
+    expect(releaseVersionFrom(null), isNull);
+  });
+}
 
 void main2() {
   test('changes listed after the technical sections are still shown', () {

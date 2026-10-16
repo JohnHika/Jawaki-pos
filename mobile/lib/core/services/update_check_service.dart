@@ -523,6 +523,8 @@ class UpdateCheckService extends ChangeNotifier {
   static const _pendingNoticeVersionKey = 'pending_update_notice_version';
   static const _pendingNoticeReleaseNotesKey =
       'pending_update_notice_release_notes';
+  static const _pendingNoticePublishedAtKey =
+      'pending_update_notice_published_at';
 
   /// Records that this update's notice should be shown once the app
   /// relaunches on the new build, independent of whether a later live
@@ -538,6 +540,11 @@ class UpdateCheckService extends ChangeNotifier {
     await prefs.setInt(_pendingNoticeBuildKey, buildNumber);
     await prefs.setString(_pendingNoticeVersionKey, update.displayVersion);
     await prefs.setString(_pendingNoticeReleaseNotesKey, update.releaseNotes);
+    final publishedAt = update.publishedAt;
+    if (publishedAt != null) {
+      await prefs.setString(
+          _pendingNoticePublishedAtKey, publishedAt.toIso8601String());
+    }
   }
 
   /// Checks for a notice persisted by _persistPendingInstalledNotice and, if
@@ -555,6 +562,9 @@ class UpdateCheckService extends ChangeNotifier {
 
     final pendingVersion = prefs.getString(_pendingNoticeVersionKey) ?? '';
     final pendingNotes = prefs.getString(_pendingNoticeReleaseNotesKey) ?? '';
+    final pendingPublishedAt = DateTime.tryParse(
+        prefs.getString(_pendingNoticePublishedAtKey) ?? '');
+    await prefs.remove(_pendingNoticePublishedAtKey);
     await prefs.remove(_pendingNoticeBuildKey);
     await prefs.remove(_pendingNoticeVersionKey);
     await prefs.remove(_pendingNoticeReleaseNotesKey);
@@ -572,6 +582,7 @@ class UpdateCheckService extends ChangeNotifier {
       forceUpdate: false,
       apkUrl: '',
       releaseNotes: pendingNotes,
+      publishedAt: pendingPublishedAt,
     );
   }
 
