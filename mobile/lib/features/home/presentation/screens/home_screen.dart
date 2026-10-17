@@ -7,7 +7,6 @@ import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/notification_service.dart';
-import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -171,7 +170,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     // Trade partners are restricted by the backend to business owners and
     // managers, so keep the entry hidden for other legacy account roles.
-    final legacyRole = getIt<AuthService>().userRole?.toUpperCase();
+    final legacyRole = ref.watch(userRoleProvider)?.toUpperCase();
     if (legacyRole == 'ADMIN' || legacyRole == 'MANAGER') {
       // Businesses this shop trades with: connect by company code and chat.
       items.add(_NavItem(

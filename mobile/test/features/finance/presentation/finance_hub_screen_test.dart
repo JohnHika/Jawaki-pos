@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:axon_pos/features/finance/domain/finance_models.dart';
 import 'package:axon_pos/features/finance/presentation/providers/finance_hub_controller.dart';
 import 'package:axon_pos/features/finance/presentation/screens/finance_screen.dart';
+import 'package:axon_pos/core/auth/app_roles.dart';
+import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
 
 FinanceSnapshot _snapshot({
@@ -147,7 +149,15 @@ class _StubSource implements FinanceHubDataSource {
 }
 
 Widget _host(FinanceHubController controller) => ProviderScope(
-      overrides: [financeHubProvider.overrideWith((ref) => controller)],
+      overrides: [
+        financeHubProvider.overrideWith((ref) => controller),
+        permissionsProvider.overrideWithValue(RolePermissions(const <String>[
+          'finance.view',
+          'cash_flow.settings_view',
+          'suppliers.invoices_create',
+          'finance.manage_receivables',
+        ])),
+      ],
       child: MaterialApp.router(
         routerConfig: GoRouter(
           initialLocation: '/finance',

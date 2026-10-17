@@ -20,9 +20,10 @@ void main() {
     expect(isPermissionDenied(_err(500)), isFalse);
   });
 
-  test('no response or other errors fall back to the connection hint', () {
+  test('network failures hint connection and unknown errors stay generic', () {
     expect(loadErrorSubtitle(_err(null)), contains('connection'));
-    expect(loadErrorSubtitle(Exception('x')), contains('connection'));
+    expect(loadErrorSubtitle(Exception('x')),
+        'Something went wrong. Please try again.');
     expect(isPermissionDenied(null), isFalse);
   });
 }

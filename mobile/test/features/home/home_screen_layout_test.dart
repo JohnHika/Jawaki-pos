@@ -159,6 +159,7 @@ Future<_HomeHarness> _pumpHome(
       permissionsProvider.overrideWithValue(
         RolePermissions(const ['products.view', 'sales.create']),
       ),
+      userRoleProvider.overrideWithValue('ADMIN'),
       tenantIdentityProvider.overrideWithValue(TenantIdentity.empty),
       // Start in the specified resolved branch, avoiding a transient loading
       // branch masking the restricted host's own flex-constraint regression.

@@ -313,8 +313,8 @@ void main() {
       await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
 
-      // Error should be shown
-      expect(find.text('Network error'), findsOneWidget);
+      // Unexpected internal exceptions use plain-language copy.
+      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
     });
 
     testWidgets('comparison table renders three plan columns', (tester) async {
