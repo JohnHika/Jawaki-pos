@@ -30,6 +30,7 @@ class _InventoryForecastingScreenState
   List<Map<String, dynamic>> _slowMovingItems = [];
   List<Map<String, dynamic>> _forecastData = [];
   bool _isLoading = true;
+  bool _isUsingLocalSales = false;
 
   @override
   void initState() {
@@ -70,8 +71,10 @@ class _InventoryForecastingScreenState
         _fastMovingItems = ranking.take(10).toList();
         _slowMovingItems = slowestFromRanking(ranking);
         _forecastData = weeklyVelocityFromServer(results[1], now);
+        _isUsingLocalSales = false;
       } catch (e) {
         if (!kReleaseMode) debugPrint('Forecast server load failed, using local: $e');
+        _isUsingLocalSales = true;
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
         final endOfWeek = startOfWeek.add(const Duration(days: 7));
         _fastMovingItems =
@@ -147,6 +150,10 @@ class _InventoryForecastingScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_isUsingLocalSales) ...[
+                      _buildLocalSalesNotice(),
+                      const SizedBox(height: DesignSpacing.lg),
+                    ],
                     // First-mount entrance: each section fades/rises in
                     // once, staggered (see StaggeredItem); stable keys keep
                     // pull-to-refresh from replaying them.
@@ -196,14 +203,39 @@ class _InventoryForecastingScreenState
     );
   }
 
+  Widget _buildLocalSalesNotice() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.warning.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.phone_android_rounded,
+              color: DesignColors.warning, size: 18),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              'Sales trends use records saved on this device. Sales from other devices may be missing.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                    height: 1.35,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildForecastSummary() {
     final lowStockCount = _lowStockItems.length;
-    final fastMovingCount = _fastMovingItems.length;
-    final slowMovingCount = _slowMovingItems.length;
-    final totalReorderRisk = (lowStockCount /
-            (lowStockCount + fastMovingCount + slowMovingCount + 1) *
-            100)
-        .round();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs - 2),
@@ -211,16 +243,12 @@ class _InventoryForecastingScreenState
         children: [
           Expanded(
             child: MetricCard(
-              title: 'Reorder Risk',
-              value: '$totalReorderRisk%',
-              icon: Icons.warning_amber_rounded,
-              color: totalReorderRisk > 50
-                  ? DesignColors.error
-                  : totalReorderRisk > 25
-                      ? DesignColors.warning
-                      : DesignColors.success,
-              trend: totalReorderRisk > 50 ? 'High' : 'Low',
-              trendValue: totalReorderRisk > 50 ? -1 : 1,
+              title: 'Low Stock Items',
+              value: '$lowStockCount',
+              icon: Icons.inventory_2_outlined,
+              color: lowStockCount == 0
+                  ? DesignColors.success
+                  : DesignColors.warning,
             ),
           ),
         ],
@@ -229,6 +257,9 @@ class _InventoryForecastingScreenState
   }
 
   Widget _buildDemandForecastChart(bool isDark) {
+    final hasUnitsSold = _forecastData.any(
+      (row) => ((row['itemsSold'] as num?) ?? 0) > 0,
+    );
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
@@ -258,7 +289,26 @@ class _InventoryForecastingScreenState
           const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 280,
-            child: RevealLineChart(
+            child: !hasUnitsSold
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.show_chart_rounded,
+                            color: tertiaryColor, size: 32),
+                        const SizedBox(height: DesignSpacing.sm),
+                        Text(
+                          'No units sold in the last 7 days',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: tertiaryColor),
+                        ),
+                      ],
+                    ),
+                  )
+                : RevealLineChart(
               LineChartData(
                 lineBarsData: [
                   LineChartBarData(

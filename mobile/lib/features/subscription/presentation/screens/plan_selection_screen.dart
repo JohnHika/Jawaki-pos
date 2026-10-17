@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../domain/subscription_plans.dart';
 
@@ -83,14 +84,13 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
           error.type == DioExceptionType.connectionError) {
         return 'Couldn\u2019t reach the server. Check your internet and try again.';
       }
+      return loadErrorSubtitle(error);
     }
     final text = error.toString();
     if (text.contains('503') || text.contains('not configured')) {
       return 'Subscription service is not available yet. Please contact Axon support.';
     }
-    return text.replaceFirst('Exception: ', '').trim().isEmpty
-        ? 'Something went wrong. Please try again.'
-        : text.replaceFirst('Exception: ', '').trim();
+    return 'Something went wrong. Please try again.';
   }
 
   @override

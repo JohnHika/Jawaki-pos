@@ -184,6 +184,7 @@ class CartScreen extends ConsumerWidget {
       title: 'Your cart is empty',
       subtitle: 'Add items from the POS screen',
       actionLabel: 'Start Shopping',
+      actionIcon: Icons.add_shopping_cart_rounded,
       onAction: () => context.pop(),
     );
   }

@@ -215,12 +215,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         title: 'Inventory',
         showBackButton: false,
         actions: [
-          if (permissions.canManageStock) ...[
+          if (permissions.canMakeSales || permissions.canManageStock)
             IconButton(
               icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
               tooltip: 'Request Stock',
               onPressed: () => context.push('/inventory/request-stock'),
             ),
+          if (permissions.canManageStock) ...[
             IconButton(
               icon: const Icon(Icons.inventory_rounded, size: 20),
               tooltip: 'Receive Stock',

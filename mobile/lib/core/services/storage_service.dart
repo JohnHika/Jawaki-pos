@@ -599,6 +599,11 @@ class StorageService implements LifecycleLockStorage {
     await _prefs!.setString(keyServerBaseUrl, normalized);
   }
 
+  Future<void> clearServerBaseUrl() async {
+    _checkInitialized();
+    await _prefs!.remove(keyServerBaseUrl);
+  }
+
   // Clear all data
   Future<void> clearAll() async {
     await clearSecureStorage();

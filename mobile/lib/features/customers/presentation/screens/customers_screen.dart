@@ -318,6 +318,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                               subtitle: _showDebtOnly
                                   ? 'Everyone is paid up'
                                   : 'Add your first customer to get started',
+                              actionIcon: Icons.person_add_alt_1_rounded,
                               actionLabel:
                                   _showDebtOnly ? null : 'Add Customer',
                               onAction:

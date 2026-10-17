@@ -29,6 +29,8 @@ class _PaymentAnalyticsScreenState
   List<Map<String, dynamic>> _transactionTrends = [];
   List<Map<String, dynamic>> _peakHours = [];
   bool _isLoading = true;
+  bool _usingLocalData = false;
+  String? _loadError;
   int _selectedPeriod = 0;
 
   final List<String> _periods = ['Today', 'This Week', 'This Month'];
@@ -40,7 +42,10 @@ class _PaymentAnalyticsScreenState
   }
 
   Future<void> _loadPaymentData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     final now = DateTime.now();
     final DateTime from;
@@ -62,20 +67,21 @@ class _PaymentAnalyticsScreenState
       // Prefer the server (covers every device); use this device's own records
       // if offline or the request fails.
       await _loadFromServer(from, to);
+      _usingLocalData = false;
     } catch (e) {
       if (!kReleaseMode) debugPrint('Payment analytics server load failed, using local: $e');
       try {
         await _loadFromLocal(now);
+        _usingLocalData = true;
       } catch (e2) {
         if (!kReleaseMode) debugPrint('Payment analytics load error: $e2');
         if (mounted) {
-          setState(() => _isLoading = false);
-          showGlassSnackBar(
-            context,
-            "Couldn't load payment analytics. Check your connection and try again.",
-            icon: Icons.error_outline_rounded,
-            color: DesignColors.error,
-          );
+          setState(() {
+            _isLoading = false;
+            _usingLocalData = false;
+            _loadError =
+                "Couldn't load payment analytics. Check your connection and try again.";
+          });
         }
         return;
       }
@@ -167,7 +173,21 @@ class _PaymentAnalyticsScreenState
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: DesignColors.brand))
-          : RefreshIndicator(
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(DesignSpacing.lg),
+                    child: EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Could not load payment analytics',
+                      subtitle: _loadError!,
+                      actionLabel: 'Retry',
+                      iconColor: DesignColors.error,
+                      onAction: _loadPaymentData,
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
               onRefresh: _loadPaymentData,
               child: PageContainer(
                 withScroll: true,
@@ -176,6 +196,14 @@ class _PaymentAnalyticsScreenState
                   children: [
                     // Period Selector
                     _buildPeriodSelector(isDark),
+                    if (_usingLocalData) ...[
+                      const SizedBox(height: DesignSpacing.md),
+                      InlineRetryNotice(
+                        message:
+                            'Offline: showing sales saved on this device.',
+                        onRetry: _loadPaymentData,
+                      ),
+                    ],
                     const SizedBox(height: DesignSpacing.xxl),
 
                     // Payment Summary Cards

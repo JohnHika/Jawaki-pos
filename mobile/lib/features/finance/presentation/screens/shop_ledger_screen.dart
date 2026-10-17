@@ -10,6 +10,7 @@ import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
 import '../widgets/shop_installment_sheet.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Everything one other shop owes us and has paid back: the running balance,
 /// each debt with its progress, and a dated list of every instalment received.
@@ -21,6 +22,8 @@ class ShopLedgerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hub = ref.watch(financeHubProvider);
+    final canManageReceivables =
+        ref.watch(permissionsProvider).canManageReceivables;
     final controller = ref.read(financeHubProvider.notifier);
     final snapshot = hub.snapshot;
     PeerDebtor? shop;
@@ -29,17 +32,36 @@ class ShopLedgerScreen extends ConsumerWidget {
         if (d.id == shopId) shop = d;
       }
     }
-    if (snapshot == null || shop == null) {
+    if (snapshot == null) {
+      return Scaffold(
+        appBar: const BrandedAppBar(title: 'Shop account', showLogo: false),
+        body: hub.isRefreshing
+            ? const Center(child: CircularProgressIndicator())
+            : EmptyState(
+                icon: Icons.error_outline_rounded,
+                title: 'Could not load shop account',
+                subtitle: hub.errorMessage ?? 'Refresh Finance and try again.',
+                iconColor: DesignColors.error,
+                actionLabel: hub.canRetry ? 'Retry' : null,
+                onAction: hub.canRetry ? controller.refresh : null,
+              ),
+      );
+    }
+    if (shop == null) {
       return const Scaffold(
         appBar: BrandedAppBar(title: 'Shop account', showLogo: false),
-        body: Center(child: Text('This shop is not available right now.')),
+        body: EmptyState(
+          icon: Icons.store_outlined,
+          title: 'Shop account not found',
+          subtitle: 'Refresh Finance and open the shop from the list again.',
+        ),
       );
     }
     final statement = shopStatement(snapshot, shop);
     final instalments = mergeInstalments(statement.collections);
     return Scaffold(
       appBar: BrandedAppBar(title: shop.name, showLogo: false),
-      bottomNavigationBar: statement.outstanding > 0
+      bottomNavigationBar: canManageReceivables && statement.outstanding > 0
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -84,8 +106,9 @@ class ShopLedgerScreen extends ConsumerWidget {
                 '${instalments.length} payment${instalments.length == 1 ? '' : 's'}'),
             const SizedBox(height: DesignSpacing.sm),
             if (statement.collections.isEmpty)
-              const _Hint(
-                  'Nothing collected yet. Record an instalment when this shop pays.')
+              _Hint(canManageReceivables
+                  ? 'Nothing collected yet. Record an instalment when this shop pays.'
+                  : 'Nothing collected yet.')
             else
               _Timeline(entries: instalments),
           ],

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../data/models/permission_catalog.dart';
 import '../providers/user_management_provider.dart';
@@ -68,7 +69,9 @@ class _UserPermissionOverrideScreenState
 
   void _showError(Object e) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(loadErrorSubtitle(e))),
+    );
   }
 
   @override
@@ -88,21 +91,28 @@ class _UserPermissionOverrideScreenState
             error: (err, _) => EmptyState(
               icon: Icons.error_outline_rounded,
               title: 'Could not load user permissions',
-              subtitle: err.toString(),
+              subtitle: loadErrorSubtitle(err),
+              actionLabel: 'Retry',
+              onAction: () => ref.invalidate(
+                  userPermissionBreakdownProvider(widget.userId)),
             ),
             data: (breakdown) => rolesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, _) => EmptyState(
                 icon: Icons.error_outline_rounded,
                 title: 'Could not load roles',
-                subtitle: err.toString(),
+                subtitle: loadErrorSubtitle(err),
+                actionLabel: 'Retry',
+                onAction: () => ref.invalidate(tenantRolesProvider),
               ),
               data: (allRoles) => catalogAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (err, _) => EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Could not load permission catalog',
-                  subtitle: err.toString(),
+                  subtitle: loadErrorSubtitle(err),
+                  actionLabel: 'Retry',
+                  onAction: () => ref.invalidate(permissionCatalogProvider),
                 ),
                 data: (groups) => _buildBody(breakdown, allRoles, groups),
               ),

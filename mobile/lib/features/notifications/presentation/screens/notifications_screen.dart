@@ -94,16 +94,25 @@ class NotificationsScreen extends ConsumerWidget {
       );
     }
 
+    final showRetryNotice = inbox.error != null;
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.md,
           DesignSpacing.lg, DesignSpacing.xxxl),
-      itemCount: inbox.items.length,
+      itemCount: inbox.items.length + (showRetryNotice ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: DesignSpacing.sm),
       itemBuilder: (context, index) {
-        final item = inbox.items[index];
+        if (showRetryNotice && index == 0) {
+          return InlineRetryNotice(
+            message: inbox.error!,
+            onRetry: controller.refresh,
+          );
+        }
+
+        final itemIndex = index - (showRetryNotice ? 1 : 0);
+        final item = inbox.items[itemIndex];
         return SoftEntrance(
-          delay: Duration(milliseconds: 40 * index.clamp(0, 8)),
+          delay: Duration(milliseconds: 40 * itemIndex.clamp(0, 8)),
           child: _NotificationTile(
             notification: item,
             onTap: () {

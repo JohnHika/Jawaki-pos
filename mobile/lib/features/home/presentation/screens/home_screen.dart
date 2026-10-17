@@ -7,6 +7,7 @@ import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/theme/axon_ai_icon.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -134,6 +135,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           activeIcon: Icons.warehouse_rounded,
           label: 'Inventory',
           path: '/inventory'));
+    } else if (perms.canMakeSales || perms.canManageStock) {
+      // Sellers may request stock without permission to browse the inventory
+      // management screen, so keep the request form reachable from More.
+      items.add(_NavItem(
+          icon: Icons.add_shopping_cart_outlined,
+          activeIcon: Icons.add_shopping_cart_rounded,
+          label: 'Request Stock',
+          path: '/inventory/request-stock'));
     }
     if (perms.canSeeReports) {
       items.add(_NavItem(
@@ -152,13 +161,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         activeIcon: Icons.settings_rounded,
         label: 'Settings',
         path: '/settings'));
-    // Finance
-    if (perms.canSeeReports) {
+    // Finance has its own backend permission, separate from reporting.
+    if (perms.canViewFinance) {
       items.add(_NavItem(
           icon: Icons.account_balance_wallet_outlined,
           activeIcon: Icons.account_balance_wallet_rounded,
           label: 'Finance',
           path: '/finance'));
+    }
+    // Trade partners are restricted by the backend to business owners and
+    // managers, so keep the entry hidden for other legacy account roles.
+    final legacyRole = getIt<AuthService>().userRole?.toUpperCase();
+    if (legacyRole == 'ADMIN' || legacyRole == 'MANAGER') {
       // Businesses this shop trades with: connect by company code and chat.
       items.add(_NavItem(
           icon: Icons.handshake_outlined,

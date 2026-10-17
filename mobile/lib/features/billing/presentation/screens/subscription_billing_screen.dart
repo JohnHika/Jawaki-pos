@@ -51,6 +51,8 @@ String _statusLabel(String? status) {
       return 'Pending';
     case 'PENDING_CONFIRMATION':
       return 'Awaiting Confirmation';
+    case 'UNKNOWN':
+      return 'Status unavailable';
     default:
       return status ?? 'Unknown';
   }
@@ -81,6 +83,7 @@ class _SubscriptionBillingScreenState
   BillingEntitlement? _entitlement;
   Map<String, dynamic>? _settings;
   List<dynamic> _invoices = [];
+  String? _invoiceError;
   List<dynamic> _pendingClaims = [];
   bool _isLoadingEntitlement = true;
   bool _isLoadingInvoices = true;
@@ -95,6 +98,12 @@ class _SubscriptionBillingScreenState
     final user = getIt<AuthService>().currentUser;
     final role = user?['role']?.toString().toUpperCase();
     return role == 'ADMIN';
+  }
+
+  SubscriptionPlan? get _billingPlan {
+    final entitlementPlan = planById(_entitlement?.plan);
+    if (entitlementPlan != null) return entitlementPlan;
+    return planById(_settings?['plan']?.toString());
   }
 
   @override
@@ -133,7 +142,10 @@ class _SubscriptionBillingScreenState
   }
 
   Future<void> _loadInvoices() async {
-    setState(() => _isLoadingInvoices = true);
+    setState(() {
+      _isLoadingInvoices = true;
+      _invoiceError = null;
+    });
     try {
       final invoices = await _apiClient.getBillingInvoices();
       if (!mounted) return;
@@ -141,9 +153,12 @@ class _SubscriptionBillingScreenState
         _invoices = invoices;
         _isLoadingInvoices = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _isLoadingInvoices = false);
+      setState(() {
+        _isLoadingInvoices = false;
+        _invoiceError = _friendlyError(error);
+      });
     }
   }
 
@@ -204,7 +219,7 @@ class _SubscriptionBillingScreenState
   }
 
   void _showChangePlanSheet() {
-    final currentPlan = (_entitlement?.plan ?? 'CORE').toLowerCase();
+    final currentPlan = (_billingPlan?.id ?? 'core').toLowerCase();
     String selectedPlan = currentPlan == 'trial' ? 'core' : currentPlan;
 
     showModalBottomSheet(
@@ -380,6 +395,12 @@ class _SubscriptionBillingScreenState
                 _buildErrorCard(_error!),
                 const SizedBox(height: DesignSpacing.lg),
               ],
+              if (_entitlement?.source == EntitlementSource.offlineCache) ...[
+                _buildBillingNotice(
+                  'Showing saved billing details. Reconnect to confirm your current status.',
+                ),
+                const SizedBox(height: DesignSpacing.md),
+              ],
               // First-mount entrance choreography: each section and invoice
               // row fades/rises in once, staggered (see StaggeredItem).
               // Keys are stable, so pull-to-refresh never replays them.
@@ -400,11 +421,14 @@ class _SubscriptionBillingScreenState
               ],
               const SettingsGroupLabel('Renewal'),
               const SizedBox(height: DesignSpacing.sm),
-              StaggeredItem(
-                itemKey: 'billing-pay-cta',
-                index: 1,
-                child: _buildPayWithMpesaButton(),
-              ),
+              if (_billingPlan != null)
+                StaggeredItem(
+                  itemKey: 'billing-pay-cta',
+                  index: 1,
+                  child: _buildPayWithMpesaButton(),
+                )
+              else
+                _buildPayUnavailableCard(),
               const SizedBox(height: DesignSpacing.md),
               if (_isAdmin) ...[
                 StaggeredItem(
@@ -418,16 +442,20 @@ class _SubscriptionBillingScreenState
               ],
               const SettingsGroupLabel('Invoice History'),
               const SizedBox(height: DesignSpacing.sm),
-              if (_isLoadingInvoices)
+              if (_invoiceError != null) ...[
+                _buildInvoiceError(_invoiceError!),
+                const SizedBox(height: DesignSpacing.md),
+              ],
+              if (_isLoadingInvoices && _invoices.isEmpty)
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.all(DesignSpacing.xxl),
                     child: CircularProgressIndicator(),
                   ),
                 )
-              else if (_invoices.isEmpty)
+              else if (_invoices.isEmpty && _invoiceError == null)
                 _buildEmptyInvoices()
-              else
+              else if (_invoices.isNotEmpty)
                 ..._invoices.asMap().entries.map(
                       (entry) => StaggeredItem(
                         itemKey:
@@ -480,8 +508,9 @@ class _SubscriptionBillingScreenState
       );
     }
 
+    final billingPlan = _billingPlan;
     final badgeColor = _statusColor(entitlement.status);
-    final days = entitlement.daysRemaining ?? 0;
+    final days = entitlement.daysRemaining;
     final nextPayment = entitlement.paidUntil;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -532,7 +561,7 @@ class _SubscriptionBillingScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      entitlement.plan.toUpperCase(),
+                      billingPlan?.name ?? 'Billing details unavailable',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: context.themed(DesignColors.darkTextPrimary),
                         fontWeight: FontWeight.w800,
@@ -567,29 +596,32 @@ class _SubscriptionBillingScreenState
             ],
           ),
           const SizedBox(height: DesignSpacing.xl),
-          // Amount
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              CountUpText(
-                _amountLabel(entitlement),
-                style: DesignType.numeric(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: context.themed(DesignColors.darkTextPrimary),
+          if (billingPlan != null)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                CountUpText(
+                  _amountLabel(billingPlan),
+                  style: DesignType.numeric(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: context.themed(DesignColors.darkTextPrimary),
+                  ),
                 ),
-              ),
-              const SizedBox(width: DesignSpacing.sm),
-              Padding(
-                padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
-                child: Text(
-                  '/month',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: context.themed(DesignColors.darkTextTertiary)),
-                ),
-              ),
-            ],
-          ),
+                if (billingPlan.id != 'trial') ...[
+                  const SizedBox(width: DesignSpacing.sm),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
+                    child: Text(
+                      '/month',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: context.themed(DesignColors.darkTextTertiary),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           const SizedBox(height: DesignSpacing.lg),
           Container(
             height: 1,
@@ -603,7 +635,7 @@ class _SubscriptionBillingScreenState
               'Next payment: ${_formatDate(nextPayment)}',
             ),
           // The progress bar below already shows the days left.
-          if (days <= 0)
+          if (days != null && days <= 0)
             _buildInfoRow(
               Icons.hourglass_bottom_rounded,
               entitlement.daysOverdue > 0
@@ -620,9 +652,18 @@ class _SubscriptionBillingScreenState
             const SizedBox(height: DesignSpacing.sm),
             _buildGraceNotice(),
           ],
-          const SizedBox(height: DesignSpacing.md),
-          // Days-remaining progress bar
-          _buildDaysProgressBar(days, overdue: entitlement.daysOverdue),
+          if ((entitlement.state == EntitlementState.unknown ||
+                  billingPlan == null) &&
+              entitlement.source != EntitlementSource.offlineCache) ...[
+            const SizedBox(height: DesignSpacing.sm),
+            _buildBillingNotice(
+              'Reconnect to confirm your plan and renewal date.',
+            ),
+          ],
+          if (days != null) ...[
+            const SizedBox(height: DesignSpacing.md),
+            _buildDaysProgressBar(days, overdue: entitlement.daysOverdue),
+          ],
         ],
       ),
     );
@@ -815,7 +856,7 @@ class _SubscriptionBillingScreenState
   }
 
   Widget _buildManagePlanTile() {
-    final plan = _entitlement?.plan ?? 'CORE';
+    final plan = _billingPlan;
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
@@ -848,7 +889,9 @@ class _SubscriptionBillingScreenState
                 ),
                 const SizedBox(height: DesignSpacing.xs),
                 Text(
-                  '${planDisplayName(plan)} · compare features or change your tier',
+                  plan == null
+                      ? 'Reconnect to load your current plan'
+                      : '${plan.name} · compare features or change your tier',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: context.themed(DesignColors.darkTextSecondary),
                       ),
@@ -857,7 +900,9 @@ class _SubscriptionBillingScreenState
             ),
           ),
           TextButton(
-            onPressed: _isChangingPlan ? null : _showChangePlanSheet,
+            onPressed: _isChangingPlan || plan == null
+                ? null
+                : _showChangePlanSheet,
             child: const Text('Change'),
           ),
         ],
@@ -976,6 +1021,28 @@ class _SubscriptionBillingScreenState
     );
   }
 
+  Widget _buildPayUnavailableCard() {
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.wifi_off_rounded,
+              color: context.themed(DesignColors.darkTextSecondary)),
+          const SizedBox(width: DesignSpacing.md),
+          const Expanded(
+            child: Text('Reconnect to load your plan before making a payment.'),
+          ),
+          TextButton(onPressed: _loadData, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAutoRenewTile() {
     final theme = Theme.of(context);
     final settings = _settings;
@@ -1052,9 +1119,8 @@ class _SubscriptionBillingScreenState
       ),
       clipBehavior: Clip.antiAlias,
       builder: (sheetContext) => _PayWithMpesaSheet(
-        monthlyAmount: _settings?['plan'] != null
-            ? _monthlyAmountFromSettings(_settings!)
-            : null,
+        monthlyAmount: _monthlyAmountFromSettings(_settings) ??
+            _billingPlan?.priceKes,
         manualPaybillPhone: _settings?['manualPaybill']?['phone']?.toString(),
         accountFormat:
             _settings?['manualPaybill']?['accountFormat']?.toString(),
@@ -1252,21 +1318,59 @@ class _SubscriptionBillingScreenState
     );
   }
 
+  Widget _buildInvoiceError(String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignSpacing.md,
+        vertical: DesignSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: DesignColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.error.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: DesignColors.error, size: 18),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(child: Text(message)),
+          TextButton(onPressed: _loadInvoices, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBillingNotice(String message) {
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded,
+              color: DesignColors.warning, size: 18),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    );
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────
 
-  String _amountLabel(BillingEntitlement entitlement) {
-    final amount = _settings?['plan'] != null
-        ? _monthlyAmountFromSettings(_settings!)
-        : _planPrice(entitlement.plan);
-    return 'KES ${_formatAmount(amount)}';
+  String _amountLabel(SubscriptionPlan plan) {
+    if (plan.id == 'trial') return 'Free trial';
+    return 'KES ${_formatAmount(plan.priceKes)}';
   }
 
-  num _monthlyAmountFromSettings(Map<String, dynamic> settings) {
-    final plan = settings['plan']?.toString().toUpperCase() ?? 'CORE';
-    return _planPrice(plan);
+  num? _monthlyAmountFromSettings(Map<String, dynamic>? settings) {
+    return planById(settings?['plan']?.toString())?.priceKes;
   }
-
-  num _planPrice(String plan) => planPriceKes(plan);
 
   String _formatDate(String iso) {
     try {

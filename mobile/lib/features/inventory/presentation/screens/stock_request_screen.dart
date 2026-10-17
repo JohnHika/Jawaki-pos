@@ -10,6 +10,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../widgets/product_picker_dialog.dart';
 
@@ -194,7 +195,7 @@ class _StockRequestScreenState extends ConsumerState<StockRequestScreen> {
 
       showGlassSnackBar(
         context,
-        'Error: ${e.toString()}',
+        loadErrorSubtitle(e),
         icon: Icons.error_outline_rounded,
         color: DesignColors.error,
       );

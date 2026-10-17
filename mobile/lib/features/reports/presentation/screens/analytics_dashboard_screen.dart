@@ -30,6 +30,8 @@ class _AnalyticsDashboardScreenState
   List<Map<String, dynamic>> _salesByPayment = [];
   List<Map<String, dynamic>> _salesByCategory = [];
   bool _isLoading = true;
+  bool _isUsingLocalData = false;
+  String? _loadError;
   int _selectedPeriod = 0; // 0: Today, 1: Week, 2: Month
 
   final List<String> _periods = ['Today', 'This Week', 'This Month'];
@@ -41,7 +43,10 @@ class _AnalyticsDashboardScreenState
   }
 
   Future<void> _loadAnalyticsData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     final now = DateTime.now();
     final DateTime from;
@@ -64,20 +69,20 @@ class _AnalyticsDashboardScreenState
       // fresh install sees real data; fall back to this device's records when
       // offline (or the request fails).
       await _loadFromServer(from, to);
+      _isUsingLocalData = false;
     } catch (e) {
       if (!kReleaseMode) debugPrint('Analytics server load failed, using local: $e');
       try {
         await _loadFromLocal(now);
+        _isUsingLocalData = true;
       } catch (e2) {
         if (!kReleaseMode) debugPrint('Analytics load error: $e2');
         if (mounted) {
-          setState(() => _isLoading = false);
-          showGlassSnackBar(
-            context,
-            "Couldn't load analytics. Check your connection and try again.",
-            icon: Icons.error_outline_rounded,
-            color: DesignColors.error,
-          );
+          setState(() {
+            _isLoading = false;
+            _loadError =
+                "Couldn't load analytics. Check your connection and try again.";
+          });
         }
         return;
       }
@@ -172,6 +177,24 @@ class _AnalyticsDashboardScreenState
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: DesignColors.brand))
+          : _loadError != null
+              ? RefreshIndicator(
+                  onRefresh: _loadAnalyticsData,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      const SizedBox(height: DesignSpacing.huge),
+                      EmptyState(
+                        icon: Icons.error_outline_rounded,
+                        title: "Couldn't load analytics",
+                        subtitle: _loadError,
+                        iconColor: DesignColors.error,
+                        actionLabel: 'Retry',
+                        onAction: _loadAnalyticsData,
+                      ),
+                    ],
+                  ),
+                )
           : RefreshIndicator(
               onRefresh: _loadAnalyticsData,
               child: PageContainer(
@@ -179,6 +202,10 @@ class _AnalyticsDashboardScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_isUsingLocalData) ...[
+                      _buildLocalDataNotice(),
+                      const SizedBox(height: DesignSpacing.lg),
+                    ],
                     // First-mount entrance: each section fades/rises in
                     // once, staggered (see StaggeredItem); stable keys keep
                     // pull-to-refresh and period switches from replaying.
@@ -253,6 +280,37 @@ class _AnalyticsDashboardScreenState
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildLocalDataNotice() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.warning.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.phone_android_rounded,
+              color: DesignColors.warning, size: 18),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(
+              'Showing sales saved on this device. Sales from other devices may be missing.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
+                    height: 1.35,
+                  ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -418,7 +476,26 @@ class _AnalyticsDashboardScreenState
           const SizedBox(height: DesignSpacing.xl),
           SizedBox(
             height: 250,
-            child: RevealLineChart(
+            child: _hourlySales.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.show_chart_rounded,
+                            color: tertiaryColor, size: 32),
+                        const SizedBox(height: DesignSpacing.sm),
+                        Text(
+                          'No sales recorded for this period',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: tertiaryColor),
+                        ),
+                      ],
+                    ),
+                  )
+                : RevealLineChart(
               LineChartData(
                 lineBarsData: [
                   LineChartBarData(

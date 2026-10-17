@@ -111,7 +111,7 @@ class _ManualPaymentsScreenState extends ConsumerState<ManualPaymentsScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = _messageFor(e, 'Couldn’t load manual payments.');
+        _error = _messageFor(e, 'Check your connection and try again.');
       });
     }
   }

@@ -105,6 +105,10 @@ class RolePermissions {
   // ── Admin-only ───────────────────────────────
   bool get canManageUsers             => has('users.view');
   bool get canManageBranches          => has('branches.create');
+  bool get canUpdateBranches          => has('branches.update');
+  bool get canDeleteBranches          => has('branches.delete');
+  bool get canViewFinance              => has('finance.view');
+  bool get canManageReceivables        => has('finance.manage_receivables');
   bool get canSeeFinancialReports     => has('reporting.financial');
   bool get canSeeAuditTrail           => has('audit.read');
   bool get canExportData              => has('data.export');
@@ -118,6 +122,9 @@ class RolePermissions {
 
   // ── Roles & permissions admin (new) ──────────
   bool get canManageRoles            => has('roles.view');
+  bool get canCreateRoles             => has('roles.create');
+  bool get canUpdateRoles             => has('roles.update');
+  bool get canDeleteRoles             => has('roles.delete');
   bool get canAssignRoles            => has('permissions.assign_role');
   bool get canOverrideUserPermissions => has('permissions.override_user');
 

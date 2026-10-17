@@ -118,16 +118,23 @@ class SettingsScreen extends ConsumerWidget {
               keywords: const ['picture', 'brand', 'photo'],
               onTap: () => _showLogoDialog(context, ref),
             ),
-          if (perms.canManageBranches)
+          if (perms.canManageBranches ||
+              perms.canUpdateBranches ||
+              perms.canDeleteBranches)
             SettingsEntry(
               id: 'branches',
               icon: Icons.store_rounded,
               title: 'Branches',
               subtitle: 'Add or edit your shop locations',
               keywords: const ['shop', 'location', 'store'],
-              onTap: () => _showBranchManagement(context),
+              onTap: () => _showBranchManagement(
+                context,
+                canCreate: perms.canManageBranches,
+                canUpdate: perms.canUpdateBranches,
+                canDelete: perms.canDeleteBranches,
+              ),
             ),
-          if (perms.canManageBranches)
+          if (perms.canUpdateBranches)
             SettingsEntry(
               id: 'hours',
               icon: Icons.schedule_rounded,
@@ -1599,7 +1606,12 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showBranchManagement(BuildContext context) {
+  void _showBranchManagement(
+    BuildContext context, {
+    required bool canCreate,
+    required bool canUpdate,
+    required bool canDelete,
+  }) {
     showModalBottomSheet(
       useRootNavigator: true,
       context: context,
@@ -1612,7 +1624,12 @@ class SettingsScreen extends ConsumerWidget {
         initialChildSize: 0.6,
         maxChildSize: 0.9,
         builder: (context, scrollController) =>
-            _BranchManagementSheet(scrollController: scrollController),
+            _BranchManagementSheet(
+              scrollController: scrollController,
+              canCreate: canCreate,
+              canUpdate: canUpdate,
+              canDelete: canDelete,
+            ),
       ),
     );
   }
@@ -2962,7 +2979,16 @@ class _AuditEntry extends StatelessWidget {
 // ═══════ BRANCH MANAGEMENT SHEET ═══════
 class _BranchManagementSheet extends StatefulWidget {
   final ScrollController scrollController;
-  const _BranchManagementSheet({required this.scrollController});
+  final bool canCreate;
+  final bool canUpdate;
+  final bool canDelete;
+
+  const _BranchManagementSheet({
+    required this.scrollController,
+    required this.canCreate,
+    required this.canUpdate,
+    required this.canDelete,
+  });
 
   @override
   State<_BranchManagementSheet> createState() => _BranchManagementSheetState();
@@ -3302,12 +3328,13 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                           actionLabel: 'Retry',
                           onAction: _loadBranches,
                         )
-                      : _branches.isEmpty
-                          ? const EmptyState(
+                          : _branches.isEmpty
+                          ? EmptyState(
                               icon: Icons.store_outlined,
                               title: 'No branches yet',
-                              subtitle:
-                                  'Tap "Add Branch" to create your first one',
+                              subtitle: widget.canCreate
+                                  ? 'Tap "Add Branch" to create your first one'
+                                  : 'Ask an admin to add a branch.',
                             )
                           : ListView.builder(
                               controller: widget.scrollController,
@@ -3336,24 +3363,27 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                                               color: isActive
                                                   ? DesignColors.success
                                                   : DesignColors.textTertiary),
-                                          PopupMenuButton<String>(
-                                            onSelected: (value) {
-                                              if (value == 'edit') {
-                                                _showEditBranchDialog(branch);
-                                              }
-                                              if (value == 'delete') {
-                                                _deleteBranch(branch);
-                                              }
-                                            },
-                                            itemBuilder: (ctx) => [
-                                              const PopupMenuItem(
-                                                  value: 'edit',
-                                                  child: Text('Edit')),
-                                              const PopupMenuItem(
-                                                  value: 'delete',
-                                                  child: Text('Delete')),
-                                            ],
-                                          ),
+                                          if (widget.canUpdate || widget.canDelete)
+                                            PopupMenuButton<String>(
+                                              onSelected: (value) {
+                                                if (value == 'edit') {
+                                                  _showEditBranchDialog(branch);
+                                                }
+                                                if (value == 'delete') {
+                                                  _deleteBranch(branch);
+                                                }
+                                              },
+                                              itemBuilder: (ctx) => [
+                                                if (widget.canUpdate)
+                                                  const PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: Text('Edit')),
+                                                if (widget.canDelete)
+                                                  const PopupMenuItem(
+                                                      value: 'delete',
+                                                      child: Text('Delete')),
+                                              ],
+                                            ),
                                         ],
                                       ),
                                     ),
@@ -3363,16 +3393,18 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
                             ),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _showAddBranchDialog,
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
-                icon: const Icon(Icons.add_business),
-                label: const Text('Add Branch'),
+            if (widget.canCreate)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _showAddBranchDialog,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(64, 48),
+                  ),
+                  icon: const Icon(Icons.add_business),
+                  label: const Text('Add Branch'),
+                ),
               ),
-            ),
             const SizedBox(height: 8),
           ],
         ),

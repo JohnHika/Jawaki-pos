@@ -7,11 +7,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/auth/app_roles.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/bulk_allocation.dart';
 import '../../domain/collections_ledger.dart';
 import '../../domain/finance_models.dart';
@@ -66,6 +68,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
   Widget build(BuildContext context) {
     final hub = ref.watch(financeHubProvider);
     final controller = ref.read(financeHubProvider.notifier);
+    final permissions = ref.watch(permissionsProvider);
     final snapshot = hub.snapshot;
 
     return Scaffold(
@@ -73,21 +76,23 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         title: 'Finance',
         showBackButton: false,
         actions: <Widget>[
-          _appBarAction(
-            tooltip: 'Cash Flow',
-            icon: const Icon(Icons.point_of_sale_rounded),
-            onPressed: () => context.push('/cash-flow'),
-          ),
-          _appBarAction(
-            tooltip: _isScanning ? 'Scanning receipt' : 'Scan Receipt',
-            icon: _isScanning
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.document_scanner_rounded),
-            onPressed: _isScanning ? null : _pickAndScanReceipt,
-          ),
+          if (permissions.canViewCashFlow)
+            _appBarAction(
+              tooltip: 'Cash Flow',
+              icon: const Icon(Icons.point_of_sale_rounded),
+              onPressed: () => context.push('/cash-flow'),
+            ),
+          if (permissions.canRecordRestock)
+            _appBarAction(
+              tooltip: _isScanning ? 'Scanning receipt' : 'Scan Receipt',
+              icon: _isScanning
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.document_scanner_rounded),
+              onPressed: _isScanning ? null : _pickAndScanReceipt,
+            ),
           _appBarAction(
             tooltip: 'Refresh Finance',
             icon: const Icon(Icons.refresh_rounded),
@@ -115,7 +120,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                               from: SlideFrom.right,
                               child: KeyedSubtree(
                                   key: ValueKey<int>(_tab),
-                                  child: _tabBody(snapshot, controller)))),
+                                  child: _tabBody(snapshot, controller, permissions)))),
                     ],
                   ),
           ),
@@ -128,16 +133,19 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     );
   }
 
-  Widget _tabBody(FinanceSnapshot snapshot, FinanceHubController controller) =>
+  Widget _tabBody(FinanceSnapshot snapshot, FinanceHubController controller,
+          RolePermissions permissions) =>
       switch (_tab) {
         0 => _OverviewTab(snapshot: snapshot),
         1 => _SupplierTab(
             payables: snapshot.payables,
-            onScan: _pickAndScanReceipt,
-            onManual: _showManualInvoiceDialog,
+            canCreateInvoices: permissions.canRecordRestock,
+            onScan: permissions.canRecordRestock ? _pickAndScanReceipt : null,
+            onManual: permissions.canRecordRestock ? _showManualInvoiceDialog : null,
           ),
         2 => _RetailTab(
             receivables: snapshot.retailReceivables,
+            canManageReceivables: permissions.canManageReceivables,
             onCollectForCustomer: () =>
                 _showBulkCollectionSheet(snapshot, controller),
             onCollect: (item) => _showCollectionSheet(
@@ -157,6 +165,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           ),
         _ => _PeerTab(
             snapshot: snapshot,
+            canManageReceivables: permissions.canManageReceivables,
             onOpenShop: (shop) => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                     builder: (_) => ShopLedgerScreen(shopId: shop.id))),
@@ -974,37 +983,41 @@ String _whenLabel(DateTime d) {
 
 class _SupplierTab extends StatelessWidget {
   const _SupplierTab(
-      {required this.payables, required this.onScan, required this.onManual});
+      {required this.payables,
+      required this.canCreateInvoices,
+      required this.onScan,
+      required this.onManual});
   final List<FinancePayable> payables;
-  final VoidCallback onScan;
-  final VoidCallback onManual;
+  final bool canCreateInvoices;
+  final VoidCallback? onScan;
+  final VoidCallback? onManual;
 
   @override
   Widget build(BuildContext context) =>
       ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
-        Row(children: <Widget>[
-          Expanded(
-              child: SizedBox(
-                  height: DesignSpacing.huge,
-                  child: FilledButton.icon(
-                      onPressed: onScan,
-                      icon: const Icon(Icons.document_scanner_rounded),
-                      label: const Text('Scan Receipt')))),
-          const SizedBox(width: DesignSpacing.sm),
-          SizedBox(
-              height: DesignSpacing.huge,
-              child: OutlinedButton(
-                  // The app-wide outlined style is full-width; inside a Row
-                  // that is an unbounded width and blanked the whole tab.
-                  style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(96, DesignSpacing.huge)),
-                  onPressed: onManual,
-                  child: const Text('Manual'))),
-        ]),
-        const SizedBox(height: DesignSpacing.lg),
+        if (canCreateInvoices) ...[
+          Row(children: <Widget>[
+            Expanded(
+                child: SizedBox(
+                    height: DesignSpacing.huge,
+                    child: FilledButton.icon(
+                        onPressed: onScan,
+                        icon: const Icon(Icons.document_scanner_rounded),
+                        label: const Text('Scan Receipt')))),
+            const SizedBox(width: DesignSpacing.sm),
+            SizedBox(
+                height: DesignSpacing.huge,
+                child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(96, DesignSpacing.huge)),
+                    onPressed: onManual,
+                    child: const Text('Manual'))),
+          ]),
+          const SizedBox(height: DesignSpacing.lg),
+        ],
         if (payables.isEmpty)
           const _EmptyLedger(
-              message: 'No supplier payables yet. Scan a receipt to begin.')
+              message: 'No supplier payables yet.')
         else
           ...payables.map((item) => _LedgerCard(
                 title: tidySupplierName(item.supplierName),
@@ -1019,10 +1032,12 @@ class _SupplierTab extends StatelessWidget {
 class _RetailTab extends StatelessWidget {
   const _RetailTab({
     required this.receivables,
+    required this.canManageReceivables,
     required this.onCollect,
     required this.onCollectForCustomer,
   });
   final List<RetailReceivable> receivables;
+  final bool canManageReceivables;
   final ValueChanged<RetailReceivable> onCollect;
   final VoidCallback onCollectForCustomer;
 
@@ -1035,7 +1050,7 @@ class _RetailTab extends StatelessWidget {
         if (open.isEmpty)
           const _EmptyLedger(message: 'No customer credit is outstanding.')
         else ...<Widget>[
-          SizedBox(
+          if (canManageReceivables) SizedBox(
             height: DesignSpacing.huge,
             child: FilledButton.icon(
               onPressed: onCollectForCustomer,
@@ -1043,15 +1058,15 @@ class _RetailTab extends StatelessWidget {
               label: const Text('Collect for a customer'),
             ),
           ),
-          const SizedBox(height: DesignSpacing.md),
+          if (canManageReceivables) const SizedBox(height: DesignSpacing.md),
           ...open.map((item) => _LedgerCard(
                 title: item.receiptNumber ?? 'Receipt',
                 subtitle: item.customerName ?? 'Customer',
                 value: item.outstandingAmount,
                 dueDate: item.dueDate,
                 icon: Icons.person_rounded,
-                action: 'Collect',
-                onAction: () => onCollect(item),
+                action: canManageReceivables ? 'Collect' : null,
+                onAction: canManageReceivables ? () => onCollect(item) : null,
               )),
         ],
       ]);
@@ -1061,11 +1076,13 @@ class _RetailTab extends StatelessWidget {
 class _PeerTab extends StatelessWidget {
   const _PeerTab(
       {required this.snapshot,
+      required this.canManageReceivables,
       required this.onAddShop,
       required this.onAddReceivable,
       required this.onCollect,
       required this.onOpenShop});
   final FinanceSnapshot snapshot;
+  final bool canManageReceivables;
   final VoidCallback onAddShop;
   final VoidCallback onAddReceivable;
   final ValueChanged<PeerReceivable> onCollect;
@@ -1108,21 +1125,23 @@ class _PeerTab extends StatelessWidget {
             style: Theme.of(context).textTheme.labelSmall),
       ],
       const SizedBox(height: DesignSpacing.lg),
-      Row(children: <Widget>[
-        Expanded(
-            child: SizedBox(
-                height: DesignSpacing.huge,
-                child: OutlinedButton(
-                    onPressed: onAddShop, child: const Text('Add shop')))),
-        const SizedBox(width: DesignSpacing.sm),
-        Expanded(
-            child: SizedBox(
-                height: DesignSpacing.huge,
-                child: FilledButton(
-                    onPressed: onAddReceivable,
-                    child: const Text('Add debt')))),
-      ]),
-      const SizedBox(height: DesignSpacing.lg),
+      if (canManageReceivables) ...[
+        Row(children: <Widget>[
+          Expanded(
+              child: SizedBox(
+                  height: DesignSpacing.huge,
+                  child: OutlinedButton(
+                      onPressed: onAddShop, child: const Text('Add shop')))),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+              child: SizedBox(
+                  height: DesignSpacing.huge,
+                  child: FilledButton(
+                      onPressed: onAddReceivable,
+                      child: const Text('Add debt')))),
+        ]),
+        const SizedBox(height: DesignSpacing.lg),
+      ],
       Text('Other shops', style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: DesignSpacing.sm),
       if (shops.isEmpty)
@@ -1151,8 +1170,8 @@ class _PeerTab extends StatelessWidget {
                   value: item.outstandingAmount,
                   dueDate: item.dueDate,
                   icon: Icons.storefront_rounded,
-                  action: 'Collect',
-                  onAction: () => onCollect(item),
+                  action: canManageReceivables ? 'Collect' : null,
+                  onAction: canManageReceivables ? () => onCollect(item) : null,
                 )),
     ]);
   }

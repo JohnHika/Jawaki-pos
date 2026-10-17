@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,6 +11,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
@@ -196,6 +198,15 @@ class _CompanyActivationScreenState
   }
 
   String _friendlyError(Object error) {
+    if (error is DioException) {
+      if (error.response?.statusCode == 503) {
+        return 'Secure checkout is not available on the server yet. Please contact Axon support before attempting payment.';
+      }
+      if (error.response?.statusCode == 402) {
+        return 'Complete the KSh 35,000 activation payment to continue.';
+      }
+      return loadErrorSubtitle(error);
+    }
     final text = error.toString();
     if (text.contains('503') || text.contains('not configured')) {
       return 'Secure checkout is not available on the server yet. Please contact Axon support before attempting payment.';
@@ -203,9 +214,13 @@ class _CompanyActivationScreenState
     if (text.contains('402')) {
       return 'Complete the KSh 35,000 activation payment to continue.';
     }
-    return text.replaceFirst('Exception: ', '').trim().isEmpty
-        ? 'We could not load the activation payment. Please try again.'
-        : text.replaceFirst('Exception: ', '').trim();
+    if (text.contains('secure checkout link')) {
+      return 'Secure checkout did not return a payment link. Please try again.';
+    }
+    if (text.contains('open the secure payment page')) {
+      return 'Could not open the secure payment page. Please try again.';
+    }
+    return 'We could not load the activation payment. Please try again.';
   }
 
   @override

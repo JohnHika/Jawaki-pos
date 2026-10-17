@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/permission_catalog.dart';
@@ -36,11 +37,12 @@ class RoleListScreen extends ConsumerWidget {
         title: 'Roles',
         showBackButton: true,
         actions: [
-          IconButton(
-            tooltip: 'New role',
-            icon: const Icon(Icons.add_rounded),
-            onPressed: () => context.push('/users/roles/new'),
-          ),
+          if (permissions.canCreateRoles)
+            IconButton(
+              tooltip: 'New role',
+              icon: const Icon(Icons.add_rounded),
+              onPressed: () => context.push('/users/roles/new'),
+            ),
         ],
       ),
       body: rolesAsync.when(
@@ -48,9 +50,11 @@ class RoleListScreen extends ConsumerWidget {
         error: (err, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Could not load roles',
-          subtitle: err.toString(),
-          actionLabel: 'Retry',
-          onAction: () => ref.invalidate(tenantRolesProvider),
+          subtitle: loadErrorSubtitle(err),
+          actionLabel: isPermissionDenied(err) ? null : 'Retry',
+          onAction: isPermissionDenied(err)
+              ? null
+              : () => ref.invalidate(tenantRolesProvider),
         ),
         data: (roles) => PageContainer(
           child: ListView.builder(
@@ -83,8 +87,12 @@ class RoleListScreen extends ConsumerWidget {
                       title: role['name'] as String,
                       subtitle:
                           '$keyCount permission${keyCount == 1 ? '' : 's'} · $userCount user${userCount == 1 ? '' : 's'}${isSystem ? ' · System' : ''}',
-                      trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-                      onTap: () => context.push('/users/roles/${role['id']}'),
+                      trailing: permissions.canUpdateRoles
+                          ? const Icon(Icons.chevron_right_rounded, size: 20)
+                          : null,
+                      onTap: permissions.canUpdateRoles
+                          ? () => context.push('/users/roles/${role['id']}')
+                          : null,
                     ),
                   ],
                 ),
@@ -140,6 +148,7 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
     }
     try {
       final role = await getIt<ApiClient>().getRole(widget.roleId!);
+      if (!mounted) return;
       _nameController.text = role['name'] as String? ?? '';
       _descriptionController.text = role['description'] as String? ?? '';
       _isSystem = role['isSystem'] as bool? ?? false;
@@ -148,8 +157,9 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
         ..addAll((role['permissionKeys'] as List<dynamic>? ?? []).cast<String>());
       setState(() => _isLoading = false);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = loadErrorSubtitle(e);
         _isLoading = false;
       });
     }
@@ -183,7 +193,7 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save failed: $e')),
+          SnackBar(content: Text(loadErrorSubtitle(e))),
         );
       }
     } finally {
@@ -216,7 +226,7 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Delete failed: $e')),
+          SnackBar(content: Text(loadErrorSubtitle(e))),
         );
       }
     }
@@ -224,6 +234,7 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final permissions = ref.watch(permissionsProvider);
     final catalogAsync = ref.watch(permissionCatalogProvider);
 
     return Scaffold(
@@ -231,7 +242,7 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
         title: _isNew ? 'New Role' : 'Edit Role',
         showBackButton: true,
         actions: [
-          if (!_isNew && !_isSystem)
+          if (!_isNew && !_isSystem && permissions.canDeleteRoles)
             IconButton(
               tooltip: 'Delete role',
               icon: const Icon(Icons.delete_outline_rounded, color: DesignColors.error),
@@ -246,17 +257,21 @@ class _RoleEditorScreenState extends ConsumerState<RoleEditorScreen> {
                   icon: Icons.error_outline_rounded,
                   title: 'Could not load role',
                   subtitle: _error,
+                  actionLabel: 'Retry',
+                  onAction: _load,
                 )
               : catalogAsync.when(
                   loading: () => const Center(child: CircularProgressIndicator()),
                   error: (err, _) => EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Could not load permission catalog',
-                    subtitle: err.toString(),
+                    subtitle: loadErrorSubtitle(err),
+                    actionLabel: 'Retry',
+                    onAction: () => ref.invalidate(permissionCatalogProvider),
                   ),
                   data: (groups) => _buildForm(groups),
                 ),
-      bottomNavigationBar: _isLoading
+      bottomNavigationBar: _isLoading || _error != null || !catalogAsync.hasValue
           ? null
           : SafeArea(
               child: Padding(

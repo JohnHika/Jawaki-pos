@@ -118,18 +118,54 @@ class _InvitationListScreenState extends State<InvitationListScreen> {
           DesignSpacing.lg,
           DesignSpacing.xxl,
         ),
-        itemCount: _invitations.length,
+        itemCount: _invitations.length + (_loadError == null ? 0 : 1),
         // First-mount entrance: each card fades/rises in once, staggered
         // (see StaggeredItem). Keys are stable per invitation, so
         // pull-to-refresh never replays the choreography.
-        itemBuilder: (context, index) => StaggeredItem(
-          itemKey: 'invitations-${_invitations[index]['id'] ?? index}',
-          index: index,
-          child: _InvitationCard(
-            invitation: _invitations[index],
-            isDark: isDark,
-          ),
-        ),
+        itemBuilder: (context, index) {
+          if (_loadError != null && index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: DesignSpacing.md),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
+                decoration: BoxDecoration(
+                  color: DesignColors.warning.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  border: Border.all(
+                      color: DesignColors.warning.withValues(alpha: 0.30)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_off_outlined,
+                        color: DesignColors.warning, size: 18),
+                    const SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Could not refresh. Some invitation details may be out of date.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _load(showCacheFirst: false),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          final invitationIndex = index - (_loadError == null ? 0 : 1);
+          final invitation = _invitations[invitationIndex];
+          return StaggeredItem(
+            itemKey: 'invitations-${invitation['id'] ?? invitationIndex}',
+            index: invitationIndex,
+            child: _InvitationCard(
+              invitation: invitation,
+              isDark: isDark,
+            ),
+          );
+        },
       ),
     );
   }

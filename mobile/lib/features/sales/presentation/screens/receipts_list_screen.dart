@@ -354,12 +354,17 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        '#$receiptNumber',
-                        style: TextStyle(
-                          fontSize: DesignType.chatBody,
-                          fontWeight: FontWeight.w700,
-                          color: titleColor,
+                      Expanded(
+                        child: Text(
+                          '#$receiptNumber',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: DesignType.chatBody,
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
+                          ),
                         ),
                       ),
                       const SizedBox(width: DesignSpacing.sm),
@@ -392,11 +397,16 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
                         color: tertiaryColor,
                       ),
                       const SizedBox(width: DesignSpacing.xs),
-                      Text(
-                        _formatDateTime(sale.createdAt),
-                        style: TextStyle(
-                          fontSize: DesignType.chatSecondary,
-                          color: tertiaryColor,
+                      Expanded(
+                        child: Text(
+                          _formatDateTime(sale.createdAt),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: DesignType.chatSecondary,
+                            color: tertiaryColor,
+                          ),
                         ),
                       ),
                     ],
@@ -406,24 +416,30 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
             ),
 
             // Trailing: total amount
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _formatCurrency(sale.total),
-                  style: DesignType.numeric(
-                    fontSize: DesignType.chatBody + 1,
-                    fontWeight: FontWeight.w800,
-                    color: titleColor,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 124),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _formatCurrency(sale.total),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: DesignType.numeric(
+                      fontSize: DesignType.chatBody + 1,
+                      fontWeight: FontWeight.w800,
+                      color: titleColor,
+                    ),
                   ),
-                ),
-                const SizedBox(height: DesignSpacing.xs - 2),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: tertiaryColor,
-                  size: 18,
-                ),
-              ],
+                  const SizedBox(height: DesignSpacing.xs - 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: tertiaryColor,
+                    size: 18,
+                  ),
+                ],
+              ),
             ),
           ],
         ),

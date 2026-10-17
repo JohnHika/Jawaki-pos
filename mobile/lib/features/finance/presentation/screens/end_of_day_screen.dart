@@ -28,11 +28,8 @@ final _eodProvider =
   final date = _todayIso();
   final results = await Future.wait([
     api.getSalesDailySummary(branchId, date),
-    api.getAvailableCash(branchId).catchError((_) => <String, dynamic>{}),
-    api
-        .getDailyClose(branchId, date: date)
-        .then<Map<String, dynamic>?>((v) => v)
-        .catchError((_) => null),
+    api.getAvailableCash(branchId),
+    api.getDailyClose(branchId, date: date),
   ]);
   return {
     'summary': results[0] as Map<String, dynamic>,

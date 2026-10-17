@@ -199,10 +199,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             _PaymentMethodTile(
               icon: Icons.account_balance_wallet_outlined,
               title: 'Add to Debt',
-              subtitle: 'Customer pays later — requires a customer',
+              subtitle: cart.customerId == null
+                  ? 'Choose a customer in Cart first'
+                  : 'Customer pays later',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.debt,
-              onTap: () => setState(() => _selectedMethod = PaymentMethod.debt),
+              onTap: () {
+                if (cart.customerId == null) {
+                  showGlassSnackBar(
+                    context,
+                    'Choose a customer in Cart before selling on debt.',
+                    icon: Icons.person_off_rounded,
+                    color: DesignColors.warning,
+                  );
+                  return;
+                }
+                setState(() => _selectedMethod = PaymentMethod.debt);
+              },
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 

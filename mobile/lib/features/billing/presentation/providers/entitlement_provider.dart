@@ -14,8 +14,8 @@ import '../../domain/billing_entitlement.dart';
 /// Flow: try GET /billing/entitlement; on success cache the signed offline
 /// token for next time. On network failure fall back to the offline cache
 /// (signature re-verified with a small staleness allowance for clock skew).
-/// Never throws — errors are surfaced as a RESTRICTED-unknown state and the
-/// UI keeps working.
+/// Never throws — without a cached snapshot it returns null; a cached
+/// licence without subscription details returns an UNKNOWN entitlement.
 Future<BillingEntitlement?> refreshEntitlement() async {
   final service = getIt<EntitlementService>();
   try {
@@ -56,7 +56,10 @@ Future<BillingEntitlement?> _fallbackToCache(EntitlementService service) async {
           ? null
           : BillingEntitlement(
               plan: 'UNKNOWN',
-              status: 'ACTIVE',
+              // A cached licence proves which modules were last available,
+              // not that the subscription is currently active. Keep billing
+              // details neutral until a signed entitlement can be verified.
+              status: 'UNKNOWN',
               license: license,
               source: EntitlementSource.offlineCache,
             );

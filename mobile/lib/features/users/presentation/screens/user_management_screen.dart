@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/user_management_provider.dart';
@@ -63,7 +64,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
         error: (err, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Could not load users',
-          subtitle: err.toString(),
+          subtitle: loadErrorSubtitle(err),
           actionLabel: 'Retry',
           onAction: () => ref.invalidate(managedUsersProvider),
         ),

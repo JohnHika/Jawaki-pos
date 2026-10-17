@@ -70,6 +70,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
     final current = storage.getServerBaseUrl() ?? '';
     final controller = TextEditingController(text: current);
     var isSaving = false;
+    String? errorMessage;
 
     await showDialog<void>(
       context: context,
@@ -98,6 +99,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
               hintText: 'https://your-backend.com/api/v1',
               hintStyle: TextStyle(color: context.themed(DesignColors.darkTextTertiary)),
               labelText: 'Backend API URL',
+              errorText: errorMessage,
               labelStyle:
                   TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
               enabledBorder: OutlineInputBorder(
@@ -122,11 +124,17 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                   ? null
                   : () async {
                       final url = controller.text.trim();
-                      setDialogState(() => isSaving = true);
+                      setDialogState(() {
+                        isSaving = true;
+                        errorMessage = null;
+                      });
                       try {
                         if (url.isNotEmpty) {
                           await storage.setServerBaseUrl(url);
                           apiClient.setBaseUrl(url);
+                        } else {
+                          await storage.clearServerBaseUrl();
+                          apiClient.resetBaseUrl();
                         }
                         if (ctx.mounted) Navigator.of(ctx).pop();
                         if (mounted) {
@@ -139,8 +147,18 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                             color: DesignColors.success,
                           );
                         }
+                      } catch (error) {
+                        if (ctx.mounted) {
+                          setDialogState(() {
+                            errorMessage = error is ArgumentError
+                                ? 'Enter a valid http(s) URL without credentials.'
+                                : 'Could not save the backend address. Try again.';
+                          });
+                        }
                       } finally {
-                        setDialogState(() => isSaving = false);
+                        if (ctx.mounted) {
+                          setDialogState(() => isSaving = false);
+                        }
                       }
                     },
               child: isSaving

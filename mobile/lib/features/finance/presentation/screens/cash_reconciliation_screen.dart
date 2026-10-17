@@ -64,7 +64,9 @@ class _CashReconciliationScreenState
         child: GradientButton(
           label: 'Count Cash',
           icon: Icons.calculate_rounded,
-          onPressed: _showCountSheet,
+          onPressed: getIt<AuthService>().branchId?.isNotEmpty == true
+              ? _showCountSheet
+              : null,
           height: 52,
           borderRadius: DesignSpacing.radiusMd,
         ),

@@ -1050,6 +1050,7 @@ class EmptyState extends StatelessWidget {
   final String? subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final IconData actionIcon;
   final Color? iconColor;
 
   const EmptyState({
@@ -1059,6 +1060,7 @@ class EmptyState extends StatelessWidget {
     this.subtitle,
     this.actionLabel,
     this.onAction,
+    this.actionIcon = Icons.refresh_rounded,
     this.iconColor,
   });
 
@@ -1121,7 +1123,7 @@ class EmptyState extends StatelessWidget {
                 delay: const Duration(milliseconds: 300),
                 child: GradientButton(
                   label: actionLabel!,
-                  icon: Icons.refresh_rounded,
+                  icon: actionIcon,
                   onPressed: onAction,
                   height: 44,
                 ),
@@ -1129,6 +1131,45 @@ class EmptyState extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Compact warning for cached content that could not be refreshed.
+class InlineRetryNotice extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const InlineRetryNotice({
+    super.key,
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off_rounded,
+              color: DesignColors.warning, size: 18),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Text(message, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          const SizedBox(width: DesignSpacing.xs),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Try again'),
+          ),
+        ],
       ),
     );
   }

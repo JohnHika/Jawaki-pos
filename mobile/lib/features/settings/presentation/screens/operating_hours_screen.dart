@@ -3,6 +3,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 
 /// Per-branch operating hours editor. The user controls, for each day of the
@@ -82,6 +83,7 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  String? _loadError;
   String _weekStartDay = 'mon';
   final Map<String, _DayHours> _days = {};
 
@@ -94,7 +96,10 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       if (_branchId.isEmpty) {
         throw Exception('No branch selected');
@@ -113,10 +118,13 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
             : _DayHours.defaults();
       }
     } catch (e) {
-      // First-time / offline: start from sensible defaults so the user can
-      // still configure and save.
-      for (final key in _dayKeys) {
-        _days.putIfAbsent(key, () => _DayHours.defaults());
+      // Only a successful load can distinguish an unconfigured schedule
+      // from existing hours. Don't let a failed request look like defaults
+      // that are safe to overwrite.
+      if (mounted) {
+        setState(() => _loadError = _branchId.isEmpty
+            ? 'No branch is selected. Sign in again and retry.'
+            : loadErrorSubtitle(e));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -184,6 +192,20 @@ class _OperatingHoursScreenState extends State<OperatingHoursScreen> {
       appBar: const BrandedAppBar(title: 'Operating Hours'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(DesignSpacing.xl),
+                    child: EmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Could not load operating hours',
+                      subtitle: _loadError,
+                      iconColor: DesignColors.error,
+                      actionLabel: 'Retry',
+                      onAction: _load,
+                    ),
+                  ),
+                )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [

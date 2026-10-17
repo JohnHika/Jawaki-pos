@@ -132,6 +132,25 @@ class ProductsScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  if (perms.canEditProducts)
+                    IconButton(
+                      tooltip: 'Add Product',
+                      constraints: const BoxConstraints(
+                          minWidth: DesignSpacing.xl + 24,
+                          minHeight: DesignSpacing.xl + 24),
+                      padding: EdgeInsets.zero,
+                      onPressed: () => _showAddEditProduct(context, ref),
+                      icon: Container(
+                        padding: const EdgeInsets.all(DesignSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: DesignColors.accent.withValues(alpha: 0.1),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                        ),
+                        child: const Icon(Icons.add_rounded,
+                            color: DesignColors.accent, size: 21),
+                      ),
+                    ),
                   IconButton(
                     tooltip: gridView ? 'Use list view' : 'Use grid view',
                     // >=44px tap target for the list/grid toggle.
@@ -471,20 +490,6 @@ class ProductsScreen extends ConsumerWidget {
           ],
         ),
       ),
-      // A floating button instead of a full-width bar: the bar took a tenth of
-      // a small phone's height and left room for barely one row of products.
-      floatingActionButton: perms.canEditProducts
-          ? FloatingActionButton.extended(
-              onPressed: () => _showAddEditProduct(context, ref),
-              backgroundColor: DesignColors.accent,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'Add Product',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            )
-          : null,
     );
   }
 

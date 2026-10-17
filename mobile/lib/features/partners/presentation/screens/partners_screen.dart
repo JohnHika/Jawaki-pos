@@ -51,7 +51,13 @@ class PartnersScreen extends ConsumerWidget {
             else if (state.partners.isEmpty)
               _EmptyState(error: state.error, onRetry: controller.refresh)
             else ...[
-              if (state.error != null) _InlineNotice(text: state.error!),
+              if (state.error != null) ...[
+                InlineRetryNotice(
+                  message: state.error!,
+                  onRetry: controller.refresh,
+                ),
+                const SizedBox(height: DesignSpacing.md),
+              ],
               if (state.incomingRequests.isNotEmpty) ...[
                 const _SectionLabel('Requests for you'),
                 for (final (i, p) in state.incomingRequests.indexed)
@@ -189,23 +195,6 @@ class _SectionLabel extends StatelessWidget {
                 letterSpacing: 1.0,
               ),
         ),
-      );
-}
-
-class _InlineNotice extends StatelessWidget {
-  const _InlineNotice({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: DesignSpacing.md),
-        padding: const EdgeInsets.all(DesignSpacing.md),
-        decoration: BoxDecoration(
-          color: DesignColors.warning.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-        ),
-        child: Text(text, style: Theme.of(context).textTheme.bodySmall),
       );
 }
 

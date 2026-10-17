@@ -73,12 +73,20 @@ class WorkspaceBranchDetails {
 
 class ApiClient {
   final Dio _dio;
+  final String _defaultBaseUrl;
 
-  ApiClient(this._dio);
+  ApiClient(this._dio) : _defaultBaseUrl = _dio.options.baseUrl;
 
   /// Update the base URL at runtime (used when switching to a phone server).
   void setBaseUrl(String url) {
     _dio.options.baseUrl = url;
+  }
+
+  /// Restore the URL configured when the Dio client was created. This keeps
+  /// the app's compile-time API_URL (or the production default) authoritative
+  /// after a user clears a custom backend override.
+  void resetBaseUrl() {
+    _dio.options.baseUrl = _defaultBaseUrl;
   }
 
   /// Get the current base URL.

@@ -174,17 +174,52 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
 
-        // Products & Inventory require stock keeper+
-        if ((path == '/products' ||
-                path.startsWith('/products/') ||
-                path == '/inventory' ||
-                path.startsWith('/inventory/')) &&
+        // Products and Inventory have separate view permissions. Keep direct
+        // links aligned with the distinct bottom-nav entries as well.
+        if ((path == '/products' || path.startsWith('/products/')) &&
             !perms.canSeeProducts) {
           return '/';
         }
+        if (path == '/inventory' && !perms.canSeeInventory) {
+          return '/';
+        }
+        if (path == '/inventory/request-stock' &&
+            !perms.canMakeSales &&
+            !perms.canManageStock) {
+          return '/';
+        }
+        if ((path == '/inventory/receive-batch' ||
+                path == '/inventory/batch-receive') &&
+            !perms.canManageStock) {
+          return '/';
+        }
+        if (path == '/inventory/restock-suggestions' &&
+            !perms.canRecordRestock) {
+          return '/';
+        }
+        if (path == '/inventory/stock-requests' &&
+            !perms.has('inventory.stock_requests.resolve')) {
+          return '/';
+        }
+        if (path.startsWith('/inventory/') &&
+            path != '/inventory/request-stock' &&
+            path != '/inventory/receive-batch' &&
+            path != '/inventory/batch-receive' &&
+            path != '/inventory/stock-requests' &&
+            path != '/inventory/restock-suggestions' &&
+            !perms.canSeeInventory) {
+          return '/';
+        }
         // Reports require reporting capability. Dashboard is the shared
-        // overview and remains reachable for every signed-in role.
-        if (path == '/reports' && !perms.canSeeReports) {
+        // overview and remains reachable for every signed-in role. Child
+        // report routes need the same guard as the reports index.
+        if ((path == '/reports' || path.startsWith('/reports/')) &&
+            !perms.canSeeReports) {
+          return '/';
+        }
+        // Finance endpoints use finance.view. Reporting permissions do not
+        // grant access to receivables or supplier ledgers.
+        if (path == '/finance' && !perms.canViewFinance) {
           return '/';
         }
         // Manual payment approvals mirror the backend's payments.view_status.
@@ -197,13 +232,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // the relevant capability. The Settings menu itself already hides
         // these entries from everyone else; this closes the direct-route
         // gap flagged in the settings audit.
-        if (path == '/settings/operating-hours' && !perms.canManageBranches) {
+        if (path == '/settings/operating-hours' && !perms.canUpdateBranches) {
           return '/settings';
+        }
+        if ((path == '/invite-staff' || path == '/users/invitations') &&
+            !perms.canManageUsers) {
+          return '/';
         }
         if ((path == '/users/roles' ||
                 path.startsWith('/users/roles/')) &&
             !perms.canManageRoles) {
           return '/users';
+        }
+        if (path == '/users/roles/new' && !perms.canCreateRoles) {
+          return '/users/roles';
+        }
+        if (path.startsWith('/users/roles/') &&
+            path != '/users/roles/new' &&
+            !perms.canUpdateRoles) {
+          return '/users/roles';
         }
         if (path.startsWith('/users/') &&
             path.endsWith('/permissions') &&
@@ -220,6 +267,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               authService.currentUser?['role']?.toString().toUpperCase();
           if (legacyRole != 'ADMIN') {
             return '/settings';
+          }
+        }
+        if (path == '/partners' || path.startsWith('/partners/')) {
+          final legacyRole = authService.userRole?.toUpperCase();
+          if (legacyRole != 'ADMIN' && legacyRole != 'MANAGER') {
+            return '/';
           }
         }
       }
@@ -671,8 +724,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
     ],
-    errorBuilder: (context, state) =>
-        Scaffold(body: Center(child: Text('Page not found: ${state.error}'))),
+    errorBuilder: (context, _) => Scaffold(
+      body: Center(
+        child: EmptyState(
+          icon: Icons.link_off_rounded,
+          title: 'Could not open this page',
+          subtitle: 'The link may be outdated or incomplete.',
+          actionLabel: 'Go to POS',
+          onAction: () => context.go('/'),
+        ),
+      ),
+    ),
   );
 });
 

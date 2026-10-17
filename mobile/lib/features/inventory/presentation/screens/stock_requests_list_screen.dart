@@ -23,6 +23,9 @@ class _StockRequestsListScreenState
   late TabController _tabController;
   String _selectedStatus = 'PENDING';
   bool _isLoading = false;
+  String? _loadError;
+  String? _loadedStatus;
+  int _loadGeneration = 0;
   List<dynamic> _requests = [];
 
   @override
@@ -61,7 +64,12 @@ class _StockRequestsListScreenState
   }
 
   Future<void> _loadRequests() async {
-    setState(() => _isLoading = true);
+    final requestedStatus = _selectedStatus;
+    final generation = ++_loadGeneration;
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     try {
       final authService = getIt<AuthService>();
@@ -70,22 +78,23 @@ class _StockRequestsListScreenState
       final branchId = authService.branchId;
       final requests = await stockRequestService.getRequests(
         branchId: branchId,
-        status: _selectedStatus == 'ALL' ? null : _selectedStatus,
+        status: requestedStatus == 'ALL' ? null : requestedStatus,
       );
 
-      if (mounted) {
-        setState(() => _requests = requests);
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _requests = requests;
+          _loadedStatus = requestedStatus;
+        });
       }
-    } catch (e) {
-      if (!mounted) return;
-      showGlassSnackBar(
-        context,
-        'Error loading requests',
-        icon: Icons.error_outline_rounded,
-        color: DesignColors.error,
-      );
+    } catch (_) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loadError =
+            "Couldn't load stock requests. Check your connection and try again.";
+      });
     } finally {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() => _isLoading = false);
       }
     }
@@ -165,34 +174,66 @@ class _StockRequestsListScreenState
   }
 
   Widget _buildRequestsList(String status) {
-    if (_isLoading) {
+    final isSelectedStatus = status == _selectedStatus;
+    if (_isLoading && isSelectedStatus) {
       return const Center(
         child: CircularProgressIndicator(color: DesignColors.brand),
       );
     }
 
-    if (_requests.isEmpty) {
-      return EmptyState(
-        icon: Icons.inbox_outlined,
-        title: 'No ${status.toLowerCase()} requests',
-        subtitle: 'All caught up! No requests to review.',
+    final requests = status == _loadedStatus ? _requests : <dynamic>[];
+    final loadError = isSelectedStatus ? _loadError : null;
+    if (requests.isEmpty && loadError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),
+          child: InlineRetryNotice(
+            message: loadError,
+            onRetry: _loadRequests,
+          ),
+        ),
       );
     }
 
+    if (requests.isEmpty) {
+      final isAllTab = status == 'ALL';
+      return EmptyState(
+        icon: Icons.inbox_outlined,
+        title: isAllTab
+            ? 'No stock requests yet'
+            : 'No ${status.toLowerCase()} requests',
+        subtitle: isAllTab
+            ? 'Stock requests will appear here.'
+            : 'All caught up! No requests to review.',
+      );
+    }
+
+    final showRetryNotice = loadError != null;
     return RefreshIndicator(
       onRefresh: _loadRequests,
       color: DesignColors.brand,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        itemCount: _requests.length,
+        itemCount: requests.length + (showRetryNotice ? 1 : 0),
         // First-mount entrance: each card fades/rises in once, staggered.
         // Keys are stable per request so pull-to-refresh never replays it.
         itemBuilder: (context, index) {
-          final request = _requests[index];
+          if (showRetryNotice && index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: DesignSpacing.md),
+              child: InlineRetryNotice(
+                message: loadError,
+                onRetry: _loadRequests,
+              ),
+            );
+          }
+
+          final requestIndex = index - (showRetryNotice ? 1 : 0);
+          final request = requests[requestIndex];
           final id = request['id'] as String?;
           return StaggeredItem(
-            itemKey: 'stock-req-${id ?? index}',
-            index: index,
+            itemKey: 'stock-req-${id ?? requestIndex}',
+            index: requestIndex,
             child: _buildRequestCard(request),
           );
         },

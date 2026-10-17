@@ -235,6 +235,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                       subtitle: _searchController.text.isNotEmpty
                           ? 'Try a different search term'
                           : null,
+                      actionIcon: Icons.clear_rounded,
                       actionLabel: _searchController.text.isNotEmpty
                           ? 'Clear search'
                           : null,
