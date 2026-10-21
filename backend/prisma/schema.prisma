@@ -55,6 +55,7 @@ model Tenant {
   subscriptionInvoices SubscriptionInvoice[]
   paymentClaims        SubscriptionPaymentClaim[]
   subscriptionCardToken SubscriptionCardToken?
+  platformNotes         PlatformTenantNote[]
   retailReceivables     RetailReceivable[]
   peerDebtors           PeerDebtor[]
   peerReceivables       PeerReceivable[]
@@ -147,7 +148,96 @@ model PlatformAdmin {
   name         String   @default("Platform Owner")
   createdAt    DateTime @default(now())
 
+  // ACA (Axon Counterbase Admin) staff controls. Rows that existed before
+  // staff roles were introduced are the original platform owner, hence the
+  // OWNER default; new staff always get an explicit role from the team API.
+  role                  String    @default("OWNER") // OWNER | ADMIN | SECURITY | FINANCE | SUPPORT | VIEWER
+  status                String    @default("ACTIVE") // ACTIVE | DISABLED
+  phone                 String?
+  mustChangePassword    Boolean   @default(false)
+  passwordChangedAt     DateTime?
+  failedLoginAttempts   Int       @default(0)
+  lockedUntil           DateTime?
+  lastLoginAt           DateTime?
+  lastLoginIp           String?
+  twoFactorEnabled      Boolean   @default(false)
+  twoFactorSecretEnc    String? // AES-256-GCM sealed TOTP secret, never plaintext
+  twoFactorBackupHashes Json? // sha256 hashes of unused backup codes
+  createdById           String?
+  updatedAt             DateTime  @default(now()) @updatedAt
+
+  sessions PlatformAdminSession[]
+  notes    PlatformTenantNote[]
+
   @@map("platform_admins")
+}
+
+/// One signed-in device for a platform staff member. The refresh token is
+/// opaque and stored only as a SHA-256 hash; prevTokenHash lets us detect a
+/// replayed (stolen) refresh token and revoke the whole session.
+model PlatformAdminSession {
+  id            String    @id @default(uuid())
+  adminId       String
+  tokenHash     String    @unique
+  prevTokenHash String?
+  userAgent     String?
+  ipAddress     String?
+  deviceLabel   String?
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, revokedAt])
+  @@index([expiresAt])
+  @@map("platform_admin_sessions")
+}
+
+/// Append-only trail of everything platform staff do (and every sign-in
+/// attempt). Unlike AuditLog this is attributed to the staff member.
+model PlatformAuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorEmail String?
+  actorRole  String?
+  action     String
+  category   String // AUTH | TEAM | TENANT | BILLING | LICENSE | SECURITY
+  severity   String   @default("INFO") // INFO | WARN | CRITICAL
+  targetType String?
+  targetId   String?
+  tenantId   String?
+  summary    String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([category, createdAt])
+  @@index([severity, createdAt])
+  @@index([actorId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("platform_audit_logs")
+}
+
+/// Internal notes the Counterbase team keeps on a client company.
+model PlatformTenantNote {
+  id          String   @id @default(uuid())
+  tenantId    String
+  authorId    String?
+  authorEmail String
+  body        String
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  author PlatformAdmin? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("platform_tenant_notes")
 }
 
 model Branch {

@@ -110,7 +110,13 @@ export class PlatformAdminService {
     const pageSize = Math.min(query.pageSize ?? 20, 100);
     const where: any = {};
     if (query.status) where.subscriptionStatus = query.status;
-    if (query.search) where.name = { contains: query.search, mode: 'insensitive' };
+    if (query.search) {
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { slug: { contains: query.search, mode: 'insensitive' } },
+        { users: { some: { email: { contains: query.search, mode: 'insensitive' } } } },
+      ];
+    }
 
     const [tenants, total] = await Promise.all([
       this.prisma.tenant.findMany({
@@ -127,7 +133,9 @@ export class PlatformAdminService {
           currentPeriodStart: true,
           currentPeriodEnd: true,
           createdAt: true,
-          _count: { select: { subscriptionInvoices: true } },
+          isActive: true,
+          activationStatus: true,
+          _count: { select: { subscriptionInvoices: true, users: true, branches: true } },
         },
       }),
       this.prisma.tenant.count({ where }),
@@ -144,6 +152,10 @@ export class PlatformAdminService {
         currentPeriodEnd: tenant.currentPeriodEnd,
         createdAt: tenant.createdAt,
         invoiceCount: tenant._count.subscriptionInvoices,
+        userCount: tenant._count.users,
+        branchCount: tenant._count.branches,
+        isActive: tenant.isActive,
+        activationStatus: tenant.activationStatus,
       })),
       total,
       page,
@@ -193,6 +205,10 @@ export class PlatformAdminService {
       autoRenewEnabled: tenant.autoRenewEnabled,
       billingPhone: tenant.billingPhone,
       activationStatus: tenant.activationStatus,
+      activationPaidAt: tenant.activationPaidAt,
+      setupFeePaidAt: tenant.setupFeePaidAt,
+      isActive: tenant.isActive,
+      subscriptionProvider: tenant.subscriptionProvider,
       createdAt: tenant.createdAt,
       owner,
       counts: {
@@ -334,6 +350,35 @@ export class PlatformAdminService {
     };
   }
 
+  async listClaims(status = 'PENDING') {
+    const claims = await this.prisma.subscriptionPaymentClaim.findMany({
+      where: { status },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        tenant: { select: { id: true, name: true } },
+        invoice: { select: { id: true, plan: true, amount: true, currency: true, status: true } },
+      },
+    });
+    return {
+      items: claims.map((c) => ({
+        id: c.id,
+        tenantId: c.tenantId,
+        tenantName: c.tenant.name,
+        invoiceId: c.invoiceId,
+        invoiceStatus: c.invoice.status,
+        plan: c.invoice.plan,
+        mpesaCode: c.mpesaCode,
+        amount: c.amount,
+        currency: c.invoice.currency,
+        status: c.status,
+        createdAt: c.createdAt,
+        decidedAt: c.decidedAt,
+      })),
+      total: claims.length,
+    };
+  }
+
   async markInvoicePaid(invoiceId: string, mpesaCode: string | undefined, actor: { id: string; email: string }) {
     const invoice = await this.prisma.subscriptionInvoice.findUnique({ where: { id: invoiceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
@@ -362,6 +407,33 @@ export class PlatformAdminService {
       });
     }
 
+    // A real payment settles any manual M-Pesa claim filed against this invoice,
+    // so it stops showing up as waiting for review.
+    await this.prisma.subscriptionPaymentClaim.updateMany({
+      where: { invoiceId, status: 'PENDING' },
+      data: { status: 'APPROVED', decidedAt: paidAt },
+    });
+
+    // Paid for a newer period than the company currently has: apply it, the same
+    // way the card / M-Pesa settlement paths do, so the client is not left expired.
+    // Never moves a period backwards and ignores goodwill credits.
+    if (invoice.periodEnd && Number(invoice.amount) > 0 && invoice.provider !== CREDIT_PROVIDER) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: invoice.tenantId },
+        select: { currentPeriodEnd: true },
+      });
+      if (!tenant?.currentPeriodEnd || tenant.currentPeriodEnd < invoice.periodEnd) {
+        await this.prisma.tenant.update({
+          where: { id: invoice.tenantId },
+          data: {
+            subscriptionStatus: 'ACTIVE',
+            currentPeriodStart: invoice.periodStart ?? paidAt,
+            currentPeriodEnd: invoice.periodEnd,
+          },
+        });
+      }
+    }
+
     await this.auditService.record({
       userId: null,
       action: 'PLATFORM_ADMIN_INVOICE_MARKED_PAID',
@@ -373,6 +445,127 @@ export class PlatformAdminService {
     void actor;
 
     return updated;
+  }
+
+  /**
+   * One round-trip for the ACA home screen: company health, money, what needs
+   * attention and how the installed fleet looks. Everything is read live from
+   * the production tables — no cached or sample figures.
+   */
+  async getOverview() {
+    const now = new Date();
+    const DAY = 86_400_000;
+    const d30 = new Date(now.getTime() - 30 * DAY);
+    const d60 = new Date(now.getTime() - 60 * DAY);
+    const in14 = new Date(now.getTime() + 14 * DAY);
+    const h24 = new Date(now.getTime() - DAY);
+    const seriesStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    const [
+      dashboard,
+      tenantTotal,
+      newTenants30,
+      activationGroups,
+      paidInvoices,
+      pendingInvoices,
+      pendingClaims,
+      expiring,
+      attention,
+      deviceTotal,
+      deviceActive24h,
+      versionRows,
+    ] = await Promise.all([
+      this.getDashboard(),
+      this.prisma.tenant.count(),
+      this.prisma.tenant.count({ where: { createdAt: { gte: d30 } } }),
+      this.prisma.tenant.groupBy({ by: ['activationStatus'], _count: true }),
+      this.prisma.subscriptionInvoice.findMany({
+        where: { status: 'PAID', paidAt: { gte: seriesStart }, amount: { gt: 0 } },
+        select: { amount: true, paidAt: true },
+      }),
+      this.prisma.subscriptionInvoice.count({ where: { status: 'PENDING' } }),
+      this.prisma.subscriptionPaymentClaim.count({ where: { status: 'PENDING' } }),
+      this.prisma.tenant.findMany({
+        where: {
+          currentPeriodEnd: { gte: now, lte: in14 },
+          subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
+        },
+        orderBy: { currentPeriodEnd: 'asc' },
+        take: 10,
+        select: { id: true, name: true, plan: true, subscriptionStatus: true, currentPeriodEnd: true },
+      }),
+      this.prisma.tenant.findMany({
+        where: { subscriptionStatus: { in: ['PAST_DUE', 'SUSPENDED'] } },
+        orderBy: { currentPeriodEnd: 'asc' },
+        take: 10,
+        select: { id: true, name: true, plan: true, subscriptionStatus: true, currentPeriodEnd: true },
+      }),
+      this.prisma.device.count(),
+      this.prisma.device.count({ where: { lastActiveAt: { gte: h24 } } }),
+      this.prisma.device.groupBy({
+        by: ['appVersion'],
+        _count: true,
+        orderBy: { _count: { appVersion: 'desc' } },
+        take: 6,
+      }),
+    ]);
+
+    const months: { month: string; amountKes: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        amountKes: 0,
+      });
+    }
+    let collected30 = 0;
+    let collectedPrev30 = 0;
+    for (const inv of paidInvoices) {
+      const amount = Number(inv.amount);
+      const paidAt = inv.paidAt as Date;
+      const key = `${paidAt.getFullYear()}-${String(paidAt.getMonth() + 1).padStart(2, '0')}`;
+      const bucket = months.find((m) => m.month === key);
+      if (bucket) bucket.amountKes += amount;
+      if (paidAt >= d30) collected30 += amount;
+      else if (paidAt >= d60) collectedPrev30 += amount;
+    }
+
+    const activation: Record<string, number> = {};
+    for (const g of activationGroups) activation[g.activationStatus ?? 'UNKNOWN'] = g._count;
+
+    const daysLeft = (d: Date | null) =>
+      d ? Math.max(0, Math.ceil((d.getTime() - now.getTime()) / DAY)) : null;
+
+    return {
+      generatedAt: now.toISOString(),
+      tenants: {
+        total: tenantTotal,
+        byStatus: dashboard.tenants,
+        unmappedStatus: dashboard.tenantsUnmappedStatus,
+        newLast30Days: newTenants30,
+        byActivation: activation,
+      },
+      revenue: {
+        mrrKes: dashboard.mrrKes,
+        arrKes: dashboard.arrKes,
+        collectedLast30DaysKes: collected30,
+        collectedPrevious30DaysKes: collectedPrev30,
+        monthly: months,
+      },
+      billing: {
+        pendingInvoices,
+        overdueInvoices: dashboard.failedPayments,
+        pendingClaims,
+        recentPayments: dashboard.recentPayments,
+      },
+      expiringSoon: expiring.map((t) => ({ ...t, daysLeft: daysLeft(t.currentPeriodEnd) })),
+      needsAttention: attention.map((t) => ({ ...t, daysLeft: daysLeft(t.currentPeriodEnd) })),
+      fleet: {
+        devices: deviceTotal,
+        activeLast24h: deviceActive24h,
+        appVersions: versionRows.map((v) => ({ version: v.appVersion ?? 'unknown', devices: v._count })),
+      },
+    };
   }
 
   // ===== Licensing =====

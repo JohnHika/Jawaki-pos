@@ -23,6 +23,7 @@ describe('PlatformAdminService', () => {
     },
     subscriptionPaymentClaim: {
       findMany: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   });
 
@@ -319,6 +320,70 @@ describe('PlatformAdminService', () => {
       expect(auditService.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'PLATFORM_ADMIN_INVOICE_MARKED_PAID' }),
       );
+    });
+
+    describe('settling the company', () => {
+      const periodEnd = new Date('2026-12-01T00:00:00Z');
+      const invoice = (overrides: Record<string, any> = {}) => ({
+        id: 'inv-9',
+        tenantId: 't9',
+        status: 'PENDING',
+        provider: 'MPESA_MANUAL',
+        reference: null,
+        amount: '3200',
+        plan: 'CORE',
+        periodStart: new Date('2026-11-01T00:00:00Z'),
+        periodEnd,
+        ...overrides,
+      });
+      const build = (inv: any, tenantEnd: Date | null) =>
+        buildService({
+          prisma: {
+            subscriptionInvoice: {
+              findUnique: jest.fn().mockResolvedValue(inv),
+              update: jest.fn().mockResolvedValue({ ...inv, status: 'PAID' }),
+            },
+            tenant: {
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+              findUnique: jest.fn().mockResolvedValue({ currentPeriodEnd: tenantEnd }),
+              update: jest.fn().mockResolvedValue({}),
+            },
+          },
+        });
+
+      it('approves the pending claim filed against the invoice', async () => {
+        const { service, prisma } = build(invoice(), null);
+        await service.markInvoicePaid('inv-9', 'SBX1', actor);
+        expect(prisma.subscriptionPaymentClaim.updateMany).toHaveBeenCalledWith({
+          where: { invoiceId: 'inv-9', status: 'PENDING' },
+          data: { status: 'APPROVED', decidedAt: expect.any(Date) },
+        });
+      });
+
+      it('moves an expired company onto the invoice period and activates it', async () => {
+        const { service, prisma } = build(invoice(), new Date('2026-10-01T00:00:00Z'));
+        await service.markInvoicePaid('inv-9', undefined, actor);
+        expect(prisma.tenant.update).toHaveBeenCalledWith({
+          where: { id: 't9' },
+          data: {
+            subscriptionStatus: 'ACTIVE',
+            currentPeriodStart: new Date('2026-11-01T00:00:00Z'),
+            currentPeriodEnd: periodEnd,
+          },
+        });
+      });
+
+      it('never moves a period backwards when an old invoice is settled late', async () => {
+        const { service, prisma } = build(invoice(), new Date('2027-03-01T00:00:00Z'));
+        await service.markInvoicePaid('inv-9', undefined, actor);
+        expect(prisma.tenant.update).not.toHaveBeenCalled();
+      });
+
+      it('leaves the period alone for a goodwill credit', async () => {
+        const { service, prisma } = build(invoice({ amount: '-500', provider: 'CREDIT' }), null);
+        await service.markInvoicePaid('inv-9', undefined, actor);
+        expect(prisma.tenant.update).not.toHaveBeenCalled();
+      });
     });
 
     it('rejects marking an already-PAID invoice', async () => {

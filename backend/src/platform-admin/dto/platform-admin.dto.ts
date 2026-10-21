@@ -23,6 +23,12 @@ export class PlatformAdminLoginDto {
   @IsString()
   @IsNotEmpty()
   password!: string;
+
+  @ApiPropertyOptional({ description: 'Authenticator or backup code, when two-factor is on' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  otp?: string;
 }
 
 export class ExtendTenantDto {
