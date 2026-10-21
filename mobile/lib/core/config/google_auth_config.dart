@@ -1,4 +1,4 @@
-/// Public Google OAuth configuration for the Axon POS Android client.
+/// Public Google OAuth configuration for the Counterbase Android client.
 ///
 /// This is an OAuth client identifier, not a credential. Never add a client
 /// secret to this file, the APK, or source control.

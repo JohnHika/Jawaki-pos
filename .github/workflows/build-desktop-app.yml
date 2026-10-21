@@ -50,15 +50,15 @@ jobs:
           - label: Windows
             os: windows-latest
             platform: windows
-            artifact: axon-pos-desktop-windows
+            artifact: counterbase-desktop-windows
           - label: macOS
             os: macos-latest
             platform: macos
-            artifact: axon-pos-desktop-macos
+            artifact: counterbase-desktop-macos
           - label: Linux
             os: ubuntu-latest
             platform: linux
-            artifact: axon-pos-desktop-linux
+            artifact: counterbase-desktop-linux
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
@@ -90,9 +90,9 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress --limit-output
-          $env:APP_VERSION = '1.1.0'
+          $env:APP_VERSION = '1.1.1'
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows\installer.iss
-          Copy-Item build\windows\installer\AxonPOSDesktopSetup.exe "$env:RUNNER_TEMP/${{ matrix.artifact }}.exe"
+          Copy-Item build\windows\installer\CounterbaseDesktopSetup.exe "$env:RUNNER_TEMP/${{ matrix.artifact }}.exe"
 
       - name: Package macOS app
         if: matrix.platform == 'macos'
@@ -122,16 +122,16 @@ jobs:
         uses: actions/download-artifact@v8.0.1
         with:
           path: dist
-          pattern: axon-pos-desktop-*
+          pattern: counterbase-desktop-*
           merge-multiple: true
 
       - name: Publish GitHub desktop release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: desktop-v1.1.0-${{ github.run_number }}
+          RELEASE_TAG: desktop-v1.1.1-${{ github.run_number }}
         run: |
           gh release create "$RELEASE_TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Axon POS Desktop $RELEASE_TAG" \
-            --notes "Axon POS Desktop 1.1: live sign-in, live catalog, customers, inventory, reports, product images, and cash sales. Built from the independent desktop project in desktop/."
+            --title "Counterbase Desktop $RELEASE_TAG" \
+            --notes "Counterbase Desktop 1.1.1: new product name, live sign-in, catalog, customers, inventory, reports, product images, and cash sales. Built from the independent desktop project in desktop/."

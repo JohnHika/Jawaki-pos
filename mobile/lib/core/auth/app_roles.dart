@@ -1,4 +1,4 @@
-/// Role-based access control for Axon POS.
+/// Role-based access control for Counterbase.
 ///
 /// The backend is the real enforcement point: it computes each user's
 /// effective permission set (union of assigned roles' permissions, plus

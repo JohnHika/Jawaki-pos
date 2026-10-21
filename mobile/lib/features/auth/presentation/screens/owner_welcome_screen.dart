@@ -133,7 +133,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                 child: LetterRise(
                   name?.isNotEmpty == true
                       ? 'Welcome, $name'
-                      : 'Welcome to Axon POS',
+                      : 'Welcome to Counterbase',
                   delay: const Duration(milliseconds: 300),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.headlineMedium?.copyWith(

@@ -141,7 +141,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                           showGlassSnackBar(
                             context,
                             url.isEmpty
-                                ? 'Using the default Axon backend'
+                                ? 'Using the default Counterbase server'
                                 : 'Backend URL saved',
                             icon: Icons.check_circle_rounded,
                             color: DesignColors.success,
@@ -316,7 +316,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
             ),
             const SizedBox(width: 9),
             Text(
-              'AXON / START',
+              'COUNTERBASE / START',
               style: DesignType.numeric(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -374,7 +374,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
                     child: Image.asset(
                       'assets/images/axon_app_icon_512.png',
                       fit: BoxFit.cover,
-                      semanticLabel: 'Axon POS',
+                      semanticLabel: 'Counterbase',
                     ),
                   ),
                 ),

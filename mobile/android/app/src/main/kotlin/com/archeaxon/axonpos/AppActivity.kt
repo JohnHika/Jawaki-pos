@@ -97,7 +97,7 @@ class AppActivity : FlutterFragmentActivity() {
 							val mipmap = if (key == "standard") "ic_launcher" else "ic_launcher_$key"
 							val iconRes = resources.getIdentifier(mipmap, "mipmap", packageName)
 							val info = ShortcutInfo.Builder(this@AppActivity, "axon_pos_home_$key")
-								.setShortLabel("Axon POS")
+								.setShortLabel("Counterbase")
 								.setIcon(Icon.createWithResource(this@AppActivity, iconRes))
 								.setIntent(launch)
 								.build()

@@ -50,7 +50,7 @@ android {
     }
 
     defaultConfig {
-        // Axon POS - Professional Retail Management
+        // Counterbase - Professional Retail Management
         applicationId = "com.archeaxon.axonpos"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

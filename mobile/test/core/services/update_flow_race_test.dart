@@ -24,7 +24,7 @@ Map<String, dynamic> _manifest({required int build, String version = '1.0.56'}) 
 
 void _runningBuild(int build, {String version = '1.0.55'}) {
   PackageInfo.setMockInitialValues(
-    appName: 'Axon POS',
+    appName: 'Counterbase',
     packageName: 'com.archeaxon.axonpos',
     version: version,
     buildNumber: '$build',

@@ -34,10 +34,10 @@ String companySetupErrorMessage(Object error) {
     }
     if (status == 401) return 'Verification was not accepted. Try again.';
     if (status != null && status >= 500) {
-      return 'Axon could not create your workspace right now. Try again shortly.';
+      return 'Counterbase could not create your workspace right now. Try again shortly.';
     }
     if (error.type == DioExceptionType.connectionError) {
-      return 'We could not reach Axon. Check your connection and try again.';
+      return 'We could not reach Counterbase. Check your connection and try again.';
     }
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
@@ -527,7 +527,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         ],
         const SizedBox(height: DesignSpacing.md),
         Text(
-          'Axon does not collect or store an owner password during workspace setup.',
+          'Counterbase does not collect or store an owner password during workspace setup.',
           textAlign: TextAlign.center,
           style: Theme.of(context)
               .textTheme
@@ -678,7 +678,7 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('AXON / SETUP',
+              child: Text('COUNTERBASE / SETUP',
                   style: TextStyle(
                       color: context.themed(DesignColors.darkTextSecondary),
                       fontWeight: FontWeight.w800,

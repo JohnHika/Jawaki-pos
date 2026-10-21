@@ -274,7 +274,7 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
     return TapTracker(
       router: router,
       child: MaterialApp.router(
-        title: 'Axon POS',
+        title: 'Counterbase',
         debugShowCheckedModeBanner: false,
         showPerformanceOverlay: false,
         checkerboardRasterCacheImages: false,

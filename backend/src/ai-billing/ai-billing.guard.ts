@@ -37,7 +37,7 @@ export class AiAccessGuard implements CanActivate {
       throw new HttpException(
         {
           message:
-            'AI is included in every Axon plan. Activate a plan to use the AI assistant.',
+            'AI is included in every Counterbase plan. Activate a plan to use the AI assistant.',
           code: 'AI_SUBSCRIPTION_REQUIRED',
         },
         HttpStatus.PAYMENT_REQUIRED,

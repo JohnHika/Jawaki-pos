@@ -179,7 +179,7 @@ export class RecurringBillingService {
       claimId: claim.id,
       status: 'PENDING_CONFIRMATION',
       message:
-        'Payment code received. Axon will confirm shortly and your subscription will continue.',
+        'Payment code received. We will confirm it shortly and your subscription will continue.',
     };
   }
 
@@ -379,7 +379,7 @@ export class RecurringBillingService {
         phoneNumber: tenant.billingPhone as string,
         amount,
         reference,
-        description: `Axon POS ${plan.name} plan — ${this.monthLabel(new Date())}`,
+        description: `Counterbase ${plan.name} plan — ${this.monthLabel(new Date())}`,
       });
 
       await this.prisma.subscriptionInvoice.update({

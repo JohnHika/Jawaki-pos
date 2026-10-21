@@ -88,7 +88,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     }
     final text = error.toString();
     if (text.contains('503') || text.contains('not configured')) {
-      return 'Subscription service is not available yet. Please contact Axon support.';
+      return 'Subscription service is not available yet. Please contact Counterbase support.';
     }
     return 'Something went wrong. Please try again.';
   }
@@ -201,7 +201,7 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'AXON / SUBSCRIPTION',
+                'COUNTERBASE / SUBSCRIPTION',
                 style: TextStyle(
                   color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,

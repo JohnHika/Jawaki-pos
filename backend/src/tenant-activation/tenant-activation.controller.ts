@@ -50,16 +50,16 @@ export class TenantActivationController {
 
   @Get('paystack/callback')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  @ApiOperation({ summary: 'Return a completed Paystack checkout to the Axon app' })
+  @ApiOperation({ summary: 'Return a completed Paystack checkout to Counterbase' })
   callback(@Query('reference') reference?: string) {
     const encodedReference = encodeURIComponent(reference?.trim() ?? '');
     const appUrl = `axonpos://payment/activation?reference=${encodedReference}`;
     return `<!doctype html>
-<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Return to Axon POS</title></head>
+<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Return to Counterbase</title></head>
 <body style="font-family:system-ui,sans-serif;padding:32px;text-align:center">
 <h1>Payment received</h1>
-<p>Returning you to Axon POS to verify your payment securely.</p>
-<p><a href="${appUrl}">Return to Axon POS</a></p>
+<p>Returning you to Counterbase to verify your payment securely.</p>
+<p><a href="${appUrl}">Return to Counterbase</a></p>
 <script>window.location.replace(${JSON.stringify(appUrl)});</script>
 </body></html>`;
   }

@@ -360,7 +360,7 @@ double planPriceKes(String planId) {
 const kTrialPlan = SubscriptionPlan(
   id: 'trial',
   name: 'TRIAL',
-  tagline: 'Explore Axon free for 7 days',
+  tagline: 'Explore Counterbase free for 7 days',
   priceKes: 0,
   features: [
     PlanFeature(text: 'Up to 1 branch', includedInCore: true),

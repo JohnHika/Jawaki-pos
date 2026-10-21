@@ -24,6 +24,7 @@ import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/export_document_service.dart';
+import '../../../../core/widgets/release_notes.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -358,7 +359,7 @@ class SettingsScreen extends ConsumerWidget {
           SettingsEntry(
             id: 'about',
             icon: Icons.info_rounded,
-            title: 'About Axon POS',
+            title: 'About Counterbase',
             subtitle: 'Version and company information',
             keywords: const ['version', 'build'],
             onTap: () => _showAboutInfo(context),
@@ -1149,7 +1150,7 @@ class SettingsScreen extends ConsumerWidget {
                       color: Colors.white, size: 30),
                 ),
                 const SizedBox(height: 16),
-                Text('Axon POS',
+                Text('Counterbase',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800, color: titleColor)),
                 const SizedBox(height: 4),
@@ -1250,10 +1251,10 @@ class SettingsScreen extends ConsumerWidget {
       final marketingVersion = parts.length >= 3 && parts[2] != '0'
           ? parts.take(3).join('.')
           : parts.take(2).join('.');
-      return 'Axon POS $marketingVersion';
+      return 'Counterbase $marketingVersion';
     }
 
-    return 'Axon POS $version';
+    return 'Counterbase $version';
   }
 
   // ===== ADMIN-ONLY: BRANCH MANAGEMENT =====
@@ -2524,8 +2525,10 @@ class _NotificationSettingsSheetState
                       icon: Icons.system_update_alt_rounded,
                       iconColor: DesignColors.accent,
                       title: 'Update available',
-                      subtitle:
-                          'Version ${_availableUpdate!.displayVersion} is ready to install',
+                      subtitle: '${cleanReleaseName(
+                        _availableUpdate!.displayVersion,
+                        fallback: 'Counterbase ${_availableUpdate!.latestVersion}',
+                      )} is ready to install',
                       trailing: SettingsPrimaryButton(
                         label: 'Update',
                         onPressed: () {
@@ -3431,8 +3434,8 @@ class _SettingsFooter extends StatelessWidget {
               ? ''
               : ' (build ${info.buildNumber})';
           final label = info == null
-              ? 'Axon POS'
-              : 'Axon POS  ·  Version ${info.version}$build';
+              ? 'Counterbase'
+              : 'Counterbase  ·  Version ${info.version}$build';
           return Text(
             label,
             textAlign: TextAlign.center,

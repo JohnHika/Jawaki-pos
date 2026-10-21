@@ -93,7 +93,7 @@ class ExportDocumentService {
         footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            'Page ${context.pageNumber} of ${context.pagesCount}  •  Generated from Axon POS',
+            'Page ${context.pageNumber} of ${context.pagesCount}  •  Generated from Counterbase',
             style: const pw.TextStyle(fontSize: 8, color: _muted),
           ),
         ),
@@ -178,7 +178,7 @@ class ExportDocumentService {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$filename');
     await file.writeAsBytes(bytes);
-    await Share.shareXFiles([XFile(file.path)], subject: 'Axon POS report');
+    await Share.shareXFiles([XFile(file.path)], subject: 'Counterbase report');
   }
 
   /// Fetches a network logo image as bytes for embedding in a PDF header;
@@ -212,7 +212,7 @@ class ExportDocumentService {
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
     final file = File('${dir.path}/${filenamePrefix}_$timestamp.csv');
     await file.writeAsString(content);
-    await Share.shareXFiles([XFile(file.path)], subject: 'Axon POS export');
+    await Share.shareXFiles([XFile(file.path)], subject: 'Counterbase export');
   }
 
   static Future<void> sharePlainText(String content, {String? subject}) {

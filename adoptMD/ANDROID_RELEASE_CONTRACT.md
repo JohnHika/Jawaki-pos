@@ -4,6 +4,7 @@ This contract protects installed customer devices from APKs that cannot update i
 
 ## Canonical Customer Line
 
+- Customer-facing app name: `Counterbase`. The package id and signing certificate below retain their Axon identifiers so installed customer devices can update in place.
 - Package id: `com.archeaxon.axonpos`
 - Production signing certificate SHA-256: `0289d757a110883956bc03faeedc3c281d1eb685b98d9bfbad533a9b0d340393`
 - Certificate owner: `CN=Axon POS, OU=Mobile, O=Arche Axon Intelligence, L=Nairobi, ST=Nairobi, C=KE`

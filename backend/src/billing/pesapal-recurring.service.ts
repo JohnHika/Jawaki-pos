@@ -108,7 +108,7 @@ export class PesapalRecurringService implements OnModuleInit {
     const payload = this.pesapal.buildRecurringOrderRequest({
       accountNumber,
       amount: Number(amount),
-      description: `Axon POS ${plan.name} plan — card auto-renew (${billingCycle.toLowerCase()})`,
+      description: `Counterbase ${plan.name} plan — card auto-renew (${billingCycle.toLowerCase()})`,
       billingCycle,
       startDate,
       endDate,

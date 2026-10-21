@@ -109,25 +109,30 @@ List<String> cleanReleaseNoteLines(String raw) {
         .where((sentence) => sentence.length >= 3 && !_technicalLine.hasMatch(sentence))
         .join(' ');
     if (line.length < 3) continue;
-    out.add(line);
+    // Older release bodies are still served to installed customers.
+    out.add(line.replaceAll(
+        RegExp(r'axon pos', caseSensitive: false), 'Counterbase'));
     if (out.length >= 8) break;
   }
   return out;
 }
 
-/// "Axon POS Android Axon POS 1.0.50" -> "Axon POS 1.0.50".
+/// "Axon POS Android Axon POS 1.0.50" -> "Counterbase 1.0.50".
 /// Release names are assembled from a platform label plus the release title, so
-/// the product name can appear twice; show it once.
+/// the product name can appear twice; show it once. Legacy titles are displayed
+/// with the current product name without changing their stored release data.
 String cleanReleaseName(String? raw, {required String fallback}) {
   var name = raw?.trim() ?? '';
   if (name.isEmpty) return fallback;
-  final last = name.toLowerCase().lastIndexOf('axon pos');
+  name = name.replaceAll(
+      RegExp(r'axon pos', caseSensitive: false), 'Counterbase');
+  final last = name.toLowerCase().lastIndexOf('counterbase');
   if (last > 0) name = name.substring(last);
   name = name.replaceAll(RegExp(r'\bAndroid\b\s*'), '').trim();
   return name.isEmpty ? fallback : name;
 }
 
-/// The visible version inside a release name such as "Axon POS 1.0.68".
+/// The visible version inside a release name such as "Counterbase 1.0.68".
 /// The manifest's own latestVersion is an internal, always-increasing
 /// compatibility number (for example 1.0.109) that people should not see.
 String? releaseVersionFrom(String? releaseName) {
@@ -186,7 +191,7 @@ class UpdateReleaseMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final title = cleanReleaseName(releaseName, fallback: 'Axon POS $version');
+    final title = cleanReleaseName(releaseName, fallback: 'Counterbase $version');
     final secondary =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final tertiary =

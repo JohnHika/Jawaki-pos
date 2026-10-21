@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
 /**
- * Axon POS Cloudinary Upload Service
- * Handles image uploads for Axon POS by Arche Axon
+ * Counterbase Cloudinary Upload Service
+ * Handles image uploads for Counterbase by Arche Axon
  */
 
 export interface UploadResult {
@@ -33,7 +33,7 @@ export class UploadsService {
   }
 
   /**
-   * Upload an image buffer to Cloudinary for Axon POS.
+   * Upload an image buffer to Cloudinary for Counterbase.
    * @param buffer  File buffer from multer
    * @param mimeType File MIME type
    * @param tenantSlug  Sanitized tenant slug (used as Cloudinary subfolder)

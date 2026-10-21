@@ -22,7 +22,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const activationStatus = (user as any).activationStatus;
     if (activationStatus === 'PENDING' && !this.isActivationRoute(context)) {
       throw new HttpException(
-        'Company activation payment is required before using Axon POS.',
+        'Company activation payment is required before using Counterbase.',
         HttpStatus.PAYMENT_REQUIRED,
       );
     }

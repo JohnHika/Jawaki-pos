@@ -13,7 +13,7 @@ import '../database/app_database.dart';
 /// would make some launchers drop the home-screen shortcut every day.
 enum AppIconVariant {
   /// Orange Axon cube: the everyday icon.
-  standard('standard', 'Open for business', 'The everyday Axon POS icon.'),
+  standard('standard', 'Open for business', 'The everyday Counterbase icon.'),
 
   /// Flame badge: you have traded several days in a row.
   streak('streak', 'On a streak', 'Shows a flame while you keep trading day after day.'),

@@ -9,7 +9,7 @@ export class AppController {
   root() {
     return {
       status: 'ok',
-      name: 'Arche Axon POS API',
+      name: 'Counterbase API',
       message: 'Backend is running successfully',
       docs: '/api/docs',
       health: '/health',

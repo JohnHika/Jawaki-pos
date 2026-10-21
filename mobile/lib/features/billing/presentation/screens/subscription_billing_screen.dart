@@ -1741,7 +1741,7 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
       Navigator.of(context).pop();
       widget.onSubmitted();
       final message = result['message']?.toString() ??
-          'Payment code received. Axon will confirm shortly and your '
+          'Payment code received. Counterbase will confirm shortly and your '
               'subscription will continue.';
       showGlassSnackBar(
         context,

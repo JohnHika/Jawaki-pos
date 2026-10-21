@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'design_system.dart';
 
-/// Axon POS Material theme. Dark is the primary identity; light exists
+/// Counterbase Material theme. Dark is the primary identity; light exists
 /// for contexts that need a paper-white surface (printable receipts).
 class AppTheme {
   static ThemeData get lightTheme {

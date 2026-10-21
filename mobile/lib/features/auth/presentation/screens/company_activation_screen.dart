@@ -200,7 +200,7 @@ class _CompanyActivationScreenState
   String _friendlyError(Object error) {
     if (error is DioException) {
       if (error.response?.statusCode == 503) {
-        return 'Secure checkout is not available on the server yet. Please contact Axon support before attempting payment.';
+        return 'Secure checkout is not available on the server yet. Please contact Counterbase support before attempting payment.';
       }
       if (error.response?.statusCode == 402) {
         return 'Complete the KSh 35,000 activation payment to continue.';
@@ -209,7 +209,7 @@ class _CompanyActivationScreenState
     }
     final text = error.toString();
     if (text.contains('503') || text.contains('not configured')) {
-      return 'Secure checkout is not available on the server yet. Please contact Axon support before attempting payment.';
+      return 'Secure checkout is not available on the server yet. Please contact Counterbase support before attempting payment.';
     }
     if (text.contains('402')) {
       return 'Complete the KSh 35,000 activation payment to continue.';
@@ -271,8 +271,8 @@ class _CompanyActivationScreenState
                     index: 2,
                     child: Text(
                       companyName == null || companyName.isEmpty
-                          ? 'Your company is created. One payment unlocks the Axon POS workspace.'
-                          : '$companyName is created. Complete activation before using Axon POS.',
+                          ? 'Your company is created. One payment unlocks the Counterbase workspace.'
+                          : '$companyName is created. Complete activation before using Counterbase.',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             color:
                                 context.themed(DesignColors.darkTextSecondary),
@@ -347,7 +347,7 @@ class _CompanyActivationScreenState
                   ],
                   const SizedBox(height: 20),
                   Text(
-                    'Secure checkout powered by Paystack. Axon will only unlock the workspace after the payment is verified by the server.',
+                    'Secure checkout powered by Paystack. Counterbase will only unlock the workspace after the payment is verified by the server.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextTertiary),
@@ -400,7 +400,7 @@ class _CompanyActivationScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'AXON / ACTIVATION',
+                'COUNTERBASE / ACTIVATION',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       color: context.themed(DesignColors.darkTextPrimary),
                       fontWeight: FontWeight.w800,
@@ -451,7 +451,7 @@ class _CompanyActivationScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Axon workspace activation',
+                      'Counterbase workspace activation',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             color: context.themed(DesignColors.darkTextPrimary),
                             fontWeight: FontWeight.w700,

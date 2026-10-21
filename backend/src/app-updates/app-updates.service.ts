@@ -89,7 +89,7 @@ export class AppUpdatesService {
     );
     const releaseName = this.config.get<string>(
       "ANDROID_APP_RELEASE_NAME",
-      "Axon POS 1.0",
+      "Counterbase 1.0",
     );
     const buildNumber = this.readNumber(
       this.config.get<string>("ANDROID_APP_BUILD_NUMBER"),
@@ -121,7 +121,7 @@ export class AppUpdatesService {
     );
     const releaseName = this.config.get<string>(
       "ANDROID_APP_RELEASE_NAME",
-      "Axon POS 1.0",
+      "Counterbase 1.0",
     );
     const buildNumber = this.readNumber(
       this.config.get<string>("ANDROID_APP_BUILD_NUMBER"),

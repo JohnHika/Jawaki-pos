@@ -2436,12 +2436,12 @@ class AxonLogoTitle extends StatelessWidget {
           asset,
           width: logoSize,
           height: logoSize,
-          semanticsLabel: 'Axon POS logo',
+          semanticsLabel: 'Counterbase logo',
         ),
         if (showText) ...[
           const SizedBox(width: 10),
           Text(
-            'Axon POS',
+            'Counterbase',
             style: TextStyle(
               color: isDark
                   ? DesignColors.darkTextPrimary

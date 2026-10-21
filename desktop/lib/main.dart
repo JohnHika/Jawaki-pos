@@ -21,7 +21,7 @@ class AxonDesktopApp extends StatelessWidget {
       brightness: Brightness.dark,
     );
     return MaterialApp(
-      title: 'Axon POS Desktop',
+      title: 'Counterbase Desktop',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -142,7 +142,7 @@ class _LoginScreenState extends State<_LoginScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'AXON POS',
+                                'COUNTERBASE',
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
@@ -778,11 +778,11 @@ class _NavigationRail extends StatelessWidget {
                 if (extended) ...[
                   const SizedBox(width: 12),
                   const Text(
-                    'AXON',
+                    'Counterbase',
                     style: TextStyle(
-                      fontSize: 19,
+                      fontSize: 17,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ],

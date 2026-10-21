@@ -63,7 +63,7 @@ services:
       - key: ANDROID_APP_LATEST_VERSION
         value: "1.0.40"
       - key: ANDROID_APP_RELEASE_NAME
-        value: "Axon POS 1.0.40"
+        value: "Counterbase 1.0.40"
       - key: ANDROID_APP_BUILD_NUMBER
         value: "2046"
       - key: ANDROID_APP_MIN_SUPPORTED_VERSION

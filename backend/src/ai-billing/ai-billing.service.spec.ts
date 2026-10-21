@@ -1,7 +1,7 @@
 import { AiBillingService } from './ai-billing.service';
 
 /**
- * AI access is plan-based: every Axon POS plan (CORE, BUSINESS,
+ * AI access is plan-based: every Counterbase plan (CORE, BUSINESS,
  * ENTERPRISE) includes the AI assistant. TRIAL tenants do not.
  * AI_BILLING_DISABLED (anything other than the literal string 'false')
  * short-circuits everything to free access for local/dev environments.
@@ -161,7 +161,7 @@ describe('AiBillingService', () => {
       expect(status).toMatchObject({
         hasSubscription: false,
         status: null,
-        message: 'The AI assistant is included in every Axon POS plan.',
+        message: 'The AI assistant is included in every Counterbase plan.',
       });
     });
   });

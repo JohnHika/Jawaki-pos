@@ -54,7 +54,7 @@ export class AiBillingService {
       return {
         hasSubscription: false,
         status: null,
-        message: "The AI assistant is included in every Axon POS plan.",
+        message: "The AI assistant is included in every Counterbase plan.",
       };
     }
 
@@ -74,7 +74,7 @@ export class AiBillingService {
   /**
    * Check if a branch can use the AI assistant.
    *
-   * AI is included in every Axon POS plan (CORE, BUSINESS and ENTERPRISE) —
+   * AI is included in every Counterbase plan (CORE, BUSINESS and ENTERPRISE) —
    * there is no separate AI subscription, add-on price, or taste window.
    * This replaces the old per-branch AiSubscription gating that sold the
    * assistant as a standalone KES 1,500/month subscription. TRIAL tenants
@@ -745,7 +745,7 @@ export class AiBillingService {
       subscribedAt: null,
       price: 0,
       payments: [],
-      message: "AI is included in this Axon POS release.",
+      message: "AI is included in this Counterbase release.",
     };
   }
 }

@@ -53,7 +53,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         severity: _severity,
-        component: 'Axon POS',
+        component: 'Counterbase',
         attachment: _screenshot,
       );
 

@@ -113,7 +113,7 @@ export class ReportExportService {
       where: { id: tenantId },
       select: { name: true },
     });
-    return tenant?.name || 'Axon POS';
+    return tenant?.name || 'Counterbase';
   }
 
   private renderCsv(report: GeneratedReport): string {
@@ -274,7 +274,7 @@ export class ReportExportService {
         sectionHeading: { fontSize: 12, bold: true, margin: [0, 12, 0, 6] },
       },
       footer: (currentPage: number, pageCount: number) => ({
-        text: `Page ${currentPage} of ${pageCount}  •  Generated from Axon POS`,
+        text: `Page ${currentPage} of ${pageCount}  •  Generated from Counterbase`,
         alignment: 'right',
         fontSize: 8,
         color: '#6B7280',

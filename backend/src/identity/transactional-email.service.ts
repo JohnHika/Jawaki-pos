@@ -17,7 +17,7 @@ export interface OtpEmailMessage {
  *   EMAIL_PORT       — SMTP port (e.g. 587)
  *   EMAIL_USER       — SMTP username
  *   EMAIL_PASS       — SMTP password or app password
- *   EMAIL_FROM       — From address (e.g. "Axon POS <noreply@...>")
+ *   EMAIL_FROM       — From address (e.g. "Counterbase <noreply@...>")
  */
 @Injectable()
 export class TransactionalEmailService {
@@ -46,8 +46,8 @@ export class TransactionalEmailService {
     await transporter.sendMail({
       from,
       to: message.to,
-      subject: 'Your Axon POS verification code',
-      text: `Your Axon POS verification code is ${message.code}. It expires in 10 minutes.`,
+      subject: 'Your Counterbase verification code',
+      text: `Your Counterbase verification code is ${message.code}. It expires in 10 minutes.`,
     });
   }
 }

@@ -72,7 +72,7 @@ void main() {
     testWidgets('gate lays out without overflow while downloading at $size',
         (tester) async {
       await pumpGate(tester, _FakeUpdates(downloading: true), size);
-      expect(find.text('Updating Axon POS'), findsOneWidget);
+      expect(find.text('Updating Counterbase'), findsOneWidget);
       expect(find.text('42%'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

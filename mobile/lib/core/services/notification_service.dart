@@ -51,7 +51,7 @@ class NotificationService {
 
   static const _defaultChannel = AndroidNotificationChannel(
     'axon_pos_default_channel',
-    'Axon POS Alerts',
+    'Counterbase Alerts',
     description: 'Stock requests, inventory, sales and sync alerts',
     importance: Importance.high,
   );

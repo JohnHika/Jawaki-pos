@@ -1,6 +1,6 @@
-# pos_mobile
+# Counterbase mobile
 
-A new Flutter project.
+Flutter client for Counterbase, the point-of-sale app by Arche Axon.
 
 ## Getting Started
 

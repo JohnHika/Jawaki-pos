@@ -7,7 +7,7 @@ const _themeModeKey = 'app_theme_mode';
 // is moved to the new default once, after which its own choice is respected.
 const _themeDefaultMarker = 'app_theme_default_light_v1';
 
-/// Persisted theme mode provider. Axon POS opens in light mode by default;
+/// Persisted theme mode provider. Counterbase opens in light mode by default;
 /// dark stays available from Settings.
 final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
   return ThemeModeNotifier();

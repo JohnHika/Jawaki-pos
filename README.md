@@ -1,6 +1,6 @@
-# Hybrid Multi-Branch POS System
+# Counterbase
 
-A comprehensive Point of Sale system supporting multiple branches with seamless online/offline operation.
+Counterbase is a point of sale and shop management system by Arche Axon. It supports multiple branches with seamless online/offline operation.
 
 ## Features
 

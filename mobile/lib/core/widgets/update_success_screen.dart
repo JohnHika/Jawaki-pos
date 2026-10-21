@@ -51,7 +51,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                   const _SuccessMark(),
                   const SizedBox(height: DesignSpacing.xxl),
                   Text(
-                    'What\'s new in Axon POS',
+                    'What\'s new in Counterbase',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextPrimary),
@@ -113,7 +113,7 @@ class UpdateSuccessScreen extends StatelessWidget {
                           CategorizedNotes(releaseNotes: update.releaseNotes)
                         else
                           Text(
-                            'Improvements and bug fixes to keep Axon POS fast and reliable.',
+                            'Improvements and bug fixes to keep Counterbase fast and reliable.',
                             style: TextStyle(
                               color: context.themed(DesignColors.darkTextSecondary),
                               fontSize: 13,

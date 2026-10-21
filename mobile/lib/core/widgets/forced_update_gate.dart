@@ -47,7 +47,7 @@ class ForcedUpdateGate extends StatelessWidget {
                   _Mark(pulsing: isBusy),
                   const SizedBox(height: DesignSpacing.xxl),
                   Text(
-                    isBusy ? 'Updating Axon POS' : 'Update Required',
+                    isBusy ? 'Updating Counterbase' : 'Update Required',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextPrimary),
@@ -63,7 +63,7 @@ class ForcedUpdateGate extends StatelessWidget {
                   Text(
                     isBusy
                         ? 'Hang tight — this only takes a moment.'
-                        : 'A newer version is available. Update now to keep using Axon POS.',
+                        : 'A newer version is available. Update now to keep using Counterbase.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: context.themed(DesignColors.darkTextSecondary),

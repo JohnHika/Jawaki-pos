@@ -213,7 +213,7 @@ class AiChatService {
     final tenant = user['tenant'] is Map<String, dynamic>
         ? user['tenant'] as Map<String, dynamic>
         : <String, dynamic>{};
-    return (tenant['name'] ?? user['companyName'] ?? 'Axon POS business')
+    return (tenant['name'] ?? user['companyName'] ?? 'Counterbase business')
         .toString();
   }
 
@@ -621,7 +621,7 @@ class AiChatService {
 
     return {
       'business_type': 'retail',
-      'company': tenant['name'] ?? user['companyName'] ?? 'Axon POS business',
+      'company': tenant['name'] ?? user['companyName'] ?? 'Counterbase business',
       'tenant_slug': storage.getTenantSlug() ?? user['tenantSlug'] ?? '',
       'branch': _storeInfo['branchName'] ??
           user['branchName'] ??

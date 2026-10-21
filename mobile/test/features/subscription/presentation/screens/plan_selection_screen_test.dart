@@ -95,7 +95,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Header
-      expect(find.text('AXON / SUBSCRIPTION'), findsOneWidget);
+      expect(find.text('COUNTERBASE / SUBSCRIPTION'), findsOneWidget);
       expect(find.text('FINAL STEP · CHOOSE PLAN'), findsOneWidget);
 
       // CORE is the first card — visible at the top.

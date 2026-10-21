@@ -51,7 +51,7 @@ void main() {
     test('drops build metadata sentences but keeps the human one', () {
       final notes = parseReleaseNotes(
           'Axon POS 1.0.50 starts the clean Axon release line. Build 2093 was published from 671a3db on main.');
-      expect(notes.map((n) => n.text), ['Axon POS 1.0.50 starts the clean Axon release line.']);
+      expect(notes.map((n) => n.text), ['Counterbase 1.0.50 starts the clean Axon release line.']);
     });
 
     test('one long change with commas stays one note', () {
@@ -73,13 +73,15 @@ void main() {
   group('cleanReleaseName', () {
     test('shows the product name once', () {
       expect(cleanReleaseName('Axon POS Android Axon POS 1.0.50', fallback: 'x'),
-          'Axon POS 1.0.50');
-      expect(cleanReleaseName('Axon POS 1.0.50', fallback: 'x'), 'Axon POS 1.0.50');
+          'Counterbase 1.0.50');
+      expect(cleanReleaseName('Axon POS 1.0.50', fallback: 'x'), 'Counterbase 1.0.50');
+      expect(cleanReleaseName('Counterbase Android Counterbase 1.0.74', fallback: 'x'),
+          'Counterbase 1.0.74');
     });
 
     test('falls back when empty', () {
-      expect(cleanReleaseName(null, fallback: 'Axon POS 1.0.50'), 'Axon POS 1.0.50');
-      expect(cleanReleaseName('  ', fallback: 'Axon POS 1.0.50'), 'Axon POS 1.0.50');
+      expect(cleanReleaseName(null, fallback: 'Counterbase 1.0.50'), 'Counterbase 1.0.50');
+      expect(cleanReleaseName('  ', fallback: 'Counterbase 1.0.50'), 'Counterbase 1.0.50');
     });
   });
 

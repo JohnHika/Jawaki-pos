@@ -5,7 +5,7 @@ import '../../../../core/widgets/motion.dart';
 
 /// Upgrade screen shown when the AI assistant is not available on the
 /// tenant's current plan (TRIAL / not yet activated). AI is included in
-/// every Axon POS plan (Core, Business and Enterprise) — there is nothing
+/// every Counterbase plan (Core, Business and Enterprise) — there is nothing
 /// to subscribe to or pay for here; the user just needs an active plan.
 class AiUpgradeScreen extends StatelessWidget {
   final String branchId;
@@ -64,7 +64,7 @@ class AiUpgradeScreen extends StatelessWidget {
                 const SizedBox(height: DesignSpacing.md),
 
                 Text(
-                  'The AI assistant is included in every Axon POS plan — Core, '
+                  'The AI assistant is included in every Counterbase plan — Core, '
                   'Business and Enterprise. Activate your plan to get instant '
                   'insights, product recommendations, and business analytics.',
                   style: TextStyle(

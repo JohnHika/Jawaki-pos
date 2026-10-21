@@ -95,7 +95,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text("What's new in Axon POS"), findsOneWidget);
+      expect(find.text("What's new in Counterbase"), findsOneWidget);
       expect(find.text('Recent changes'), findsOneWidget);
       expect(updateService.installedNoticeConsumeCount, 1);
 

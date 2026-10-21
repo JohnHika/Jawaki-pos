@@ -1,6 +1,6 @@
-# Axon POS Desktop
+# Counterbase Desktop
 
-This is the independent desktop application for Axon POS. It is a fresh desktop workspace inspired by the product areas in the mobile POS, with a layout designed for keyboard, mouse, and larger screens.
+This is the independent desktop application for Counterbase. It is a fresh desktop workspace inspired by the product areas in the mobile POS, with a layout designed for keyboard, mouse, and larger screens.
 
 ## Included workspace areas
 

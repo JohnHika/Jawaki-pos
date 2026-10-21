@@ -90,7 +90,7 @@ jobs:
           marketing_version = '.'.join(version_parts[:2]) if len(version_parts) >= 2 else semantic_version
           if len(version_parts) >= 3 and version_parts[2] != '0':
               marketing_version = '.'.join(version_parts[:3])
-          release_name = f'Axon POS {marketing_version}'
+          release_name = f'Counterbase {marketing_version}'
           legacy_patch = ''
           if build_number and build_number.isdigit():
               legacy_patch = str(max(0, int(build_number) - 2002))
@@ -264,7 +264,7 @@ jobs:
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: axon-pos-apk-${{ steps.version.outputs.full_version }}
+          name: counterbase-apk-${{ steps.version.outputs.full_version }}
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
@@ -416,7 +416,7 @@ jobs:
               short_sha = os.environ.get('GITHUB_SHA', '')[:7]
               branch = os.environ.get('GITHUB_REF_NAME', 'unknown')
               release_notes = (
-                  f'{os.environ["RELEASE_NAME"]} starts the clean Axon release line. '
+                  f'{os.environ["RELEASE_NAME"]} starts the Counterbase release line. '
                   f'Build {build_number or "internal"} was published from {short_sha} on {branch}.'
               )
 
@@ -511,9 +511,9 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.git_tag_version }}
           target_commitish: ${{ github.sha }}
-          name: Axon POS Android ${{ steps.version.outputs.release_name }}
+          name: Counterbase Android ${{ steps.version.outputs.semantic_version }}
           body: |
-            ## Axon POS Android Update
+            ## Counterbase Android Update
 
             **Release:** ${{ steps.version.outputs.release_name }}
             **Internal build:** ${{ steps.version.outputs.build_number }}

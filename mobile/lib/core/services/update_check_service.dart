@@ -431,7 +431,7 @@ class UpdateCheckService extends ChangeNotifier {
 
             return AppUpdateInfo(
               latestVersion: version,
-              releaseName: 'Axon POS ${_stripBuildSuffix(version)}',
+              releaseName: 'Counterbase ${_stripBuildSuffix(version)}',
               buildNumber: _extractBuildNumber(version),
               minSupportedVersion:
                   '0.0.0', // GitHub Packages doesn't support min version

@@ -77,8 +77,8 @@ class _LivingIconCardState extends State<LivingIconCard> {
     if (!mounted) return;
     setState(() {
       _notice = ok
-          ? 'Check the prompt to add Axon POS to your home screen.'
-          : "Your phone can't add it from here. Press and hold Axon POS in your app list to place it on the home screen.";
+          ? 'Check the prompt to add Counterbase to your home screen.'
+          : "Your phone can't add it from here. Press and hold Counterbase in your app list to place it on the home screen.";
     });
   }
 
