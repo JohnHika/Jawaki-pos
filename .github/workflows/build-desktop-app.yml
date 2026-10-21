@@ -97,7 +97,7 @@ jobs:
       - name: Package macOS app
         if: matrix.platform == 'macos'
         working-directory: desktop
-        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/desktop.app "$RUNNER_TEMP/${{ matrix.artifact }}.zip"
+        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/Counterbase.app "$RUNNER_TEMP/${{ matrix.artifact }}.zip"
 
       - name: Package Linux app
         if: matrix.platform == 'linux'
