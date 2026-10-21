@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RecurringBillingService } from './recurring-billing.service';
+import { PaystackBillingService } from './paystack-billing.service';
 import {
   ConfirmPaymentClaimDto,
   SubmitPaymentDto,
@@ -40,8 +41,27 @@ import {
 export class BillingController {
   constructor(
     private readonly billing: RecurringBillingService,
+    private readonly paystackBilling: PaystackBillingService,
     private readonly prisma: PrismaService,
   ) {}
+
+  @Post('paystack/initialize')
+  @ApiOperation({ summary: 'Start Paystack checkout for the current monthly invoice' })
+  initializePaystackInvoice(@Req() req: any) {
+    return this.paystackBilling.initializeInvoicePayment(
+      req.user.tenantId,
+      req.user.sub,
+    );
+  }
+
+  @Get('paystack/verify/:reference')
+  @ApiOperation({ summary: 'Verify a Paystack monthly subscription payment' })
+  verifyPaystackInvoice(@Req() req: any, @Param('reference') reference: string) {
+    return this.paystackBilling.verifyInvoicePayment(
+      req.user.tenantId,
+      reference,
+    );
+  }
 
   @Get('settings')
   @ApiOperation({ summary: 'Get this company’s recurring billing settings' })

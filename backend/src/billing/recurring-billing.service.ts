@@ -141,6 +141,11 @@ export class RecurringBillingService {
     if (!invoice) {
       throw new NotFoundException('No open invoice for this company');
     }
+    if (invoice.provider === 'PAYSTACK' || invoice.provider === 'PAYSTACK_INITIALIZING') {
+      throw new BadRequestException(
+        'A Paystack checkout is already open for this invoice. Finish or verify it before submitting an M-Pesa code.',
+      );
+    }
 
     const code = input.mpesaCode.trim().toUpperCase();
     if (!/^[A-Z0-9]{8,15}$/.test(code)) {
@@ -272,7 +277,14 @@ export class RecurringBillingService {
 
         // 2. Auto-charge if the invoice is still open.
         if (invoice.status === 'PENDING' || invoice.status === 'PENDING_CONFIRMATION') {
-          if (!tenant.autoRenewEnabled || !tenant.billingPhone) {
+          if (invoice.provider === 'PAYSTACK' || invoice.provider === 'PAYSTACK_INITIALIZING') {
+            // Do not send an M-Pesa prompt while this same invoice has an
+            // active hosted checkout; that could collect twice.
+            summary.skipped.push({
+              tenantId: tenant.id,
+              reason: 'Paystack checkout is active for this invoice',
+            });
+          } else if (!tenant.autoRenewEnabled || !tenant.billingPhone) {
             summary.skipped.push({
               tenantId: tenant.id,
               reason: 'auto-renew disabled or no billing phone',
@@ -689,6 +701,11 @@ export class RecurringBillingService {
     if (tenant.currentPeriodEnd && tenant.currentPeriodEnd > now) return null;
 
     return this.ensureInvoiceForPeriod(tenantId, tenant.plan ?? 'CORE', now);
+  }
+
+  /** Return the current unpaid invoice for a customer-initiated checkout. */
+  getInvoiceForPayment(tenantId: string) {
+    return this.getCurrentInvoice(tenantId);
   }
 
   /**

@@ -85,6 +85,7 @@ export class TenantActivationService {
         reference,
         metadata: { product: ACTIVATION_PRODUCT, tenantId, userId, companyName: tenant.name, attemptId: attempt.id },
         callbackUrl: this.activationCallbackUrl(),
+        useEnabledChannels: true,
       });
       const updated = await this.prisma.tenantActivationAttempt.update({
         where: { id: attempt.id },

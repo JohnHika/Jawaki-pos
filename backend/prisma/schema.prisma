@@ -76,6 +76,7 @@ model SubscriptionInvoice {
   status       String    @default("PENDING")
   provider     String?
   reference    String?   @unique
+  authorizationUrl String?
   periodStart  DateTime?
   periodEnd    DateTime?
   paidAt       DateTime?

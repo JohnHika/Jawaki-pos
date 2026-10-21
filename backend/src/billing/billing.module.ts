@@ -6,6 +6,10 @@ import { SubscriptionRenewalSettler } from './subscription-renewal-settler.servi
 import { SubscriptionGuard } from './subscription.guard';
 import { PaymentsModule } from '../payments/payments.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { AiBillingModule } from '../ai-billing/ai-billing.module';
+import { TenantActivationModule } from '../tenant-activation/tenant-activation.module';
+import { PaystackBillingService } from './paystack-billing.service';
+import { PaystackWebhookController } from './paystack-webhook.controller';
 
 /**
  * Jawaki recurring subscription billing (settings, manual claims, cron,
@@ -32,10 +36,11 @@ import { SubscriptionModule } from '../subscription/subscription.module';
  *    the Jenga-backed PaymentsModule into their DI graphs.
  */
 @Module({
-  imports: [PaymentsModule, SubscriptionModule],
-  controllers: [BillingController],
+  imports: [PaymentsModule, SubscriptionModule, AiBillingModule, TenantActivationModule],
+  controllers: [BillingController, PaystackWebhookController],
   providers: [
     RecurringBillingService,
+    PaystackBillingService,
     SubscriptionRenewalSettler,
     BillingCron,
     SubscriptionGuard,

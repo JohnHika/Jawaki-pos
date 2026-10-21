@@ -2,7 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 interface PaystackAuthorization {
-  authorization_code: string;
+  authorization_code?: string;
   card_type?: string;
   last4?: string;
   exp_month?: string;
@@ -11,16 +11,21 @@ interface PaystackAuthorization {
 }
 
 interface PaystackCustomer {
-  customer_code: string;
-  email: string;
+  customer_code?: string;
+  email?: string;
 }
 
 interface PaystackChargeData {
   reference: string;
   status: string;
   amount: number;
-  customer: PaystackCustomer;
-  authorization: PaystackAuthorization;
+  currency?: string;
+  channel?: string;
+  id?: number | string;
+  paid_at?: string | null;
+  metadata?: Record<string, unknown> | string;
+  customer?: PaystackCustomer;
+  authorization?: PaystackAuthorization;
 }
 
 interface PaystackApiResponse<T> {
@@ -30,10 +35,9 @@ interface PaystackApiResponse<T> {
 }
 
 /**
- * Thin wrapper around the Paystack REST API. Used for card-based AI
- * subscription billing: the customer pays once via a Paystack checkout,
- * we keep the resulting `authorization_code`, and the renewal cron reuses
- * it to charge the same card again each month — no customer action needed.
+ * Thin wrapper around the Paystack REST API. Axon uses hosted transactions
+ * for activation and monthly invoices; the AI billing flow also uses saved
+ * card authorizations for its separate recurring charges.
  */
 @Injectable()
 export class PaystackService {
@@ -61,6 +65,7 @@ export class PaystackService {
     reference: string;
     metadata: Record<string, unknown>;
     callbackUrl?: string;
+    useEnabledChannels?: boolean;
   }): Promise<{ authorizationUrl: string; accessCode: string; reference: string }> {
     const response = await this.request<{
       authorization_url: string;
@@ -75,7 +80,7 @@ export class PaystackService {
         reference: params.reference,
         metadata: params.metadata,
         callback_url: params.callbackUrl,
-        channels: ['card'],
+        ...(params.useEnabledChannels ? {} : { channels: ['card'] }),
       },
     });
 
@@ -120,7 +125,7 @@ export class PaystackService {
     return response.data;
   }
 
-  /** Paystack sends amounts as the smallest currency unit; KES has no minor unit in Paystack's model, so this is a 1:1 pass-through kept explicit for clarity and future currency changes. */
+  /** Paystack expects KES amounts in cents. */
   private toSubunits(amountKes: number): number {
     return Math.round(amountKes * 100);
   }

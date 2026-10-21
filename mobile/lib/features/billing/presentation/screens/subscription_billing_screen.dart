@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
@@ -91,6 +95,9 @@ class _SubscriptionBillingScreenState
   bool _isChangingPlan = false;
   String? _error;
   String? _claimsError;
+  String? _paystackInvoiceBusyId;
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _paystackLinkSubscription;
 
   bool get _isAdmin {
     final forced = SubscriptionBillingScreen.overrideIsAdmin;
@@ -109,7 +116,37 @@ class _SubscriptionBillingScreenState
   @override
   void initState() {
     super.initState();
+    _paystackLinkSubscription = _appLinks.uriLinkStream.listen(
+      _handlePaystackReturn,
+      onError: (_) {},
+    );
+    unawaited(_readInitialPaystackLink());
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_paystackLinkSubscription?.cancel());
+    super.dispose();
+  }
+
+  Future<void> _readInitialPaystackLink() async {
+    try {
+      final uri = await _appLinks.getInitialLink();
+      if (uri != null) await _handlePaystackReturn(uri);
+    } catch (_) {}
+  }
+
+  Future<void> _handlePaystackReturn(Uri uri) async {
+    if (!mounted ||
+        uri.scheme != 'axonpos' ||
+        uri.host != 'payment' ||
+        uri.path != '/billing') {
+      return;
+    }
+    final reference = uri.queryParameters['reference']?.trim();
+    if (reference == null || reference.isEmpty) return;
+    await _verifyPaystackPayment(reference);
   }
 
   Future<void> _loadData() async {
@@ -197,6 +234,10 @@ class _SubscriptionBillingScreenState
 
   String _friendlyError(Object error) {
     if (error is DioException) {
+      final body = error.response?.data;
+      if (body is Map && body['message'] is String) {
+        return body['message'] as String;
+      }
       if (error.response?.statusCode == 401) {
         return 'Session expired. Please log in again.';
       }
@@ -234,12 +275,16 @@ class _SubscriptionBillingScreenState
       clipBehavior: Clip.antiAlias,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
           child: SafeArea(
             top: false,
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(
-                DesignSpacing.xl, DesignSpacing.lg, DesignSpacing.xl, DesignSpacing.xxl,
+                DesignSpacing.xl,
+                DesignSpacing.lg,
+                DesignSpacing.xl,
+                DesignSpacing.xxl,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -251,14 +296,18 @@ class _SubscriptionBillingScreenState
                       height: 4,
                       decoration: BoxDecoration(
                         color: context.themed(DesignColors.darkBorder),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusFull),
                       ),
                     ),
                   ),
                   const SizedBox(height: DesignSpacing.lg),
                   Text(
                     'Choose your plan',
-                    style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                    style: Theme.of(sheetContext)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
                           color: context.themed(DesignColors.darkTextPrimary),
                           fontWeight: FontWeight.w800,
                         ),
@@ -321,7 +370,9 @@ class _SubscriptionBillingScreenState
                                   color: DesignColors.error,
                                 );
                               } finally {
-                                if (mounted) setState(() => _isChangingPlan = false);
+                                if (mounted) {
+                                  setState(() => _isChangingPlan = false);
+                                }
                               }
                             },
                     ),
@@ -354,7 +405,9 @@ class _SubscriptionBillingScreenState
       if (!mounted) return;
       showGlassSnackBar(
         context,
-        approve ? 'Payment confirmed and subscription renewed' : 'Payment claim rejected',
+        approve
+            ? 'Payment confirmed and subscription renewed'
+            : 'Payment claim rejected',
         icon: approve ? Icons.check_circle_rounded : Icons.cancel_outlined,
         color: approve ? DesignColors.success : DesignColors.warning,
       );
@@ -489,7 +542,8 @@ class _SubscriptionBillingScreenState
       return Container(
         padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
-          color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
+          color:
+              context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
@@ -500,8 +554,8 @@ class _SubscriptionBillingScreenState
             const SizedBox(height: DesignSpacing.md),
             Text(
               'Could not load subscription details',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: context.themed(DesignColors.darkTextSecondary)),
             ),
           ],
         ),
@@ -625,7 +679,8 @@ class _SubscriptionBillingScreenState
           const SizedBox(height: DesignSpacing.lg),
           Container(
             height: 1,
-            color: context.themed(DesignColors.darkBorder).withValues(alpha: 0.6),
+            color:
+                context.themed(DesignColors.darkBorder).withValues(alpha: 0.6),
           ),
           const SizedBox(height: DesignSpacing.lg),
           // Next payment + days remaining
@@ -675,13 +730,14 @@ class _SubscriptionBillingScreenState
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         children: [
-          Icon(icon, color: context.themed(DesignColors.darkTextSecondary), size: 16),
+          Icon(icon,
+              color: context.themed(DesignColors.darkTextSecondary), size: 16),
           const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
               text,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
+              style: theme.textTheme.bodySmall?.copyWith(
+                  color: context.themed(DesignColors.darkTextSecondary)),
             ),
           ),
         ],
@@ -873,7 +929,8 @@ class _SubscriptionBillingScreenState
               color: DesignColors.brand.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
             ),
-            child: const Icon(Icons.tune_rounded, color: DesignColors.brand, size: 20),
+            child: const Icon(Icons.tune_rounded,
+                color: DesignColors.brand, size: 20),
           ),
           const SizedBox(width: DesignSpacing.md),
           Expanded(
@@ -900,9 +957,8 @@ class _SubscriptionBillingScreenState
             ),
           ),
           TextButton(
-            onPressed: _isChangingPlan || plan == null
-                ? null
-                : _showChangePlanSheet,
+            onPressed:
+                _isChangingPlan || plan == null ? null : _showChangePlanSheet,
             child: const Text('Change'),
           ),
         ],
@@ -952,14 +1008,16 @@ class _SubscriptionBillingScreenState
           final amount = claim['amount'] != null
               ? parseBillingAmount(claim['amount'])
               : parseBillingAmount((claim['invoice'] as Map?)?['amount']);
-          final plan = ((claim['invoice'] as Map?)?['plan']?.toString() ?? 'Subscription');
+          final plan = ((claim['invoice'] as Map?)?['plan']?.toString() ??
+              'Subscription');
           return Container(
             margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
             padding: const EdgeInsets.all(DesignSpacing.md),
             decoration: BoxDecoration(
               color: DesignColors.warning.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-              border: Border.all(color: DesignColors.warning.withValues(alpha: 0.35)),
+              border: Border.all(
+                  color: DesignColors.warning.withValues(alpha: 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1012,12 +1070,101 @@ class _SubscriptionBillingScreenState
   // ── Actions ─────────────────────────────────────────────────────────
 
   Widget _buildPayWithMpesaButton() {
-    return GradientButton(
-      label: 'Pay with M-Pesa',
-      icon: Icons.phone_android_rounded,
-      onPressed: _showPaySheet,
-      height: 52,
-      borderRadius: DesignSpacing.radiusLg,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GradientButton(
+          label: 'Pay with M-Pesa',
+          icon: Icons.phone_android_rounded,
+          onPressed: _showPaySheet,
+          height: 52,
+          borderRadius: DesignSpacing.radiusLg,
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        OutlinedButton.icon(
+          onPressed: _paystackInvoiceBusyId == 'current'
+              ? null
+              : _startPaystackInvoicePayment,
+          icon: _paystackInvoiceBusyId == 'current'
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.credit_card_rounded),
+          label: const Text('Pay monthly invoice with Paystack'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            foregroundColor: DesignColors.brand,
+            side: BorderSide(color: DesignColors.brand.withValues(alpha: 0.45)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _startPaystackInvoicePayment() async {
+    setState(() => _paystackInvoiceBusyId = 'current');
+    try {
+      final checkout = await _apiClient.initializePaystackSubscriptionPayment();
+      if (checkout['status'] == 'PAID') {
+        await _loadData();
+        if (mounted) _showPaymentMessage('This invoice is already paid.');
+        return;
+      }
+      final url = checkout['authorizationUrl']?.toString();
+      if (url == null || url.isEmpty) {
+        throw Exception('Paystack did not return a checkout link.');
+      }
+      final uri = Uri.tryParse(url);
+      if (uri == null ||
+          uri.scheme != 'https' ||
+          uri.host != 'checkout.paystack.com') {
+        throw Exception('Paystack returned an invalid checkout link.');
+      }
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not open the Paystack checkout page.');
+      }
+    } catch (error) {
+      if (mounted) _showPaymentMessage(_friendlyError(error), isError: true);
+    } finally {
+      if (mounted) setState(() => _paystackInvoiceBusyId = null);
+    }
+  }
+
+  Future<void> _verifyPaystackPayment(String reference) async {
+    if (_paystackInvoiceBusyId != null) return;
+    setState(() => _paystackInvoiceBusyId = reference);
+    try {
+      final result =
+          await _apiClient.verifyPaystackSubscriptionPayment(reference);
+      if (!mounted) return;
+      if (result['status']?.toString().toUpperCase() == 'PAID') {
+        ref.read(entitlementRefreshTickProvider.notifier).state++;
+        await _loadData();
+        if (mounted) {
+          _showPaymentMessage('Monthly subscription payment confirmed.');
+        }
+      } else {
+        _showPaymentMessage(
+            'Payment is still being confirmed. Refresh again in a moment.');
+      }
+    } catch (error) {
+      if (mounted) _showPaymentMessage(_friendlyError(error), isError: true);
+    } finally {
+      if (mounted) setState(() => _paystackInvoiceBusyId = null);
+    }
+  }
+
+  void _showPaymentMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? DesignColors.error : DesignColors.success,
+      ),
     );
   }
 
@@ -1089,8 +1236,8 @@ class _SubscriptionBillingScreenState
                           ? 'Add a billing phone so we can charge it'
                           : 'On — $phone')
                       : 'Off — pay manually each month',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                      color: context.themed(DesignColors.darkTextSecondary)),
                 ),
               ],
             ),
@@ -1119,8 +1266,8 @@ class _SubscriptionBillingScreenState
       ),
       clipBehavior: Clip.antiAlias,
       builder: (sheetContext) => _PayWithMpesaSheet(
-        monthlyAmount: _monthlyAmountFromSettings(_settings) ??
-            _billingPlan?.priceKes,
+        monthlyAmount:
+            _monthlyAmountFromSettings(_settings) ?? _billingPlan?.priceKes,
         manualPaybillPhone: _settings?['manualPaybill']?['phone']?.toString(),
         accountFormat:
             _settings?['manualPaybill']?['accountFormat']?.toString(),
@@ -1170,6 +1317,7 @@ class _SubscriptionBillingScreenState
             : 'Subscription');
     final reference =
         invoice['reference'] as String? ?? invoice['mpesaReference'] as String?;
+    final provider = invoice['provider']?.toString().toUpperCase() ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
@@ -1211,17 +1359,40 @@ class _SubscriptionBillingScreenState
                 const SizedBox(height: DesignSpacing.xs),
                 Text(
                   date.isNotEmpty ? _formatDate(date) : '',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: context.themed(DesignColors.darkTextTertiary)),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                      color: context.themed(DesignColors.darkTextTertiary)),
                 ),
                 if (reference != null && reference.isNotEmpty) ...[
                   const SizedBox(height: DesignSpacing.xs),
                   Text(
-                    'M-Pesa $reference',
+                    '${provider == 'PAYSTACK' ? 'Paystack' : 'M-Pesa'} $reference',
                     style: DesignType.numeric(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: DesignColors.mpesa,
+                      color: provider == 'PAYSTACK'
+                          ? DesignColors.brand
+                          : DesignColors.mpesa,
+                    ),
+                  ),
+                ],
+                if (status.toUpperCase() == 'PENDING' &&
+                    provider == 'PAYSTACK' &&
+                    reference != null &&
+                    reference.isNotEmpty) ...[
+                  const SizedBox(height: DesignSpacing.xs),
+                  TextButton.icon(
+                    onPressed: _paystackInvoiceBusyId == reference
+                        ? null
+                        : () => _verifyPaystackPayment(reference),
+                    icon: const Icon(Icons.refresh_rounded, size: 15),
+                    label: const Text('Check payment'),
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DesignSpacing.xs,
+                        vertical: DesignSpacing.xs,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
@@ -1279,15 +1450,15 @@ class _SubscriptionBillingScreenState
           const SizedBox(height: DesignSpacing.md),
           Text(
             'No invoices yet',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
+            style: theme.textTheme.bodyMedium?.copyWith(
+                color: context.themed(DesignColors.darkTextSecondary)),
           ),
           const SizedBox(height: DesignSpacing.xs),
           Text(
             'Invoices appear at each monthly renewal.',
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: context.themed(DesignColors.darkTextTertiary)),
+            style: theme.textTheme.bodySmall?.copyWith(
+                color: context.themed(DesignColors.darkTextTertiary)),
           ),
         ],
       ),
@@ -1475,7 +1646,8 @@ class _PlanRadioTile extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: DesignSpacing.sm, vertical: 2),
                             decoration: BoxDecoration(
-                              color: DesignColors.success.withValues(alpha: 0.14),
+                              color:
+                                  DesignColors.success.withValues(alpha: 0.14),
                               borderRadius: BorderRadius.circular(
                                   DesignSpacing.radiusFull),
                             ),
@@ -1632,8 +1804,8 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
               const SizedBox(height: DesignSpacing.xs),
               Text(
                 'Renew your subscription via M-Pesa',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextSecondary)),
               ),
               const SizedBox(height: DesignSpacing.xl),
 
@@ -1643,7 +1815,8 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
                 decoration: BoxDecoration(
                   color: context.themed(DesignColors.darkSurfaceElevated),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                  border: Border.all(color: context.themed(DesignColors.darkBorder)),
+                  border: Border.all(
+                      color: context.themed(DesignColors.darkBorder)),
                 ),
                 child: Column(
                   children: [
@@ -1727,8 +1900,8 @@ class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
         children: [
           Text(
             label,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)),
+            style: theme.textTheme.bodySmall?.copyWith(
+                color: context.themed(DesignColors.darkTextSecondary)),
           ),
           Text(
             value,
@@ -1862,7 +2035,8 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                 decoration: BoxDecoration(
                   color: context.themed(DesignColors.darkSurfaceElevated),
                   borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                  border: Border.all(color: context.themed(DesignColors.darkBorder)),
+                  border: Border.all(
+                      color: context.themed(DesignColors.darkBorder)),
                 ),
                 // Material wrapper so the tile paints its ink/background on
                 // this Material instead of one hidden behind the decorated
@@ -1875,8 +2049,8 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                     activeThumbColor: DesignColors.accent,
                     title: Text(
                       'Auto-renew subscription',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(color: context.themed(DesignColors.darkTextPrimary)),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                          color: context.themed(DesignColors.darkTextPrimary)),
                     ),
                     onChanged: (v) => setState(() => _autoRenew = v),
                   ),

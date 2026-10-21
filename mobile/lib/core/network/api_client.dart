@@ -349,6 +349,20 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> initializePaystackSubscriptionPayment() async {
+    final response = await _dio.post('/billing/paystack/initialize');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> verifyPaystackSubscriptionPayment(
+    String reference,
+  ) async {
+    final response = await _dio.get(
+      '/billing/paystack/verify/${Uri.encodeComponent(reference)}',
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> updateCurrentTenant({
     String? name,
     String? logo,
@@ -1121,8 +1135,8 @@ class ApiClient {
       },
     );
     return (response.data as List)
-        .map((value) => FinancePayable.fromJson(
-            Map<String, dynamic>.from(value as Map)))
+        .map((value) =>
+            FinancePayable.fromJson(Map<String, dynamic>.from(value as Map)))
         .toList();
   }
 
@@ -1138,8 +1152,8 @@ class ApiClient {
       },
     );
     return (response.data as List)
-        .map((value) => RetailReceivable.fromJson(
-            Map<String, dynamic>.from(value as Map)))
+        .map((value) =>
+            RetailReceivable.fromJson(Map<String, dynamic>.from(value as Map)))
         .toList();
   }
 
@@ -1310,8 +1324,8 @@ class ApiClient {
       },
     );
     return (response.data as List)
-        .map((value) => PeerReceivable.fromJson(
-            Map<String, dynamic>.from(value as Map)))
+        .map((value) =>
+            PeerReceivable.fromJson(Map<String, dynamic>.from(value as Map)))
         .toList();
   }
 
@@ -1594,8 +1608,8 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> getTradePartners() async {
     final response = await _dio.get('/partners');
-    final data = (response.data as Map<String, dynamic>)['data']
-        as Map<String, dynamic>;
+    final data =
+        (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
     return ((data['partners'] as List?) ?? const [])
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
@@ -1608,7 +1622,8 @@ class ApiClient {
   }) async {
     final response = await _dio.post('/partners/requests', data: {
       'companyCode': companyCode,
-      if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+      if (message != null && message.trim().isNotEmpty)
+        'message': message.trim(),
     });
     return ((response.data as Map<String, dynamic>)['data'] as Map?)
             ?.cast<String, dynamic>() ??
@@ -1636,8 +1651,8 @@ class ApiClient {
       'limit': limit,
       if (after != null) 'after': after,
     });
-    final data = (response.data as Map<String, dynamic>)['data']
-        as Map<String, dynamic>;
+    final data =
+        (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
     return ((data['messages'] as List?) ?? const [])
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
@@ -1932,7 +1947,8 @@ class ApiClient {
       formData.files.add(
         MapEntry(
           'attachment',
-          await MultipartFile.fromFile(attachment.path, filename: fileName, contentType: DioMediaType.parse(mime)),
+          await MultipartFile.fromFile(attachment.path,
+              filename: fileName, contentType: DioMediaType.parse(mime)),
         ),
       );
     }
