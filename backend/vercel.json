@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nestjs",
+  "regions": ["fra1"],
+  "functions": {
+    "src/main.ts": {
+      "maxDuration": 800
+    }
+  },
+  "crons": [
+    { "path": "/api/cron/ai-billing-renewals", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/billing-renewals", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/daily-briefs", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/low-stock-alerts", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/end-of-day-reminders", "schedule": "0,30 * * * *" }
+  ]
+}

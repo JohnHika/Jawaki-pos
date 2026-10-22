@@ -49,6 +49,7 @@ import { PaystackWebhookController } from './paystack-webhook.controller';
     RecurringBillingService,
     SubscriptionRenewalSettler,
     SubscriptionGuard,
+    BillingCron,
   ],
 })
 export class BillingModule {}

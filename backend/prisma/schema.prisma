@@ -1917,6 +1917,20 @@ model AppNotification {
   @@map("app_notifications")
 }
 
+// Durable idempotency ledger for Vercel Cron. A key identifies one scheduled
+// UTC slot, so duplicate webhook deliveries cannot repeat billing or alerts.
+model ScheduledTaskRun {
+  id             String    @id
+  status         String    @default("RUNNING")
+  startedAt      DateTime  @default(now())
+  leaseExpiresAt DateTime
+  completedAt    DateTime?
+  lastError      String?
+
+  @@index([startedAt])
+  @@map("scheduled_task_runs")
+}
+
 // ==================== TRADE PARTNERS ====================
 
 // A connection between two businesses (tenants) that trade together.

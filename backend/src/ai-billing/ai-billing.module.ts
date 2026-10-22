@@ -10,6 +10,6 @@ import { AiBillingRenewalTask } from './ai-billing-renewal.task';
 @Module({
   controllers: [AiBillingController, AiBillingAdminController],
   providers: [AiBillingService, AiAccessGuard, AdminSecretGuard, PaystackService, AiBillingRenewalTask],
-  exports: [AiBillingService, AiAccessGuard, PaystackService],
+  exports: [AiBillingService, AiAccessGuard, PaystackService, AiBillingRenewalTask],
 })
 export class AiBillingModule {}

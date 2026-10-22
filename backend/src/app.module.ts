@@ -38,6 +38,7 @@ import { BillingModule } from './billing/billing.module';
 import { PartnersModule } from './partners/partners.module';
 import { LicenseModule } from './license/license.module';
 import { AppController } from './app.controller';
+import { VercelCronController } from './vercel-cron.controller';
 
 @Module({
   imports: [
@@ -61,8 +62,10 @@ import { AppController } from './app.controller';
       },
     ]),
 
-    // Scheduled tasks (AI subscription auto-renewal, etc.)
-    ScheduleModule.forRoot(),
+    // Vercel functions do not stay alive between requests. Use Vercel Cron
+    // to trigger the protected HTTP routes instead of starting in-process
+    // timers in each warm function instance.
+    ...(process.env.VERCEL ? [] : [ScheduleModule.forRoot()]),
 
     // Core Modules
     PrismaModule,
@@ -103,6 +106,6 @@ import { AppController } from './app.controller';
     LicenseModule,
     PartnersModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, VercelCronController],
 })
 export class AppModule {}

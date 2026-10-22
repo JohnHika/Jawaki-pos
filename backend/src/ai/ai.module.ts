@@ -48,6 +48,12 @@ import { PrismaModule } from '../common/prisma/prisma.module';
     AiDailyBriefTask,
     AiProactiveNotificationsTask,
   ],
-  exports: [AiService, AiWebService, AiCognitiveService],
+  exports: [
+    AiService,
+    AiWebService,
+    AiCognitiveService,
+    AiDailyBriefTask,
+    AiProactiveNotificationsTask,
+  ],
 })
 export class AiModule {}
