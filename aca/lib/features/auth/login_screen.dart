@@ -49,14 +49,20 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final needsOtp = await session.signIn(_email.text, _password.text, otp: _needsOtp ? _otp.text : null);
+      final needsOtp = await session.signIn(
+        _email.text,
+        _password.text,
+        otp: _needsOtp ? _otp.text : null,
+      );
       if (!mounted) return;
       if (needsOtp) {
         setState(() {
           _needsOtp = true;
           _busy = false;
         });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _otpFocus.requestFocus());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _otpFocus.requestFocus(),
+        );
       }
       // On success the root gate swaps this screen out.
     } on ApiException catch (e) {
@@ -70,109 +76,295 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _backToPassword() => setState(() {
-        _needsOtp = false;
-        _otp.clear();
-        _error = null;
-      });
+    _needsOtp = false;
+    _otp.clear();
+    _error = null;
+  });
+
+  @override
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFF0B0A0F),
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarContrastEnforced: false,
+    ),
+    child: Theme(
+      data: AcaTheme.darkTheme.copyWith(
+        textTheme: AcaTheme.darkTheme.textTheme.apply(
+          fontFamily: 'PlusJakartaSans',
+        ),
+        primaryTextTheme: AcaTheme.darkTheme.primaryTextTheme.apply(
+          fontFamily: 'PlusJakartaSans',
+        ),
+      ),
+      child: Builder(
+        builder: (context) {
+          final p = context.aca;
+          final notice = context.select<SessionController, String?>(
+            (s) => s.notice,
+          );
+          return Scaffold(
+            backgroundColor: p.bg,
+            body: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _BrandHeader(),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                            decoration: BoxDecoration(
+                              color: p.surface,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: p.border),
+                            ),
+                            child: Form(
+                              key: _form,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.admin_panel_settings_outlined,
+                                        size: 17,
+                                        color: p.brand,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'PLATFORM STAFF',
+                                        style: TextStyle(
+                                          color: p.brand,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 1.05,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    _needsOtp ? 'Verify sign-in' : 'Sign in',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                          fontFamily: 'Sora',
+                                          color: p.text,
+                                          fontSize: 22,
+                                          letterSpacing: -0.3,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _needsOtp
+                                        ? 'Enter your authenticator code to continue.'
+                                        : 'Use your assigned work email and password.',
+                                    style: TextStyle(
+                                      color: p.textMuted,
+                                      height: 1.4,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  if (notice != null && _error == null)
+                                    _Banner(text: notice, tone: Tone.info),
+                                  if (_error != null)
+                                    _Banner(text: _error!, tone: Tone.danger),
+                                  if (!_needsOtp) ...[
+                                    TextFormField(
+                                      controller: _email,
+                                      enabled: !_busy,
+                                      keyboardType: TextInputType.emailAddress,
+                                      textInputAction: TextInputAction.next,
+                                      autofillHints: const [
+                                        AutofillHints.username,
+                                        AutofillHints.email,
+                                      ],
+                                      autocorrect: false,
+                                      enableSuggestions: false,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Work email',
+                                        prefixIcon: Icon(
+                                          Icons.alternate_email_rounded,
+                                        ),
+                                      ),
+                                      onFieldSubmitted: (_) =>
+                                          _passwordFocus.requestFocus(),
+                                      validator: (v) =>
+                                          (v == null || !v.contains('@'))
+                                          ? 'Enter your staff email'
+                                          : null,
+                                    ),
+                                    const SizedBox(height: 13),
+                                    TextFormField(
+                                      controller: _password,
+                                      focusNode: _passwordFocus,
+                                      enabled: !_busy,
+                                      obscureText: _obscure,
+                                      textInputAction: TextInputAction.done,
+                                      autofillHints: const [
+                                        AutofillHints.password,
+                                      ],
+                                      decoration: InputDecoration(
+                                        labelText: 'Password',
+                                        prefixIcon: const Icon(
+                                          Icons.lock_outline_rounded,
+                                        ),
+                                        suffixIcon: IconButton(
+                                          tooltip: _obscure
+                                              ? 'Show password'
+                                              : 'Hide password',
+                                          icon: Icon(
+                                            _obscure
+                                                ? Icons.visibility_outlined
+                                                : Icons.visibility_off_outlined,
+                                          ),
+                                          onPressed: () => setState(
+                                            () => _obscure = !_obscure,
+                                          ),
+                                        ),
+                                      ),
+                                      onFieldSubmitted: (_) => _submit(),
+                                      validator: (v) => (v == null || v.isEmpty)
+                                          ? 'Enter your password'
+                                          : null,
+                                    ),
+                                  ] else ...[
+                                    TextFormField(
+                                      controller: _otp,
+                                      focusNode: _otpFocus,
+                                      enabled: !_busy,
+                                      keyboardType:
+                                          TextInputType.visiblePassword,
+                                      textAlign: TextAlign.center,
+                                      textCapitalization:
+                                          TextCapitalization.characters,
+                                      autocorrect: false,
+                                      enableSuggestions: false,
+                                      inputFormatters: [
+                                        LengthLimitingTextInputFormatter(12),
+                                      ],
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        letterSpacing: 5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Verification code',
+                                        hintText: '123456',
+                                      ),
+                                      onFieldSubmitted: (_) => _submit(),
+                                      validator: (v) =>
+                                          (v == null || v.trim().length < 6)
+                                          ? 'Enter your code'
+                                          : null,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 18),
+                                  SizedBox(
+                                    height: 54,
+                                    child: FilledButton(
+                                      onPressed: _busy ? null : _submit,
+                                      child: _busy
+                                          ? SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.2,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onPrimary,
+                                              ),
+                                            )
+                                          : Text(
+                                              _needsOtp
+                                                  ? 'Verify and sign in'
+                                                  : 'Continue',
+                                            ),
+                                    ),
+                                  ),
+                                  if (_needsOtp)
+                                    Center(
+                                      child: TextButton(
+                                        onPressed: _busy
+                                            ? null
+                                            : _backToPassword,
+                                        child: const Text(
+                                          'Use a different account',
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 17),
+                          const _ServerFootnote(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
 
   @override
   Widget build(BuildContext context) {
     final p = context.aca;
-    final notice = context.select<SessionController, String?>((s) => s.notice);
-
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _form,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Center(child: AcaLockup()),
-                    const SizedBox(height: 36),
-                    if (notice != null && _error == null) _Banner(text: notice, tone: Tone.info),
-                    if (_error != null) _Banner(text: _error!, tone: Tone.danger),
-                    if (!_needsOtp) ...[
-                      TextFormField(
-                        controller: _email,
-                        enabled: !_busy,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.username, AutofillHints.email],
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        decoration: const InputDecoration(labelText: 'Staff email', prefixIcon: Icon(Icons.mail_outline_rounded)),
-                        onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
-                        validator: (v) => (v == null || !v.contains('@')) ? 'Enter your staff email' : null,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _password,
-                        focusNode: _passwordFocus,
-                        enabled: !_busy,
-                        obscureText: _obscure,
-                        textInputAction: TextInputAction.done,
-                        autofillHints: const [AutofillHints.password],
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline_rounded),
-                          suffixIcon: IconButton(
-                            tooltip: _obscure ? 'Show password' : 'Hide password',
-                            icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                            onPressed: () => setState(() => _obscure = !_obscure),
-                          ),
-                        ),
-                        onFieldSubmitted: (_) => _submit(),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
-                      ),
-                    ] else ...[
-                      Text('Two-step verification',
-                          textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Enter the 6-digit code from your authenticator app, or one of your backup codes.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: p.textMuted, height: 1.4),
-                      ),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _otp,
-                        focusNode: _otpFocus,
-                        enabled: !_busy,
-                        keyboardType: TextInputType.visiblePassword,
-                        textAlign: TextAlign.center,
-                        textCapitalization: TextCapitalization.characters,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        inputFormatters: [LengthLimitingTextInputFormatter(12)],
-                        style: const TextStyle(fontSize: 26, letterSpacing: 6, fontWeight: FontWeight.w700),
-                        decoration: const InputDecoration(hintText: '123456'),
-                        onFieldSubmitted: (_) => _submit(),
-                        validator: (v) => (v == null || v.trim().length < 6) ? 'Enter your code' : null,
-                      ),
-                    ],
-                    const SizedBox(height: 22),
-                    FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: _busy
-                          ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Theme.of(context).colorScheme.onPrimary))
-                          : Text(_needsOtp ? 'Verify and sign in' : 'Sign in'),
-                    ),
-                    if (_needsOtp)
-                      TextButton(onPressed: _busy ? null : _backToPassword, child: const Text('Use a different account')),
-                    const SizedBox(height: 28),
-                    _ServerFootnote(),
-                  ],
+    return Row(
+      children: [
+        const AcaMark(size: 54),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Counterbase',
+                style: TextStyle(
+                  fontFamily: 'Sora',
+                  color: p.text,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
                 ),
               ),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                'PLATFORM ADMIN',
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  color: p.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -196,10 +388,17 @@ class _Banner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(tone == Tone.danger ? Icons.error_outline_rounded : Icons.info_outline_rounded,
-              size: 20, color: p.toneColor(tone)),
+          Icon(
+            tone == Tone.danger
+                ? Icons.error_outline_rounded
+                : Icons.info_outline_rounded,
+            size: 20,
+            color: p.toneColor(tone),
+          ),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: TextStyle(color: p.text, height: 1.35))),
+          Expanded(
+            child: Text(text, style: TextStyle(color: p.text, height: 1.35)),
+          ),
         ],
       ),
     );
@@ -208,30 +407,43 @@ class _Banner extends StatelessWidget {
 
 /// Always tells the operator which server they are signing in to.
 class _ServerFootnote extends StatelessWidget {
+  const _ServerFootnote();
+
   @override
   Widget build(BuildContext context) {
     final p = context.aca;
     final prod = AcaConfig.isProduction;
+    final tone = prod ? p.success : p.warning;
     return Column(
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 7,
+          runSpacing: 3,
           children: [
-            Icon(prod ? Icons.verified_user_outlined : Icons.science_outlined,
-                size: 15, color: prod ? p.textFaint : p.warning),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                prod ? 'Live Counterbase · ${AcaConfig.serverLabel}' : 'QA BUILD · ${AcaConfig.apiBaseUrl}',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: prod ? p.textFaint : p.warning, fontWeight: FontWeight.w600),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
+            ),
+            Text(
+              prod ? 'LIVE COUNTERBASE' : 'QA BUILD · LOCAL API',
+              style: TextStyle(
+                color: tone,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Text('Staff accounts only. Activity is recorded.',
-            style: TextStyle(fontSize: 12, color: p.textFaint)),
+        const SizedBox(height: 8),
+        Text(
+          'Authorized staff only · Activity is recorded',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: p.textFaint, fontSize: 11.5, height: 1.35),
+        ),
       ],
     );
   }

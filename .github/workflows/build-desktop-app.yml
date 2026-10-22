@@ -3,8 +3,12 @@ name: Build and Publish Desktop App
 on:
   push:
     branches: [main, update-feature]
+    paths:
+      - 'desktop/**'
   pull_request:
     branches: [main, update-feature]
+    paths:
+      - 'desktop/**'
   workflow_dispatch:
 
 permissions:
