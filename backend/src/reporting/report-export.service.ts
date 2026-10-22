@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as pdfMake from 'pdfmake';
+import pdfMake = require('pdfmake');
 import { PrismaService } from '../common/prisma/prisma.service';
 import {
   Document,

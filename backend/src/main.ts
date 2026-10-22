@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
-import * as compression from 'compression';
+import compression = require('compression');
 import * as express from 'express';
 import { ValidationPipe, VersioningType, NotFoundException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';

@@ -19,7 +19,7 @@ Required before deploying the API:
   values, separate from Render.
 - `CRON_SECRET` — a long random value used to authorize scheduled task routes.
 - `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` — Paystack **test** keys.
-- `PUBLIC_API_URL` — the assigned Vercel API URL after the first deployment.
+- `PUBLIC_API_URL` — `https://counterbase-pos-staging-api.vercel.app`.
   The activation and monthly checkout return URLs are derived from it.
 
 Email OTP delivery also needs one working provider. The app supports `EMAIL_*`
@@ -32,27 +32,31 @@ before validating those features.
 
 ## Database migration
 
-After Neon has been connected and `DATABASE_URL` is available, run from this
-directory:
-
-```powershell
-vercel env run -e production -- npx prisma migrate deploy
-```
-
-This applies the repository's migrations to the isolated staging database. Do
-not point this command at the Render production database.
+All 36 Prisma migrations were applied to the isolated Neon staging database on
+2026-10-22 using its direct connection URL (`DATABASE_URL_UNPOOLED`). Keep the
+pooled `DATABASE_URL` for runtime traffic. For future schema changes, supply the
+direct URL as `DATABASE_URL` to `prisma migrate deploy`; do not point migrations
+at the Render production database.
 
 ## Payment test callback
 
-Once the Vercel URL is assigned, configure Paystack's **Test** webhook URL as:
+Configure Paystack's **Test** webhook URL as:
 
 ```text
-https://<vercel-staging-api>/api/v1/billing/paystack/webhook
+https://counterbase-pos-staging-api.vercel.app/api/v1/billing/paystack/webhook
 ```
 
 That endpoint handles both one-time activation and monthly invoice events.
 The callback pages for activation and monthly checkout are derived from
 `PUBLIC_API_URL`.
+
+## Current status
+
+- The staging API is deployed and its `/health` and `/health/db` endpoints
+  return `200`; Neon reports `connected`.
+- Add Paystack test keys and a staging email provider before testing account
+  verification and one-time or monthly checkout. Never put live Paystack keys
+  in this project.
 
 ## Scheduled tasks
 
