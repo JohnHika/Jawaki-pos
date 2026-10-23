@@ -17,13 +17,17 @@ class CartScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cart = ref.watch(cartProvider);
+    final heldSalesCount = ref.watch(
+      parkedSalesProvider.select((sales) => sales.length),
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
         leadingWidth: 68,
         leading: AppBackButton(
-          color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+          color:
+              isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
           isDark: isDark,
           onPressed: () => context.pop(),
         ),
@@ -45,7 +49,7 @@ class CartScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(
                   horizontal: DesignSpacing.md - 2, vertical: DesignSpacing.xs),
               decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha:0.1),
+                color: DesignColors.accent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(DesignSpacing.sm),
               ),
               child: Text(
@@ -60,10 +64,25 @@ class CartScreen extends ConsumerWidget {
           ],
         ),
         centerTitle: false,
-        backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+        backgroundColor:
+            isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [
+          if (cart.items.isNotEmpty)
+            IconButton.filledTonal(
+              tooltip: 'Hold sale and return to POS',
+              onPressed: () => _holdSale(context, ref, cart),
+              style: IconButton.styleFrom(
+                foregroundColor: DesignColors.warning,
+                backgroundColor: DesignColors.warning.withValues(alpha: 0.12),
+              ),
+              icon: Badge(
+                isLabelVisible: heldSalesCount > 0,
+                label: Text('$heldSalesCount'),
+                child: const Icon(Icons.pause_circle_outline_rounded),
+              ),
+            ),
           if (cart.items.isNotEmpty)
             TextButton.icon(
               onPressed: () => _showClearCartDialog(context, ref),
@@ -71,7 +90,8 @@ class CartScreen extends ConsumerWidget {
               label: const Text('Clear All'),
               style: TextButton.styleFrom(
                 foregroundColor: DesignColors.error,
-                padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.md),
               ),
             ),
           const SizedBox(width: DesignSpacing.xs),
@@ -85,21 +105,21 @@ class CartScreen extends ConsumerWidget {
                 // Customer banner (if set)
                 if (cart.customerName != null)
                   GlassCard(
-                    margin: const EdgeInsets.fromLTRB(
-                        DesignSpacing.lg, DesignSpacing.md, DesignSpacing.lg, 0),
+                    margin: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                        DesignSpacing.md, DesignSpacing.lg, 0),
                     padding: const EdgeInsets.symmetric(
                         horizontal: DesignSpacing.md + 2,
                         vertical: DesignSpacing.md - 2),
                     borderRadius: DesignSpacing.radiusMd,
                     blur: 4,
-                    tint: DesignColors.accent.withValues(alpha:0.06),
-                    borderColor: DesignColors.accent.withValues(alpha:0.15),
+                    tint: DesignColors.accent.withValues(alpha: 0.06),
+                    borderColor: DesignColors.accent.withValues(alpha: 0.15),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(DesignSpacing.sm - 2),
                           decoration: BoxDecoration(
-                            color: DesignColors.accent.withValues(alpha:0.12),
+                            color: DesignColors.accent.withValues(alpha: 0.12),
                             borderRadius:
                                 BorderRadius.circular(DesignSpacing.sm),
                           ),
@@ -193,13 +213,13 @@ class CartScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return GlassCard(
       padding: const EdgeInsets.all(DesignSpacing.lg),
-      margin: const EdgeInsets.fromLTRB(
-          DesignSpacing.lg, 0, DesignSpacing.lg, 0),
+      margin:
+          const EdgeInsets.fromLTRB(DesignSpacing.lg, 0, DesignSpacing.lg, 0),
       borderRadius: DesignSpacing.radiusLg,
       blur: 12,
       tint: isDark
-          ? DesignColors.darkSurfaceElevated.withValues(alpha:0.95)
-          : Colors.white.withValues(alpha:0.95),
+          ? DesignColors.darkSurfaceElevated.withValues(alpha: 0.95)
+          : Colors.white.withValues(alpha: 0.95),
       borderColor:
           isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
       child: Column(
@@ -211,12 +231,11 @@ class CartScreen extends ConsumerWidget {
           if (cart.discount > 0 ||
               (getIt<AuthService>().showTaxOnReceipt &&
                   getIt<AuthService>().taxRatePercent > 0)) ...[
-            _buildSummaryRow(context, 'Subtotal',
-                formatMoney(cart.subtotal)),
+            _buildSummaryRow(context, 'Subtotal', formatMoney(cart.subtotal)),
             const SizedBox(height: DesignSpacing.sm),
             if (cart.discount > 0) ...[
-              _buildSummaryRow(context, 'Discount',
-                  '- ${formatMoney(cart.discount)}',
+              _buildSummaryRow(
+                  context, 'Discount', '- ${formatMoney(cart.discount)}',
                   valueColor: DesignColors.success),
               const SizedBox(height: DesignSpacing.sm),
             ],
@@ -297,9 +316,7 @@ class CartScreen extends ConsumerWidget {
       children: [
         Text(label,
             style: TextStyle(
-              fontSize: isBold
-                  ? DesignType.chatBody + 2
-                  : DesignType.chatBody,
+              fontSize: isBold ? DesignType.chatBody + 2 : DesignType.chatBody,
               fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
               color: isDark
                   ? DesignColors.darkTextSecondary
@@ -308,9 +325,8 @@ class CartScreen extends ConsumerWidget {
         Text(value,
             style: valueStyle ??
                 TextStyle(
-                  fontSize: isBold
-                      ? DesignType.chatBody + 4
-                      : DesignType.chatBody,
+                  fontSize:
+                      isBold ? DesignType.chatBody + 4 : DesignType.chatBody,
                   fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
                   color: valueColor ??
                       (isDark
@@ -334,5 +350,18 @@ class CartScreen extends ConsumerWidget {
         ref.read(cartProvider.notifier).clear();
       }
     });
+  }
+
+  void _holdSale(BuildContext context, WidgetRef ref, CartState cart) {
+    if (cart.items.isEmpty) return;
+    ref.read(parkedSalesProvider.notifier).park(cart);
+    ref.read(cartProvider.notifier).clear();
+    showGlassSnackBar(
+      context,
+      'Sale held and ready to resume',
+      icon: Icons.pause_circle_filled_rounded,
+      color: DesignColors.warning,
+    );
+    context.pop();
   }
 }

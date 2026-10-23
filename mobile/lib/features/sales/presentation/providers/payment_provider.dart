@@ -170,7 +170,6 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<String?> processMpesaPayment({
     required double amount,
     required String phoneNumber,
-    required String customerEmail,
     required double discountAmount,
     required List<CartItem> items,
     String? customerId,
@@ -199,13 +198,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         'amount': amount,
         'discount': discountAmount,
         'phone': formattedPhone,
-        'email': customerEmail.trim().toLowerCase(),
         'customerId': customerId,
         'items': items.map((item) => item.toJson()).toList(),
       });
-      if (_pendingMpesaRequestId != null && _pendingMpesaFingerprint != fingerprint) {
-        state = state.copyWith(isProcessing: false,
-          error: 'An earlier M-Pesa payment is still open. Check it in Payments before changing the cart.');
+      if (_pendingMpesaRequestId != null &&
+          _pendingMpesaFingerprint != fingerprint) {
+        state = state.copyWith(
+            isProcessing: false,
+            error:
+                'An earlier M-Pesa payment is still open. Check it in Payments before changing the cart.');
         return null;
       }
 
@@ -220,33 +221,36 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         _pendingMpesaRequestId = requestId;
         _pendingMpesaFingerprint = fingerprint;
         final response = await _apiClient.startMerchantMpesaPayment({
-        'requestId': requestId,
-        'phoneNumber': formattedPhone,
-        'customerEmail': customerEmail.trim().toLowerCase(),
-        'sale': {
-          'branchId': _authService.branchId,
-          if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
-          if (customerId != null) 'customerId': customerId,
-          'items': items.map((item) => {
-            'productId': item.productId,
-            'quantity': item.quantity,
-            'unitPrice': item.unitPrice,
-            'discount': item.discount,
-            if (item.saleUnit != null) 'unit': item.saleUnit,
-            if (item.unitConversionFactor != null)
-              'quantityPerUnit': item.unitConversionFactor,
-          }).toList(),
-          'discountAmount': discountAmount,
-          'paymentMethod': 'MPESA',
-          'paidAmount': amount,
-        },
+          'requestId': requestId,
+          'phoneNumber': formattedPhone,
+          'sale': {
+            'branchId': _authService.branchId,
+            if (_authService.deviceId != null)
+              'deviceId': _authService.deviceId,
+            if (customerId != null) 'customerId': customerId,
+            'items': items
+                .map((item) => {
+                      'productId': item.productId,
+                      'quantity': item.quantity,
+                      'unitPrice': item.unitPrice,
+                      'discount': item.discount,
+                      if (item.saleUnit != null) 'unit': item.saleUnit,
+                      if (item.unitConversionFactor != null)
+                        'quantityPerUnit': item.unitConversionFactor,
+                    })
+                .toList(),
+            'discountAmount': discountAmount,
+            'paymentMethod': 'MPESA',
+            'paidAmount': amount,
+          },
         });
         reference = response['reference']?.toString();
       }
       if (reference == null || reference.isEmpty) {
         state = state.copyWith(
           isProcessing: false,
-          error: 'The payment provider did not return a reference. Check the customer phone before retrying.',
+          error:
+              'The payment provider did not return a reference. Check the customer phone before retrying.',
         );
         return null;
       }
@@ -257,10 +261,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       if (verified == null || verified['status'] != 'COMPLETED') {
         final status = verified?['status']?.toString() ?? 'PENDING';
         final message = status == 'FAILED'
-              ? 'M-Pesa payment failed. Reference: $reference'
-              : status == 'NEEDS_REVIEW'
-                  ? 'Payment was received but the receipt needs review. Give support reference $reference. Do not charge again.'
-                  : 'Payment is still pending. Press Check M-Pesa Payment to check this reference without a second charge: $reference.';
+            ? 'M-Pesa payment failed. Reference: $reference'
+            : status == 'NEEDS_REVIEW'
+                ? 'Payment was received but the receipt needs review. Give support reference $reference. Do not charge again.'
+                : 'Payment is still pending. Press Check M-Pesa Payment to check this reference without a second charge: $reference.';
         if (status == 'FAILED') {
           _pendingLocalSaleId = null;
           _pendingMpesaFingerprint = null;
@@ -286,7 +290,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         );
       }
       await _database.markSaleAsSynced(saleId);
-      try { await _syncService.pullChanges(); } catch (_) {}
+      try {
+        await _syncService.pullChanges();
+      } catch (_) {}
 
       _pendingLocalSaleId = null;
       _pendingMpesaFingerprint = null;
@@ -297,16 +303,18 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // Validation and authorization errors happen before the provider is
       // prompted. Network and server errors keep the idempotency key so a
       // retry can recover the original reference instead of charging twice.
-      if (state.currentTransactionId == null && e is DioException &&
+      if (state.currentTransactionId == null &&
+          e is DioException &&
           [400, 401, 403, 404, 409, 422].contains(e.response?.statusCode)) {
         _pendingLocalSaleId = null;
         _pendingMpesaFingerprint = null;
         _pendingMpesaRequestId = null;
       }
-      state = state.copyWith(isProcessing: false,
-        error: state.currentTransactionId == null
-            ? _paymentError(e)
-            : 'Payment reference ${state.currentTransactionId} must be checked before retrying. No new charge will be sent.');
+      state = state.copyWith(
+          isProcessing: false,
+          error: state.currentTransactionId == null
+              ? _paymentError(e)
+              : 'Payment reference ${state.currentTransactionId} must be checked before retrying. No new charge will be sent.');
       return null;
     }
   }
@@ -490,7 +498,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     if (tenders.any((tender) => tender.method == 'MPESA')) {
       state = state.copyWith(
         isProcessing: false,
-        error: 'Use a separate M-Pesa sale for provider-verified shop payouts. Split M-Pesa is not available yet.',
+        error:
+            'Use a separate M-Pesa sale for provider-verified shop payouts. Split M-Pesa is not available yet.',
       );
       return null;
     }
@@ -536,8 +545,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // single external transaction id, reusing the field rather than
       // adding a dedicated column/migration for what's still a single
       // nullable string slot everywhere else.
-      final tendersJson =
-          jsonEncode(tenders.map((t) => t.toJson()).toList());
+      final tendersJson = jsonEncode(tenders.map((t) => t.toJson()).toList());
 
       await _createLocalSale(
         saleId: saleId,
@@ -580,7 +588,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     // admin-configured rate, default 0). The previous hardcoded 16% recorded
     // tax the business never charged on offline sales: receipts printed a
     // wrong tax line and subtotal + tax ≠ total.
-    final tax = (subtotal - discountAmount) * (_authService.taxRatePercent / 100);
+    final tax =
+        (subtotal - discountAmount) * (_authService.taxRatePercent / 100);
 
     // Create pending sale in local database
     await _database.createPendingSale(
@@ -763,14 +772,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     );
   }
 
-  Future<Map<String, dynamic>?> _pollMerchantMpesaStatus(String reference) async {
+  Future<Map<String, dynamic>?> _pollMerchantMpesaStatus(
+      String reference) async {
     // Allow the provider time to register the offline mobile approval.
     // The webhook can also settle it while this screen is open.
     for (var attempt = 0; attempt < 11; attempt++) {
       await Future.delayed(Duration(seconds: attempt == 0 ? 10 : 5));
       try {
         final status = await _apiClient.getMerchantMpesaStatus(reference);
-        if (['COMPLETED', 'FAILED', 'NEEDS_REVIEW'].contains(status['status'])) {
+        if (['COMPLETED', 'FAILED', 'NEEDS_REVIEW']
+            .contains(status['status'])) {
           return status;
         }
       } catch (_) {

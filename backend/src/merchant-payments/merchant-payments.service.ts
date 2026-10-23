@@ -196,6 +196,7 @@ export class MerchantPaymentsService {
       throw new BadRequestException('The sale total changed. Refresh the cart before requesting payment');
     }
     const phone = this.normalizePhone(input.phoneNumber);
+    const paystackEmail = this.paystack.getMerchantPayerEmail?.() || 'billing@archeaxon.com';
     const reference = `CBSALE-${randomBytes(12).toString('hex')}`;
     const salePayload: CreateSaleDto = {
       ...input.sale,
@@ -214,7 +215,7 @@ export class MerchantPaymentsService {
           subaccountCode: payout.row.subaccountCode,
           amount: new Prisma.Decimal(amount),
           phone,
-          customerEmail: input.customerEmail.trim().toLowerCase(),
+          paystackEmail,
           salePayload: salePayload as unknown as Prisma.InputJsonValue,
         },
       });
@@ -230,7 +231,7 @@ export class MerchantPaymentsService {
 
     try {
       const prompt = await this.paystack.createMerchantMpesaCharge({
-        email: input.customerEmail.trim().toLowerCase(),
+        email: paystackEmail,
         amountKes: amount,
         phone,
         reference,
@@ -307,7 +308,7 @@ export class MerchantPaymentsService {
     }
 
     const phone = this.normalizePhone(input.phoneNumber);
-    const email = input.customerEmail.trim().toLowerCase();
+    const paystackEmail = this.paystack.getMerchantPayerEmail?.() || 'billing@archeaxon.com';
     const reference = `CBDUE-${randomBytes(12).toString('hex')}`;
     try {
       await this.prisma.merchantCharge.create({
@@ -320,7 +321,7 @@ export class MerchantPaymentsService {
           subaccountCode: payout.row.subaccountCode,
           amount: new Prisma.Decimal(input.amount),
           phone,
-          customerEmail: email,
+          paystackEmail,
           salePayload: {},
           purpose: 'RECEIVABLE',
           receivableType: input.receivableType,
@@ -339,7 +340,7 @@ export class MerchantPaymentsService {
 
     try {
       const prompt = await this.paystack.createMerchantMpesaCharge({
-        email,
+        email: paystackEmail,
         amountKes: input.amount,
         phone,
         reference,

@@ -629,7 +629,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final amountController =
         TextEditingController(text: amount.toStringAsFixed(2));
     final phoneController = TextEditingController();
-    final emailController = TextEditingController();
     String? error;
     bool saving = false;
     await showModalBottomSheet<bool>(
@@ -689,20 +688,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     ? null
                     : 'Enter a valid Kenyan mobile number',
               ),
-              const SizedBox(height: DesignSpacing.md),
-              TextFormField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Payer email',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-                validator: (value) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                        .hasMatch(value?.trim() ?? '')
-                    ? null
-                    : 'Enter a valid email address',
-              ),
               if (error != null) ...[
                 const SizedBox(height: DesignSpacing.md),
                 Text(error!, style: const TextStyle(color: DesignColors.error)),
@@ -731,7 +716,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                                   double.parse(amountController.text.trim()),
                               'phoneNumber':
                                   _normalizeKenyanPhone(phoneController.text),
-                              'customerEmail': emailController.text.trim(),
                             });
                             if (!sheetContext.mounted) return;
                             Navigator.pop(sheetContext, true);
@@ -778,7 +762,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     );
     amountController.dispose();
     phoneController.dispose();
-    emailController.dispose();
   }
 
   Future<void> _showMerchantPaymentStatus(

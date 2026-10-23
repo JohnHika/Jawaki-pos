@@ -23,10 +23,13 @@ finish the same intent. A paid charge that cannot produce a receipt remains
 
 This first merchant checkout supports **one M-Pesa payment for one sale**.
 Cash and debt can still be split; mixed M-Pesa tenders are disabled until each
-tender has a verified merchant settlement path. Customer email is required by
-Paystack's Charge API. Paystack settles the merchant share on its provider
-schedule; checkout confirmation is not instant bank settlement. Subaccount
-availability and bank acceptance depend on the Paystack integration.
+tender has a verified merchant settlement path. Paystack's Charge API requires
+an email, so Counterbase sends `PAYSTACK_PAYER_EMAIL` (default
+`billing@archeaxon.com`) and does not ask the payer for an email. Paystack
+transactions and any provider email notices use that billing address. Paystack
+settles the merchant share on its provider schedule; checkout confirmation is
+not instant bank settlement. Subaccount availability and bank acceptance
+depend on the Paystack integration.
 
 ## Deployment order
 

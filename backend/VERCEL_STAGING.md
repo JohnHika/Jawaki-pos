@@ -20,6 +20,9 @@ Required before deploying the API:
 - `CRON_SECRET` — a long random value used to authorize scheduled task routes.
 - `PAYSTACK_SECRET_KEY` — Paystack **test** key. The current backend-hosted
   checkout does not use `PAYSTACK_PUBLIC_KEY`.
+- `PAYSTACK_PAYER_EMAIL` — optional email attached to merchant M-Pesa charges;
+  defaults to `billing@archeaxon.com`. Customer checkout asks only for the
+  payer's phone number.
 - `PUBLIC_API_URL` — `https://counterbase-pos-staging-api.vercel.app`.
   The activation and monthly checkout return URLs are derived from it.
 
@@ -33,11 +36,11 @@ before validating those features.
 
 ## Database migration
 
-All 38 Prisma migrations are applied to the isolated Neon staging database on
-2026-10-22 using its direct connection URL (`DATABASE_URL_UNPOOLED`). Keep the
-pooled `DATABASE_URL` for runtime traffic. For future schema changes, supply the
-direct URL as `DATABASE_URL` to `prisma migrate deploy`; do not point migrations
-at the Render production database.
+The existing Prisma migrations are applied to the isolated Neon staging
+database using its direct connection URL (`DATABASE_URL_UNPOOLED`). Keep the
+pooled `DATABASE_URL` for runtime traffic. The merchant-charge payer-email
+column rename must be applied with `prisma migrate deploy`; do not point
+migrations at the Render production database.
 
 The `20261022130000_merchant_payouts` and
 `20261022140000_policy_acceptances` migrations are applied. The staging API now

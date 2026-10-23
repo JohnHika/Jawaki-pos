@@ -29,12 +29,10 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod? _selectedMethod;
   final _phoneController = TextEditingController();
-  final _emailController = TextEditingController();
 
   @override
   void dispose() {
     _phoneController.dispose();
-    _emailController.dispose();
     super.dispose();
   }
 
@@ -364,7 +362,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         style: Theme.of(sheetContext).textTheme.titleLarge),
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
-                      'Enter the payer details. Paystack will send an M-Pesa prompt for the amount below.',
+                      'Enter the payer’s phone number. Paystack will send an M-Pesa prompt for the amount below.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall
@@ -403,23 +401,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       validator: (value) => _isKenyanPhone(value ?? '')
                           ? null
                           : 'Enter a valid Kenyan mobile number',
-                    ),
-                    const SizedBox(height: DesignSpacing.md),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'Payer email',
-                        helperText:
-                            'Paystack uses this as the customer email for this sale. It is separate from the shop subscription email.',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                      validator: (value) =>
-                          RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                                  .hasMatch(value?.trim() ?? '')
-                              ? null
-                              : 'Enter a valid email address',
                     ),
                     const SizedBox(height: DesignSpacing.lg),
                     SizedBox(
@@ -503,9 +484,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         cashChangeDue = cashChange(total: cart.total, tendered: tendered);
         break;
       case PaymentMethod.mpesa:
-        if (!_isKenyanPhone(_phoneController.text) ||
-            !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                .hasMatch(_emailController.text.trim())) {
+        if (!_isKenyanPhone(_phoneController.text)) {
           final ready = await _showMpesaDetailsSheet(cart.total);
           if (!ready || !mounted) return;
           await _processPayment();
@@ -514,7 +493,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         result = await paymentNotifier.processMpesaPayment(
           amount: cart.total,
           phoneNumber: _normalizeKenyanPhone(_phoneController.text),
-          customerEmail: _emailController.text,
           discountAmount: cart.discount,
           items: cart.items,
           customerId: cart.customerId,

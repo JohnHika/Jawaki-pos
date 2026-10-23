@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsNumber, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { CreateSaleDto } from '../../sales/dto/sales.dto';
 
 export class ConfigureMerchantPayoutDto {
@@ -22,8 +22,10 @@ export class StartMerchantMpesaDto {
   })
   phoneNumber!: string;
 
-  @IsEmail() @MaxLength(254)
-  customerEmail!: string;
+  // Accepted only for compatibility with already installed app versions.
+  // Merchant payments now use the configured Counterbase billing email.
+  @IsOptional() @IsEmail() @MaxLength(254)
+  customerEmail?: string;
 
   @ValidateNested()
   @Type(() => CreateSaleDto)
@@ -51,6 +53,7 @@ export class StartMerchantReceivableMpesaDto {
   @IsString() @Matches(/^(?:\+?254|0)?(?:7|1)\d{8}$/)
   phoneNumber!: string;
 
-  @IsEmail() @MaxLength(254)
-  customerEmail!: string;
+  // Accepted only for compatibility with already installed app versions.
+  @IsOptional() @IsEmail() @MaxLength(254)
+  customerEmail?: string;
 }

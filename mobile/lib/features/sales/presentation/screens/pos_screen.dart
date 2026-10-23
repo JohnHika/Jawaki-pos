@@ -107,11 +107,11 @@ class _POSScreenState extends ConsumerState<POSScreen> {
           if (parkedSales.isNotEmpty)
             _topAction(
                 Icons.inventory_2_outlined,
-                'Parked (${parkedSales.length})',
+                'Held (${parkedSales.length})',
                 () => _showParkedSalesSheet(context),
                 isDark),
           if (cart.items.isNotEmpty)
-            _topAction(Icons.pause_rounded, 'Park Sale',
+            _topAction(Icons.pause_rounded, 'Hold Sale',
                 () => _parkCurrentSale(context), isDark),
           Stack(
             children: [
@@ -125,23 +125,23 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                     trigger: cart.itemCount,
                     scale: 1.45,
                     child: Container(
-                    padding: const EdgeInsets.all(2),
-                    constraints:
-                        const BoxConstraints(minWidth: 15, minHeight: 15),
-                    decoration: const BoxDecoration(
-                      color: DesignColors.accent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '${cart.itemCount}',
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
+                      padding: const EdgeInsets.all(2),
+                      constraints:
+                          const BoxConstraints(minWidth: 15, minHeight: 15),
+                      decoration: const BoxDecoration(
+                        color: DesignColors.accent,
+                        shape: BoxShape.circle,
                       ),
-                      textAlign: TextAlign.center,
+                      child: Text(
+                        '${cart.itemCount}',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                  ),
                   ),
                 ),
             ],
@@ -237,8 +237,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
-                DesignSpacing.lg, DesignSpacing.sm - 3),
+            padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.sm - 3),
             child: Row(
               children: [
                 Container(
@@ -409,8 +409,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                 Text(
                   'Search an existing customer or create a new one',
                   style: TextStyle(
-                      fontSize: DesignType.chatBody - 1,
-                      color: secondaryColor),
+                      fontSize: DesignType.chatBody - 1, color: secondaryColor),
                 ),
                 const SizedBox(height: DesignSpacing.md + 2),
                 TextField(
@@ -476,8 +475,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                           itemBuilder: (_, i) => ListTile(
                             minTileHeight: 52,
                             leading: CircleAvatar(
-                                backgroundColor: DesignColors.accent
-                                    .withValues(alpha: 0.12),
+                                backgroundColor:
+                                    DesignColors.accent.withValues(alpha: 0.12),
                                 child: Text((customers[i]['name'] as String)[0]
                                     .toUpperCase())),
                             title: Text(customers[i]['name'] as String),
@@ -554,7 +553,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     if (cart.items.isEmpty) return;
     ref.read(parkedSalesProvider.notifier).park(cart);
     ref.read(cartProvider.notifier).clear();
-    showGlassSnackBar(context, 'Sale parked',
+    showGlassSnackBar(context, 'Sale held',
         icon: Icons.pause_circle_filled_rounded, color: DesignColors.warning);
   }
 
@@ -584,7 +583,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       child: const Icon(Icons.pause_circle_filled_rounded,
                           color: DesignColors.warning, size: 22)),
                   const SizedBox(width: DesignSpacing.md - 2),
-                  Text('Parked (${parked.length})',
+                  Text('Held Sales (${parked.length})',
                       style: TextStyle(
                           fontSize: DesignSpacing.md + 6,
                           fontWeight: FontWeight.w700,
@@ -626,33 +625,21 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                               '${formatMoney(s.cart.total)} \u00b7 ${elapsed.inMinutes}m ago',
                           trailing:
                               Row(mainAxisSize: MainAxisSize.min, children: [
-                            IconButton(tooltip: 'Resume held sale', 
+                            IconButton(
+                                tooltip: 'Resume held sale',
                                 icon: const Icon(Icons.play_arrow_rounded,
                                     color: DesignColors.success),
                                 onPressed: () {
-                                  final current = ref.read(cartProvider);
-                                  if (current.items.isNotEmpty) {
-                                    ref
-                                        .read(parkedSalesProvider.notifier)
-                                        .park(current);
-                                  }
-                                  final resumed = ref
-                                      .read(parkedSalesProvider.notifier)
-                                      .resume(s.id);
-                                  if (resumed != null) {
-                                    ref
-                                        .read(cartProvider.notifier)
-                                        .restoreFrom(resumed);
-                                  }
-                                  Navigator.pop(ctx);
+                                  _resumeHeldSale(ctx, ref, s);
                                 }),
-                            IconButton(tooltip: 'Delete held sale', 
+                            IconButton(
+                                tooltip: 'Delete held sale',
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: DesignColors.error),
                                 onPressed: () async {
                                   final confirmed = await showConfirmDialog(
                                     ctx,
-                                    title: 'Discard Parked Sale',
+                                    title: 'Discard Held Sale',
                                     message:
                                         'Discard "${s.label}"? This sale will be permanently removed.',
                                     confirmLabel: 'Discard',
@@ -666,9 +653,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                                 }),
                           ]),
                           onTap: () {
-                            Navigator.pop(ctx);
-                            ref.read(cartProvider.notifier).restoreFrom(s.cart);
-                            ref.read(parkedSalesProvider.notifier).remove(s.id);
+                            _resumeHeldSale(ctx, ref, s);
                           },
                         ));
                   }),
@@ -676,5 +661,17 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         );
       },
     ));
+  }
+
+  void _resumeHeldSale(BuildContext context, WidgetRef ref, ParkedSale sale) {
+    final current = ref.read(cartProvider);
+    if (current.items.isNotEmpty) {
+      ref.read(parkedSalesProvider.notifier).park(current);
+    }
+    final resumed = ref.read(parkedSalesProvider.notifier).resume(sale.id);
+    if (resumed != null) {
+      ref.read(cartProvider.notifier).restoreFrom(resumed);
+    }
+    Navigator.pop(context);
   }
 }

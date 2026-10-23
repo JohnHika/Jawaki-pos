@@ -61,9 +61,16 @@ export class PaystackService {
   private readonly logger = new Logger(PaystackService.name);
   private readonly baseUrl = 'https://api.paystack.co';
   private readonly secretKey: string;
+  private readonly merchantPayerEmail: string;
 
   constructor(private readonly configService: ConfigService) {
     this.secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY') || '';
+    this.merchantPayerEmail = (
+      this.configService.get<string>('PAYSTACK_PAYER_EMAIL') || 'billing@archeaxon.com'
+    ).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.merchantPayerEmail)) {
+      throw new Error('PAYSTACK_PAYER_EMAIL must be a valid email address');
+    }
     if (!this.secretKey) {
       this.logger.warn(
         'PAYSTACK_SECRET_KEY not set — card payments and auto-renewal will fail until configured.',
@@ -73,6 +80,10 @@ export class PaystackService {
 
   isConfigured(): boolean {
     return Boolean(this.secretKey);
+  }
+
+  getMerchantPayerEmail(): string {
+    return this.merchantPayerEmail;
   }
 
   async listKenyanBanks(): Promise<PaystackBank[]> {
