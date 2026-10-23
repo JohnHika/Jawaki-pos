@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import * as request from 'supertest';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SubscriptionModule } from './subscription.module';
+import { PrismaService } from '../common/prisma/prisma.service';
 import { SubscriptionService } from './subscription.service';
 
 describe('SubscriptionController (e2e)', () => {
@@ -19,6 +20,8 @@ describe('SubscriptionController (e2e)', () => {
     })
       .overrideProvider(SubscriptionService)
       .useValue(subscriptionService)
+      .overrideProvider(PrismaService)
+      .useValue({})
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate: (context: any) => {
@@ -100,6 +103,8 @@ describe('SubscriptionController (e2e)', () => {
       })
         .overrideProvider(SubscriptionService)
         .useValue(subscriptionService)
+        .overrideProvider(PrismaService)
+        .useValue({})
         .overrideGuard(JwtAuthGuard)
         .useValue({
           canActivate: (context: any) => {

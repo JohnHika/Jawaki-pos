@@ -122,7 +122,8 @@ void main() {
   group('SubscriptionBillingScreen', () {
     testWidgets('shows plan, status badge and days remaining after load',
         (tester) async {
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
       expect(find.text('CORE'), findsOneWidget);
@@ -144,7 +145,8 @@ void main() {
         'restrictedMode': false,
       };
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
       expect(find.text('Past Due'), findsOneWidget);
@@ -156,7 +158,8 @@ void main() {
       expect(find.text('DAYS REMAINING'), findsNothing);
     });
 
-    testWidgets('a lapsed period from the current server reads as overdue, not negative',
+    testWidgets(
+        'a lapsed period from the current server reads as overdue, not negative',
         (tester) async {
       spyApi.entitlementData = {
         ...spyApi.entitlementData,
@@ -166,16 +169,19 @@ void main() {
         'restrictedMode': false,
       };
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Overdue by 1 day'), findsOneWidget);
       expect(find.textContaining('Overdue by 1 days'), findsNothing);
     });
 
-    testWidgets('Pay with M-Pesa sheet: invoice summary, then code entry '
+    testWidgets(
+        'Pay with M-Pesa sheet: invoice summary, then code entry '
         'and submit', (tester) async {
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Pay with M-Pesa'));
@@ -202,7 +208,8 @@ void main() {
 
     testWidgets('auto-renew tile visible for admin and opens sheet',
         (tester) async {
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
       // Below the fold on the small test viewport, so bring it into view.
@@ -219,6 +226,11 @@ void main() {
 
       // Toggle on and save.
       await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.textContaining('I authorize monthly M-Pesa STK prompts'),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
@@ -248,7 +260,8 @@ void main() {
         },
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
       // Entitlement card is at the top of the list and shows the plan
@@ -305,7 +318,8 @@ void main() {
         },
       ];
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
+      await tester
+          .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 

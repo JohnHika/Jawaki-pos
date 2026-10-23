@@ -15,6 +15,19 @@ class _SpyApiClient extends ApiClient {
 
   Object? changePlanError;
   Map<String, dynamic>? lastChangePlanCall;
+  Map<String, dynamic>? lastLegalAcceptance;
+
+  @override
+  Future<Map<String, dynamic>> acceptLegalPolicy({
+    required String policyType,
+    required String policyVersion,
+  }) async {
+    lastLegalAcceptance = {
+      'policyType': policyType,
+      'policyVersion': policyVersion,
+    };
+    return {'accepted': true};
+  }
 
   @override
   Future<Map<String, dynamic>> changeSubscriptionPlan({
@@ -49,7 +62,20 @@ Widget _app(GoRouter router) =>
 
 /// Scrolls until [finder] is built and on-screen, then settles.
 Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
-  await tester.scrollUntilVisible(finder, 300);
+  final list = find.byType(ListView).first;
+  for (var attempt = 0; attempt < 20 && finder.evaluate().isEmpty; attempt++) {
+    await tester.drag(list, const Offset(0, -300));
+    await tester.pumpAndSettle();
+  }
+  expect(finder, findsWidgets);
+  await tester.ensureVisible(finder.first);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _acceptBillingTerms(WidgetTester tester) async {
+  final consent = find.byType(CheckboxListTile);
+  await _scrollTo(tester, consent);
+  await tester.tap(consent.first);
   await tester.pumpAndSettle();
 }
 
@@ -138,7 +164,8 @@ void main() {
         find.text('Keep selling when the internet goes down (works offline)'),
         findsAtLeastNWidgets(1),
       );
-      expect(find.text('Know your stock level at any moment'), findsAtLeastNWidgets(1));
+      expect(find.text('Know your stock level at any moment'),
+          findsAtLeastNWidgets(1));
       expect(find.text('Up to 3 branches'), findsAtLeastNWidgets(1));
       expect(find.text('Up to 10 staff accounts'), findsAtLeastNWidgets(1));
       expect(find.text('Email support'), findsAtLeastNWidgets(1));
@@ -174,7 +201,8 @@ void main() {
       expect(find.text('Everything in Core, plus:'), findsAtLeastNWidgets(1));
       expect(find.text('Up to 10 branches'), findsAtLeastNWidgets(1));
       expect(find.text('Up to 50 staff accounts'), findsAtLeastNWidgets(1));
-      expect(find.text('Move stock between your shops'), findsAtLeastNWidgets(1));
+      expect(
+          find.text('Move stock between your shops'), findsAtLeastNWidgets(1));
       expect(
         find.text('Restock suggestions — what to reorder and how much'),
         findsAtLeastNWidgets(1),
@@ -183,7 +211,8 @@ void main() {
         find.text('Track suppliers — who you owe, invoices and payments'),
         findsAtLeastNWidgets(1),
       );
-      expect(find.text('WhatsApp support from our team'), findsAtLeastNWidgets(1));
+      expect(
+          find.text('WhatsApp support from our team'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('shows ENTERPRISE plan features', (tester) async {
@@ -192,7 +221,8 @@ void main() {
       await tester.pumpAndSettle();
       await _expandAllCards(tester);
 
-      expect(find.text('Everything in Business, plus:'), findsAtLeastNWidgets(1));
+      expect(
+          find.text('Everything in Business, plus:'), findsAtLeastNWidgets(1));
       expect(find.text('Unlimited branches'), findsAtLeastNWidgets(1));
       expect(find.text('Unlimited staff accounts'), findsAtLeastNWidgets(1));
       expect(
@@ -207,8 +237,9 @@ void main() {
       );
     });
 
-    testWidgets('the popular plan is pre-selected so Continue is ready',
+    testWidgets('the popular plan is pre-selected but terms require consent',
         (tester) async {
+      await _useTallSurface(tester);
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
 
@@ -217,12 +248,20 @@ void main() {
       final button = tester.widget<GradientButton>(
         find.byType(GradientButton),
       );
-      expect(button.onPressed, isNotNull);
+      expect(button.onPressed, isNull);
 
-      // Continuing without touching a card sends the pre-selected plan.
+      await _acceptBillingTerms(tester);
+      await _scrollTo(tester, find.text('Continue with this plan'));
+      expect(
+        tester.widget<GradientButton>(find.byType(GradientButton)).onPressed,
+        isNotNull,
+      );
+
+      // Accepting the terms sends the pre-selected plan.
       await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
       expect(spyApi.lastChangePlanCall!['planId'], 'BUSINESS');
+      expect(spyApi.lastLegalAcceptance?['policyType'], 'BILLING_TERMS');
     });
 
     testWidgets('a long feature list folds and unfolds', (tester) async {
@@ -236,7 +275,7 @@ void main() {
       expect(find.text('Show less'), findsOneWidget);
     });
 
-    testWidgets('selecting a plan enables the trial button',
+    testWidgets('selecting a plan requires billing terms consent',
         (tester) async {
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
@@ -245,7 +284,7 @@ void main() {
       await tester.tap(find.text('CORE').first);
       await tester.pumpAndSettle();
 
-      // Scroll down to reveal the button
+      await _acceptBillingTerms(tester);
       await _scrollTo(tester, find.text('Continue with this plan'));
 
       // Button should now be enabled
@@ -255,7 +294,8 @@ void main() {
       expect(button.onPressed, isNotNull);
     });
 
-    testWidgets('tapping start trial with selected plan calls API and navigates',
+    testWidgets(
+        'tapping start trial with selected plan calls API and navigates',
         (tester) async {
       await tester.pumpWidget(_app(_router()));
       await tester.pumpAndSettle();
@@ -265,6 +305,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down and tap the trial button
+      await _acceptBillingTerms(tester);
       await _scrollTo(tester, find.text('Continue with this plan'));
       await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
@@ -276,6 +317,7 @@ void main() {
       // uppercase and changePlan() does not normalize case.
       expect(spyApi.lastChangePlanCall, isNotNull);
       expect(spyApi.lastChangePlanCall!['planId'], 'CORE');
+      expect(spyApi.lastLegalAcceptance?['policyType'], 'BILLING_TERMS');
     });
 
     testWidgets('tapping start trial with BUSINESS selected sends BUSINESS',
@@ -289,6 +331,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down and tap the trial button
+      await _acceptBillingTerms(tester);
       await _scrollTo(tester, find.text('Continue with this plan'));
       await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
@@ -296,6 +339,7 @@ void main() {
       expect(find.text('Owner Welcome'), findsOneWidget);
       expect(spyApi.lastChangePlanCall, isNotNull);
       expect(spyApi.lastChangePlanCall!['planId'], 'BUSINESS');
+      expect(spyApi.lastLegalAcceptance?['policyType'], 'BILLING_TERMS');
     });
 
     testWidgets('shows error when API call fails', (tester) async {
@@ -309,12 +353,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down and tap the trial button
+      await _acceptBillingTerms(tester);
       await _scrollTo(tester, find.text('Continue with this plan'));
       await tester.tap(find.text('Continue with this plan'));
       await tester.pumpAndSettle();
 
       // Unexpected internal exceptions use plain-language copy.
-      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+      expect(
+          find.text('Something went wrong. Please try again.'), findsOneWidget);
     });
 
     testWidgets('comparison table renders three plan columns', (tester) async {
@@ -337,10 +383,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Move stock between your shops'), findsOneWidget);
-      expect(find.text('Forecast what you will need next month'),
-          findsOneWidget);
-      expect(find.text('Every action logged — full audit trail'),
-          findsOneWidget);
+      expect(
+          find.text('Forecast what you will need next month'), findsOneWidget);
+      expect(
+          find.text('Every action logged — full audit trail'), findsOneWidget);
       expect(find.text('7-day free trial on every plan'), findsOneWidget);
     });
 
@@ -363,7 +409,8 @@ void main() {
 
       // Jump straight to the bottom so the three-column comparison table is
       // laid out at phone width.
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -100000));
+      await tester.drag(
+          find.byType(Scrollable).first, const Offset(0, -100000));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -409,7 +456,8 @@ void main() {
       expect(tester.takeException(), isNull);
 
       // Bottom: the three-column comparison table.
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -100000));
+      await tester.drag(
+          find.byType(Scrollable).first, const Offset(0, -100000));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('Feature'), findsOneWidget);
