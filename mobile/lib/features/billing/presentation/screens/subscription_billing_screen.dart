@@ -1106,8 +1106,11 @@ class _SubscriptionBillingScreenState
   // ── Actions ─────────────────────────────────────────────────────────
 
   Widget _buildPayWithMpesaButton() {
-    final payerEmail =
-        getIt<AuthService>().currentUser?['email']?.toString().trim() ?? '';
+    var payerEmail = '';
+    if (getIt.isRegistered<AuthService>()) {
+      payerEmail =
+          getIt<AuthService>().currentUser?['email']?.toString().trim() ?? '';
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
