@@ -555,6 +555,7 @@ export class MerchantPaymentsService {
         charge.cashierId,
         charge.tenantId,
         charge.salePayload as unknown as CreateSaleDto,
+        { verifiedMerchantMpesa: true },
       );
       const completed = await this.prisma.$transaction(async (tx) => {
         const payment = await tx.payment.findFirst({

@@ -1587,7 +1587,9 @@ class AppDatabase extends _$AppDatabase {
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
-      'FROM pending_sales WHERE created_at >= ? AND created_at < ?',
+      'FROM pending_sales WHERE created_at >= ? AND created_at < ? '
+      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
+      "AND UPPER(payment_method) <> 'MPESA'",
       variables: [
         Variable.withDateTime(startOfDay),
         Variable.withDateTime(endOfDay),
@@ -1598,7 +1600,9 @@ class AppDatabase extends _$AppDatabase {
       'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at < ?',
+      'WHERE ps.created_at >= ? AND ps.created_at < ? '
+      "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
+      "AND UPPER(ps.payment_method) <> 'MPESA'",
       variables: [
         Variable.withDateTime(startOfDay),
         Variable.withDateTime(endOfDay),
@@ -1620,14 +1624,18 @@ class AppDatabase extends _$AppDatabase {
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
-      'FROM pending_sales WHERE created_at >= ? AND created_at <= ?',
+      'FROM pending_sales WHERE created_at >= ? AND created_at <= ? '
+      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
+      "AND UPPER(payment_method) <> 'MPESA'",
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).getSingle();
     final itemsResult = await customSelect(
       'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ?',
+      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
+      "AND UPPER(ps.payment_method) <> 'MPESA'",
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).getSingle();
     return {
@@ -1646,14 +1654,18 @@ class AppDatabase extends _$AppDatabase {
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
-      'FROM pending_sales WHERE created_at >= ? AND created_at <= ?',
+      'FROM pending_sales WHERE created_at >= ? AND created_at <= ? '
+      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
+      "AND UPPER(payment_method) <> 'MPESA'",
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).getSingle();
     final itemsResult = await customSelect(
       'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ?',
+      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
+      "AND UPPER(ps.payment_method) <> 'MPESA'",
       variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
     ).getSingle();
     return {

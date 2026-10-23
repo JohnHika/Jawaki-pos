@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { getDayBoundsInTimezone, nowInTimezone, todayInTimezone } from '../common/operating-hours';
-import { StockMovementType, ExpenseStatus, PaymentMethod } from '@prisma/client';
+import { StockMovementType, ExpenseStatus, PaymentMethod, PaymentStatus } from '@prisma/client';
 import {
   ReportFilterDto,
   ReportPeriod,
@@ -116,6 +116,24 @@ export class ReportingService {
     };
   }
 
+  /** A Paystack M-Pesa sale is reportable only when its verified payment row exists. */
+  private verifiedSalePaymentFilter() {
+    return {
+      OR: [
+        { paymentMethod: { not: PaymentMethod.MPESA } },
+        {
+          paymentMethod: PaymentMethod.MPESA,
+          payments: {
+            some: {
+              method: PaymentMethod.MPESA,
+              status: PaymentStatus.COMPLETED,
+            },
+          },
+        },
+      ],
+    };
+  }
+
   /**
    * Get sales summary
    */
@@ -137,6 +155,7 @@ export class ReportingService {
         ...branchFilter,
         createdAt: { gte: start, lte: end },
         status: 'COMPLETED',
+        ...this.verifiedSalePaymentFilter(),
       },
       _count: { id: true },
       _sum: {
@@ -155,6 +174,7 @@ export class ReportingService {
           ...branchFilter,
           createdAt: { gte: start, lte: end },
           status: 'COMPLETED',
+          ...this.verifiedSalePaymentFilter(),
         },
       },
       _sum: { quantity: true },
@@ -169,6 +189,7 @@ export class ReportingService {
         createdAt: { gte: start, lte: end },
         status: 'COMPLETED',
         customerId: { not: null },
+        ...this.verifiedSalePaymentFilter(),
       },
     });
 
@@ -229,6 +250,7 @@ export class ReportingService {
         ...branchFilter,
         createdAt: { gte: start, lte: end },
         status: 'COMPLETED',
+        ...this.verifiedSalePaymentFilter(),
       },
       include: {
         items: true,
@@ -296,6 +318,7 @@ export class ReportingService {
           ...branchFilter,
           createdAt: { gte: start, lte: end },
           status: 'COMPLETED',
+          ...this.verifiedSalePaymentFilter(),
         },
       },
       _sum: {
@@ -350,6 +373,7 @@ export class ReportingService {
           ...branchFilter,
           createdAt: { gte: start, lte: end },
           status: 'COMPLETED',
+          ...this.verifiedSalePaymentFilter(),
         },
       },
       _sum: { quantity: true, totalAmount: true },
@@ -488,7 +512,9 @@ export class ReportingService {
         createdAt: { gte: start, lte: end },
         status: 'COMPLETED',
         payments: { none: {} },
-        paymentMethod: { notIn: [PaymentMethod.CREDIT, PaymentMethod.SPLIT] },
+        paymentMethod: {
+          notIn: [PaymentMethod.CREDIT, PaymentMethod.SPLIT, PaymentMethod.MPESA],
+        },
       },
       _count: { id: true },
       _sum: { totalAmount: true },

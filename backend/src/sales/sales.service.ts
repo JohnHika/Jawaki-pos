@@ -27,7 +27,24 @@ export class SalesService {
     private financeService: FinanceService,
   ) {}
 
-  async createSale(userId: string, tenantId: string, dto: CreateSaleDto) {
+  async createSale(
+    userId: string,
+    tenantId: string,
+    dto: CreateSaleDto,
+    options: { verifiedMerchantMpesa?: boolean } = {},
+  ) {
+    // M-Pesa sales are created only after the merchant Paystack charge has
+    // been verified. The generic sales and offline-sync endpoints must never
+    // turn a payment prompt into a completed sale.
+    if (
+      dto.paymentMethod === PaymentMethod.MPESA &&
+      !options.verifiedMerchantMpesa
+    ) {
+      throw new BadRequestException(
+        'M-Pesa sales can only be recorded after payment is verified.',
+      );
+    }
+
     // Validate branch belongs to tenant
     const branch = await this.prisma.branch.findFirst({
       where: { id: dto.branchId, tenantId },

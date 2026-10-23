@@ -605,6 +605,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId: Value(customerId),
         cashierId: _authService.userId!,
         branchId: _authService.branchId!,
+        status: const Value('COMPLETED'),
         createdAt: DateTime.now(),
       ),
       items

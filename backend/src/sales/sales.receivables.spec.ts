@@ -57,6 +57,16 @@ describe('SalesService receivable creation', () => {
     items: [{ productId, quantity: 1 }],
   } as any;
 
+  it('rejects M-Pesa sale creation unless it comes from verified merchant settlement', async () => {
+    await expect(service.createSale(userId, tenantId, {
+      ...baseSale,
+      paymentMethod: PaymentMethod.MPESA,
+      paidAmount: 100,
+    })).rejects.toThrow('M-Pesa sales can only be recorded after payment is verified.');
+
+    expect(prisma.branch.findFirst).not.toHaveBeenCalled();
+  });
+
   it('creates an obligation for the whole unpaid pure CREDIT receipt inside the sale transaction', async () => {
     await service.createSale(userId, tenantId, { ...baseSale, paymentMethod: PaymentMethod.CREDIT, offlineId: 'sale-offline-1' });
 

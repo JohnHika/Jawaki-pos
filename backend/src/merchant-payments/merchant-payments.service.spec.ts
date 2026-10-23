@@ -268,6 +268,12 @@ describe('MerchantPaymentsService', () => {
     const result = await service.status(actor, 'CBSALE_ref');
     expect(result).toMatchObject({ status: 'COMPLETED', saleId: 'sale-1', receiptNumber: 'RCP-1' });
     expect(sales.createSale).toHaveBeenCalledTimes(1);
+    expect(sales.createSale).toHaveBeenCalledWith(
+      'cashier-1',
+      'shop-1',
+      sale,
+      { verifiedMerchantMpesa: true },
+    );
     expect(prisma.payment.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ transactionId: 'CBSALE_ref', saleId: 'sale-1' }),
     }));
