@@ -10,7 +10,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../network/api_client.dart';
 import '../widgets/update_available_dialog.dart';
@@ -562,8 +561,8 @@ class UpdateCheckService extends ChangeNotifier {
 
     final pendingVersion = prefs.getString(_pendingNoticeVersionKey) ?? '';
     final pendingNotes = prefs.getString(_pendingNoticeReleaseNotesKey) ?? '';
-    final pendingPublishedAt = DateTime.tryParse(
-        prefs.getString(_pendingNoticePublishedAtKey) ?? '');
+    final pendingPublishedAt =
+        DateTime.tryParse(prefs.getString(_pendingNoticePublishedAtKey) ?? '');
     await prefs.remove(_pendingNoticePublishedAtKey);
     await prefs.remove(_pendingNoticeBuildKey);
     await prefs.remove(_pendingNoticeVersionKey);
@@ -602,29 +601,6 @@ class UpdateCheckService extends ChangeNotifier {
       if (!kReleaseMode) {
         debugPrint('[UpdateCheck] Failed to open installer settings: $error');
       }
-    }
-  }
-
-  Future<void> openDownloadFallback() async {
-    final update = activeGateUpdate ?? _optionalUpdate;
-    if (update == null || update.apkUrl.trim().isEmpty) {
-      _errorMessage =
-          'No fallback download link is configured for this update.';
-      notifyListeners();
-      return;
-    }
-
-    final resolvedUrl = _resolveDownloadUrl(update.apkUrl);
-    final uri = Uri.tryParse(resolvedUrl);
-    if (uri == null) {
-      _errorMessage = 'The configured update download link is invalid.';
-      notifyListeners();
-      return;
-    }
-
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      _errorMessage = 'Could not open the fallback download link.';
-      notifyListeners();
     }
   }
 
@@ -671,7 +647,7 @@ class UpdateCheckService extends ChangeNotifier {
 
       if (!result) {
         _errorMessage =
-            'Android installer could not be opened automatically. Use the fallback download link if needed.';
+            'Android could not open the installer. Tap retry to try again.';
       } else {
         // The OS installer takes over from here and this process may be
         // killed before the app relaunches on the new build, so the
@@ -686,13 +662,31 @@ class UpdateCheckService extends ChangeNotifier {
       _isInstalling = false;
       _downloadProgress = null;
       _downloadDuration.stop();
-      _errorMessage = 'Update download failed: $error';
+      _errorMessage = _friendlyDownloadError(error);
       notifyListeners();
 
       if (!kReleaseMode) {
         debugPrint('[UpdateCheck] Download/install error: $error');
       }
     }
+  }
+
+  String _friendlyDownloadError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 404) {
+        return 'The update file could not be found. Tap retry in a moment.';
+      }
+      if (status != null && status >= 500) {
+        return 'The update server is temporarily unavailable. Tap retry shortly.';
+      }
+      if (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return 'Could not connect to the update server. Check your internet and tap retry.';
+      }
+    }
+    return 'Could not download the update. Check your internet and tap retry.';
   }
 
   Future<bool> _installApk(String apkPath) async {
@@ -716,7 +710,7 @@ class UpdateCheckService extends ChangeNotifier {
       return result ?? false;
     } catch (error) {
       _errorMessage =
-          'Could not launch the Android installer automatically. Use the fallback download link if needed.';
+          'Android could not open the installer. Tap retry to try again.';
       notifyListeners();
       if (!kReleaseMode) {
         debugPrint('[UpdateCheck] Native installApk failed: $error');
@@ -730,7 +724,6 @@ class UpdateCheckService extends ChangeNotifier {
     final safeVersion =
         update.displayVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     final filePath = p.join(tempDir.path, 'pos-update-$safeVersion.apk');
-    final resolvedUrl = _resolveDownloadUrl(update.apkUrl);
 
     final downloader = Dio(
       BaseOptions(
@@ -739,45 +732,100 @@ class UpdateCheckService extends ChangeNotifier {
       ),
     );
 
-    // A finished download from an earlier attempt (installer cancelled, app
-    // killed mid-install) is reused instead of pulling the whole APK again.
+    final downloadUrls = <String>[_resolveDownloadUrl(update.apkUrl)];
+
+    // Reuse a complete APK from an earlier attempt when its source still
+    // responds. A cancelled/partial download is removed and fetched again.
     final existing = File(filePath);
     if (await existing.exists()) {
-      try {
-        final head = await downloader.head(resolvedUrl);
-        final expected =
-            int.tryParse(head.headers.value(Headers.contentLengthHeader) ?? '');
-        final actual = await existing.length();
-        if (expected != null && expected > 0 && expected == actual) {
-          _downloadedBytes = actual;
-          _totalBytes = actual;
-          _downloadProgress = 1;
-          notifyListeners();
-          return existing;
+      final actual = await existing.length();
+      for (var index = 0; index < downloadUrls.length; index++) {
+        try {
+          final head = await downloader.head(downloadUrls[index]);
+          final expected = int.tryParse(
+              head.headers.value(Headers.contentLengthHeader) ?? '');
+          if (expected != null && expected > 0 && expected == actual) {
+            _downloadedBytes = actual;
+            _totalBytes = actual;
+            _downloadProgress = 1;
+            notifyListeners();
+            return existing;
+          }
+        } catch (_) {
+          if (index == downloadUrls.length - 1) {
+            final fallback = await _githubFallbackUrlForUpdate(update);
+            if (fallback != null && !downloadUrls.contains(fallback)) {
+              downloadUrls.add(fallback);
+            }
+          }
         }
-      } catch (_) {
-        // Can't verify it — fall through and download fresh.
       }
       try {
         await existing.delete();
       } catch (_) {}
     }
 
-    await downloader.download(
-      resolvedUrl,
-      filePath,
-      deleteOnError: true,
-      onReceiveProgress: (received, total) {
-        _downloadedBytes = received;
-        if (total > 0) {
-          _totalBytes = total;
-          _downloadProgress = received / total;
+    Object? lastError;
+    for (var index = 0; index < downloadUrls.length; index++) {
+      final url = downloadUrls[index];
+      _downloadProgress = 0;
+      _downloadedBytes = 0;
+      _totalBytes = null;
+      notifyListeners();
+      try {
+        await downloader.download(
+          url,
+          filePath,
+          deleteOnError: true,
+          onReceiveProgress: (received, total) {
+            _downloadedBytes = received;
+            if (total > 0) {
+              _totalBytes = total;
+              _downloadProgress = received / total;
+            }
+            notifyListeners();
+          },
+        );
+        return File(filePath);
+      } catch (error) {
+        lastError = error;
+        try {
+          final partial = File(filePath);
+          if (await partial.exists()) await partial.delete();
+        } catch (_) {}
+        if (index == downloadUrls.length - 1) {
+          final fallback = await _githubFallbackUrlForUpdate(update);
+          if (fallback != null && !downloadUrls.contains(fallback)) {
+            downloadUrls.add(fallback);
+          }
         }
-        notifyListeners();
-      },
-    );
+      }
+    }
+    throw lastError ?? StateError('No update download source is available');
+  }
 
-    return File(filePath);
+  Future<String?> _githubFallbackUrlForUpdate(AppUpdateInfo update) async {
+    final githubUpdate = await _getLatestGitHubPackagesUpdate();
+    if (githubUpdate != null &&
+        _isSameUpdateRelease(update, githubUpdate) &&
+        githubUpdate.apkUrl.trim().isNotEmpty) {
+      return _resolveDownloadUrl(githubUpdate.apkUrl);
+    }
+    return null;
+  }
+
+  bool _isSameUpdateRelease(AppUpdateInfo expected, AppUpdateInfo candidate) {
+    if (expected.buildNumber != null && candidate.buildNumber != null) {
+      return expected.buildNumber == candidate.buildNumber;
+    }
+    final expectedName = _stripBuildSuffix(expected.displayVersion)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final candidateName = _stripBuildSuffix(candidate.displayVersion)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return expected.latestVersion == candidate.latestVersion ||
+        expectedName == candidateName;
   }
 
   Future<String> _resolveCurrentVersion() async {

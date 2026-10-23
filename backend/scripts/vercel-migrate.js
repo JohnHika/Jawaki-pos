@@ -6,6 +6,11 @@ if (process.env.VERCEL_ENV !== 'production') {
   process.exit(0);
 }
 
+if (process.env.SKIP_DATABASE_MIGRATIONS === 'true') {
+  console.log('Skipping database migrations for this explicitly requested code-only deployment.');
+  process.exit(0);
+}
+
 console.log('Applying Prisma migrations for the Vercel production deployment.');
 const backendRoot = path.resolve(__dirname, '..');
 const result = spawnSync(

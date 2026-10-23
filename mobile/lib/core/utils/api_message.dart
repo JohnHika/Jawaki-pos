@@ -6,8 +6,17 @@ String apiErrorMessage(Object error) {
     final data = error.response?.data;
     if (data is Map) {
       final message = data['message'];
-      if (message is String && message.trim().isNotEmpty) return message;
-      if (message is List && message.isNotEmpty) return message.first.toString();
+      if (message is String && message.trim().isNotEmpty) {
+        // Old API deployments returned Express/Nest's raw route miss to the
+        // app, exposing paths like "Cannot POST /api/v1/mpesa/parse".
+        if (RegExp(r'^Cannot (?:GET|POST|PUT|PATCH|DELETE) /api/v\d+/')
+            .hasMatch(message.trim())) {
+          return 'This feature is temporarily unavailable. Update Counterbase and try again.';
+        }
+        return message;
+      }
+      if (message is List && message.isNotEmpty)
+        return message.first.toString();
       final inner = data['error'];
       if (inner is Map && inner['message'] is String) {
         return inner['message'] as String;
@@ -38,8 +47,18 @@ String timeAgo(DateTime when, {DateTime? now}) {
   if (diff.inDays == 1) return 'Yesterday';
   if (diff.inDays < 7) return '${diff.inDays} days ago';
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${when.day} ${months[when.month - 1]}';
 }

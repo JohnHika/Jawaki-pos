@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../services/update_check_service.dart';
@@ -129,31 +128,12 @@ class ForcedUpdateGate extends StatelessWidget {
                     )
                   else
                     SettingsPrimaryButton(
-                      label: 'Download & install update',
+                      label: updateService.errorMessage == null
+                          ? 'Download & install update'
+                          : 'Retry download',
                       onPressed: updateService.downloadAndInstallRequiredUpdate,
                     ),
                   const SizedBox(height: DesignSpacing.md),
-                  TextButton(
-                    onPressed: updateService.openDownloadFallback,
-                    style: TextButton.styleFrom(
-                      foregroundColor:
-                          context.themed(DesignColors.darkTextSecondary),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                    child: const Text('Open fallback download link'),
-                  ),
-                  if (!isBusy) ...[
-                    const SizedBox(height: DesignSpacing.xs),
-                    TextButton(
-                      onPressed: SystemNavigator.pop,
-                      style: TextButton.styleFrom(
-                        foregroundColor:
-                            context.themed(DesignColors.darkTextTertiary),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      child: const Text('Close app'),
-                    ),
-                  ],
                 ],
               ),
             ),

@@ -183,7 +183,9 @@ export class PaystackService {
     reference: string;
     subaccountCode: string;
     tenantId: string;
+    businessName?: string;
   }): Promise<{ reference: string; status: string; display_text?: string }> {
+    const businessName = input.businessName?.trim();
     const response = await this.request<{ reference: string; status: string; display_text?: string }>('/charge', {
       method: 'POST',
       body: {
@@ -194,7 +196,22 @@ export class PaystackService {
         mobile_money: { phone: input.phone, provider: 'mpesa' },
         subaccount: input.subaccountCode,
         bearer: 'subaccount',
-        metadata: { product: 'counterbase_merchant_sale', tenantId: input.tenantId },
+        metadata: {
+          product: 'counterbase_merchant_sale',
+          tenantId: input.tenantId,
+          ...(businessName
+            ? {
+                shopName: businessName,
+                custom_fields: [
+                  {
+                    display_name: 'Shop',
+                    variable_name: 'shop_name',
+                    value: businessName,
+                  },
+                ],
+              }
+            : {}),
+        },
       },
     });
     return response.data;

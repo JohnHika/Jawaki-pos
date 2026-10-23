@@ -7,6 +7,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/till_guard.dart';
 import '../../../accountability/data/till_guard_service.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
@@ -143,7 +144,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Widget _buildPayoutStatusNotice() {
     final pending = _payoutStatus == 'PENDING_VERIFICATION';
-    final title = pending ? 'Paystack verification pending' : 'M-Pesa setup needed';
+    final title =
+        pending ? 'Paystack verification pending' : 'M-Pesa setup needed';
     final detail = pending
         ? 'Paystack must verify your business bank account before customers can pay by M-Pesa.'
         : _payoutStatus == 'NOT_CONFIGURED'
@@ -168,7 +170,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: DesignSpacing.xs),
                 Text(detail),
                 TextButton.icon(
@@ -488,6 +491,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Future<bool> _showMpesaDetailsSheet(double total) async {
     final formKey = GlobalKey<FormState>();
+    final shopName = ref.read(tenantIdentityProvider).companyName;
     return await showModalBottomSheet<bool>(
           useRootNavigator: true,
           context: context,
@@ -507,11 +511,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('M-Pesa payment',
+                    Text('Payment to $shopName',
                         style: Theme.of(sheetContext).textTheme.titleLarge),
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
-                      'Enter the payer’s phone number. Paystack will send an M-Pesa prompt for the amount below.',
+                      'Enter the payer’s phone number. Paystack will send an M-Pesa prompt for $shopName and the amount below.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall

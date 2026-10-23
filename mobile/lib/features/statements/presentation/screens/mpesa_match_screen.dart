@@ -111,7 +111,8 @@ class _MpesaMatchScreenState extends State<MpesaMatchScreen> {
             recorded += asDouble(r['applied']);
           } else {
             failed++;
-            if (r['message'] != null) notes.add('${r['code']}: ${r['message']}');
+            if (r['message'] != null)
+              notes.add('${r['code']}: ${r['message']}');
           }
         }
       }
@@ -129,7 +130,8 @@ class _MpesaMatchScreenState extends State<MpesaMatchScreen> {
       );
       // Read again so recorded payments show as done and nothing is counted twice.
       await _read();
-      if (notes.isNotEmpty && mounted) setState(() => _error = notes.join('\n'));
+      if (notes.isNotEmpty && mounted)
+        setState(() => _error = notes.join('\n'));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -160,7 +162,8 @@ class _MpesaMatchScreenState extends State<MpesaMatchScreen> {
               child: PinnedActionBar(
                 summary: Text(
                   [
-                    if (selected > 0) '$selected to record (${kesWhole(total)})',
+                    if (selected > 0)
+                      '$selected to record (${kesWhole(total)})',
                     if (ignored > 0) '$ignored to hide',
                   ].join(' · '),
                   textAlign: TextAlign.center,
@@ -187,7 +190,8 @@ class _MpesaMatchScreenState extends State<MpesaMatchScreen> {
             maxLines: 8,
             decoration: kitFieldDecoration(context,
                 label: 'M-Pesa messages',
-                hint: 'QJK1A2B3C4 Confirmed. You have received Ksh1,500.00 from JOHN KAMAU 0712...'),
+                hint:
+                    'QJK1A2B3C4 Confirmed. You have received Ksh1,500.00 from JOHN KAMAU 0712...'),
           ),
           const SizedBox(height: DesignSpacing.sm),
           Row(children: [
@@ -204,7 +208,8 @@ class _MpesaMatchScreenState extends State<MpesaMatchScreen> {
               child: FilledButton.icon(
                 onPressed: _busy ? null : _read,
                 icon: const Icon(Icons.manage_search_rounded),
-                label: Text(_busy && payments == null ? 'Reading...' : 'Read messages'),
+                label: Text(
+                    _busy && payments == null ? 'Reading...' : 'Read messages'),
               ),
             ),
           ]),
@@ -219,9 +224,9 @@ class _MpesaMatchScreenState extends State<MpesaMatchScreen> {
             if (payments.isEmpty)
               const EmptyState(
                 icon: Icons.sms_failed_outlined,
-                title: 'No payments found',
+                title: 'No payment receipts found',
                 subtitle:
-                    'Only messages saying you received money are used. Check that you pasted the whole message.',
+                    'Paste the full M-Pesa confirmation SMS with its transaction code, or import a statement CSV. Balance alerts and payment prompts do not include enough details to match.',
               )
             else ...[
               Text(
@@ -323,8 +328,7 @@ class _PaymentCard extends StatelessWidget {
                   Wrap(spacing: 8, runSpacing: 8, children: [
                     for (final s in payment.suggestions)
                       ChoicePill(
-                        label:
-                            '${s.name} · owes ${kesWhole(s.outstanding)}',
+                        label: '${s.name} · owes ${kesWhole(s.outstanding)}',
                         icon: s.confidence == 'HIGH'
                             ? Icons.verified_rounded
                             : Icons.help_outline_rounded,
@@ -345,8 +349,9 @@ class _PaymentCard extends StatelessWidget {
                     style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: EdgeInsets.zero),
-                    child: Text(
-                        ignored ? 'Undo: not a debt payment' : 'Not a debt payment'),
+                    child: Text(ignored
+                        ? 'Undo: not a debt payment'
+                        : 'Not a debt payment'),
                   ),
                 ),
               ],

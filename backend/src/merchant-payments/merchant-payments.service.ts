@@ -239,6 +239,9 @@ export class MerchantPaymentsService {
         reference,
         subaccountCode: payout.row.subaccountCode,
         tenantId: actor.tenantId,
+        businessName: (await this.prisma.tenant.findUnique({
+          where: { id: actor.tenantId }, select: { name: true },
+        }))?.name,
       });
       if (prompt.reference !== reference) {
         await this.prisma.merchantCharge.update({
@@ -350,6 +353,9 @@ export class MerchantPaymentsService {
         reference,
         subaccountCode: payout.row.subaccountCode,
         tenantId: actor.tenantId,
+        businessName: (await this.prisma.tenant.findUnique({
+          where: { id: actor.tenantId }, select: { name: true },
+        }))?.name,
       });
       if (prompt.reference !== reference) {
         await this.prisma.merchantCharge.update({

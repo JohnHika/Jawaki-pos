@@ -70,9 +70,24 @@ export class AppUpdatesService {
       candidates.push(githubManifest);
     }
 
-    return candidates.reduce((newest, candidate) =>
-      this.isManifestNewer(candidate, newest) ? candidate : newest,
+    const newest = candidates.reduce((current, candidate) =>
+      this.isManifestNewer(candidate, current) ? candidate : current,
     );
+
+    // Some Android networks cannot resolve Cloudflare's public *.r2.dev host
+    // even while the API can fetch its manifest. When GitHub has the exact
+    // same signed release, prefer its APK URL so existing app versions can
+    // still download the update through the single in-app button.
+    const hasR2Release = candidates.some((candidate) =>
+      this.isR2DevUrl(candidate.apkUrl) && this.sameRelease(candidate, newest),
+    );
+    const githubRelease = candidates.find((candidate) =>
+      this.isGitHubReleaseUrl(candidate.apkUrl) && this.sameRelease(candidate, newest),
+    );
+    if (githubRelease && hasR2Release) {
+      return { ...newest, apkUrl: githubRelease.apkUrl };
+    }
+    return newest;
   }
 
   getAndroidApkDownload() {
@@ -370,6 +385,32 @@ export class AppUpdatesService {
     }
 
     return this.isVersionNewer(candidate.latestVersion, current.latestVersion);
+  }
+
+  private sameRelease(a: AndroidUpdateManifest, b: AndroidUpdateManifest): boolean {
+    if (a.buildNumber !== null && b.buildNumber !== null) {
+      return a.buildNumber === b.buildNumber;
+    }
+    return this.versionParts(a.latestVersion).join(".") ===
+      this.versionParts(b.latestVersion).join(".");
+  }
+
+  private isR2DevUrl(value: string): boolean {
+    try {
+      return new URL(value).hostname.toLowerCase().endsWith(".r2.dev");
+    } catch {
+      return false;
+    }
+  }
+
+  private isGitHubReleaseUrl(value: string): boolean {
+    try {
+      const url = new URL(value);
+      return url.hostname.toLowerCase() === "github.com" &&
+        url.pathname.includes("/releases/download/");
+    } catch {
+      return false;
+    }
   }
 
   private isVersionNewer(candidate: string, current: string): boolean {
