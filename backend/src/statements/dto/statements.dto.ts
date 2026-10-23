@@ -15,9 +15,12 @@ import {
 } from 'class-validator';
 
 export class StatementTargetDto {
-  @ApiPropertyOptional({ description: 'A customer who owes on credit sales' })
+  @ApiPropertyOptional({
+    description: 'A customer who owes on credit sales; legacy offline IDs are supported',
+  })
   @IsOptional()
-  @IsUUID('4')
+  @IsString()
+  @MaxLength(80)
   customerId?: string;
 
   @ApiPropertyOptional({ description: 'A peer shop that owes on a B2B debt' })

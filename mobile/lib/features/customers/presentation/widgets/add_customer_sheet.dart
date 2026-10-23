@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -118,7 +119,7 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
     try {
       final db = getIt<AppDatabase>();
       final customerId = await db.insertOrGetCustomer(
-        DateTime.now().millisecondsSinceEpoch.toString(),
+        const Uuid().v4(),
         name,
         phone: _phone.text.trim(),
         location: _location.text.trim(),
