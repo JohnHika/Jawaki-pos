@@ -22,6 +22,8 @@ import {
   ListTenantsQueryDto,
   ListInvoicesQueryDto,
   UpdateTenantLicenseDto,
+  CreatePromoCodeDto,
+  SetPromoActiveDto,
 } from './dto/platform-admin.dto';
 import {
   ChangePasswordDto,
@@ -39,6 +41,7 @@ import {
 import { PlatformAdminAuthService } from './platform-admin-auth.service';
 import { PlatformAdminService } from './platform-admin.service';
 import { PlatformAuditService, contextFromRequest } from './audit/platform-audit.service';
+import { PromoService } from '../referrals/promo.service';
 
 @ApiTags('platform-admin')
 @UseGuards(ThrottlerGuard, PlatformAdminGuard)
@@ -48,6 +51,7 @@ export class PlatformAdminController {
     private readonly authService: PlatformAdminAuthService,
     private readonly adminService: PlatformAdminService,
     private readonly audit: PlatformAuditService,
+    private readonly promos: PromoService,
   ) {}
 
   // ------------------------------------------------------------------ auth
@@ -333,6 +337,63 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'List subscription invoices (filter by status/tenantId, paginated)' })
   async listInvoices(@Query() query: ListInvoicesQueryDto) {
     return this.adminService.listInvoices(query);
+  }
+
+  // ----------------------------------------------------------- promo codes
+
+  @Get('promo-codes')
+  @RequirePlatformPermission('billing.view')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Promo codes that give a company free subscription days' })
+  async listPromoCodes() {
+    return this.promos.list();
+  }
+
+  @Post('promo-codes')
+  @RequirePlatformPermission('billing.manage')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Create a promo code that gives free subscription days' })
+  async createPromoCode(@Body() dto: CreatePromoCodeDto, @Req() req: any) {
+    const promo = await this.promos.create({
+      code: dto.code,
+      freeDays: dto.freeDays,
+      description: dto.description,
+      maxRedemptions: dto.maxRedemptions ?? null,
+      expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+    });
+    await this.audit.log({
+      action: 'PROMO_CODE_CREATED',
+      category: 'BILLING',
+      severity: 'INFO',
+      actor: req.platformAdmin,
+      targetType: 'PromoCode',
+      targetId: promo.id,
+      summary: `${req.platformAdmin.email} created promo code ${promo.code} (${promo.freeDays} days)`,
+      metadata: { code: promo.code, freeDays: promo.freeDays, maxRedemptions: promo.maxRedemptions },
+      ctx: contextFromRequest(req),
+    });
+    return promo;
+  }
+
+  @Post('promo-codes/:id/active')
+  @HttpCode(200)
+  @RequirePlatformPermission('billing.manage')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Switch a promo code on or off' })
+  async setPromoActive(@Param('id') id: string, @Body() dto: SetPromoActiveDto, @Req() req: any) {
+    const promo = await this.promos.setActive(id, dto.isActive);
+    await this.audit.log({
+      action: dto.isActive ? 'PROMO_CODE_ENABLED' : 'PROMO_CODE_DISABLED',
+      category: 'BILLING',
+      severity: 'INFO',
+      actor: req.platformAdmin,
+      targetType: 'PromoCode',
+      targetId: id,
+      summary: `${req.platformAdmin.email} ${dto.isActive ? 'enabled' : 'disabled'} promo code ${promo.code}`,
+      metadata: { code: promo.code },
+      ctx: contextFromRequest(req),
+    });
+    return promo;
   }
 
 }

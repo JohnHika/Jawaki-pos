@@ -39,6 +39,40 @@ export class ExtendTenantDto {
   days!: number;
 }
 
+export class CreatePromoCodeDto {
+  @ApiProperty({ example: 'LAUNCH30' })
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @ApiProperty({ example: 30, minimum: 1 })
+  @IsNumber()
+  @Min(1)
+  freeDays!: number;
+
+  @ApiPropertyOptional({ example: 'Market day launch offer' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'How many companies may use it. Leave out for no limit.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxRedemptions?: number;
+
+  @ApiPropertyOptional({ description: 'ISO date after which the code stops working' })
+  @IsOptional()
+  @IsString()
+  expiresAt?: string;
+}
+
+export class SetPromoActiveDto {
+  @ApiProperty()
+  @IsBoolean()
+  isActive!: boolean;
+}
+
 export class CreditTenantDto {
   @ApiProperty({ example: 1500, minimum: 1 })
   @IsNumber()

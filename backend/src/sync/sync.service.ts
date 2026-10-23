@@ -735,6 +735,7 @@ export class SyncService {
           customerId: payload.customerId,
           paymentMethod: payload.paymentMethod,
           discountAmount: payload.discount || payload.discountAmount,
+          couponCode: typeof payload.couponCode === 'string' ? payload.couponCode : undefined,
           paidAmount: payload.paidAmount || payload.totalAmount || 0,
           tenders: payload.tenders,
           notes: payload.notes,

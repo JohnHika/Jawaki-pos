@@ -43,6 +43,9 @@ import { AccountabilityModule } from './accountability/accountability.module';
 import { StocktakeModule } from './stocktake/stocktake.module';
 import { ImportsModule } from './imports/imports.module';
 import { NewsModule } from './news/news.module';
+import { CouponsModule } from './coupons/coupons.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { StatementsModule } from './statements/statements.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { AppController } from './app.controller';
 import { VercelCronController } from './vercel-cron.controller';
@@ -118,6 +121,9 @@ import { VercelCronController } from './vercel-cron.controller';
     StocktakeModule,
     ImportsModule,
     NewsModule,
+    CouponsModule,
+    ReferralsModule,
+    StatementsModule,
     ExchangeRatesModule,
   ],
   controllers: [AppController, VercelCronController],

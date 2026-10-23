@@ -24,6 +24,13 @@ export interface BranchDaySummary {
   creditGiven: number;
   creditOutstanding: number;
   cashDiscrepancy: number | null;
+  couponUses: number;
+  couponGiven: number;
+  /** Supplier invoices past their due date, and those falling due within a week. */
+  supplierOverdue: number;
+  supplierDueSoon: number;
+  /** Customer "I have paid" / "I will pay" replies waiting for the owner. */
+  pendingClaims: number;
   dayClosed: boolean;
   flags: Record<string, number>;
 }
@@ -66,7 +73,9 @@ export class AccountabilitySummaryService {
     const { start, end } = getDayBoundsInTimezone(day, tz);
     const range = { gte: start, lte: end };
 
-    const [byMethod, voided, refunds, creditGiven, creditOpen, close, alerts] = await Promise.all([
+    const weekAhead = new Date(Date.now() + 7 * 86_400_000);
+    const [byMethod, voided, refunds, creditGiven, creditOpen, close, alerts, coupons, overdue, dueSoon, claims] =
+      await Promise.all([
       this.prisma.sale.groupBy({
         by: ['paymentMethod'],
         where: {
@@ -109,6 +118,20 @@ export class AccountabilitySummaryService {
         },
         _count: { _all: true },
       }),
+      this.prisma.couponRedemption.aggregate({
+        where: { tenantId, branchId, createdAt: range },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.supplierInvoice.aggregate({
+        where: { tenantId, branchId, status: { not: 'PAID' }, dueDate: { lt: new Date() } },
+        _sum: { dueAmount: true },
+      }),
+      this.prisma.supplierInvoice.aggregate({
+        where: { tenantId, branchId, status: { not: 'PAID' }, dueDate: { gte: new Date(), lte: weekAhead } },
+        _sum: { dueAmount: true },
+      }),
+      this.prisma.statementClaim.count({ where: { tenantId, status: 'PENDING' } }),
     ]);
 
     const amount = (m: PaymentMethod) =>
@@ -134,6 +157,11 @@ export class AccountabilitySummaryService {
       creditGiven: Number(creditGiven._sum.originalAmount ?? 0),
       creditOutstanding: Number(creditOpen._sum.outstandingAmount ?? 0),
       cashDiscrepancy: close ? Number(close.cashDiscrepancy) : null,
+      couponUses: coupons._count._all,
+      couponGiven: Number(coupons._sum.amount ?? 0),
+      supplierOverdue: Number(overdue._sum.dueAmount ?? 0),
+      supplierDueSoon: Number(dueSoon._sum.dueAmount ?? 0),
+      pendingClaims: claims,
       dayClosed: !!close,
       flags: Object.fromEntries(alerts.map((a) => [a.type, a._count._all])),
     };
@@ -161,6 +189,7 @@ export class AccountabilitySummaryService {
     if ((s.flags.DISCOUNT_LIMIT ?? 0) > 0) watch.push(`${s.flags.DISCOUNT_LIMIT} over-limit discount${s.flags.DISCOUNT_LIMIT === 1 ? '' : 's'}`);
     if ((s.flags.STOCK_WRITE_OFF ?? 0) > 0) watch.push(`${s.flags.STOCK_WRITE_OFF} stock write-off${s.flags.STOCK_WRITE_OFF === 1 ? '' : 's'}`);
     if (s.creditGiven > 0) watch.push(`${kes(s.creditGiven)} given on credit`);
+    if (s.couponUses > 0) watch.push(`${s.couponUses} coupon${s.couponUses === 1 ? "" : "s"} used (${kes(s.couponGiven)} given away)`);
     if (watch.length) lines.push(`Check: ${watch.join(', ')}.`);
 
     if (!s.dayClosed) lines.push('The day has not been closed yet.');
@@ -173,6 +202,13 @@ export class AccountabilitySummaryService {
     } else lines.push('Till balanced.');
 
     if (s.creditOutstanding > 0) lines.push(`Customers owe you ${kes(s.creditOutstanding)} in total.`);
+    if (s.pendingClaims > 0) {
+      lines.push(
+        `${s.pendingClaims} customer${s.pendingClaims === 1 ? " says" : "s say"} they have paid or will pay. Open Statements to confirm.`,
+      );
+    }
+    if (s.supplierOverdue > 0) lines.push(`You owe suppliers ${kes(s.supplierOverdue)} that is past due.`);
+    if (s.supplierDueSoon > 0) lines.push(`${kes(s.supplierDueSoon)} to suppliers falls due this week.`);
 
     return { title: `${s.branchName} — today`, body: lines.join('\n') };
   }

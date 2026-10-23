@@ -6,6 +6,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import { AccountabilityService } from '../accountability/accountability.service';
+import { CouponsService, SaleCouponUse } from '../coupons/coupons.service';
+import { spreadCouponDiscount } from '../coupons/coupons.rules';
 import { severityForAmount } from '../accountability/accountability.rules';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
@@ -31,6 +33,7 @@ export class SalesService {
     // Optional so unit tests (and any caller that builds the service by hand)
     // keep working without the accountability layer.
     @Optional() private accountability?: AccountabilityService,
+    @Optional() private coupons?: CouponsService,
   ) {}
 
   async createSale(
@@ -191,6 +194,49 @@ export class SalesService {
         ? Math.max(totalAmount - paidAmount, 0)
         : 0;
 
+    // A coupon the shop issued is an approved discount, so it does not count
+    // against the cashier's own discount limit. The phone has already taken
+    // the money off at the counter, so a coupon that does not check out here
+    // is flagged to the owner, never used to refuse a sale that has happened.
+    let couponUse: SaleCouponUse | null = null;
+    let couponProblem: string | null = null;
+    const couponCode = dto.couponCode?.trim();
+    if (couponCode && this.coupons) {
+      const checked = await this.coupons.assessForSale({
+        tenantId,
+        code: couponCode,
+        customerId: dto.customerId,
+        lines: saleItems.map((line) => ({
+          productId: line.productId,
+          amount: Number(line.unitPrice) * Number(line.quantity) - Number(line.discount),
+        })),
+      });
+      if (checked.verdict.ok) {
+        const amount = Math.min(checked.verdict.discount, discountAmount);
+        if (amount > 0 && checked.couponId) {
+          couponUse = { couponId: checked.couponId, code: checked.code, amount, productIds: checked.productIds };
+        }
+      } else {
+        couponProblem = checked.verdict.message;
+        if (!dto.offlineId && !options.verifiedMerchantMpesa) {
+          throw new BadRequestException(checked.verdict.message);
+        }
+      }
+    }
+
+    // The coupon's money comes off the items it applies to, so the price guard
+    // judges the price each item really sold at, not the sticker price.
+    const couponShares = couponUse
+      ? spreadCouponDiscount(
+          saleItems.map((line) => ({
+            productId: line.productId,
+            amount: Number(line.unitPrice) * Number(line.quantity) - Number(line.discount),
+          })),
+          couponUse.productIds,
+          couponUse.amount,
+        )
+      : null;
+
     // Price, discount and credit rules. A sale that carries an offlineId was
     // already rung up at the counter while the phone had no signal, so it is
     // flagged for the owner but never refused; a live sale can be refused.
@@ -200,10 +246,10 @@ export class SalesService {
           tenantId,
           branchId: dto.branchId,
           customerId: dto.customerId,
-          overallDiscount: discountAmount,
+          overallDiscount: Math.max(discountAmount - (couponUse?.amount ?? 0), 0),
           creditAmount: creditPortion,
           enforce: !dto.offlineId,
-          lines: saleItems.map((line) => {
+          lines: saleItems.map((line, index) => {
             const product = products.find((p) => p.id === line.productId);
             return {
               productId: line.productId,
@@ -211,6 +257,7 @@ export class SalesService {
               quantity: Number(line.quantity),
               unitPrice: Number(line.unitPrice),
               discount: Number(line.discount),
+              approvedDiscount: couponShares?.[index] ?? 0,
               costPrice: product?.costPrice != null ? Number(product.costPrice) : null,
               minPrice: product?.minPrice != null ? Number(product.minPrice) : null,
             };
@@ -238,6 +285,8 @@ export class SalesService {
 
     // Generate receipt number
     const receiptNumber = await this.generateReceiptNumber(dto.branchId);
+
+    let couponOverLimit = false;
 
     // Create sale with transaction
     const sale = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -346,7 +395,9 @@ export class SalesService {
           paymentMethod: dto.paymentMethod,
           notes: dto.notes,
           offlineId: dto.offlineId,
-          metadata: {},
+          metadata: couponUse
+            ? { coupon: { code: couponUse.code, amount: couponUse.amount } }
+            : {},
           items: {
             create: saleItems,
           },
@@ -358,6 +409,18 @@ export class SalesService {
           customer: { select: { name: true } },
         },
       });
+
+      if (couponUse && this.coupons) {
+        const redeemed = await this.coupons.redeemInTx(tx, {
+          tenantId,
+          branchId: dto.branchId,
+          saleId: newSale.id,
+          userId,
+          customerId: dto.customerId,
+          use: couponUse,
+        });
+        couponOverLimit = redeemed.overLimit;
+      }
 
       // Retail credit is a first-class obligation linked to this immutable
       // receipt, written on this same transaction as stock and sale rows.
@@ -532,6 +595,20 @@ export class SalesService {
         },
         assessment.violations,
       );
+    }
+
+    if (this.coupons && couponCode && (couponProblem || couponOverLimit)) {
+      await this.coupons.flagAfterSale({
+        tenantId,
+        branchId: dto.branchId,
+        userId,
+        saleId: sale.id,
+        receiptNumber: sale.receiptNumber,
+        code: couponCode.toUpperCase(),
+        problem: couponProblem,
+        overLimit: couponOverLimit,
+        claimedDiscount: discountAmount,
+      });
     }
 
     return this.formatSale(sale);
@@ -768,6 +845,7 @@ export class SalesService {
       return voidedSale;
     });
 
+    await this.coupons?.releaseForSale(saleId);
     await this.recordVoid(sale, userId, tenantId, reason);
 
     return voided;

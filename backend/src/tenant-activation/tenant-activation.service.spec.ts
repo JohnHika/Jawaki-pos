@@ -23,4 +23,41 @@ describe('TenantActivationService durable attempts', () => {
     expect(paystack.initializeTransaction).not.toHaveBeenCalled();
     expect(prisma.tenant.update).not.toHaveBeenCalled();
   });
+
+  describe('confirming the activation payment', () => {
+    const build = (attemptStatus: string) => {
+      const attempt: any = { id: 'attempt-1', tenantId: 'tenant-1', reference: 'AXON-ONE', status: attemptStatus, provider: 'PAYSTACK' };
+      const prisma: any = {
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue({ activationStatus: 'ACTIVE', activationAmount: 35000, activationPaidAt: new Date() }),
+          update: jest.fn().mockResolvedValue({ activationStatus: 'ACTIVE', activationAmount: 35000, activationPaidAt: new Date() }),
+        },
+        tenantActivationAttempt: {
+          findFirst: jest.fn().mockResolvedValue(attempt),
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, status: 'PAID' }),
+        },
+      };
+      const paystack = { verifyTransaction: jest.fn().mockResolvedValue({ status: 'success', amount: 3_500_000 }) };
+      const referrals = { onActivated: jest.fn().mockResolvedValue(undefined) };
+      const service = new TenantActivationService(prisma, paystack as any, {} as ConfigService, referrals as any);
+      return { service, prisma, referrals };
+    };
+
+    it('starts the trial and then pays out any referral or promo days', async () => {
+      const { service, prisma, referrals } = build('INITIALIZED');
+      await service.verify('tenant-1', 'AXON-ONE');
+      expect(prisma.tenant.update).toHaveBeenCalledTimes(1);
+      expect(referrals.onActivated).toHaveBeenCalledWith('tenant-1');
+    });
+
+    it('does not restart the trial when the same payment is confirmed twice', async () => {
+      // The webhook and the app both confirm. A second pass must not reset the
+      // period end, which would wipe the bonus days added after the first.
+      const { service, prisma, referrals } = build('PAID');
+      await service.verify('tenant-1', 'AXON-ONE');
+      expect(prisma.tenant.update).not.toHaveBeenCalled();
+      expect(referrals.onActivated).not.toHaveBeenCalled();
+    });
+  });
 });

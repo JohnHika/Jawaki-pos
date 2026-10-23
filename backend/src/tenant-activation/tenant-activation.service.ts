@@ -3,11 +3,13 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { PaystackService } from '../ai-billing/paystack.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 export const AXON_STARTUP_FEE_KES = 35000;
 const ACTIVATION_PRODUCT = 'axon_startup_activation';
@@ -18,6 +20,8 @@ export class TenantActivationService {
     private readonly prisma: PrismaService,
     private readonly paystackService: PaystackService,
     private readonly configService: ConfigService,
+    // Optional so the payment tests can build the service without it.
+    @Optional() private readonly referrals?: ReferralsService,
   ) {}
 
   async getStatus(tenantId: string) {
@@ -122,6 +126,17 @@ export class TenantActivationService {
     const attempt = await this.prisma.tenantActivationAttempt.findUnique({ where: { reference } });
     if (!attempt) throw new NotFoundException('Activation payment reference not found');
 
+    // The webhook and the app's own verify call both land here for the same
+    // payment. The second one must not restart the trial, or any bonus days
+    // added after the first would be wiped.
+    if (attempt.status === 'PAID') {
+      const settled = await this.prisma.tenant.findUnique({
+        where: { id: attempt.tenantId },
+        select: { activationStatus: true, activationAmount: true, activationPaidAt: true },
+      });
+      return this.formatStatus(settled, attempt);
+    }
+
     const paidAt = new Date();
     const trialEndsAt = new Date(paidAt);
     trialEndsAt.setDate(trialEndsAt.getDate() + 7);
@@ -146,6 +161,9 @@ export class TenantActivationService {
       },
       select: { activationStatus: true, activationAmount: true, activationPaidAt: true },
     });
+    // Bonus days for referrals and promo codes. It never throws, so a problem
+    // there cannot undo a payment that already went through.
+    await this.referrals?.onActivated(attempt.tenantId);
     return this.formatStatus(tenant, updatedAttempt);
   }
 

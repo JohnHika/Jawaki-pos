@@ -149,6 +149,14 @@ const PERMISSIONS: PermissionDef[] = [
   { key: 'news.view', feature: 'news', action: 'view', label: 'Read business news' },
   { key: 'news.manage', feature: 'news', action: 'manage', label: 'Refresh the news feeds' },
 
+  // ---- coupons, referrals, statements, M-Pesa matching ----
+  { key: 'coupons.view', feature: 'coupons', action: 'view', label: 'See coupons and how much they cost' },
+  { key: 'coupons.manage', feature: 'coupons', action: 'manage', label: 'Create, change and switch off coupons' },
+  { key: 'referrals.view', feature: 'referrals', action: 'view', label: 'See and share the referral code, and enter a referral or promo code' },
+  { key: 'statements.share', feature: 'statements', action: 'share', label: 'Send debt statements to customers and shops, and see their replies' },
+  { key: 'statements.manage', feature: 'statements', action: 'manage', label: 'Set the payment details shown on statements' },
+  { key: 'mpesa.reconcile', feature: 'mpesa', action: 'reconcile', label: 'Match pasted M-Pesa messages to debts' },
+
   // ---- customers ----
   { key: 'customers.view', feature: 'customers', action: 'view', label: 'View customers' },
   { key: 'customers.create', feature: 'customers', action: 'create', label: 'Create a customer' },
@@ -289,6 +297,7 @@ const SUPERVISOR_EXTRA_KEYS = [
   'sales.void', 'sales.refund', 'sales.discount', 'sales.bulk_create', 'sales.bulk_void',
   'sales.price_override',
   'inventory.stocktake.create',
+  'statements.share',
   'reporting.sales_summary', 'reporting.sales_trend', 'reporting.top_products', 'reporting.category_sales',
   'reporting.payment_breakdown', 'reporting.inventory_report',
   'cash_reconciliation.create',
@@ -315,6 +324,9 @@ const MANAGER_EXTRA_KEYS = [
   'accountability.view',
   'inventory.stocktake.approve',
   'imports.view', 'imports.manage', 'imports.receive', 'imports.payments',
+  'coupons.view', 'coupons.manage',
+  'statements.manage',
+  'mpesa.reconcile',
 ];
 
 const ADMIN_EXTRA_KEYS = [
@@ -333,6 +345,7 @@ const ADMIN_EXTRA_KEYS = [
   'payments.manual_approve',
   'accountability.manage',
   'news.manage',
+  'referrals.view',
 ];
 
 const SUPERVISOR_KEYS = [...CASHIER_KEYS, ...SUPERVISOR_EXTRA_KEYS];

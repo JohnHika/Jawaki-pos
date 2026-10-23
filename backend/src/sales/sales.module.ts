@@ -7,10 +7,11 @@ import { CashFlowModule } from '../cash-flow/cash-flow.module';
 import { AuditModule } from '../audit/audit.module';
 import { FinanceModule } from '../finance/finance.module';
 import { AccountabilityModule } from '../accountability/accountability.module';
+import { CouponsModule } from '../coupons/coupons.module';
 import { SubscriptionGuard } from '../billing/subscription.guard';
 
 @Module({
-  imports: [CashFlowModule, AuditModule, FinanceModule, AccountabilityModule],
+  imports: [CashFlowModule, AuditModule, FinanceModule, AccountabilityModule, CouponsModule],
   controllers: [SalesController, DailyCloseController],
   // SubscriptionGuard is provided locally (not imported from BillingModule)
   // to avoid a module cycle: BillingModule's RecurringBillingService depends

@@ -127,6 +127,12 @@ export class CreateSaleDto {
   @Type(() => Number)
   paidAmount?: number;
 
+  @ApiPropertyOptional({ description: 'Shop coupon code already taken off through discountAmount' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40, { message: 'Coupon code must not exceed 40 characters' })
+  couponCode?: string;
+
   @ApiPropertyOptional({ description: 'Due date for the unpaid credit balance' })
   @IsOptional()
   @IsDateString({}, { message: 'Credit due date must be a valid ISO 8601 date' })

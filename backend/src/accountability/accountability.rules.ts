@@ -26,6 +26,12 @@ export interface SaleLineInput {
   unitPrice: number;
   /** Discount taken off this whole line (KES). */
   discount: number;
+  /**
+   * Discount the owner has already approved for this line, e.g. its share of a
+   * coupon. It lowers the price the item really sold at (so selling below cost
+   * is still caught) but does not count against the cashier's discount limit.
+   */
+  approvedDiscount?: number;
   costPrice: number | null;
   minPrice: number | null;
 }
@@ -61,7 +67,8 @@ export function assessSalePricing(input: SaleAssessmentInput): Violation[] {
     lineDiscounts += line.discount;
 
     if (line.quantity <= 0) continue;
-    const netUnit = (line.unitPrice * line.quantity - line.discount) / line.quantity;
+    const netUnit =
+      (line.unitPrice * line.quantity - line.discount - (line.approvedDiscount ?? 0)) / line.quantity;
     const cost = line.costPrice && line.costPrice > 0 ? line.costPrice : 0;
     const marginFloor = cost > 0 ? cost * (1 + settings.priceGuard.minMarginPercent / 100) : 0;
     const floor = Math.max(line.minPrice ?? 0, marginFloor);
