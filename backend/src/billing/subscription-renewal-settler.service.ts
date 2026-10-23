@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 
 /**
@@ -29,12 +30,38 @@ export class SubscriptionRenewalSettler {
     });
     if (!invoice || invoice.status === 'PAID') return null;
 
+    // The Jenga service already checks its authenticated paid amount against
+    // the M-Pesa transaction. Bind that verified transaction back to the
+    // expected invoice as a second guard against stale or mismatched IDs.
+    const transaction = await this.prisma.mpesaTransaction.findUnique({
+      where: { checkoutRequestId },
+      select: { status: true, amount: true, accountReference: true },
+    });
+    const expectedReferencePrefix = `AXONSUB-${invoice.tenantId.slice(0, 8)}-`;
+    if (
+      !transaction ||
+      transaction.status !== 'completed' ||
+      invoice.currency !== 'KES' ||
+      !new Prisma.Decimal(transaction.amount).equals(invoice.amount) ||
+      !invoice.reference ||
+      transaction.accountReference !== invoice.reference ||
+      !invoice.reference.startsWith(expectedReferencePrefix)
+    ) {
+      return null;
+    }
+
     const periodStart = new Date();
     const periodEnd = this.addMonth(periodStart);
 
     return this.prisma.$transaction(async (tx) => {
-      const paid = await tx.subscriptionInvoice.update({
-        where: { id: invoice.id },
+      const claimed = await tx.subscriptionInvoice.updateMany({
+        where: {
+          id: invoice.id,
+          status: { in: ['PENDING', 'PENDING_CONFIRMATION'] },
+          mpesaCheckoutId: checkoutRequestId,
+          amount: invoice.amount,
+          currency: 'KES',
+        },
         data: {
           status: 'PAID',
           paidAt: new Date(),
@@ -42,6 +69,11 @@ export class SubscriptionRenewalSettler {
           periodEnd,
           reference: checkoutRequestId,
         },
+      });
+      if (claimed.count !== 1) return null;
+
+      const paid = await tx.subscriptionInvoice.findUnique({
+        where: { id: invoice.id },
       });
       await tx.tenant.update({
         where: { id: invoice.tenantId },

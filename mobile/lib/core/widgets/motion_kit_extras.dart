@@ -363,7 +363,8 @@ class LetterRise extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = Duration(milliseconds: 380 + step.inMilliseconds * text.length);
+    final total =
+        Duration(milliseconds: 380 + step.inMilliseconds * text.length);
     return Semantics(
       label: text,
       excludeSemantics: true,
@@ -446,8 +447,8 @@ class _BorderPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (t <= 0 || t >= 1) return; // finished: the card keeps its own border
     final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-          Offset.zero & size, Radius.circular(radius)));
+      ..addRRect(
+          RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)));
     final paint = Paint()
       ..color = color.withValues(alpha: 1 - t * 0.4)
       ..style = PaintingStyle.stroke
@@ -744,12 +745,14 @@ class CascadeScale extends StatelessWidget {
     required this.index,
     required this.child,
     this.step = const Duration(milliseconds: 45),
+    this.duration = const Duration(milliseconds: 420),
     this.maxAnimated = 14,
   });
 
   final int index;
   final Widget child;
   final Duration step;
+  final Duration duration;
   final int maxAnimated;
 
   @override
@@ -757,7 +760,7 @@ class CascadeScale extends StatelessWidget {
     if (index >= maxAnimated) return child;
     return _OneShot(
       delay: step * index,
-      duration: const Duration(milliseconds: 420),
+      duration: duration,
       curve: Curves.easeOutBack,
       child: child,
       builder: (context, t, child) => Opacity(

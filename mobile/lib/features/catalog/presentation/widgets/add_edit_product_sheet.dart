@@ -42,6 +42,11 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _minStockController;
+  // Lowest price a cashier may sell at without a manager. Lives on the server
+  // only (the phone's product cache has no column for it), so an edit loads it
+  // from there.
+  final TextEditingController _minPriceController = TextEditingController();
+  double? _serverMinPrice;
   String? _selectedCategoryId;
   String? _imageUrl;
   String? _imagePublicId;
@@ -102,6 +107,24 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
     if (isEditing) {
       _loadExistingPricingTiers();
+      _loadServerMinPrice();
+    }
+  }
+
+  Future<void> _loadServerMinPrice() async {
+    try {
+      final json = await getIt<ApiClient>().getProduct(widget.product!.id);
+      final raw = json['minPrice'];
+      final value = raw is num ? raw.toDouble() : double.tryParse('${raw ?? ''}');
+      if (!mounted || value == null) return;
+      setState(() {
+        _serverMinPrice = value;
+        if (_minPriceController.text.isEmpty) {
+          _minPriceController.text = value.toStringAsFixed(0);
+        }
+      });
+    } catch (_) {
+      // Offline: leave it blank. Saving then leaves the server value alone.
     }
   }
 
@@ -214,6 +237,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     _nameController.dispose();
     _descriptionController.dispose();
     _minStockController.dispose();
+    _minPriceController.dispose();
     for (final tier in _unitPriceTiers) {
       tier.priceController.dispose();
       tier.qtyController.dispose();
@@ -353,6 +377,27 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
             // ── Multi-unit Pricing ────────────────────────────────────
             _buildPricingSection(isDark),
+            const SizedBox(height: DesignSpacing.md + 2),
+
+            // ── Lowest price ──────────────────────────────────────────
+            TextFormField(
+              controller: _minPriceController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: TextStyle(color: titleColor),
+              decoration: kitFieldDecoration(
+                context,
+                label: 'Lowest price you will accept (optional)',
+                prefixText: 'KES ',
+                helper:
+                    'Per ${_unitPriceTiers[0].unit}. Cashiers cannot sell below this without a manager.',
+              ),
+              validator: (v) {
+                final t = (v ?? '').trim();
+                if (t.isEmpty) return null;
+                return double.tryParse(t) == null ? 'Enter a number' : null;
+              },
+            ),
             const SizedBox(height: DesignSpacing.md + 2),
 
             // ── Reorder Point ─────────────────────────────────────────
@@ -553,6 +598,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
       minStock = minStockBase.round();
     }
 
+    final minPriceText = _minPriceController.text.trim();
+    final minPrice = double.tryParse(minPriceText);
+    // Emptying a field that had a value means "remove the floor".
+    final clearMinPrice =
+        isEditing && minPriceText.isEmpty && _serverMinPrice != null;
+
     try {
       Map<String, dynamic> savedProduct;
       if (isEditing) {
@@ -567,6 +618,8 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           unit: primary.unit,
           pricingTiers: pricingTiers,
           minStock: minStock,
+          minPrice: minPrice,
+          clearMinPrice: clearMinPrice,
           clearImage: clearImage,
         );
       } else {
@@ -580,6 +633,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           unit: primary.unit,
           pricingTiers: pricingTiers,
           minStock: minStock,
+          minPrice: minPrice,
         );
       }
 

@@ -20,6 +20,13 @@ import '../../features/billing/presentation/screens/subscription_billing_screen.
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/partners/presentation/screens/partner_chat_screen.dart';
 import '../../features/partners/presentation/screens/partners_screen.dart';
+import '../../features/accountability/presentation/screens/accountability_rules_screen.dart';
+import '../../features/accountability/presentation/screens/shop_alerts_screen.dart';
+import '../../features/stocktake/presentation/screens/stock_count_screen.dart';
+import '../../features/stocktake/presentation/screens/stock_counts_screen.dart';
+import '../../features/imports/presentation/screens/import_detail_screen.dart';
+import '../../features/imports/presentation/screens/imports_screen.dart';
+import '../../features/news/presentation/screens/business_news_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
 import '../../features/dashboard/presentation/screens/day_summary_screen.dart';
@@ -44,7 +51,6 @@ import '../../features/settings/presentation/screens/operating_hours_screen.dart
 import '../../features/settings/presentation/screens/bug_report_screen.dart';
 import '../../features/legal/presentation/screens/legal_document_screen.dart';
 import '../../features/ai/presentation/screens/ai_memory_screen.dart';
-import '../../features/payments/presentation/screens/manual_payments_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
 import '../../features/payments/presentation/screens/merchant_payout_setup_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
@@ -224,10 +230,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // grant access to receivables or supplier ledgers.
         if (path == '/finance' && !perms.canViewFinance) {
           return '/';
-        }
-        // Manual payment approvals mirror the backend's payments.view_status.
-        if (path == '/payments/manual' && !perms.has('payments.view_status')) {
-          return '/payments';
         }
         // Operating hours, roles, and per-user permission overrides are
         // branch/user-management actions — only reachable directly (deep
@@ -553,13 +555,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const MerchantPayoutSetupScreen(),
           ),
 
-          // Manual payments: request / approve payments taken outside the app
-          GoRoute(
-            path: '/payments/manual',
-            name: 'manual-payments',
-            builder: (context, state) => const ManualPaymentsScreen(),
-          ),
-
           // Customers Screen
           GoRoute(
             path: '/customers',
@@ -692,6 +687,51 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ),
               ),
             ],
+          ),
+
+          // Shop control: owner alerts and rules, stock counts, containers, news
+          GoRoute(
+            path: '/shop-alerts',
+            name: 'shop-alerts',
+            builder: (context, state) => const ShopAlertsScreen(),
+            routes: [
+              GoRoute(
+                path: 'rules',
+                name: 'shop-rules',
+                builder: (context, state) => const AccountabilityRulesScreen(),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/stock-counts',
+            name: 'stock-counts',
+            builder: (context, state) => const StockCountsScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                name: 'stock-count',
+                builder: (context, state) =>
+                    StockCountScreen(countId: state.pathParameters['id']!),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/containers',
+            name: 'containers',
+            builder: (context, state) => const ImportsScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                name: 'container',
+                builder: (context, state) =>
+                    ImportDetailScreen(importId: state.pathParameters['id']!),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/news',
+            name: 'business-news',
+            builder: (context, state) => const BusinessNewsScreen(),
           ),
 
           // Finance Screen

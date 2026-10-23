@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
 import '../../features/finance/domain/finance_models.dart';
-import '../../features/payments/domain/manual_payment.dart';
 
 /// Verified workspace fields shared by the Google and email-OTP flows.
 /// This deliberately has no password field: the server creates owners only
@@ -685,6 +684,7 @@ class ApiClient {
     String? unit,
     List<Map<String, dynamic>>? pricingTiers,
     int? minStock,
+    double? minPrice,
   }) async {
     final response = await _dio.post('/catalog/products', data: {
       'name': name,
@@ -696,6 +696,7 @@ class ApiClient {
       if (unit != null) 'unit': unit,
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
+      if (minPrice != null) 'minPrice': minPrice,
     });
     return response.data as Map<String, dynamic>;
   }
@@ -711,6 +712,8 @@ class ApiClient {
     String? unit,
     List<Map<String, dynamic>>? pricingTiers,
     int? minStock,
+    double? minPrice,
+    bool clearMinPrice = false,
     bool clearImage = false,
   }) async {
     final response = await _dio.patch('/catalog/products/$id', data: {
@@ -721,6 +724,7 @@ class ApiClient {
       if (unit != null) 'unit': unit,
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
+      if (clearMinPrice) 'minPrice': null else if (minPrice != null) 'minPrice': minPrice,
       if (clearImage) 'image': null,
       if (clearImage) 'imagePublicId': null,
       if (!clearImage && image != null) 'image': image,
@@ -1272,62 +1276,6 @@ class ApiClient {
         if (offlineId != null) 'offlineId': offlineId,
       },
     );
-  }
-
-  Future<List<ManualPaymentRequest>> getManualPaymentRequests({
-    String? branchId,
-    String? status,
-  }) async {
-    final response = await _dio.get(
-      '/payments/manual',
-      queryParameters: <String, dynamic>{
-        if (branchId != null) 'branchId': branchId,
-        if (status != null) 'status': status,
-      },
-    );
-    return (response.data as List)
-        .map((value) => ManualPaymentRequest.fromJson(
-            Map<String, dynamic>.from(value as Map)))
-        .toList();
-  }
-
-  Future<ManualPaymentRequest> createManualPaymentRequest({
-    required String branchId,
-    required String paymentMethod,
-    required double amount,
-    required String reason,
-    String? saleId,
-    String? notes,
-  }) async {
-    final response = await _dio.post(
-      '/payments/manual/request',
-      data: <String, dynamic>{
-        'branchId': branchId,
-        'paymentMethod': paymentMethod,
-        'amount': amount,
-        'reason': reason,
-        if (saleId != null) 'saleId': saleId,
-        if (notes != null) 'notes': notes,
-      },
-    );
-    return ManualPaymentRequest.fromJson(
-        Map<String, dynamic>.from(response.data as Map));
-  }
-
-  Future<ManualPaymentRequest> approveManualPayment(String id) async {
-    final response = await _dio.post('/payments/manual/$id/approve');
-    return ManualPaymentRequest.fromJson(
-        Map<String, dynamic>.from(response.data as Map));
-  }
-
-  Future<ManualPaymentRequest> rejectManualPayment(
-      String id, String rejectionReason) async {
-    final response = await _dio.post(
-      '/payments/manual/$id/reject',
-      data: <String, dynamic>{'rejectionReason': rejectionReason},
-    );
-    return ManualPaymentRequest.fromJson(
-        Map<String, dynamic>.from(response.data as Map));
   }
 
   Future<List<PeerDebtor>> getPeerDebtors() async {
@@ -1887,8 +1835,7 @@ class ApiClient {
 
   // ── Billing (recurring subscription billing) ───────────────────────
 
-  /// Owner-level billing settings: auto-renew toggle, billing phone, and
-  /// the manual-paybill fallback details.
+  /// Owner-level billing settings: auto-renew toggle and billing phone.
   /// GET /api/v1/billing/settings
   Future<Map<String, dynamic>> getBillingSettings() async {
     final response = await _dio.get('/billing/settings');
@@ -1908,39 +1855,6 @@ class ApiClient {
       if (autoRenewAuthorizationVersion != null)
         'autoRenewAuthorizationVersion': autoRenewAuthorizationVersion,
     });
-    return response.data as Map<String, dynamic>;
-  }
-
-  /// Manual-paybill fallback: submit the M-Pesa confirmation code typed by
-  /// the client after paying the AXON paybill from their own M-Pesa menu.
-  /// Creates a PENDING claim — an admin must confirm before it activates.
-  /// POST /api/v1/billing/submit-payment
-  Future<Map<String, dynamic>> submitSubscriptionPayment({
-    required String mpesaCode,
-    double? amount,
-  }) async {
-    final response = await _dio.post('/billing/submit-payment', data: {
-      'mpesaCode': mpesaCode,
-      if (amount != null) 'amount': amount,
-    });
-    return response.data as Map<String, dynamic>;
-  }
-
-  /// ADMIN: list manual M-Pesa payment claims awaiting review.
-  /// GET /api/v1/billing/claims
-  Future<List<dynamic>> getPendingSubscriptionPaymentClaims() async {
-    final response = await _dio.get('/billing/claims');
-    return response.data as List<dynamic>;
-  }
-
-  /// ADMIN: confirm or reject a manual payment claim.
-  /// POST /api/v1/billing/claims/:id/confirm
-  Future<Map<String, dynamic>> confirmPaymentClaim(
-    String claimId,
-    bool approve,
-  ) async {
-    final response = await _dio
-        .post('/billing/claims/$claimId/confirm', data: {'approve': approve});
     return response.data as Map<String, dynamic>;
   }
 
@@ -2004,6 +1918,189 @@ class ApiClient {
     final response = await _dio.post('/bug-report', data: formData);
     return response.data as Map<String, dynamic>;
   }
+
+  // ── Shop control: accountability, stock counts, containers, news ──────
+
+  /// The API wraps payloads as {success, data}; older responses are bare.
+  Map<String, dynamic> _payload(Response<dynamic> response) {
+    final body = response.data;
+    if (body is Map && body['data'] is Map) {
+      return (body['data'] as Map).cast<String, dynamic>();
+    }
+    if (body is Map) return body.cast<String, dynamic>();
+    return const {};
+  }
+
+  List<Map<String, dynamic>> _payloadList(Response<dynamic> response) {
+    final body = response.data;
+    final raw = body is Map && body['data'] is List
+        ? body['data'] as List
+        : body is List
+            ? body
+            : const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> getTillRules() async =>
+      _payload(await _dio.get('/accountability/till-rules'));
+
+  Future<Map<String, dynamic>> getAccountabilitySettings() async =>
+      _payload(await _dio.get('/accountability/settings'));
+
+  Future<Map<String, dynamic>> updateAccountabilitySettings(
+          Map<String, dynamic> patch) async =>
+      _payload(await _dio.put('/accountability/settings', data: patch));
+
+  Future<Map<String, dynamic>> getAccountabilityAlerts({
+    bool openOnly = false,
+    String? severity,
+    int page = 1,
+    int limit = 30,
+  }) async =>
+      _payload(await _dio.get('/accountability/alerts', queryParameters: {
+        if (openOnly) 'open': true,
+        if (severity != null) 'severity': severity,
+        'page': page,
+        'limit': limit,
+      }));
+
+  Future<void> acknowledgeAccountabilityAlerts(
+      {List<String>? ids, bool all = false}) async {
+    await _dio.post('/accountability/alerts/acknowledge', data: {
+      if (all) 'all': true else 'ids': ids ?? const <String>[],
+    });
+  }
+
+  Future<Map<String, dynamic>> getBranchDaySummary(String branchId,
+          {String? date}) async =>
+      _payload(await _dio.get('/accountability/summary', queryParameters: {
+        'branchId': branchId,
+        if (date != null) 'date': date,
+      }));
+
+  Future<Map<String, dynamic>> getCustomerCredit(String customerId) async =>
+      _payload(await _dio.get('/customers/$customerId/credit'));
+
+  // Stock counts
+  Future<List<Map<String, dynamic>>> getStockCounts({String? branchId}) async =>
+      _payloadList(await _dio.get('/stocktake', queryParameters: {
+        if (branchId != null) 'branchId': branchId,
+      }));
+
+  Future<Map<String, dynamic>> startStockCount({
+    required String branchId,
+    String? title,
+    bool blind = true,
+    String? categoryId,
+  }) async =>
+      _payload(await _dio.post('/stocktake', data: {
+        'branchId': branchId,
+        if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+        'blind': blind,
+        if (categoryId != null) 'categoryId': categoryId,
+      }));
+
+  Future<Map<String, dynamic>> getStockCount(String id) async =>
+      _payload(await _dio.get('/stocktake/$id'));
+
+  Future<Map<String, dynamic>> getStockCountReport(String id) async =>
+      _payload(await _dio.get('/stocktake/$id/report'));
+
+  Future<void> recordStockCounts(
+      String id, List<Map<String, dynamic>> entries) async {
+    await _dio.post('/stocktake/$id/counts', data: {'entries': entries});
+  }
+
+  Future<Map<String, dynamic>> submitStockCount(String id) async =>
+      _payload(await _dio.post('/stocktake/$id/submit'));
+
+  Future<Map<String, dynamic>> approveStockCount(String id,
+          {String? notes}) async =>
+      _payload(await _dio.post('/stocktake/$id/approve',
+          data: {if (notes != null && notes.isNotEmpty) 'notes': notes}));
+
+  Future<void> cancelStockCount(String id) async {
+    await _dio.post('/stocktake/$id/cancel');
+  }
+
+  // Containers / imports
+  Future<List<Map<String, dynamic>>> getImports() async =>
+      _payloadList(await _dio.get('/imports'));
+
+  Future<Map<String, dynamic>> getImport(String id) async =>
+      _payload(await _dio.get('/imports/$id'));
+
+  Future<Map<String, dynamic>> createImport(Map<String, dynamic> body) async =>
+      _payload(await _dio.post('/imports', data: body));
+
+  Future<Map<String, dynamic>> updateImport(
+          String id, Map<String, dynamic> body) async =>
+      _payload(await _dio.patch('/imports/$id', data: body));
+
+  Future<Map<String, dynamic>> addImportParticipant(
+          String id, Map<String, dynamic> body) async =>
+      _payload(await _dio.post('/imports/$id/participants', data: body));
+
+  Future<Map<String, dynamic>> removeImportParticipant(
+          String id, String participantId) async =>
+      _payload(await _dio.delete('/imports/$id/participants/$participantId'));
+
+  Future<Map<String, dynamic>> addImportItem(
+          String id, Map<String, dynamic> body) async =>
+      _payload(await _dio.post('/imports/$id/items', data: body));
+
+  Future<Map<String, dynamic>> removeImportItem(
+          String id, String itemId) async =>
+      _payload(await _dio.delete('/imports/$id/items/$itemId'));
+
+  Future<Map<String, dynamic>> addImportCost(
+          String id, Map<String, dynamic> body) async =>
+      _payload(await _dio.post('/imports/$id/costs', data: body));
+
+  Future<Map<String, dynamic>> removeImportCost(
+          String id, String costId) async =>
+      _payload(await _dio.delete('/imports/$id/costs/$costId'));
+
+  Future<Map<String, dynamic>> recordImportPayment(
+          String id, Map<String, dynamic> body) async =>
+      _payload(await _dio.post('/imports/$id/payments', data: body));
+
+  Future<Map<String, dynamic>> removeImportPayment(
+          String id, String paymentId) async =>
+      _payload(await _dio.delete('/imports/$id/payments/$paymentId'));
+
+  Future<Map<String, dynamic>> receiveImport(String id,
+          {List<Map<String, dynamic>>? items}) async =>
+      _payload(await _dio.post('/imports/$id/receive',
+          data: {if (items != null) 'items': items}));
+
+  // Market: news and exchange rates
+  Future<Map<String, dynamic>> getBusinessNews({
+    String? category,
+    String? impact,
+    String? query,
+    int page = 1,
+    int limit = 20,
+  }) async =>
+      _payload(await _dio.get('/market/news', queryParameters: {
+        if (category != null) 'category': category,
+        if (impact != null) 'impact': impact,
+        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+        'page': page,
+        'limit': limit,
+      }));
+
+  Future<Map<String, dynamic>> getBusinessNewsDigest() async =>
+      _payload(await _dio.get('/market/news/digest'));
+
+  Future<Map<String, dynamic>> getBusinessNewsSources() async =>
+      _payload(await _dio.get('/market/news/sources'));
+
+  Future<Map<String, dynamic>> getExchangeRates() async =>
+      _payload(await _dio.get('/market/rates'));
 
   String _mimeTypeForFile(String fileName) {
     final lower = fileName.toLowerCase();

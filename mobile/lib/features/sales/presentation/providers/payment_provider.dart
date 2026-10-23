@@ -136,35 +136,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  Future<String?> processManualPayment({
-    required double amount,
-    required List<CartItem> items,
-    String? customerId,
-  }) async {
-    state = state.copyWith(isProcessing: true, error: null);
-
-    try {
-      final saleId = _uuid.v4();
-      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
-
-      await _createLocalSale(
-        saleId: saleId,
-        receiptNumber: receiptNumber,
-        items: items,
-        paymentMethod: 'MANUAL',
-        total: amount,
-        customerId: customerId,
-      );
-
-      await _syncOrQueueSale(
-          saleId, items, 'MANUAL', amount, null, null, customerId);
-
-      state = state.copyWith(isProcessing: false);
-      return saleId;
-    } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
-      return null;
-    }
+  void clearError() {
+    if (state.error != null) state = state.copyWith(error: null);
   }
 
   Future<String?> processMpesaPayment({

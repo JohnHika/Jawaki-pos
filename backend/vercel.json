@@ -7,6 +7,9 @@
     { "path": "/api/cron/billing-renewals", "schedule": "0 4 * * *" },
     { "path": "/api/cron/daily-briefs", "schedule": "0 6 * * *" },
     { "path": "/api/cron/low-stock-alerts", "schedule": "0 7 * * *" },
-    { "path": "/api/cron/end-of-day-reminders", "schedule": "0,30 * * * *" }
+    { "path": "/api/cron/end-of-day-reminders", "schedule": "0,30 * * * *" },
+    { "path": "/api/cron/accountability-summaries", "schedule": "5 * * * *" },
+    { "path": "/api/cron/news-refresh", "schedule": "10,40 * * * *" },
+    { "path": "/api/cron/exchange-rates", "schedule": "20 3 * * *" }
   ]
 }

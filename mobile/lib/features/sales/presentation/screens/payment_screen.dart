@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/till_guard.dart';
+import '../../../accountability/data/till_guard_service.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
@@ -14,7 +17,6 @@ import '../widgets/cash_tender_sheet.dart';
 enum PaymentMethod {
   cash,
   mpesa,
-  manual,
   debt,
   split,
 }
@@ -29,11 +31,158 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod? _selectedMethod;
   final _phoneController = TextEditingController();
+  String? _payoutStatus;
+  bool _paystackPayoutVerified = false;
+  bool _checkingPayoutStatus = true;
+
+  bool get _canAcceptMpesa =>
+      _payoutStatus == 'ACTIVE' && _paystackPayoutVerified;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshPayoutStatus();
+  }
 
   @override
   void dispose() {
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshPayoutStatus() async {
+    if (mounted) setState(() => _checkingPayoutStatus = true);
+    try {
+      final account = await getIt<ApiClient>().getMerchantPayoutAccount();
+      if (!mounted) return;
+      setState(() {
+        _payoutStatus = account['status']?.toString().toUpperCase();
+        _paystackPayoutVerified = account['paystackVerified'] == true;
+        _checkingPayoutStatus = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _payoutStatus = 'UNKNOWN';
+        _paystackPayoutVerified = false;
+        _checkingPayoutStatus = false;
+      });
+    }
+  }
+
+  Future<void> _openPayoutSettings() async {
+    await context.push('/payments/setup');
+    if (mounted) {
+      ref.read(paymentProvider.notifier).clearError();
+      await _refreshPayoutStatus();
+    }
+  }
+
+  Future<void> _showPayoutNotReady() async {
+    final status = _payoutStatus;
+    final title = _checkingPayoutStatus
+        ? 'Checking payment setup'
+        : status == 'NOT_CONFIGURED'
+            ? 'Connect a payout account'
+            : status == 'PENDING_VERIFICATION'
+                ? 'Paystack verification pending'
+                : status == 'INACTIVE'
+                    ? 'Payout account inactive'
+                    : 'M-Pesa is unavailable';
+    final message = _checkingPayoutStatus
+        ? 'Please wait while Counterbase checks your Paystack payout account.'
+        : status == 'NOT_CONFIGURED'
+            ? 'Add your business bank account in Customer payments before accepting M-Pesa.'
+            : status == 'PENDING_VERIFICATION'
+                ? 'Paystack must verify the business bank account before M-Pesa payments can be accepted.'
+                : status == 'INACTIVE'
+                    ? 'Paystack has marked this payout account inactive. Review it in Customer payments.'
+                    : 'Counterbase could not confirm your Paystack payout status. Check your connection and try again.';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          DesignSpacing.xl,
+          DesignSpacing.sm,
+          DesignSpacing.xl,
+          DesignSpacing.xl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(sheetContext).textTheme.titleLarge),
+            const SizedBox(height: DesignSpacing.sm),
+            Text(message, style: Theme.of(sheetContext).textTheme.bodyMedium),
+            const SizedBox(height: DesignSpacing.lg),
+            SizedBox(
+              width: double.infinity,
+              child: GradientButton(
+                label: 'Open Customer payments',
+                icon: Icons.account_balance_rounded,
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  _openPayoutSettings();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isPayoutError(String? message) =>
+      message?.toLowerCase().contains('payout account') == true ||
+      message?.toLowerCase().contains('payout bank account') == true ||
+      message?.toLowerCase().contains('customer payments') == true;
+
+  Widget _buildPayoutStatusNotice() {
+    final pending = _payoutStatus == 'PENDING_VERIFICATION';
+    final title = pending ? 'Paystack verification pending' : 'M-Pesa setup needed';
+    final detail = pending
+        ? 'Paystack must verify your business bank account before customers can pay by M-Pesa.'
+        : _payoutStatus == 'NOT_CONFIGURED'
+            ? 'Connect your business bank account to accept customer M-Pesa payments.'
+            : _payoutStatus == 'INACTIVE'
+                ? 'Your payout account is inactive. Review it in Customer payments.'
+                : 'We could not confirm your payout status. Check it in Customer payments.';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: DesignColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(color: DesignColors.warning.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded, color: DesignColors.warning),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: DesignSpacing.xs),
+                Text(detail),
+                TextButton.icon(
+                  onPressed: _openPayoutSettings,
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  label: const Text('Customer payments'),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -176,7 +325,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             _PaymentMethodTile(
               icon: Icons.phone_android_rounded,
               title: 'M-Pesa',
-              subtitle: 'Customer pays your shop through Paystack',
+              subtitle: _checkingPayoutStatus
+                  ? 'Checking Paystack payout account'
+                  : _canAcceptMpesa
+                      ? 'Customer pays your shop through Paystack'
+                      : 'Requires a verified business payout account',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
               onTap: () => _selectMpesa(
@@ -186,17 +339,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 
-            // Manual
-            _PaymentMethodTile(
-              icon: Icons.edit_note_rounded,
-              title: 'Manual',
-              subtitle: 'Record payment already received',
-              color: DesignColors.accent,
-              isSelected: _selectedMethod == PaymentMethod.manual,
-              onTap: () =>
-                  setState(() => _selectedMethod = PaymentMethod.manual),
-            ),
-            const SizedBox(height: DesignSpacing.md - 2),
+            if (!_checkingPayoutStatus && !_canAcceptMpesa) ...[
+              _buildPayoutStatusNotice(),
+              const SizedBox(height: DesignSpacing.md - 2),
+            ],
 
             // Debt (sell now, customer pays later)
             _PaymentMethodTile(
@@ -258,7 +404,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             ],
 
             // Error message
-            if (paymentState.error != null) ...[
+            if (paymentState.error != null &&
+                !_isPayoutError(paymentState.error)) ...[
               const SizedBox(height: DesignSpacing.lg),
               Container(
                 padding: const EdgeInsets.all(DesignSpacing.md),
@@ -316,8 +463,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return paymentState.currentTransactionId == null
             ? 'Send M-Pesa Request'
             : 'Check M-Pesa Payment';
-      case PaymentMethod.manual:
-        return 'Confirm Manual Payment';
       case PaymentMethod.debt:
         return 'Record as Debt';
       case PaymentMethod.split:
@@ -331,6 +476,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     double total, {
     required bool hasPendingRequest,
   }) async {
+    if (!_canAcceptMpesa) {
+      await _showPayoutNotReady();
+      return;
+    }
     setState(() => _selectedMethod = PaymentMethod.mpesa);
     if (hasPendingRequest) return;
     final ready = await _showMpesaDetailsSheet(total);
@@ -450,7 +599,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         (digits[3] == '7' || digits[3] == '1');
   }
 
-  Future<void> _processPayment() async {
+  /// The cart as the shop's price and discount rules see it.
+  List<GuardLine> _guardLines(CartState cart) => cart.items
+      .map((i) => GuardLine(
+            productId: i.productId,
+            name: i.productName,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            discount: i.discount,
+          ))
+      .toList();
+
+  Future<void> _processPayment({bool rulesChecked = false}) async {
     if (_selectedMethod == null) return;
 
     if (ref.read(paymentProvider.notifier).hasUnresolvedMerchantPayment &&
@@ -466,6 +626,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     final cart = ref.read(cartProvider);
     final paymentNotifier = ref.read(paymentProvider.notifier);
+
+    // The shop's price, discount and credit rules. Checked once per sale (the
+    // M-Pesa details sheet re-enters this method) and before any money moves.
+    if (!rulesChecked) {
+      final allowed = await TillGuardService.instance.review(
+        context,
+        lines: _guardLines(cart),
+        cartDiscount: cart.discount,
+        creditAmount: _selectedMethod == PaymentMethod.debt ? cart.total : 0,
+        customerId: cart.customerId,
+        customerName: cart.customerName,
+      );
+      if (!allowed || !mounted) return;
+    }
 
     String? result;
     double cashChangeDue = 0;
@@ -487,20 +661,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         if (!_isKenyanPhone(_phoneController.text)) {
           final ready = await _showMpesaDetailsSheet(cart.total);
           if (!ready || !mounted) return;
-          await _processPayment();
+          await _processPayment(rulesChecked: true);
           return;
         }
         result = await paymentNotifier.processMpesaPayment(
           amount: cart.total,
           phoneNumber: _normalizeKenyanPhone(_phoneController.text),
           discountAmount: cart.discount,
-          items: cart.items,
-          customerId: cart.customerId,
-        );
-        break;
-      case PaymentMethod.manual:
-        result = await paymentNotifier.processManualPayment(
-          amount: cart.total,
           items: cart.items,
           customerId: cart.customerId,
         );
@@ -542,6 +709,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           }
           return;
         }
+        // The debt part of a split is only known now, so check it here.
+        final creditPart = tenders
+            .where((t) => t.method == 'CREDIT')
+            .fold<double>(0, (sum, t) => sum + t.amount);
+        if (creditPart > 0) {
+          if (!mounted) return;
+          final allowedCredit = await TillGuardService.instance.review(
+            context,
+            lines: const [],
+            creditAmount: creditPart,
+            customerId: cart.customerId,
+            customerName: cart.customerName,
+            includePricing: false,
+          );
+          if (!allowedCredit || !mounted) return;
+        }
         result = await paymentNotifier.processSplitPayment(
           amount: cart.total,
           items: cart.items,
@@ -556,12 +739,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     if (result == null) {
       final err = ref.read(paymentProvider).error;
       if (err != null && mounted) {
-        showGlassSnackBar(
-          context,
-          err,
-          icon: Icons.error_outline_rounded,
-          color: DesignColors.error,
-        );
+        if (_isPayoutError(err)) {
+          await _refreshPayoutStatus();
+          if (mounted) await _showPayoutNotReady();
+        } else {
+          showGlassSnackBar(
+            context,
+            err,
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
+          );
+        }
       }
     }
 

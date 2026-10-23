@@ -180,12 +180,14 @@ export class MerchantPaymentsService {
       where: { tenantId: actor.tenantId },
     });
     if (!account) {
-      throw new ConflictException('Verify your business payout bank account in Customer payments before accepting M-Pesa sales');
+      throw new ConflictException(
+        'Add your business payout account in Customer payments to accept M-Pesa sales.',
+      );
     }
     const payout = await this.refreshPayoutVerification(account);
     if (!payout.paystackVerified || payout.status !== 'ACTIVE') {
       throw new ConflictException(
-        'Verify your business payout bank account in Customer payments. Paystack must confirm it before customer M-Pesa sales; cash and manually recorded sales remain available.',
+        'Paystack has not verified this business payout account yet. Finish verification in Customer payments to accept M-Pesa sales.',
       );
     }
     if (input.sale.paymentMethod !== PaymentMethod.MPESA || input.sale.tenders?.length) {
@@ -282,12 +284,14 @@ export class MerchantPaymentsService {
       where: { tenantId: actor.tenantId },
     });
     if (!account) {
-      throw new ConflictException('Verify your business payout bank account in Customer payments before requesting debt payments');
+      throw new ConflictException(
+        'Add your business payout account in Customer payments to accept M-Pesa debt payments.',
+      );
     }
     const payout = await this.refreshPayoutVerification(account);
     if (!payout.paystackVerified || payout.status !== 'ACTIVE') {
       throw new ConflictException(
-        'Verify your business payout bank account in Customer payments. Paystack must confirm it before customer M-Pesa debt payments; cash and manually recorded payments remain available.',
+        'Paystack has not verified this business payout account yet. Finish verification in Customer payments to accept M-Pesa debt payments.',
       );
     }
     const receivable = input.receivableType === 'retail'

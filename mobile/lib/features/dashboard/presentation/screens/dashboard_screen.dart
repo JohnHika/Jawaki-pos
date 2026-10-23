@@ -21,6 +21,7 @@ import '../../../ai/presentation/screens/ai_chat_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../finance/presentation/end_of_day_prompt.dart';
 import '../widgets/staff_invite_nudge.dart';
+import '../../../accountability/presentation/widgets/shop_attention_card.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
@@ -334,6 +335,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ),
               const SizedBox(height: DesignSpacing.xl),
+
+              // Anything in the shop that needs the owner's eye (or an all-clear).
+              const ShopAttentionCard(),
 
               // Staff invite nudge — persistent across sessions until
               // at least one staff invitation is accepted.

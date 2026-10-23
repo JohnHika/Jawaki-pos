@@ -23,7 +23,8 @@ class Categories extends Table {
 }
 
 // Products table
-@TableIndex(name: 'idx_products_category_active', columns: {#categoryId, #isActive})
+@TableIndex(
+    name: 'idx_products_category_active', columns: {#categoryId, #isActive})
 @TableIndex(name: 'idx_products_name', columns: {#name})
 class Products extends Table {
   TextColumn get id => text()();
@@ -79,7 +80,8 @@ class BranchPrices extends Table {
 }
 
 // Local stock cache
-@TableIndex(name: 'idx_local_stock_product_branch', columns: {#productId, #branchId})
+@TableIndex(
+    name: 'idx_local_stock_product_branch', columns: {#productId, #branchId})
 class LocalStock extends Table {
   TextColumn get id => text()();
   TextColumn get productId => text()();
@@ -273,7 +275,8 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor, this._storage);
 
   @override
-  int get schemaVersion => 13; // v13: performance indexes (products/tiers/stock)
+  int get schemaVersion =>
+      13; // v13: performance indexes (products/tiers/stock)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -404,6 +407,7 @@ class AppDatabase extends _$AppDatabase {
                 debugPrint('[DB] skip index $name: $e');
               }
             }
+
             await safeCreateIndex(
               'idx_products_category_active',
               'CREATE INDEX IF NOT EXISTS idx_products_category_active ON products (category_id, is_active)',
@@ -439,8 +443,7 @@ class AppDatabase extends _$AppDatabase {
       for (final index in indexes) {
         if (index.read<int>('unique') != 1) continue;
         final name = index.read<String>('name');
-        final columns =
-            await customSelect("PRAGMA index_info('$name')").get();
+        final columns = await customSelect("PRAGMA index_info('$name')").get();
         final names = columns.map((c) => c.read<String>('name')).toSet();
         if (names.length == 2 &&
             names.contains('product_id') &&
@@ -612,6 +615,30 @@ class AppDatabase extends _$AppDatabase {
           ..where((t) => t.productId.equals(productId))
           ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
         .get();
+  }
+
+  /// Loads pricing tiers for a catalog page in one database query instead of
+  /// issuing a separate query for every product card.
+  Future<Map<String, List<ProductPricingTier>>> getPricingTiersForProducts(
+    Iterable<String> productIds,
+  ) async {
+    final ids = productIds.toSet().toList();
+    if (ids.isEmpty) return {};
+
+    // Catalog sync is capped at 500 products, within SQLite's bind-variable
+    // limit. Chunk anyway so this remains safe if that page size is raised.
+    final result = <String, List<ProductPricingTier>>{};
+    for (var offset = 0; offset < ids.length; offset += 400) {
+      final chunk = ids.skip(offset).take(400).toList();
+      final rows = await (select(productPricingTiers)
+            ..where((tier) => tier.productId.isIn(chunk))
+            ..orderBy([(tier) => OrderingTerm.asc(tier.sortOrder)]))
+          .get();
+      for (final tier in rows) {
+        result.putIfAbsent(tier.productId, () => []).add(tier);
+      }
+    }
+    return result;
   }
 
   Future<void> replacePricingTiersForProduct(
@@ -1050,6 +1077,31 @@ class AppDatabase extends _$AppDatabase {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Loads the current branch's stock for multiple product cards in one query.
+  Future<Map<String, LocalStockData>> getStockForProducts(
+    Iterable<String> productIds,
+    String branchId,
+  ) async {
+    final ids = productIds.toSet().toList();
+    if (ids.isEmpty) return {};
+
+    final result = <String, LocalStockData>{};
+    for (var offset = 0; offset < ids.length; offset += 400) {
+      final chunk = ids.skip(offset).take(400).toList();
+      final rows = await (select(localStock)
+            ..where((stock) =>
+                stock.branchId.equals(branchId) & stock.productId.isIn(chunk)))
+          .get();
+      for (final stock in rows) {
+        final previous = result[stock.productId];
+        if (previous == null || stock.updatedAt.isAfter(previous.updatedAt)) {
+          result[stock.productId] = stock;
+        }
+      }
+    }
+    return result;
+  }
+
   // Get stock for product using current branch
   Future<LocalStockData?> getStockForProduct(String productId) async {
     final branchId = _storage.getBranchId();
@@ -1299,10 +1351,13 @@ class AppDatabase extends _$AppDatabase {
         )
         .toList();
 
-    // Attach each product's real pricing tiers (any number) instead of the
-    // old hardcoded secondary-only fields.
+    // Attach pricing tiers in one bulk query instead of one database roundtrip
+    // per low-stock product.
+    final tiersByProduct = await getPricingTiersForProducts(
+      rows.map((row) => row['id'] as String),
+    );
     for (final row in rows) {
-      final tiers = await getPricingTiersForProduct(row['id'] as String);
+      final tiers = tiersByProduct[row['id']] ?? const <ProductPricingTier>[];
       row['pricingTiers'] = tiers
           .map((t) => {
                 'unit': t.unit,

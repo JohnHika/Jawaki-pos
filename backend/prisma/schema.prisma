@@ -768,6 +768,9 @@ model Product {
   imagePublicId  String?
   basePrice      Decimal  @db.Decimal(10, 2)
   costPrice      Decimal? @db.Decimal(10, 2)
+  // Lowest price (per base unit) a cashier may sell at without a manager
+  // override. Null = no explicit floor (cost + minMarginPercent still applies).
+  minPrice       Decimal? @db.Decimal(10, 2)
   taxRate        Decimal  @default(0) @db.Decimal(5, 2)
   unit           String   @default("piece")
   minStock       Int      @default(0)
@@ -1098,6 +1101,11 @@ model Customer {
   email         String?
   address       String?
   loyaltyPoints Int      @default(0)
+  // Credit control: the most this customer may owe at once. Null = no limit.
+  creditLimit    Decimal? @db.Decimal(12, 2)
+  idNumber       String?
+  guarantorName  String?
+  guarantorPhone String?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -2049,4 +2057,265 @@ model PartnerMessage {
 
   @@index([partnershipId, createdAt])
   @@map("partner_messages")
+}
+
+
+// ==================== ACCOUNTABILITY ====================
+
+// Owner-facing feed of things that need a second look: sales below cost,
+// over-limit discounts, voids, stock write-offs, price changes, credit over
+// the limit, cash shortfalls. HIGH alerts are also pushed to the owner.
+model AccountabilityAlert {
+  id               String    @id @default(uuid())
+  tenantId         String
+  branchId         String?
+  type             String
+  severity         String    @default("MEDIUM") // LOW | MEDIUM | HIGH
+  title            String
+  body             String
+  actorUserId      String?
+  entityType       String?
+  entityId         String?
+  data             Json      @default("{}")
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  createdAt        DateTime  @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, acknowledgedAt])
+  @@index([tenantId, branchId, createdAt])
+  @@map("accountability_alerts")
+}
+
+// ==================== STOCKTAKE ====================
+
+model StockCount {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  branchId           String
+  title              String?
+  // IN_PROGRESS -> SUBMITTED -> APPROVED | CANCELLED
+  status             String    @default("IN_PROGRESS")
+  // Blind counts hide the system quantity from the person counting, so they
+  // count what is on the shelf instead of what they expect to find.
+  blind              Boolean   @default(true)
+  notes              String?
+  createdById        String
+  submittedById      String?
+  submittedAt        DateTime?
+  approvedById       String?
+  approvedAt         DateTime?
+  totalVarianceValue Decimal?  @db.Decimal(14, 2)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  items StockCountItem[]
+
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, createdAt])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id          String    @id @default(uuid())
+  countId     String
+  productId   String
+  productName String
+  sku         String?
+  // Snapshot of the system quantity when the count started. The adjustment on
+  // approval is counted - expected, so sales made during the count survive.
+  expectedQty Decimal   @db.Decimal(10, 3)
+  countedQty  Decimal?  @db.Decimal(10, 3)
+  unitCost    Decimal   @default(0) @db.Decimal(10, 2)
+  reason      String?
+  countedById String?
+  countedAt   DateTime?
+
+  count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+
+  @@unique([countId, productId])
+  @@index([countId])
+  @@map("stock_count_items")
+}
+
+// ==================== IMPORTS / LANDED COST ====================
+
+// One inbound container or consignment. Goods are priced in the supplier's
+// currency; every cost on top (freight, duty, clearing...) is spread across
+// the goods to give each item a true landed cost in KES. A shipment can be
+// shared by several traders (participants), each owing their own share.
+model ImportShipment {
+  id               String    @id @default(uuid())
+  tenantId         String
+  branchId         String
+  reference        String?
+  title            String
+  origin           String?
+  currency         String    @default("USD")
+  // KES per 1 unit of `currency` for the goods.
+  fxRate           Decimal   @default(1) @db.Decimal(14, 4)
+  // How shared costs are spread: VALUE | QUANTITY | CBM | WEIGHT
+  allocationBasis  String    @default("VALUE")
+  // PLANNED -> IN_TRANSIT -> ARRIVED -> RECEIVED | CANCELLED
+  status           String    @default("PLANNED")
+  expectedArrival  DateTime?
+  arrivedAt        DateTime?
+  receivedAt       DateTime?
+  receivedById     String?
+  notes            String?
+  createdById      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  costs        ImportCost[]
+  items        ImportItem[]
+  participants ImportParticipant[]
+  payments     ImportPayment[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("import_shipments")
+}
+
+model ImportCost {
+  id          String    @id @default(uuid())
+  shipmentId  String
+  // FREIGHT | DUTY | VAT | IDF | RDL | CLEARING | PORT_HANDLING | TRANSPORT
+  // | INSURANCE | AGENT_FEE | OTHER
+  type        String
+  label       String?
+  amount      Decimal   @db.Decimal(14, 2)
+  currency    String    @default("KES")
+  fxRate      Decimal   @default(1) @db.Decimal(14, 4)
+  amountKes   Decimal   @db.Decimal(14, 2)
+  paidAt      DateTime?
+  reference   String?
+  receiptUrl  String?
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  shipment ImportShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@map("import_costs")
+}
+
+model ImportParticipant {
+  id         String   @id @default(uuid())
+  shipmentId String
+  name       String
+  phone      String?
+  // The business using this app. Only its goods are received into stock.
+  isSelf     Boolean  @default(false)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  shipment ImportShipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  items    ImportItem[]
+  payments ImportPayment[]
+
+  @@index([shipmentId])
+  @@map("import_participants")
+}
+
+model ImportItem {
+  id                String   @id @default(uuid())
+  shipmentId        String
+  participantId     String?
+  productId         String?
+  description       String
+  quantity          Decimal  @db.Decimal(12, 3)
+  unit              String   @default("piece")
+  // Supplier price per unit, in the shipment currency.
+  unitCost          Decimal  @db.Decimal(14, 4)
+  // Totals for the whole line (not per unit); used when basis is CBM/WEIGHT.
+  cbm               Decimal? @db.Decimal(12, 4)
+  weightKg          Decimal? @db.Decimal(12, 3)
+  receivedQty       Decimal? @db.Decimal(12, 3)
+  // Computed by the landed-cost calculation and stored for reporting.
+  goodsValueKes     Decimal  @default(0) @db.Decimal(14, 2)
+  allocatedCostKes  Decimal  @default(0) @db.Decimal(14, 2)
+  landedUnitCostKes Decimal  @default(0) @db.Decimal(14, 4)
+  createdAt         DateTime @default(now())
+
+  shipment    ImportShipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  participant ImportParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([participantId])
+  @@map("import_items")
+}
+
+model ImportPayment {
+  id            String   @id @default(uuid())
+  shipmentId    String
+  participantId String
+  amountKes     Decimal  @db.Decimal(14, 2)
+  method        String?
+  reference     String?
+  notes         String?
+  paidAt        DateTime @default(now())
+  recordedById  String
+  createdAt     DateTime @default(now())
+
+  shipment    ImportShipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  participant ImportParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([participantId])
+  @@map("import_payments")
+}
+
+// ==================== BUSINESS NEWS ====================
+
+// Headlines pulled from Kenyan publishers and official bodies, tagged by how
+// likely they are to affect a trader (customs, tax, shipping, FX, county...).
+// We store the headline, a short excerpt and the link back - never full text.
+model NewsItem {
+  id          String   @id @default(uuid())
+  sourceKey   String
+  sourceName  String
+  title       String
+  summary     String?
+  url         String   @unique
+  imageUrl    String?
+  publishedAt DateTime
+  // CUSTOMS_TAX | TRADE_IMPORT | MONEY_FX | COUNTY_LICENSING | LOGISTICS
+  // | MARKET | GENERAL
+  category    String   @default("GENERAL")
+  tags        String[] @default([])
+  // HIGH | MEDIUM | LOW
+  impact      String   @default("LOW")
+  fetchedAt   DateTime @default(now())
+
+  @@index([publishedAt])
+  @@index([category, publishedAt])
+  @@index([impact, publishedAt])
+  @@map("news_items")
+}
+
+model NewsSource {
+  key                 String    @id
+  name                String
+  url                 String
+  isActive            Boolean   @default(true)
+  lastFetchedAt       DateTime?
+  lastError           String?
+  consecutiveFailures Int       @default(0)
+  updatedAt           DateTime  @updatedAt
+
+  @@map("news_sources")
+}
+
+// Latest FX snapshot (base USD) so the app can show rates and pre-fill the
+// exchange rate on an import without calling the provider on every request.
+model ExchangeRateSnapshot {
+  id                String    @id @default(uuid())
+  base              String    @default("USD")
+  rates             Json
+  providerUpdatedAt DateTime?
+  fetchedAt         DateTime  @default(now())
+
+  @@index([fetchedAt])
+  @@map("exchange_rate_snapshots")
 }

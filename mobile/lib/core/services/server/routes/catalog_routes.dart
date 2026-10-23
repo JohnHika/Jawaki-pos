@@ -21,17 +21,19 @@ class CatalogRoutes {
   Future<shelf.Response> _handleGetCategories(shelf.Request request) async {
     final categories = await _db.getAllCategories();
     return shelf.Response.ok(
-      jsonEncode(categories.map((c) => {
-        'id': c.id,
-        'name': c.name,
-        'description': c.description,
-        'parentId': c.parentId,
-        'imageUrl': c.imageUrl,
-        'sortOrder': c.sortOrder,
-        'isActive': c.isActive,
-        'createdAt': c.createdAt.toIso8601String(),
-        'updatedAt': c.updatedAt.toIso8601String(),
-      }).toList()),
+      jsonEncode(categories
+          .map((c) => {
+                'id': c.id,
+                'name': c.name,
+                'description': c.description,
+                'parentId': c.parentId,
+                'imageUrl': c.imageUrl,
+                'sortOrder': c.sortOrder,
+                'isActive': c.isActive,
+                'createdAt': c.createdAt.toIso8601String(),
+                'updatedAt': c.updatedAt.toIso8601String(),
+              })
+          .toList()),
       headers: {'content-type': 'application/json'},
     );
   }
@@ -59,7 +61,7 @@ class CatalogRoutes {
 
     return shelf.Response.ok(
       jsonEncode({
-        'items': await Future.wait(paged.map(_productToMap)),
+        'items': await _productsToMaps(paged),
         'total': total,
         'page': page,
         'limit': limit,
@@ -70,7 +72,8 @@ class CatalogRoutes {
   }
 
   /// GET /api/v1/catalog/products/<id>
-  Future<shelf.Response> _handleGetProduct(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleGetProduct(
+      shelf.Request request, String id) async {
     final product = await _db.getProduct(id);
     if (product == null) {
       return shelf.Response.notFound(
@@ -88,7 +91,7 @@ class CatalogRoutes {
   Future<shelf.Response> _handleGetFavorites(shelf.Request request) async {
     final favorites = await _db.getFavoriteProducts();
     return shelf.Response.ok(
-      jsonEncode(await Future.wait(favorites.map(_productToMap))),
+      jsonEncode(await _productsToMaps(favorites)),
       headers: {'content-type': 'application/json'},
     );
   }
@@ -97,18 +100,35 @@ class CatalogRoutes {
   Future<shelf.Response> _handleGetPriceOverrides(shelf.Request request) async {
     final prices = await _db.select(_db.branchPrices).get();
     return shelf.Response.ok(
-      jsonEncode(prices.map((p) => {
-        'id': p.id,
-        'productId': p.productId,
-        'branchId': p.branchId,
-        'price': p.price,
-      }).toList()),
+      jsonEncode(prices
+          .map((p) => {
+                'id': p.id,
+                'productId': p.productId,
+                'branchId': p.branchId,
+                'price': p.price,
+              })
+          .toList()),
       headers: {'content-type': 'application/json'},
     );
   }
 
-  Future<Map<String, dynamic>> _productToMap(Product p) async {
-    final tiers = await _db.getPricingTiersForProduct(p.id);
+  Future<List<Map<String, dynamic>>> _productsToMaps(
+    List<Product> products,
+  ) async {
+    final tiersByProduct = await _db.getPricingTiersForProducts(
+      products.map((product) => product.id),
+    );
+    return Future.wait(products.map((product) => _productToMap(
+          product,
+          tiers: tiersByProduct[product.id] ?? const <ProductPricingTier>[],
+        )));
+  }
+
+  Future<Map<String, dynamic>> _productToMap(
+    Product p, {
+    List<ProductPricingTier>? tiers,
+  }) async {
+    tiers ??= await _db.getPricingTiersForProduct(p.id);
     return {
       'id': p.id,
       'sku': p.sku,

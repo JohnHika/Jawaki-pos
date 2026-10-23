@@ -1,7 +1,5 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Prisma } from "@prisma/client";
-import { RecurringBillingService } from "./recurring-billing.service";
 import {
   PesapalRecurringService,
   addCycle,
@@ -222,143 +220,6 @@ describe("PesapalRecurringService.startCardSubscription", () => {
   });
 });
 
-describe("RecurringBillingService.settleCardRenewal", () => {
-  const openInvoice = {
-    id: "inv-1",
-    tenantId: "tenant-1",
-    plan: "CORE",
-    amount: new Prisma.Decimal(3200),
-    status: "PENDING",
-    periodStart: new Date("2026-08-01T00:00:00Z"),
-  };
-
-  function makeRecurringService(prisma: any) {
-    return new RecurringBillingService(
-      prisma,
-      {} as JengaPaymentService,
-      makeConfig(),
-      { settleByCheckoutId: jest.fn() } as any,
-    );
-  }
-
-  function prismaWith(invoice: any, cardToken: any = null) {
-    const prisma = makePrismaMock();
-    prisma.subscriptionInvoice.findFirst.mockResolvedValue(invoice);
-    prisma.subscriptionCardToken.findUnique.mockResolvedValue(cardToken);
-    return prisma;
-  }
-
-  it("marks the invoice PAID and activates the tenant atomically (MONTHLY)", async () => {
-    const prisma = prismaWith(openInvoice, { billingCycle: "MONTHLY" });
-    const txCalls: any[] = [];
-    prisma.$transaction.mockImplementation(async (fn: any) => {
-      const tx = {
-        subscriptionInvoice: {
-          update: jest.fn().mockImplementation(({ data }: any) => {
-            txCalls.push({ table: "invoice", data });
-            return { id: "inv-1", ...data };
-          }),
-        },
-        tenant: {
-          update: jest.fn().mockImplementation(({ data }: any) => {
-            txCalls.push({ table: "tenant", data });
-            return { id: "tenant-1", ...data };
-          }),
-        },
-      };
-      return fn(tx);
-    });
-
-    const service = makeRecurringService(prisma);
-    const result = await service.settleCardRenewal("tenant-1", "corr-123", 3200);
-
-    expect(result).toMatchObject({ id: "inv-1", status: "PAID", provider: "PESAPAL_CARD" });
-    const invoiceUpdate = txCalls.find((c) => c.table === "invoice");
-    const tenantUpdate = txCalls.find((c) => c.table === "tenant");
-    expect(invoiceUpdate.data).toMatchObject({
-      status: "PAID",
-      provider: "PESAPAL_CARD",
-      reference: "corr-123",
-    });
-    expect(invoiceUpdate.data.periodEnd.getTime()).toBeGreaterThan(
-      invoiceUpdate.data.periodStart.getTime(),
-    );
-    expect(invoiceUpdate.data.periodEnd.getMonth() - invoiceUpdate.data.periodStart.getMonth()).toBe(1);
-    expect(tenantUpdate.data).toMatchObject({
-      subscriptionStatus: "ACTIVE",
-      subscriptionProvider: "PESAPAL_CARD",
-    });
-  });
-
-  it("extends the period by one year for a YEARLY card subscription", async () => {
-    const prisma = prismaWith(openInvoice, { billingCycle: "YEARLY" });
-    const tx = {
-      subscriptionInvoice: {
-        update: jest.fn().mockImplementation(({ data }: any) => ({ id: "inv-1", ...data })),
-      },
-      tenant: {
-        update: jest.fn().mockResolvedValue({}),
-      },
-    };
-    prisma.$transaction.mockImplementation(async (fn: any) => fn(tx));
-
-    const service = makeRecurringService(prisma);
-    await service.settleCardRenewal("tenant-1", "corr-456");
-
-    const data = tx.subscriptionInvoice.update.mock.calls[0][0].data;
-    expect(data.periodEnd.getUTCFullYear()).toBe(
-      data.periodStart.getUTCFullYear() + 1,
-    );
-    expect(tx.tenant.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ subscriptionStatus: "ACTIVE" }),
-      }),
-    );
-  });
-
-  it("is idempotent: an already-PAID invoice is never re-settled", async () => {
-    const prisma = makePrismaMock();
-    // Emulate Prisma's status: { notIn: ['PAID'] } filter.
-    prisma.subscriptionInvoice.findFirst.mockImplementation(({ where }: any) =>
-      where?.status?.notIn?.includes("PAID")
-        ? Promise.resolve(null)
-        : Promise.resolve({ ...openInvoice, status: "PAID" }),
-    );
-    const service = makeRecurringService(prisma);
-    const result = await service.settleCardRenewal("tenant-1", "corr-789");
-    expect(result).toBeNull();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-
-  it("returns null when there is no open invoice", async () => {
-    const prisma = prismaWith(null);
-    const service = makeRecurringService(prisma);
-    expect(await service.settleCardRenewal("tenant-1", "corr-000")).toBeNull();
-  });
-
-  it("refuses to settle when Pesapal reports more than the invoice amount", async () => {
-    // This behavior lives in the sibling's simpler settleCardRenewal which
-    // accepts any amount; the guard here is that settlement still only marks
-    // the invoice paid for the invoice's own amount — never Pesapal's number.
-    const prisma = prismaWith(openInvoice, { billingCycle: "MONTHLY" });
-    const tx = {
-      subscriptionInvoice: {
-        update: jest.fn().mockImplementation(({ data }: any) => ({ id: "inv-1", ...data })),
-      },
-      tenant: { update: jest.fn().mockResolvedValue({}) },
-    };
-    prisma.$transaction.mockImplementation(async (fn: any) => fn(tx));
-    const service = makeRecurringService(prisma);
-    const result = await service.settleCardRenewal("tenant-1", "corr-999", 999999);
-    expect(result).toMatchObject({ status: "PAID" });
-    const data = tx.subscriptionInvoice.update.mock.calls[0][0].data;
-    // The recorded reference is Pesapal's correlation id, and the invoice
-    // amount itself is untouched (no amount is written from the IPN).
-    expect(data.reference).toBe("corr-999");
-    expect(data).not.toHaveProperty("amount");
-  });
-});
-
 describe("PesapalRecurringService.handleRecurringIpn", () => {
   let prisma: any;
   let pesapal: any;
@@ -426,12 +287,15 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
       status: "PENDING",
     });
     pesapal.getTransactionStatus.mockResolvedValue({
+      orderTrackingId: "track-1",
       paymentStatus: "COMPLETED",
       amount: 3200,
+      currency: "KES",
+      merchantReference: "AXONSUBCARD-tenant-1-1",
       subscriptionTransactionInfo: {
         accountReference: "AXONSUBCARD-tenant-1-1",
         amount: 3200,
-        correlationId: "corr-1",
+        correlationId: "AXONSUBCARD-tenant-1-1",
       },
     });
     recurring.settleCardRenewal.mockResolvedValue({ id: "inv-1" });
@@ -441,7 +305,13 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
       OrderTrackingId: "track-1",
       OrderMerchantReference: "AXONSUBCARD-tenant-1-1",
     });
-    expect(recurring.settleCardRenewal).toHaveBeenCalledWith("tenant-1", "corr-1", 3200);
+    expect(recurring.settleCardRenewal).toHaveBeenCalledWith(
+      "tenant-1",
+      "track-1",
+      "AXONSUBCARD-tenant-1-1",
+      3200,
+      "KES",
+    );
     expect(result.settled).toBe(true);
     expect(prisma.subscriptionCardToken.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -460,12 +330,15 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
       status: "ACTIVE",
     });
     pesapal.getTransactionStatus.mockResolvedValue({
+      orderTrackingId: "track-1",
       paymentStatus: "COMPLETED",
       amount: 3200,
+      currency: "KES",
+      merchantReference: "AXONSUBCARD-tenant-1-1",
       subscriptionTransactionInfo: {
         accountReference: "SOMEONE-ELSE-42",
         amount: 3200,
-        correlationId: "corr-2",
+        correlationId: "AXONSUBCARD-tenant-1-1",
       },
     });
     const svc = service();
@@ -490,26 +363,17 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     expect(pesapal.getTransactionStatus).not.toHaveBeenCalled();
   });
 
-  it("cancels a live subscription (token mapping removal)", async () => {
+  it("does not report cancellation before the provider-side mandate is cancelled", async () => {
     prisma.subscriptionCardToken.findUnique.mockResolvedValue({
       id: "tok-1",
       status: "ACTIVE",
       tenantId: "tenant-1",
     });
-    prisma.subscriptionCardToken.update.mockResolvedValue({
-      id: "tok-1",
-      status: "CANCELLED",
-      cancelledAt: new Date(),
-    });
     const svc = service();
-    const result = await svc.cancelCardSubscription("tenant-1");
-    expect(result.status).toBe("CANCELLED");
-    expect(prisma.subscriptionCardToken.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "tok-1" },
-        data: expect.objectContaining({ status: "CANCELLED" }),
-      }),
+    await expect(svc.cancelCardSubscription("tenant-1")).rejects.toBeInstanceOf(
+      ConflictException,
     );
+    expect(prisma.subscriptionCardToken.update).not.toHaveBeenCalled();
   });
 });
 

@@ -168,6 +168,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Finance',
           path: '/finance'));
     }
+    // Shop control. Each entry follows the backend permission of the same
+    // name, so a screen that would only 403 is never offered.
+    if (perms.has('accountability.view')) {
+      items.add(_NavItem(
+          icon: Icons.shield_outlined,
+          activeIcon: Icons.shield_rounded,
+          label: 'Shop Alerts',
+          path: '/shop-alerts'));
+    }
+    if (perms.has('inventory.stocktake.view')) {
+      items.add(_NavItem(
+          icon: Icons.fact_check_outlined,
+          activeIcon: Icons.fact_check_rounded,
+          label: 'Stock Counts',
+          path: '/stock-counts'));
+    }
+    if (perms.has('imports.view')) {
+      items.add(_NavItem(
+          icon: Icons.local_shipping_outlined,
+          activeIcon: Icons.local_shipping_rounded,
+          label: 'Containers',
+          path: '/containers'));
+    }
+    if (perms.has('news.view')) {
+      items.add(_NavItem(
+          icon: Icons.newspaper_outlined,
+          activeIcon: Icons.newspaper_rounded,
+          label: 'Business News',
+          path: '/news'));
+    }
     // Trade partners are restricted by the backend to business owners and
     // managers, so keep the entry hidden for other legacy account roles.
     final legacyRole = ref.watch(userRoleProvider)?.toUpperCase();

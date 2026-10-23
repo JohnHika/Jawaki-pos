@@ -346,14 +346,6 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                     Builder(builder: (context) {
                       final perms = ref.watch(permissionsProvider);
                       final tiles = <Widget>[
-                        if (perms.has('payments.view_status'))
-                          QuickActionTile(
-                            icon: Icons.fact_check_rounded,
-                            label: 'Manual Payments',
-                            subtitle: 'Request & approve',
-                            color: DesignColors.accent,
-                            onTap: () => context.push('/payments/manual'),
-                          ),
                         if (perms.canViewCashFlow)
                           QuickActionTile(
                             icon: Icons.account_balance_wallet_rounded,

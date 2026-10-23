@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { SubscriptionService, UNLIMITED_PLAN_LIMIT } from './subscription.service';
 
 describe('SubscriptionService', () => {
@@ -83,64 +83,24 @@ describe('SubscriptionService', () => {
   });
 
   describe('changePlan', () => {
-    it('switches a tenant from CORE to BUSINESS and updates limits and billing period', async () => {
+    it('does not activate or change a paid plan without a paid invoice', async () => {
       const { service, prisma } = buildService({
         prisma: {
           tenant: {
-            findUnique: jest.fn().mockResolvedValue({ id: 'tenant-1' }),
-            update: jest.fn().mockResolvedValue({
+            findUnique: jest.fn().mockResolvedValue({
               id: 'tenant-1',
-              plan: 'BUSINESS',
               subscriptionStatus: 'ACTIVE',
-              currentPeriodStart: expect.any(Date),
-              currentPeriodEnd: expect.any(Date),
-              maxBranches: 10,
-              maxUsers: 50,
+              currentPeriodStart: new Date('2026-08-01T00:00:00Z'),
+              currentPeriodEnd: new Date('2026-09-01T00:00:00Z'),
             }),
           },
         },
       });
 
-      const result = await service.changePlan('tenant-1', 'BUSINESS');
-
-      expect(prisma.tenant.findUnique).toHaveBeenCalledWith({
-        where: { id: 'tenant-1' },
-        select: {
-          id: true,
-          subscriptionStatus: true,
-          currentPeriodStart: true,
-          currentPeriodEnd: true,
-          activationStatus: true,
-        },
-      });
-      expect(prisma.tenant.update).toHaveBeenCalledWith({
-        where: { id: 'tenant-1' },
-        data: {
-          plan: 'BUSINESS',
-          subscriptionStatus: 'ACTIVE',
-          currentPeriodStart: expect.any(Date),
-          currentPeriodEnd: expect.any(Date),
-          maxBranches: 10,
-          maxUsers: 50,
-        },
-        select: {
-          plan: true,
-          subscriptionStatus: true,
-          currentPeriodStart: true,
-          currentPeriodEnd: true,
-          maxBranches: true,
-          maxUsers: true,
-        },
-      });
-      expect(result).toMatchObject({
-        plan: 'BUSINESS',
-        subscriptionStatus: 'ACTIVE',
-        maxBranches: 10,
-        maxUsers: 50,
-      });
-
-      const updateArgs = prisma.tenant.update.mock.calls[0][0];
-      expect(updateArgs.data.currentPeriodEnd.getTime()).toBeGreaterThan(updateArgs.data.currentPeriodStart.getTime());
+      await expect(service.changePlan('tenant-1', 'BUSINESS')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.tenant.update).not.toHaveBeenCalled();
     });
 
     it('preserves the active seven-day trial when the owner chooses a plan', async () => {
@@ -154,7 +114,6 @@ describe('SubscriptionService', () => {
               subscriptionStatus: 'TRIAL',
               currentPeriodStart: trialStart,
               currentPeriodEnd: trialEnd,
-              activationStatus: 'ACTIVE',
             }),
             update: jest.fn().mockResolvedValue({
               plan: 'BUSINESS',
@@ -174,24 +133,25 @@ describe('SubscriptionService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             plan: 'BUSINESS',
-            subscriptionStatus: 'TRIAL',
-            currentPeriodStart: trialStart,
-            currentPeriodEnd: trialEnd,
           }),
         }),
       );
+      const updateData = prisma.tenant.update.mock.calls[0][0].data;
+      expect(updateData).not.toHaveProperty('subscriptionStatus');
+      expect(updateData).not.toHaveProperty('currentPeriodStart');
+      expect(updateData).not.toHaveProperty('currentPeriodEnd');
     });
     it('switches a tenant to ENTERPRISE with unlimited branch and user limits', async () => {
       const { service, prisma } = buildService({
         prisma: {
           tenant: {
-            findUnique: jest.fn().mockResolvedValue({ id: 'tenant-1' }),
-            update: jest.fn().mockResolvedValue({
+            findUnique: jest.fn().mockResolvedValue({
               id: 'tenant-1',
+              subscriptionStatus: 'TRIAL',
+              currentPeriodEnd: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            }),
+            update: jest.fn().mockResolvedValue({
               plan: 'ENTERPRISE',
-              subscriptionStatus: 'ACTIVE',
-              currentPeriodStart: expect.any(Date),
-              currentPeriodEnd: expect.any(Date),
               maxBranches: UNLIMITED_PLAN_LIMIT,
               maxUsers: UNLIMITED_PLAN_LIMIT,
             }),
@@ -205,9 +165,6 @@ describe('SubscriptionService', () => {
         where: { id: 'tenant-1' },
         data: {
           plan: 'ENTERPRISE',
-          subscriptionStatus: 'ACTIVE',
-          currentPeriodStart: expect.any(Date),
-          currentPeriodEnd: expect.any(Date),
           maxBranches: UNLIMITED_PLAN_LIMIT,
           maxUsers: UNLIMITED_PLAN_LIMIT,
         },
@@ -222,7 +179,6 @@ describe('SubscriptionService', () => {
       });
       expect(result).toMatchObject({
         plan: 'ENTERPRISE',
-        subscriptionStatus: 'ACTIVE',
         maxBranches: UNLIMITED_PLAN_LIMIT,
         maxUsers: UNLIMITED_PLAN_LIMIT,
       });

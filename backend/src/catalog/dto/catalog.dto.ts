@@ -146,6 +146,17 @@ export class CreateProductDto {
   @Type(() => Number)
   costPrice?: number;
 
+  @ApiPropertyOptional({
+    example: 150.0,
+    description: 'Lowest price per base unit a cashier may sell at without a manager override',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Minimum price must have up to 2 decimal places' })
+  @Min(0, { message: 'Minimum price cannot be negative' })
+  @Max(10000000, { message: 'Minimum price cannot exceed 10,000,000' })
+  @Type(() => Number)
+  minPrice?: number;
+
   @ApiPropertyOptional({ example: 16.0, description: 'Tax rate percentage' })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Tax rate must have up to 2 decimal places' })
@@ -374,6 +385,9 @@ export class ProductResponseDto {
 
   @ApiProperty()
   costPrice?: number;
+
+  @ApiProperty({ required: false })
+  minPrice?: number;
 
   @ApiProperty()
   taxRate: number;

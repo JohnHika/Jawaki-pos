@@ -56,7 +56,7 @@ String _statusLabel(String? status) {
     case 'PENDING':
       return 'Pending';
     case 'PENDING_CONFIRMATION':
-      return 'Awaiting Confirmation';
+      return 'Payment processing';
     case 'UNKNOWN':
       return 'Status unavailable';
     default:
@@ -66,10 +66,8 @@ String _statusLabel(String? status) {
 
 /// Settings → Subscription & Billing (ADMIN).
 ///
-/// Shows the signed entitlement (plan, status badge, next payment date,
-/// amount, days-remaining progress bar), Pay-with-M-Pesa and Auto-Renew
-/// actions, pending payment claims (admin confirm/reject), and invoice
-/// history with M-Pesa references.
+/// Shows the signed entitlement, due Paystack checkout, Auto-Renew settings,
+/// and provider-confirmed invoice history.
 class SubscriptionBillingScreen extends ConsumerStatefulWidget {
   const SubscriptionBillingScreen({super.key});
 
@@ -90,13 +88,10 @@ class _SubscriptionBillingScreenState
   Map<String, dynamic>? _settings;
   List<dynamic> _invoices = [];
   String? _invoiceError;
-  List<dynamic> _pendingClaims = [];
   bool _isLoadingEntitlement = true;
   bool _isLoadingInvoices = true;
-  bool _isLoadingClaims = false;
   bool _isChangingPlan = false;
   String? _error;
-  String? _claimsError;
   String? _paystackInvoiceBusyId;
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _paystackLinkSubscription;
@@ -154,7 +149,7 @@ class _SubscriptionBillingScreenState
   Future<void> _loadData() async {
     await Future.wait([_loadEntitlement(), _loadInvoices()]);
     if (_isAdmin) {
-      await Future.wait([_loadSettings(), _loadClaims()]);
+      await _loadSettings();
     }
   }
 
@@ -208,27 +203,6 @@ class _SubscriptionBillingScreenState
       setState(() => _settings = settings);
     } catch (_) {
       // Settings are optional UI garnish; entitlement drives the page.
-    }
-  }
-
-  Future<void> _loadClaims() async {
-    setState(() {
-      _isLoadingClaims = true;
-      _claimsError = null;
-    });
-    try {
-      final claims = await _apiClient.getPendingSubscriptionPaymentClaims();
-      if (!mounted) return;
-      setState(() {
-        _pendingClaims = claims;
-        _isLoadingClaims = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingClaims = false;
-        _claimsError = _friendlyError(error);
-      });
     }
   }
 
@@ -422,42 +396,6 @@ class _SubscriptionBillingScreenState
     );
   }
 
-  Future<void> _reviewClaim(Map<String, dynamic> claim, bool approve) async {
-    final code = claim['mpesaCode']?.toString() ?? 'this payment';
-    final confirmed = await showConfirmDialog(
-      context,
-      title: approve ? 'Confirm payment' : 'Reject payment',
-      message: approve
-          ? 'Confirm $code after checking it in your M-Pesa statement. This will activate the new billing period.'
-          : 'Reject $code. The subscription will remain unpaid.',
-      confirmLabel: approve ? 'Confirm payment' : 'Reject',
-      confirmColor: approve ? DesignColors.success : DesignColors.error,
-    );
-    if (!confirmed) return;
-
-    try {
-      await _apiClient.confirmPaymentClaim(claim['id'].toString(), approve);
-      await _loadData();
-      if (!mounted) return;
-      showGlassSnackBar(
-        context,
-        approve
-            ? 'Payment confirmed and subscription renewed'
-            : 'Payment claim rejected',
-        icon: approve ? Icons.check_circle_rounded : Icons.cancel_outlined,
-        color: approve ? DesignColors.success : DesignColors.warning,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      showGlassSnackBar(
-        context,
-        _friendlyError(error),
-        icon: Icons.error_outline_rounded,
-        color: DesignColors.error,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -514,7 +452,7 @@ class _SubscriptionBillingScreenState
                 StaggeredItem(
                   itemKey: 'billing-pay-cta',
                   index: 1,
-                  child: _buildPayWithMpesaButton(),
+                  child: _buildRenewalPaymentAction(),
                 )
               else
                 _buildPayUnavailableCard(),
@@ -526,7 +464,6 @@ class _SubscriptionBillingScreenState
                   child: _buildAutoRenewTile(),
                 ),
                 const SizedBox(height: DesignSpacing.xl),
-                _buildPendingClaimsSection(),
                 const SizedBox(height: DesignSpacing.xxl),
               ],
               const SettingsGroupLabel('Invoice History'),
@@ -949,6 +886,9 @@ class _SubscriptionBillingScreenState
 
   Widget _buildManagePlanTile() {
     final plan = _billingPlan;
+    final status = _entitlement?.status.toUpperCase();
+    final isTrial = status == 'TRIAL';
+    final isActive = status == 'ACTIVE';
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
@@ -984,7 +924,11 @@ class _SubscriptionBillingScreenState
                 Text(
                   plan == null
                       ? 'Reconnect to load your current plan'
-                      : '${plan.name} · compare features or change your tier',
+                      : isTrial
+                          ? '${plan.name} · choose the plan for after your trial'
+                          : isActive
+                              ? '${plan.name} · active subscription'
+                              : '${plan.name} · payment required',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: context.themed(DesignColors.darkTextSecondary),
                       ),
@@ -992,114 +936,14 @@ class _SubscriptionBillingScreenState
               ],
             ),
           ),
-          TextButton(
-            onPressed:
-                _isChangingPlan || plan == null ? null : _showChangePlanSheet,
-            child: const Text('Change'),
-          ),
+          if (isTrial)
+            TextButton(
+              onPressed:
+                  _isChangingPlan || plan == null ? null : _showChangePlanSheet,
+              child: const Text('Choose'),
+            ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPendingClaimsSection() {
-    if (_isLoadingClaims) {
-      return const Padding(
-        padding: EdgeInsets.all(DesignSpacing.lg),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_claimsError != null) {
-      return Container(
-        padding: const EdgeInsets.all(DesignSpacing.md),
-        decoration: BoxDecoration(
-          color: DesignColors.error.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-          border: Border.all(color: DesignColors.error.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline_rounded, color: DesignColors.error),
-            const SizedBox(width: DesignSpacing.sm),
-            Expanded(
-              child: Text(
-                _claimsError!,
-                style: const TextStyle(color: DesignColors.error),
-              ),
-            ),
-            TextButton(onPressed: _loadClaims, child: const Text('Retry')),
-          ],
-        ),
-      );
-    }
-    if (_pendingClaims.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SettingsGroupLabel('Payments to review'),
-        const SizedBox(height: DesignSpacing.sm),
-        ..._pendingClaims.map((rawClaim) {
-          final claim = Map<String, dynamic>.from(rawClaim as Map);
-          final amount = claim['amount'] != null
-              ? parseBillingAmount(claim['amount'])
-              : parseBillingAmount((claim['invoice'] as Map?)?['amount']);
-          final plan = ((claim['invoice'] as Map?)?['plan']?.toString() ??
-              'Subscription');
-          return Container(
-            margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
-            padding: const EdgeInsets.all(DesignSpacing.md),
-            decoration: BoxDecoration(
-              color: DesignColors.warning.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-              border: Border.all(
-                  color: DesignColors.warning.withValues(alpha: 0.35)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${claim['mpesaCode'] ?? 'M-Pesa payment'} · ${formatKes(amount)}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: context.themed(DesignColors.darkTextPrimary),
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: DesignSpacing.xs),
-                Text(
-                  '$plan renewal — verify the code in your M-Pesa statement before approving.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: context.themed(DesignColors.darkTextSecondary),
-                      ),
-                ),
-                const SizedBox(height: DesignSpacing.sm),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _reviewClaim(claim, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: DesignColors.error,
-                          side: const BorderSide(color: DesignColors.error),
-                          minimumSize: const Size(0, 44),
-                        ),
-                        child: const Text('Reject'),
-                      ),
-                    ),
-                    const SizedBox(width: DesignSpacing.sm),
-                    Expanded(
-                      child: SettingsPrimaryButton(
-                        label: 'Confirm',
-                        onPressed: () => _reviewClaim(claim, true),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
     );
   }
 
@@ -1115,33 +959,16 @@ class _SubscriptionBillingScreenState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GradientButton(
-          label: 'Pay with M-Pesa',
-          icon: Icons.phone_android_rounded,
-          onPressed: _showPaySheet,
-          height: 52,
-          borderRadius: DesignSpacing.radiusLg,
-        ),
-        const SizedBox(height: DesignSpacing.sm),
-        OutlinedButton.icon(
+          label: _paystackInvoiceBusyId == 'current'
+              ? 'Opening Paystack…'
+              : 'Pay subscription with Paystack',
+          icon: Icons.lock_rounded,
           onPressed: _paystackInvoiceBusyId == 'current'
               ? null
               : _startPaystackInvoicePayment,
-          icon: _paystackInvoiceBusyId == 'current'
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.credit_card_rounded),
-          label: const Text('Pay monthly invoice with Paystack'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(50),
-            foregroundColor: DesignColors.brand,
-            side: BorderSide(color: DesignColors.brand.withValues(alpha: 0.45)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-            ),
-          ),
+          isLoading: _paystackInvoiceBusyId == 'current',
+          height: 52,
+          borderRadius: DesignSpacing.radiusLg,
         ),
         const SizedBox(height: DesignSpacing.sm),
         Row(
@@ -1153,8 +980,8 @@ class _SubscriptionBillingScreenState
             Expanded(
               child: Text(
                 payerEmail.isEmpty
-                    ? 'Paystack uses the signed-in shop account email as the payer email for this subscription. Counterbase’s Paystack contact email is configured separately.'
-                    : 'Subscription payer email: $payerEmail. This is the signed-in shop account; Counterbase’s Paystack contact email is configured separately.',
+                    ? 'Paystack uses the signed-in shop account email for the subscription checkout.'
+                    : 'Subscription payer email: $payerEmail. This is the signed-in shop account email.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: DesignColors.textSecondary,
                       height: 1.35,
@@ -1165,6 +992,46 @@ class _SubscriptionBillingScreenState
         ),
       ],
     );
+  }
+
+  Widget _buildRenewalPaymentAction() {
+    if (_isLoadingEntitlement || _isLoadingInvoices) {
+      return _buildBillingNotice('Checking whether a subscription payment is due…');
+    }
+
+    final entitlement = _entitlement;
+    if (entitlement == null) return _buildPayWithMpesaButton();
+    final hasOpenInvoice = _invoices.any((rawInvoice) {
+      final invoice = Map<String, dynamic>.from(rawInvoice as Map);
+      return invoice['status']?.toString().toUpperCase() != 'PAID';
+    });
+    final paidUntil = DateTime.tryParse(entitlement.paidUntil ?? '');
+    final periodEnded = paidUntil != null && !paidUntil.isAfter(DateTime.now());
+    final status = entitlement.status.toUpperCase();
+    final paymentDue = hasOpenInvoice ||
+        periodEnded ||
+        entitlement.restrictedMode ||
+        status == 'PAST_DUE' ||
+        status == 'SUSPENDED';
+
+    if (paymentDue) return _buildPayWithMpesaButton();
+    if (status == 'TRIAL') {
+      final end = entitlement.paidUntil;
+      return _buildBillingNotice(
+        end == null
+            ? 'Your free trial is active. No subscription payment is due yet.'
+            : 'Your free trial is active through ${_formatDate(end)}. No subscription payment is due yet.',
+      );
+    }
+    if (status == 'ACTIVE') {
+      final end = entitlement.paidUntil;
+      return _buildBillingNotice(
+        end == null
+            ? 'Your subscription is active. No payment is due now.'
+            : 'Your subscription is active through ${_formatDate(end)}. No payment is due now.',
+      );
+    }
+    return _buildPayWithMpesaButton();
   }
 
   Future<void> _startPaystackInvoicePayment() async {
@@ -1296,7 +1163,7 @@ class _SubscriptionBillingScreenState
                       ? (phone.isEmpty
                           ? 'Add a billing phone so we can charge it'
                           : 'On — $phone')
-                      : 'Off — pay manually each month',
+                      : 'Off — pay each invoice through Paystack',
                   style: theme.textTheme.bodySmall?.copyWith(
                       color: context.themed(DesignColors.darkTextSecondary)),
                 ),
@@ -1314,32 +1181,6 @@ class _SubscriptionBillingScreenState
   }
 
   // ── Pay sheet ───────────────────────────────────────────────────────
-
-  void _showPaySheet() {
-    showModalBottomSheet(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: context.themed(DesignColors.darkSurface),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      builder: (sheetContext) => _PayWithMpesaSheet(
-        monthlyAmount:
-            _monthlyAmountFromSettings(_settings) ?? _billingPlan?.priceKes,
-        manualPaybillPhone: _settings?['manualPaybill']?['phone']?.toString(),
-        accountFormat:
-            _settings?['manualPaybill']?['accountFormat']?.toString(),
-        onSubmitted: () {
-          _loadEntitlement();
-          _loadInvoices();
-          if (_isAdmin) _loadClaims();
-        },
-      ),
-    );
-  }
 
   void _showAutoRenewSheet() {
     showModalBottomSheet(
@@ -1752,231 +1593,6 @@ class _PlanRadioTile extends StatelessWidget {
   }
 }
 
-class _PayWithMpesaSheet extends ConsumerStatefulWidget {
-  const _PayWithMpesaSheet({
-    required this.onSubmitted,
-    this.monthlyAmount,
-    this.manualPaybillPhone,
-    this.accountFormat,
-  });
-
-  final VoidCallback onSubmitted;
-  final num? monthlyAmount;
-  final String? manualPaybillPhone;
-  final String? accountFormat;
-
-  @override
-  ConsumerState<_PayWithMpesaSheet> createState() => _PayWithMpesaSheetState();
-}
-
-class _PayWithMpesaSheetState extends ConsumerState<_PayWithMpesaSheet> {
-  final _codeController = TextEditingController();
-  bool _isSubmitting = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  num get _amount => widget.monthlyAmount ?? planPriceKes('core');
-
-  Future<void> _submitCode() async {
-    final code = _codeController.text.trim().toUpperCase();
-    if (code.length < 8) {
-      setState(() =>
-          _error = 'Enter the M-Pesa confirmation code (e.g. QGH7XY92K1)');
-      return;
-    }
-    setState(() {
-      _isSubmitting = true;
-      _error = null;
-    });
-    try {
-      final result = await getIt<ApiClient>().submitSubscriptionPayment(
-        mpesaCode: code,
-        amount: _amount.toDouble(),
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      widget.onSubmitted();
-      final message = result['message']?.toString() ??
-          'Payment code received. Counterbase will confirm shortly and your '
-              'subscription will continue.';
-      showGlassSnackBar(
-        context,
-        message,
-        icon: Icons.schedule_rounded,
-        color: DesignColors.warning,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-        _error = e is DioException && e.response?.statusCode == 409
-            ? 'This M-Pesa code has already been submitted'
-            : 'Could not submit the code. Check it and try again.';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final amountLabel = 'KES ${NumberFormat('#,###').format(_amount)}';
-    // Keyboard-safe sheet: lift above the keyboard (viewInsets) and keep
-    // content clear of system gestures (SafeArea).
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            DesignSpacing.xl,
-            DesignSpacing.lg,
-            DesignSpacing.xl,
-            DesignSpacing.xxl,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: context.themed(DesignColors.darkBorder),
-                    borderRadius: BorderRadius.circular(DesignSpacing.xs),
-                  ),
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
-              Text(
-                'Pay with M-Pesa',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: context.themed(DesignColors.darkTextPrimary),
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.xs),
-              Text(
-                'Renew your subscription via M-Pesa',
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: context.themed(DesignColors.darkTextSecondary)),
-              ),
-              const SizedBox(height: DesignSpacing.xl),
-
-              // ── Step 1: invoice summary ──
-              Container(
-                padding: DesignSpacing.paddingCard,
-                decoration: BoxDecoration(
-                  color: context.themed(DesignColors.darkSurfaceElevated),
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                  border: Border.all(
-                      color: context.themed(DesignColors.darkBorder)),
-                ),
-                child: Column(
-                  children: [
-                    _buildSummaryRow('Subscription', 'Monthly renewal'),
-                    _buildSummaryRow('Amount due', amountLabel),
-                    if (widget.manualPaybillPhone != null)
-                      _buildSummaryRow('Paybill', widget.manualPaybillPhone!),
-                    if (widget.accountFormat != null)
-                      _buildSummaryRow('Account', widget.accountFormat!),
-                  ],
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
-
-              Text(
-                'PAY VIA PAYBILL, THEN ENTER THE CONFIRMATION CODE',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: context.themed(DesignColors.darkTextTertiary),
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              Text(
-                'Automatic STK prompts only run on your renewal date when Auto-Renew is enabled. For an immediate manual payment, use the Paybill details above.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: context.themed(DesignColors.darkTextSecondary),
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
-              TextField(
-                controller: _codeController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  labelText: 'M-Pesa confirmation code',
-                  hintText: 'e.g. QGH7XY92K1',
-                  prefixIcon: Icon(Icons.confirmation_number_rounded),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              Text(
-                'The code is recorded as a pending claim until an admin '
-                'confirms the payment.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: context.themed(DesignColors.darkTextTertiary),
-                  height: 1.35,
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: DesignSpacing.md),
-                Text(
-                  _error!,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: DesignColors.error),
-                ),
-              ],
-              const SizedBox(height: DesignSpacing.lg),
-              SizedBox(
-                width: double.infinity,
-                child: SettingsPrimaryButton(
-                  label: 'Submit Payment Code',
-                  isLoading: _isSubmitting,
-                  onPressed: _submitCode,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryRow(String label, String value) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-                color: context.themed(DesignColors.darkTextSecondary)),
-          ),
-          Text(
-            value,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: context.themed(DesignColors.darkTextPrimary),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════
 //  AUTO-RENEW SHEET (ADMIN)
 // ═══════════════════════════════════════════════════════════════════
@@ -2034,7 +1650,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
         context,
         _autoRenew
             ? 'Auto-renew on — we\u2019ll STK push ${_phoneController.text.trim()}'
-            : 'Auto-renew off — pay manually each month',
+            : 'Auto-renew off — pay each invoice through Paystack',
         icon: Icons.check_circle_rounded,
         color: DesignColors.success,
       );

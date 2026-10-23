@@ -78,7 +78,7 @@ describe('MerchantPaymentsService', () => {
     await expect(service.startMpesa(actor, {
       requestId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
       phoneNumber: '0712345678', customerEmail: 'customer@example.test', sale,
-    })).rejects.toThrow('Verify your business payout bank account');
+    })).rejects.toThrow('Add your business payout account in Customer payments');
     expect(paystack.createMerchantMpesaCharge).not.toHaveBeenCalled();
   });
 
@@ -91,7 +91,7 @@ describe('MerchantPaymentsService', () => {
     await expect(service.startMpesa(actor, {
       requestId: 'cccccccc-cccc-4ccc-accc-cccccccccccc',
       phoneNumber: '0712345678', customerEmail: 'customer@example.test', sale,
-    })).rejects.toThrow('Verify your business payout bank account');
+    })).rejects.toThrow('Paystack has not verified this business payout account yet');
 
     expect(paystack.createMerchantMpesaCharge).not.toHaveBeenCalled();
   });

@@ -51,13 +51,6 @@ export class CreditTenantDto {
   reason!: string;
 }
 
-export class MarkInvoicePaidDto {
-  @ApiPropertyOptional({ example: 'SBX12AB34CD' })
-  @IsOptional()
-  @IsString()
-  mpesaCode?: string;
-}
-
 export class ListTenantsQueryDto {
   @ApiPropertyOptional({ enum: ['ACTIVE', 'TRIAL', 'PAST_DUE', 'SUSPENDED', 'CANCELLED'] })
   @IsOptional()

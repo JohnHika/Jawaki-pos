@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -188,11 +189,11 @@ export class PesapalRecurringService implements OnModuleInit {
       },
     });
 
-    if (!token || token.status === "CANCELLED") {
+    if (!token) {
       this.logger.warn(
-        `Pesapal recurring IPN for unknown/cancelled tracking id ${orderTrackingId}`,
+        `Pesapal recurring IPN for unknown tracking id ${orderTrackingId}`,
       );
-      return { result: "ignored", reason: "unknown or cancelled subscription" };
+      return { result: "ignored", reason: "unknown subscription" };
     }
 
     // IPN carries no payment details → authenticate then settle server-side.
@@ -209,34 +210,55 @@ export class PesapalRecurringService implements OnModuleInit {
       };
     }
 
-    // Cross-check the correlation id Pesapal returns for the subscription.
-    const correlationId =
-      status.subscriptionTransactionInfo?.correlationId || token.pesapalCorrelationId;
     if (
-      status.subscriptionTransactionInfo &&
-      status.subscriptionTransactionInfo.accountReference &&
-      status.subscriptionTransactionInfo.accountReference !== merchantReference &&
-      status.subscriptionTransactionInfo.accountReference !== token.pesapalCorrelationId
+      status.orderTrackingId !== orderTrackingId ||
+      status.merchantReference !== merchantReference
     ) {
       this.logger.warn(
-        `Pesapal recurring IPN account_reference mismatch for ${orderTrackingId}: ${status.subscriptionTransactionInfo.accountReference}`,
+        `Pesapal recurring payment identity mismatch for ${orderTrackingId}`,
       );
-      return { result: "rejected", reason: "account_reference mismatch" };
+      return { result: "rejected", reason: "provider transaction reference mismatch" };
     }
 
-    const amount = status.amount ?? undefined;
+    const providerAccountReference = status.subscriptionTransactionInfo?.accountReference;
+    if (
+      !providerAccountReference ||
+      providerAccountReference !== token.pesapalCorrelationId
+    ) {
+      this.logger.warn(
+        `Pesapal recurring IPN account reference mismatch for ${orderTrackingId}`,
+      );
+      return { result: "rejected", reason: "subscription account reference mismatch" };
+    }
+
+    const providerCorrelation = status.subscriptionTransactionInfo?.correlationId;
+    if (providerCorrelation && providerCorrelation !== token.pesapalCorrelationId) {
+      this.logger.warn(
+        `Pesapal recurring IPN correlation mismatch for ${orderTrackingId}`,
+      );
+      return { result: "rejected", reason: "subscription correlation mismatch" };
+    }
+
+    const amount = status.amount ?? status.subscriptionTransactionInfo?.amount ?? null;
     const invoice = await this.recurring.settleCardRenewal(
       token.tenantId,
-      correlationId,
+      orderTrackingId,
+      merchantReference,
       amount,
+      status.currency,
     );
 
     if (!invoice) {
-      return { result: "accepted", settled: false, reason: "no open invoice to settle" };
+      return {
+        result: "rejected",
+        settled: false,
+        reason: "verified payment did not match an invoice amount or existing provider reference",
+      };
     }
 
-    // First successful charge ⇒ the card subscription is live.
-    if (token.status !== "ACTIVE") {
+    // A completed charge settles the period, but a cancellation state must
+    // never be reactivated by a late provider notification.
+    if (token.status !== "ACTIVE" && token.status !== "CANCELLED") {
       await this.prisma.subscriptionCardToken.update({
         where: { id: token.id },
         data: { status: "ACTIVE", cancelledAt: null },
@@ -253,13 +275,7 @@ export class PesapalRecurringService implements OnModuleInit {
 
   // ===== (c) CANCEL =====
 
-  /**
-   * Pesapal 3.0 has no direct "cancel recurring subscription" API endpoint
-   * exposed for merchants; deactivation on the Pesapal side happens via the
-   * merchant dashboard. Cancellation here therefore = removing the token
-   * mapping (mark CANCELLED), which stops us from ever settling future IPNs.
-   * We keep the row (not delete) for audit.
-   */
+  /** Pesapal cancellation is not exposed through the configured API client. */
   async cancelCardSubscription(tenantId: string) {
     const token = await this.prisma.subscriptionCardToken.findUnique({
       where: { tenantId },
@@ -267,17 +283,9 @@ export class PesapalRecurringService implements OnModuleInit {
     if (!token || token.status === "CANCELLED") {
       throw new NotFoundException("No active card subscription for this company");
     }
-    const cancelled = await this.prisma.subscriptionCardToken.update({
-      where: { id: token.id },
-      data: { status: "CANCELLED", cancelledAt: new Date() },
-    });
-    this.logger.log(`Card subscription cancelled for tenant ${tenantId}`);
-    return {
-      subscriptionId: cancelled.id,
-      status: cancelled.status,
-      cancelledAt: cancelled.cancelledAt,
-      note: "Pesapal will no longer auto-charge this card. Renewal falls back to manual/STK billing.",
-    };
+    throw new ConflictException(
+      "This card authorization must be cancelled in your Pesapal account. Counterbase has not changed its status because that would not stop provider-side charges.",
+    );
   }
 
   // ===== SAFETY NET (called from runRenewalCycle) =====

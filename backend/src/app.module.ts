@@ -39,6 +39,11 @@ import { BillingModule } from './billing/billing.module';
 import { PartnersModule } from './partners/partners.module';
 import { LicenseModule } from './license/license.module';
 import { LegalPolicyModule } from './legal/legal-policy.module';
+import { AccountabilityModule } from './accountability/accountability.module';
+import { StocktakeModule } from './stocktake/stocktake.module';
+import { ImportsModule } from './imports/imports.module';
+import { NewsModule } from './news/news.module';
+import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { AppController } from './app.controller';
 import { VercelCronController } from './vercel-cron.controller';
 
@@ -109,6 +114,11 @@ import { VercelCronController } from './vercel-cron.controller';
     LicenseModule,
     LegalPolicyModule,
     PartnersModule,
+    AccountabilityModule,
+    StocktakeModule,
+    ImportsModule,
+    NewsModule,
+    ExchangeRatesModule,
   ],
   controllers: [AppController, VercelCronController],
 })

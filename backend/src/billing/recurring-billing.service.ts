@@ -2,7 +2,6 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  ForbiddenException,
   Logger,
   Optional,
 } from '@nestjs/common';
@@ -20,7 +19,7 @@ import { LegalPolicyService } from '../legal/legal-policy.service';
 const GRACE_DAYS = 3;
 /** How long an auto-charge STK push may stay pending before we retry. */
 const STK_PUSH_EXPIRY_HOURS = 24;
-/** Max auto-charge attempts per invoice before it must be paid manually. */
+/** Max automatic STK prompts per invoice before Paystack checkout is required. */
 const MAX_AUTO_CHARGE_ATTEMPTS = 3;
 /** How long a signed offline entitlement stays valid (7 days). */
 export const OFFLINE_ENTITLEMENT_TTL_DAYS = 7;
@@ -53,7 +52,7 @@ export class RecurringBillingService {
 
   /**
    * Owner-level billing settings: which phone gets the renewal STK push,
-   * whether auto-renew is on, and the manual-paybill fallback details.
+   * whether auto-renew is on and the billing phone.
    */
   async getBillingSettings(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
@@ -82,12 +81,6 @@ export class RecurringBillingService {
       currentPeriodStart: tenant.currentPeriodStart,
       currentPeriodEnd: tenant.currentPeriodEnd,
       graceDays: GRACE_DAYS,
-      // Manual fallback (the "pay my paybill" path) — the number the
-      // client can pay to when STK is not possible. Configurable via env.
-      manualPaybill: {
-        phone: this.config.get<string>('AXON_BILLING_PHONE', '0742126582'),
-        accountFormat: 'COMPANY-<companyId>',
-      },
     };
   }
 
@@ -142,117 +135,6 @@ export class RecurringBillingService {
     return updated;
   }
 
-  // ===== MANUAL PAYMENT (paybill / M-Pesa code entry) =====
-
-  /**
-   * Manual fallback: the client pays the AXON_BILLING_PHONE paybill from
-   * their own M-Pesa menu and enters the confirmation code here. The code
-   * is recorded as a claim against the current invoice and marked PENDING
-   * until the owner confirms it (or until a matching amount shows up —
-   * the owner has an admin confirm route below). This deliberately does
-   * NOT auto-activate on code entry alone: unlike SMS text, we never
-   * treat the client's typed code as proof of payment.
-   */
-  async submitManualPayment(
-    tenantId: string,
-    userId: string,
-    input: { mpesaCode: string; amount?: number },
-  ) {
-    const invoice = await this.getCurrentInvoice(tenantId);
-    if (!invoice) {
-      throw new NotFoundException('No open invoice for this company');
-    }
-    if (invoice.provider === 'PAYSTACK' || invoice.provider === 'PAYSTACK_INITIALIZING') {
-      throw new BadRequestException(
-        'A Paystack checkout is already open for this invoice. Finish or verify it before submitting an M-Pesa code.',
-      );
-    }
-
-    const code = input.mpesaCode.trim().toUpperCase();
-    if (!/^[A-Z0-9]{8,15}$/.test(code)) {
-      throw new BadRequestException('M-Pesa confirmation code looks invalid');
-    }
-
-    const existing = await this.prisma.subscriptionPaymentClaim.findUnique({
-      where: { mpesaCode: code },
-    });
-    if (existing) {
-      throw new ConflictLikeError('This M-Pesa code has already been submitted');
-    }
-
-    const claim = await this.prisma.subscriptionPaymentClaim.create({
-      data: {
-        tenantId,
-        invoiceId: invoice.id,
-        mpesaCode: code,
-        amount: input.amount ?? invoice.amount,
-        submittedById: userId,
-        status: 'PENDING',
-      },
-    });
-
-    await this.prisma.subscriptionInvoice.update({
-      where: { id: invoice.id },
-      data: { status: 'PENDING_CONFIRMATION', provider: 'MPESA_MANUAL' },
-    });
-
-    return {
-      claimId: claim.id,
-      status: 'PENDING_CONFIRMATION',
-      message:
-        'Payment code received. We will confirm it shortly and your subscription will continue.',
-    };
-  }
-
-  /** Owner/admin confirms (or rejects) a manual payment claim. */
-  async confirmManualPayment(
-    ownerTenantId: string,
-    claimId: string,
-    approve: boolean,
-  ) {
-    const claim = await this.prisma.subscriptionPaymentClaim.findUnique({
-      where: { id: claimId },
-    });
-    if (!claim) throw new NotFoundException('Payment claim not found');
-    if (claim.tenantId !== ownerTenantId) {
-      throw new ForbiddenException('Claim belongs to another company');
-    }
-    if (claim.status !== 'PENDING') {
-      throw new BadRequestException(`Claim already ${claim.status}`);
-    }
-
-    if (!approve) {
-      const rejected = await this.prisma.subscriptionPaymentClaim.update({
-        where: { id: claimId },
-        data: { status: 'REJECTED' },
-      });
-      return { claim: rejected, invoice: null };
-    }
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      const invoice = await tx.subscriptionInvoice.update({
-        where: { id: claim.invoiceId },
-        data: {
-          status: 'PAID',
-          paidAt: new Date(),
-          provider: 'MPESA_MANUAL',
-          reference: claim.mpesaCode,
-        },
-      });
-      const updatedClaim = await tx.subscriptionPaymentClaim.update({
-        where: { id: claimId },
-        data: { status: 'APPROVED', decidedAt: new Date() },
-      });
-      // Payment covers the current period: mark the invoice PAID, then
-      // activate + extend the tenant's period in the same transaction so a
-      // crash can never leave an invoice paid but the tenant suspended.
-      await this.activatePeriod(tx, claim.tenantId, invoice);
-      return { claim: updatedClaim, invoice };
-    });
-
-    return result;
-  }
-
   // ===== AUTO RENEWAL (cron) =====
 
   /**
@@ -293,35 +175,64 @@ export class RecurringBillingService {
 
     for (const tenant of due) {
       try {
-        // 1. Idempotent invoice creation for the new period.
+        // Reuse an outstanding invoice before considering a new period.
         const invoice = await this.ensureInvoiceForPeriod(tenant.id, tenant.plan, now);
 
-        // 2. Auto-charge if the invoice is still open.
-        if (invoice.status === 'PENDING' || invoice.status === 'PENDING_CONFIRMATION') {
+        // Auto-charge only an unpaid invoice with no provider checkout already
+        // in flight. A daily cron must never send duplicate STK prompts.
+        if (invoice.status === 'PENDING') {
           const hasAutoRenewAuthorization = await this.legalPolicies?.hasCurrentAcceptance(
             tenant.id,
             'AUTO_RENEWAL_AUTHORIZATION',
           ) ?? false;
-          if (invoice.provider === 'PAYSTACK' || invoice.provider === 'PAYSTACK_INITIALIZING') {
+          if (
+            invoice.provider === 'PAYSTACK' ||
+            invoice.provider === 'PAYSTACK_INITIALIZING'
+          ) {
             // Do not send an M-Pesa prompt while this same invoice has an
             // active hosted checkout; that could collect twice.
             summary.skipped.push({
               tenantId: tenant.id,
               reason: 'Paystack checkout is active for this invoice',
             });
-          } else if (!tenant.autoRenewEnabled || !tenant.billingPhone || !hasAutoRenewAuthorization) {
+          } else if (invoice.provider === 'JENGA_STK_INITIALIZING') {
+            // A previous cron tick reserved this invoice before calling
+            // Jenga. The provider request may have been accepted even if its
+            // response timed out, so never issue a second prompt here.
             summary.skipped.push({
               tenantId: tenant.id,
-              reason: 'auto-renew disabled or no billing phone',
-            });
-          } else if (invoice.renewalSequence >= MAX_AUTO_CHARGE_ATTEMPTS) {
-            summary.skipped.push({
-              tenantId: tenant.id,
-              reason: 'max auto-charge attempts reached — manual payment required',
+              reason: 'An M-Pesa renewal request is being confirmed',
             });
           } else {
-            const pushed = await this.fireRenewalCharge(tenant, invoice);
-            if (pushed) summary.charged.push(tenant.id);
+            let hasPendingStkPrompt = false;
+            if (invoice.provider === 'JENGA_STK' && invoice.mpesaCheckoutId) {
+              const existingPrompt = await this.prisma.mpesaTransaction.findUnique({
+                where: { checkoutRequestId: invoice.mpesaCheckoutId },
+                select: { status: true },
+              });
+              const terminalStatuses = ['failed', 'cancelled', 'canceled'];
+              hasPendingStkPrompt = !existingPrompt ||
+                !terminalStatuses.includes(existingPrompt.status.toLowerCase());
+            }
+            if (hasPendingStkPrompt) {
+              summary.skipped.push({
+                tenantId: tenant.id,
+                reason: 'An M-Pesa renewal prompt is already awaiting a result',
+              });
+            } else if (!tenant.autoRenewEnabled || !tenant.billingPhone || !hasAutoRenewAuthorization) {
+              summary.skipped.push({
+                tenantId: tenant.id,
+                reason: 'auto-renew disabled or no billing phone',
+              });
+            } else if (invoice.renewalSequence >= MAX_AUTO_CHARGE_ATTEMPTS) {
+              summary.skipped.push({
+                tenantId: tenant.id,
+                reason: 'Automatic M-Pesa prompt limit reached — use the Paystack invoice checkout',
+              });
+            } else {
+              const pushed = await this.fireRenewalCharge(tenant, invoice);
+              if (pushed) summary.charged.push(tenant.id);
+            }
           }
         }
 
@@ -389,7 +300,14 @@ export class RecurringBillingService {
       plan: string;
       billingPhone: string | null;
     },
-    invoice: { id: string; amount: Prisma.Decimal; renewalSequence: number },
+    invoice: {
+      id: string;
+      amount: Prisma.Decimal;
+      renewalSequence: number;
+      provider?: string | null;
+      reference?: string | null;
+      mpesaCheckoutId?: string | null;
+    },
   ): Promise<boolean> {
     const plan = PLAN_PRICING[tenant.plan];
     if (!plan) return false;
@@ -399,6 +317,26 @@ export class RecurringBillingService {
 
     const reference = `AXONSUB-${tenant.id.slice(0, 8)}-${invoice.renewalSequence}-${Date.now()}`;
 
+    // Claim the invoice before contacting Jenga. The conditional update is a
+    // single database operation, so parallel cron ticks or a simultaneous
+    // Paystack checkout cannot both start a charge for the same invoice.
+    const reserved = await this.prisma.subscriptionInvoice.updateMany({
+      where: {
+        id: invoice.id,
+        status: 'PENDING',
+        provider: invoice.provider ?? null,
+        reference: invoice.reference,
+        mpesaCheckoutId: invoice.mpesaCheckoutId,
+        renewalSequence: invoice.renewalSequence,
+      },
+      data: {
+        provider: 'JENGA_STK_INITIALIZING',
+        reference,
+        renewalSequence: { increment: 1 },
+      },
+    });
+    if (reserved.count !== 1) return false;
+
     try {
       const push = await this.jenga.initiate({
         phoneNumber: tenant.billingPhone as string,
@@ -407,12 +345,16 @@ export class RecurringBillingService {
         description: `Counterbase ${plan.name} plan — ${this.monthLabel(new Date())}`,
       });
 
-      await this.prisma.subscriptionInvoice.update({
-        where: { id: invoice.id },
+      await this.prisma.subscriptionInvoice.updateMany({
+        where: {
+          id: invoice.id,
+          status: 'PENDING',
+          provider: 'JENGA_STK_INITIALIZING',
+          reference,
+        },
         data: {
           mpesaCheckoutId: push.checkout_request_id,
           provider: 'JENGA_STK',
-          renewalSequence: { increment: 1 },
         },
       });
       return true;
@@ -420,6 +362,21 @@ export class RecurringBillingService {
       this.logger.warn(
         `Renewal STK push failed for tenant ${tenant.id}: ${error?.message ?? error}`,
       );
+      // A clear client rejection means Jenga did not accept the charge.
+      // Release the reservation. Network/server errors stay reserved because
+      // the provider may have accepted the request before timing out.
+      const status = Number(error?.response?.status);
+      if (status >= 400 && status < 500) {
+        await this.prisma.subscriptionInvoice.updateMany({
+          where: {
+            id: invoice.id,
+            status: 'PENDING',
+            provider: 'JENGA_STK_INITIALIZING',
+            reference,
+          },
+          data: { provider: null, reference: null },
+        });
+      }
       return false;
     }
   }
@@ -454,53 +411,142 @@ export class RecurringBillingService {
    */
   async settleCardRenewal(
     tenantId: string,
-    correlationId: string,
-    _amount?: number,
+    orderTrackingId: string,
+    providerReference: string,
+    amount: number | null,
+    currency: string | null,
   ) {
-    const invoice = await this.prisma.subscriptionInvoice.findFirst({
-      where: {
-        tenantId,
-        status: { notIn: ['PAID'] },
-        periodStart: { not: null },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!invoice) return null;
-
-    // Period length follows the card subscription's billing cycle — ANNUAL
-    // billing extends by one year, otherwise by one month.
     const cardToken = await this.prisma.subscriptionCardToken.findUnique({
       where: { tenantId },
-      select: { billingCycle: true },
+      select: {
+        orderTrackingId: true,
+        billingCycle: true,
+        plan: true,
+        status: true,
+      },
     });
-    const cycle = cardToken?.billingCycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+    if (!cardToken || cardToken.orderTrackingId !== orderTrackingId || !providerReference) {
+      this.logger.warn(`Pesapal recurring payment did not match a saved card mandate for tenant ${tenantId}`);
+      return null;
+    }
 
-    const periodStart = new Date();
-    const periodEnd =
-      cycle === 'YEARLY' ? this.addYear(periodStart) : this.addMonth(periodStart);
+    const plan = PLAN_PRICING[cardToken.plan];
+    const cycle = cardToken.billingCycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+    const expectedAmount = plan
+      ? plan.monthlyAmountKes * (cycle === 'YEARLY' ? 12 : 1)
+      : null;
+    if (
+      !plan ||
+      expectedAmount == null ||
+      !Number.isFinite(amount) ||
+      Math.abs(Number(amount) - expectedAmount) > 0.01 ||
+      currency?.toUpperCase() !== 'KES'
+    ) {
+      this.logger.error(
+        `Pesapal recurring payment mismatch for tenant ${tenantId}; expected ${expectedAmount} KES, received ${amount ?? 'unknown'} ${currency ?? 'unknown'}`,
+      );
+      return null;
+    }
+
+    const existing = await this.prisma.subscriptionInvoice.findUnique({
+      where: { reference: providerReference },
+    });
+    if (existing && (
+      existing.tenantId !== tenantId ||
+      existing.plan !== cardToken.plan ||
+      existing.currency !== 'KES' ||
+      Math.abs(Number(existing.amount) - expectedAmount) > 0.01
+    )) {
+      this.logger.error(`Pesapal reference ${providerReference} is already bound to a different invoice`);
+      return null;
+    }
+    if (existing?.status === 'PAID') return existing;
 
     return this.prisma.$transaction(async (tx) => {
-      const paid = await tx.subscriptionInvoice.update({
-        where: { id: invoice.id },
-        data: {
-          status: 'PAID',
-          paidAt: new Date(),
-          periodStart,
-          periodEnd,
-          provider: 'PESAPAL_CARD',
-          reference: correlationId,
-        },
+      const invoice = await tx.subscriptionInvoice.findUnique({
+        where: { reference: providerReference },
       });
+      if (invoice && (
+        invoice.tenantId !== tenantId ||
+        invoice.plan !== cardToken.plan ||
+        invoice.currency !== 'KES' ||
+        Math.abs(Number(invoice.amount) - expectedAmount) > 0.01
+      )) {
+        return null;
+      }
+      if (invoice?.status === 'PAID') return invoice;
+
+      const tenant = await tx.tenant.findUnique({
+        where: { id: tenantId },
+        select: { currentPeriodEnd: true },
+      });
+      if (!tenant) return null;
+      const now = new Date();
+      const periodStart = invoice?.periodStart ?? (
+        tenant.currentPeriodEnd && tenant.currentPeriodEnd > now
+          ? tenant.currentPeriodEnd
+          : now
+      );
+      const periodEnd = cycle === 'YEARLY'
+        ? this.addYear(periodStart)
+        : this.addMonth(periodStart);
+      const lastInvoice = await tx.subscriptionInvoice.findFirst({
+        where: { tenantId },
+        orderBy: { renewalSequence: 'desc' },
+        select: { renewalSequence: true },
+      });
+      const paidInvoice = invoice
+        ? await tx.subscriptionInvoice.update({
+            where: { id: invoice.id },
+            data: {
+              status: 'PAID',
+              amount: new Prisma.Decimal(expectedAmount),
+              currency: 'KES',
+              plan: cardToken.plan,
+              paidAt: now,
+              periodStart,
+              periodEnd,
+              provider: 'PESAPAL_CARD',
+            },
+          })
+        : await tx.subscriptionInvoice.create({
+            data: {
+              tenantId,
+              plan: cardToken.plan,
+              amount: new Prisma.Decimal(expectedAmount),
+              currency: 'KES',
+              status: 'PAID',
+              provider: 'PESAPAL_CARD',
+              reference: providerReference,
+              paidAt: now,
+              periodStart,
+              periodEnd,
+              renewalSequence: (lastInvoice?.renewalSequence ?? 0) + 1,
+            },
+          });
+
       await tx.tenant.update({
         where: { id: tenantId },
         data: {
+          plan: cardToken.plan,
+          ...(plan ? {
+            maxBranches: plan.features.maxBranches,
+            maxUsers: plan.features.maxUsers,
+          } : {}),
           subscriptionStatus: 'ACTIVE',
           currentPeriodStart: periodStart,
           currentPeriodEnd: periodEnd,
           subscriptionProvider: 'PESAPAL_CARD',
+          subscriptionReference: providerReference,
         },
       });
-      return paid;
+      if (cardToken.status !== 'CANCELLED') {
+        await tx.subscriptionCardToken.updateMany({
+          where: { tenantId, orderTrackingId, status: { not: 'CANCELLED' } },
+          data: { status: 'ACTIVE', cancelledAt: null },
+        });
+      }
+      return paidInvoice;
     });
   }
 
@@ -743,32 +789,52 @@ export class RecurringBillingService {
     now: Date,
   ) {
     const periodStart = this.startOfDay(now);
-    const existing = await this.prisma.subscriptionInvoice.findFirst({
-      where: { tenantId, periodStart },
-    });
-    if (existing) return existing;
+    // SERIALIZABLE prevents concurrent cron invocations from both observing
+    // an empty period and creating duplicate invoices. Retry the one expected
+    // serialization conflict so callers receive the winning invoice.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const openInvoice = await tx.subscriptionInvoice.findFirst({
+            where: {
+              tenantId,
+              status: { in: ['PENDING', 'PENDING_CONFIRMATION'] },
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (openInvoice) return openInvoice;
 
-    const plan = PLAN_PRICING[planId] ?? PLAN_PRICING.CORE;
-    const periodEnd = this.addMonth(now);
+          const existing = await tx.subscriptionInvoice.findFirst({
+            where: { tenantId, periodStart },
+          });
+          if (existing) return existing;
 
-    const lastInvoice = await this.prisma.subscriptionInvoice.findFirst({
-      where: { tenantId },
-      orderBy: { renewalSequence: 'desc' },
-      select: { renewalSequence: true },
-    });
+          const plan = PLAN_PRICING[planId] ?? PLAN_PRICING.CORE;
+          const periodEnd = this.addMonth(now);
+          const lastInvoice = await tx.subscriptionInvoice.findFirst({
+            where: { tenantId },
+            orderBy: { renewalSequence: 'desc' },
+            select: { renewalSequence: true },
+          });
 
-    return this.prisma.subscriptionInvoice.create({
-      data: {
-        tenantId,
-        plan: planId,
-        amount: new Prisma.Decimal(plan.monthlyAmountKes),
-        currency: 'KES',
-        status: 'PENDING',
-        periodStart,
-        periodEnd,
-        renewalSequence: (lastInvoice?.renewalSequence ?? 0) + 1,
-      },
-    });
+          return tx.subscriptionInvoice.create({
+            data: {
+              tenantId,
+              plan: planId,
+              amount: new Prisma.Decimal(plan.monthlyAmountKes),
+              currency: 'KES',
+              status: 'PENDING',
+              periodStart,
+              periodEnd,
+              renewalSequence: (lastInvoice?.renewalSequence ?? 0) + 1,
+            },
+          });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      } catch (error: any) {
+        if (error?.code !== 'P2034' || attempt > 0) throw error;
+      }
+    }
+    throw new Error('Could not reserve the subscription invoice');
   }
 
   private startOfDay(d: Date) {
@@ -791,9 +857,6 @@ export class RecurringBillingService {
     return d.toLocaleString('en-KE', { month: 'long', year: 'numeric' });
   }
 }
-
-/** Local conflict error to avoid importing HttpException plumbing. */
-class ConflictLikeError extends Error {}
 
 /** Normalizes 07.. / 2547.. / +2547.. into 2547XXXXXXXX. */
 export function normalizeKenyanPhone(value: string): string {

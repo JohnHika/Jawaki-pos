@@ -1,29 +1,27 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { RecurringBillingService, isTenantRestricted } from './recurring-billing.service';
 
 type MockTx = Record<string, any>;
 
-const buildPrisma = (overrides: Record<string, any> = {}): MockTx => ({
-  $transaction: jest.fn(),
-  tenant: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    ...(overrides.tenant ?? {}),
-  },
-  subscriptionInvoice: {
-    findFirst: jest.fn(),
-    findMany: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    ...(overrides.subscriptionInvoice ?? {}),
-  },
-  subscriptionPaymentClaim: {
-    findUnique: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    ...(overrides.subscriptionPaymentClaim ?? {}),
-  },
-});
+const buildPrisma = (overrides: Record<string, any> = {}): MockTx => {
+  const prisma: MockTx = {
+    $transaction: jest.fn(),
+    tenant: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      ...(overrides.tenant ?? {}),
+    },
+    subscriptionInvoice: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      ...(overrides.subscriptionInvoice ?? {}),
+    },
+  };
+  prisma.$transaction.mockImplementation((work: (tx: MockTx) => unknown) => work(prisma));
+  return prisma;
+};
 
 const buildService = (prismaOverrides: Record<string, any> = {}) => {
   const prisma = buildPrisma(prismaOverrides);
@@ -167,7 +165,8 @@ describe('RecurringBillingService', () => {
       const { service, prisma } = buildService();
       prisma.tenant.findMany = jest.fn().mockResolvedValue([tenant]);
       prisma.subscriptionInvoice.findFirst
-        .mockResolvedValueOnce(null) // no invoice for this periodStart yet
+        .mockResolvedValueOnce(null) // no open invoice
+        .mockResolvedValueOnce(null) // no invoice for this periodStart
         .mockResolvedValueOnce({ renewalSequence: 4 }); // last invoice sequence
       prisma.subscriptionInvoice.create = jest
         .fn()
@@ -331,159 +330,6 @@ describe('RecurringBillingService', () => {
       const result = await service.settleRenewalPayment('chk-already-paid');
 
       expect(result).toBeNull();
-    });
-  });
-
-  // =========================================================================
-  // Manual claim approve / reject flow
-  // =========================================================================
-  describe('submitManualPayment + confirmManualPayment', () => {
-    const tenantRow = {
-      plan: 'CORE',
-      currentPeriodEnd: new Date('2026-09-07T00:00:00Z'),
-      subscriptionStatus: 'ACTIVE',
-    };
-
-    it('submits a code as a PENDING claim and flips the invoice to PENDING_CONFIRMATION', async () => {
-      const { service, prisma } = buildService();
-      prisma.tenant.findUnique.mockResolvedValue(tenantRow);
-      prisma.subscriptionInvoice.findFirst.mockResolvedValue({
-        id: 'inv-7',
-        amount: 3200,
-      });
-      prisma.subscriptionPaymentClaim.findUnique.mockResolvedValue(null);
-      prisma.subscriptionPaymentClaim.create.mockResolvedValue({
-        id: 'claim-1',
-        status: 'PENDING',
-      });
-
-      const result = await service.submitManualPayment('tenant-7', 'user-1', {
-        mpesaCode: 'qgh7xyz92k',
-        amount: 3200,
-      });
-
-      expect(result).toMatchObject({ claimId: 'claim-1', status: 'PENDING_CONFIRMATION' });
-      const createdData = prisma.subscriptionPaymentClaim.create.mock.calls[0][0].data;
-      expect(createdData.mpesaCode).toBe('QGH7XYZ92K'); // normalized to upper-case
-      expect(createdData.status).toBe('PENDING');
-      expect(prisma.subscriptionInvoice.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'inv-7' },
-          data: expect.objectContaining({ status: 'PENDING_CONFIRMATION' }),
-        }),
-      );
-    });
-
-    it('rejects a claim without touching the tenant period', async () => {
-      const { service, prisma } = buildService();
-      prisma.subscriptionPaymentClaim.findUnique.mockResolvedValue({
-        id: 'claim-2',
-        tenantId: 'tenant-7',
-        invoiceId: 'inv-7',
-        status: 'PENDING',
-        mpesaCode: 'QGH7XYZ92K',
-      });
-      prisma.subscriptionPaymentClaim.update.mockResolvedValue({
-        id: 'claim-2',
-        status: 'REJECTED',
-      });
-
-      const result = await service.confirmManualPayment('tenant-7', 'claim-2', false);
-
-      expect(result.claim).toMatchObject({ status: 'REJECTED' });
-      expect(result.invoice).toBeNull();
-      expect(prisma.$transaction).not.toHaveBeenCalled();
-      expect(prisma.tenant.update).not.toHaveBeenCalled();
-    });
-
-    it('approves a claim atomically: invoice PAID + claim APPROVED + tenant activated', async () => {
-      const { service, prisma } = buildService();
-      prisma.subscriptionPaymentClaim.findUnique.mockResolvedValue({
-        id: 'claim-3',
-        tenantId: 'tenant-7',
-        invoiceId: 'inv-7',
-        status: 'PENDING',
-        mpesaCode: 'QGH7XYZ92K',
-      });
-      // In-memory transaction: the tx object IS the prisma mock, so calls
-      // made inside the callback are visible to assertions afterwards.
-      prisma.$transaction = jest
-        .fn()
-        .mockImplementation(async (fn: (tx: MockTx) => Promise<unknown>) => fn(prisma as MockTx));
-      const now = new Date();
-      prisma.subscriptionInvoice.update.mockResolvedValue({
-        id: 'inv-7',
-        status: 'PAID',
-        paidAt: now,
-        periodStart: now,
-        periodEnd: new Date(now.getTime() + 30 * msPerDay),
-        plan: 'CORE',
-      });
-      prisma.subscriptionPaymentClaim.update.mockResolvedValue({
-        id: 'claim-3',
-        status: 'APPROVED',
-      });
-
-      const result = await service.confirmManualPayment('tenant-7', 'claim-3', true);
-
-      expect(result.claim).toMatchObject({ status: 'APPROVED' });
-      expect(result.invoice).toMatchObject({ status: 'PAID' });
-      // Tenant activated in the SAME transaction with the invoice's period.
-      expect(prisma.tenant.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'tenant-7' },
-          data: expect.objectContaining({
-            subscriptionStatus: 'ACTIVE',
-            currentPeriodStart: expect.any(Date),
-            currentPeriodEnd: expect.any(Date),
-          }),
-        }),
-      );
-      const claimUpdate = prisma.subscriptionPaymentClaim.update.mock.calls[0][0];
-      expect(claimUpdate.where).toEqual({ id: 'claim-3' });
-      expect(claimUpdate.data).toMatchObject({ status: 'APPROVED', decidedAt: expect.any(Date) });
-    });
-
-    it('refuses to approve an already-decided claim', async () => {
-      const { service, prisma } = buildService();
-      prisma.subscriptionPaymentClaim.findUnique.mockResolvedValue({
-        id: 'claim-4',
-        tenantId: 'tenant-7',
-        invoiceId: 'inv-7',
-        status: 'APPROVED',
-      });
-
-      await expect(
-        service.confirmManualPayment('tenant-7', 'claim-4', true),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('refuses a claim that belongs to another company', async () => {
-      const { service, prisma } = buildService();
-      prisma.subscriptionPaymentClaim.findUnique.mockResolvedValue({
-        id: 'claim-5',
-        tenantId: 'other-tenant',
-        invoiceId: 'inv-9',
-        status: 'PENDING',
-      });
-
-      await expect(
-        service.confirmManualPayment('tenant-7', 'claim-5', true),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('throws NotFound when no open invoice exists to claim against', async () => {
-      const { service, prisma } = buildService();
-      prisma.tenant.findUnique.mockResolvedValue({
-        plan: 'CORE',
-        currentPeriodEnd: new Date(Date.now() + 10 * msPerDay),
-        subscriptionStatus: 'ACTIVE',
-      });
-      prisma.subscriptionInvoice.findFirst.mockResolvedValue(null);
-
-      await expect(
-        service.submitManualPayment('tenant-7', 'user-1', { mpesaCode: 'QGH7XYZ92K' }),
-      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

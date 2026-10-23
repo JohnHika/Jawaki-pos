@@ -64,15 +64,21 @@ class ProductGrid extends ConsumerWidget {
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
+            crossAxisCount:
+                productGridColumns(MediaQuery.sizeOf(context).width),
             childAspectRatio: (hasPhotos ? 0.78 : 1.12) / growth,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
           itemCount: products.length,
-          // Cards pop in from the centre in turn on first load.
+          // Keep the POS cards responsive: a short entrance animation adds
+          // polish without holding the first visible products behind a long
+          // stagger.
           itemBuilder: (context, index) => CascadeScale(
             index: index,
+            step: const Duration(milliseconds: 8),
+            duration: const Duration(milliseconds: 180),
+            maxAnimated: 8,
             child: _ProductCard(product: products[index], compact: !hasPhotos),
           ),
         );
@@ -141,7 +147,8 @@ class _ProductCard extends ConsumerWidget {
     final quantityLabel = lineInCart.isEmpty
         ? ''
         : _formatCount(
-            lineInCart.first.saleQuantity ?? lineInCart.first.quantity.toDouble(),
+            lineInCart.first.saleQuantity ??
+                lineInCart.first.quantity.toDouble(),
           );
 
     return GlassCard(
@@ -492,7 +499,8 @@ class _QuickAddControl extends StatelessWidget {
               child: const SizedBox(
                 width: _size,
                 height: _size,
-                child: Icon(Icons.remove_rounded, color: Colors.white, size: 22),
+                child:
+                    Icon(Icons.remove_rounded, color: Colors.white, size: 22),
               ),
             ),
           ),

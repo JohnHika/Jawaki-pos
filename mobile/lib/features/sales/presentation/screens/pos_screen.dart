@@ -18,6 +18,7 @@ import '../widgets/product_grid.dart';
 import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
 import '../../../../core/utils/format.dart';
+import '../../../accountability/data/till_guard_service.dart';
 
 class POSScreen extends ConsumerStatefulWidget {
   const POSScreen({super.key});
@@ -59,6 +60,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     // "tessi") must not silently filter a newly mounted product grid.
     ref.read(searchQueryProvider.notifier).state = '';
     ref.read(selectedCategoryProvider.notifier).state = null;
+    // Fetch the shop's price and credit rules so the till can apply them
+    // even if the signal drops later. Fire-and-forget; it never throws.
+    TillGuardService.instance.refreshIfStale();
     // The grid renders instantly from the local cache via
     // filteredProductsProvider, which never talks to the API on its own —
     // nothing else refreshes stock/prices for a cashier who lands here
@@ -73,6 +77,7 @@ class _POSScreenState extends ConsumerState<POSScreen> {
         return;
       }
       if (!mounted) return;
+      ref.invalidate(categoriesProvider);
       ref.invalidate(filteredProductsProvider);
       ref.invalidate(favoriteProductsProvider);
     });

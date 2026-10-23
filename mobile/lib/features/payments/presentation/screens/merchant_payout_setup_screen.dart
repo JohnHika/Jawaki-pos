@@ -147,7 +147,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
         SnackBar(
           content: Text(verified
               ? 'Paystack verified your payout account.'
-              : 'Payout details saved. The payment administrator must verify this subaccount in Paystack before customer M-Pesa and debt payments are enabled. Cash and manual payments remain available.'),
+              : 'Payout details saved. Paystack must verify this account before customer M-Pesa and debt payments are enabled. Cash sales remain available.'),
         ),
       );
     } catch (error) {
@@ -183,7 +183,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                           style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 8),
                       const Text(
-                        'Connect your business bank account to accept customer M-Pesa and debt payments. Paystack sends those payments to this account. Cash and manually recorded payments work without payout setup. Your Counterbase plan is billed separately.',
+                        'Connect your business bank account to accept customer M-Pesa and debt payments. Paystack sends those payments to this account. Cash sales work without payout setup. Your Counterbase plan is billed separately.',
                       ),
                     ],
                   )),
@@ -252,7 +252,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                       ? const Padding(
                                           padding: EdgeInsets.only(top: 8),
                                           child: Text(
-                                            'Paystack has received these payout details. The payment administrator must verify this subaccount in Paystack before customer M-Pesa and debt payments are enabled. Cash and manually recorded payments are available now.',
+                                            'Paystack has received your details and is verifying the account. Customer M-Pesa and debt payments will turn on after approval. Cash sales are available now.',
                                           ),
                                         )
                                       : const SizedBox(width: double.infinity, height: 0),

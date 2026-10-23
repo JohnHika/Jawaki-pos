@@ -63,7 +63,7 @@ export class PaystackWebhookController {
     return `<!doctype html>
 <html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Return to Counterbase</title></head>
 <body style="font-family:system-ui,sans-serif;padding:32px;text-align:center">
-<h1>Payment received</h1><p>Returning you to Counterbase to verify your subscription payment.</p>
+<h1>Checking your payment</h1><p>Return to Counterbase to confirm the payment status. Your subscription updates after Paystack verifies it.</p>
 <p><a href="${appUrl}">Return to Counterbase</a></p>
 <script>window.location.replace(${JSON.stringify(appUrl)});</script>
 </body></html>`;

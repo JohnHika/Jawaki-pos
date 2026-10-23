@@ -43,9 +43,9 @@ export class PaystackBillingService {
         currency: invoice.currency,
       };
     }
-    if (invoice.status === 'PENDING_CONFIRMATION') {
+    if (invoice.provider === 'JENGA_STK_INITIALIZING') {
       throw new ConflictException(
-        'A manual M-Pesa payment is awaiting review for this invoice',
+        'An M-Pesa renewal request is being confirmed. Check its status before starting another payment.',
       );
     }
     if (invoice.provider === 'JENGA_STK' && invoice.mpesaCheckoutId) {
@@ -88,11 +88,12 @@ export class PaystackBillingService {
     const reservation = await this.prisma.subscriptionInvoice.updateMany({
       where: {
         id: invoice.id,
-        status: 'PENDING',
+        status: { in: ['PENDING', 'PENDING_CONFIRMATION'] },
         provider: invoice.provider,
         reference: invoice.reference,
       },
       data: {
+        status: 'PENDING',
         provider: 'PAYSTACK_INITIALIZING',
         reference,
         authorizationUrl: null,
@@ -238,6 +239,13 @@ export class PaystackBillingService {
       await tx.tenant.update({
         where: { id: tenantId },
         data: {
+          plan: invoice.plan,
+          ...(PLAN_PRICING[invoice.plan]
+            ? {
+                maxBranches: PLAN_PRICING[invoice.plan].features.maxBranches,
+                maxUsers: PLAN_PRICING[invoice.plan].features.maxUsers,
+              }
+            : {}),
           subscriptionStatus: 'ACTIVE',
           currentPeriodStart: periodStart,
           currentPeriodEnd: periodEnd,

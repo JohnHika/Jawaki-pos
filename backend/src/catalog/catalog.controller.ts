@@ -164,7 +164,7 @@ export class CatalogController {
     @Request() req: any,
     @Body() dto: UpdateProductDto,
   ) {
-    return this.catalogService.updateProduct(id, req.user.tenantId, dto);
+    return this.catalogService.updateProduct(id, req.user.tenantId, dto, req.user.sub);
   }
 
   @Delete('products/:id')

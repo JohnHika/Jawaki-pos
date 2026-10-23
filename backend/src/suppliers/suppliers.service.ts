@@ -12,6 +12,7 @@ import {
 } from './dto/suppliers.dto';
 import { CashFundingSource as PrismaCashFundingSource, Prisma, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
+import { applyPurchaseCost } from '../common/product-cost';
 
 @Injectable()
 export class SuppliersService {
@@ -249,6 +250,9 @@ export class SuppliersService {
           where: { id: stock.id },
           data: { quantity: newQty },
         });
+        // What this stock cost becomes the product's cost, so margins and the
+        // below-cost check are based on real purchases.
+        await applyPurchaseCost(tx, item.productId, previousQty, item.quantity, item.unitCost);
 
         await tx.stockMovement.create({
           data: {

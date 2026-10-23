@@ -5,7 +5,9 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
+import { AccountabilityService } from '../accountability/accountability.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { CashFlowService } from '../cash-flow/cash-flow.service';
@@ -25,6 +27,7 @@ import {
 } from './dto/inventory.dto';
 import { StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
+import { applyPurchaseCost } from '../common/product-cost';
 
 @Injectable()
 export class InventoryService {
@@ -34,6 +37,8 @@ export class InventoryService {
     private cashFlowService: CashFlowService,
     private aiService: AiService,
     private notificationsService: NotificationsService,
+    // Optional so specs that build the service by hand keep working.
+    @Optional() private accountability?: AccountabilityService,
   ) {}
 
   async getStock(branchId: string, tenantId: string, query: StockQueryDto) {
@@ -166,6 +171,7 @@ export class InventoryService {
       throw new NotFoundException('One or more products not found');
     }
 
+    const recorded: any[] = [];
     return this.prisma.$transaction(async (tx) => {
       const movements: any[] = [];
 
@@ -207,6 +213,7 @@ export class InventoryService {
         });
 
         movements.push(movement);
+        recorded.push(movement);
       }
 
       return { success: true, movementCount: movements.length };
@@ -214,8 +221,97 @@ export class InventoryService {
       // See receiveBatch for why this is needed: CatalogService caches
       // GET /products (with embedded stock) for 20s per tenant+branch.
       await this.redisService.invalidatePattern(`products:${tenantId}:*`);
+      await this.recordAdjustment(userId, tenantId, dto, recorded, products);
       return result;
     });
+  }
+
+  /**
+   * Audit entry + owner alert for a manual stock adjustment. Writing stock
+   * off is the easiest way to hide theft, so every loss is recorded with who
+   * did it and what it cost, and large ones are HIGH.
+   */
+  private async recordAdjustment(
+    userId: string,
+    tenantId: string,
+    dto: StockAdjustmentDto,
+    movements: Array<{ productId: string; quantity: unknown; previousQty: unknown; newQty: unknown }>,
+    products: Array<{ id: string; name: string; costPrice: unknown; basePrice: unknown }>,
+  ) {
+    if (!this.accountability) return;
+    try {
+      const byId = new Map(products.map((p) => [p.id, p]));
+      let lossValue = 0;
+      let lossUnits = 0;
+      let gainUnits = 0;
+      const lines = movements.map((m) => {
+        const product = byId.get(m.productId);
+        const change = Number(m.quantity);
+        const cost = Number(product?.costPrice ?? product?.basePrice ?? 0);
+        if (change < 0) {
+          lossValue += -change * cost;
+          lossUnits += -change;
+        } else {
+          gainUnits += change;
+        }
+        return {
+          productId: m.productId,
+          name: product?.name,
+          previousQty: Number(m.previousQty),
+          newQty: Number(m.newQty),
+          change,
+        };
+      });
+
+      await this.accountability.record({
+        userId,
+        action: 'STOCK_ADJUSTED',
+        entityType: 'Stock',
+        entityId: dto.branchId,
+        newValues: { type: dto.type, reference: dto.reference, notes: dto.notes, lines },
+      });
+
+      if (lossUnits === 0 && gainUnits === 0) return;
+      const settings = await this.accountability.getSettings(tenantId);
+      const actor = await this.accountability.actorName(userId);
+      const changed = lines.filter((l) => l.change !== 0);
+      const first = changed[0];
+      const more = changed.length - 1;
+      const what = first
+        ? `${first.name} ${first.change < 0 ? '' : '+'}${first.change}${more > 0 ? ` and ${more} more` : ''}`
+        : 'stock';
+
+      if (lossUnits > 0) {
+        const threshold = settings.alerts.stockWriteOffValue;
+        await this.accountability.raise({
+          tenantId,
+          branchId: dto.branchId,
+          type: 'STOCK_WRITE_OFF',
+          severity: threshold > 0 && lossValue >= threshold ? 'HIGH' : 'MEDIUM',
+          title: 'Stock written off',
+          body: `${actor} reduced stock (${what}). About KES ${Math.round(lossValue).toLocaleString('en-KE')} at cost.${dto.notes ? ' Note: ' + dto.notes : ''}`,
+          actorUserId: userId,
+          entityType: 'Stock',
+          entityId: dto.branchId,
+          data: { adjustmentType: dto.type, lossValue, lossUnits, lines },
+        });
+      } else {
+        await this.accountability.raise({
+          tenantId,
+          branchId: dto.branchId,
+          type: 'STOCK_ADJUSTMENT',
+          severity: 'LOW',
+          title: 'Stock increased by hand',
+          body: `${actor} increased stock (${what}).`,
+          actorUserId: userId,
+          entityType: 'Stock',
+          entityId: dto.branchId,
+          data: { adjustmentType: dto.type, gainUnits, lines },
+        });
+      }
+    } catch (error) {
+      // Recording must never undo an adjustment that has already committed.
+    }
   }
 
   async getStockMovements(
@@ -874,6 +970,8 @@ export class InventoryService {
       }> = [];
       let totalReceived = 0;
       let runningQuantity = Number(lockedStock.quantity);
+      // Cost is averaged in batch by batch, from the quantity on hand at that point.
+      let costRunningQuantity = runningQuantity;
 
       // Auto-generate batch numbers when not supplied: <SKU>-<YYMMDD>-<seq>
       const skuPrefix = this.getBatchSkuPrefix(product.sku);
@@ -1033,6 +1131,8 @@ export class InventoryService {
 
         createdBatches.push(createdBatch);
         totalReceived += baseQuantity;
+        await applyPurchaseCost(tx, product.id, costRunningQuantity, baseQuantity, batch.costPrice);
+        costRunningQuantity += baseQuantity;
         receivedUnits.push({
           quantity: batch.quantity,
           unit: batch.unit || product.unit,

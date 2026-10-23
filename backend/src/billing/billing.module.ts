@@ -14,8 +14,8 @@ import { MerchantPaymentsModule } from '../merchant-payments/merchant-payments.m
 import { LegalPolicyModule } from '../legal/legal-policy.module';
 
 /**
- * Jawaki recurring subscription billing (settings, manual claims, cron,
- * entitlements, restricted-mode guard).
+ * Recurring subscription billing (provider checkout, renewal settings,
+ * cron, entitlements, and restricted-mode guard).
  *
  * This module is the SINGLE owner of RecurringBillingService,
  * SubscriptionRenewalSettler and BillingCron. CardBillingModule (Pesapal

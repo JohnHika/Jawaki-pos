@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { AccountabilityService } from '../accountability/accountability.service';
 import { AuditService } from '../audit/audit.service';
 import { getDayBoundsInTimezone } from '../common/operating-hours';
 import { CashFlowService } from './cash-flow.service';
@@ -12,6 +13,7 @@ export class CashReconciliationService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private cashFlowService: CashFlowService,
+    @Optional() private accountability?: AccountabilityService,
   ) {}
 
   /**
@@ -76,7 +78,41 @@ export class CashReconciliationService {
       newValues: { expectedCash, countedCash: dto.countedCash, discrepancy },
     });
 
+    await this.alertOnDiscrepancy(tenantId, branchId, userId, discrepancy, reconciliation.id);
+
     return this.formatReconciliation(reconciliation);
+  }
+
+  /** A till that does not balance is the most direct sign of missing money. */
+  private async alertOnDiscrepancy(
+    tenantId: string,
+    branchId: string,
+    userId: string,
+    discrepancy: number,
+    reconciliationId: string,
+  ) {
+    if (!this.accountability || Math.abs(discrepancy) < 1) return;
+    try {
+      const settings = await this.accountability.getSettings(tenantId);
+      const actor = await this.accountability.actorName(userId);
+      const short = discrepancy < 0;
+      const amount = Math.abs(discrepancy);
+      const threshold = settings.alerts.cashShortAmount;
+      await this.accountability.raise({
+        tenantId,
+        branchId,
+        type: short ? 'CASH_SHORT' : 'CASH_OVER',
+        severity: short ? (threshold > 0 && amount >= threshold ? 'HIGH' : 'MEDIUM') : 'LOW',
+        title: short ? 'Till is short' : 'Till is over',
+        body: `${actor} counted the till ${short ? 'SHORT' : 'OVER'} by KES ${Math.round(amount).toLocaleString('en-KE')}`,
+        actorUserId: userId,
+        entityType: 'CashReconciliation',
+        entityId: reconciliationId,
+        data: { discrepancy },
+      });
+    } catch (error) {
+      // Recording must never undo a reconciliation that has already committed.
+    }
   }
 
   async getReconciliations(tenantId: string, branchId: string, query: ReconciliationQueryDto) {

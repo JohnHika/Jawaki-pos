@@ -13,6 +13,9 @@ import { BillingCron } from './billing/billing.cron';
 import { AiBillingRenewalTask } from './ai-billing/ai-billing-renewal.task';
 import { AiDailyBriefTask } from './ai/ai-daily-brief.task';
 import { AiProactiveNotificationsTask } from './ai/ai-proactive-notifications.task';
+import { AccountabilitySummaryService } from './accountability/accountability-summary.service';
+import { NewsService } from './news/news.service';
+import { ExchangeRatesService } from './exchange-rates/exchange-rates.service';
 
 type CronCadence = 'daily' | 'half-hourly';
 
@@ -32,6 +35,9 @@ export class VercelCronController {
     private readonly aiBillingRenewalTask: AiBillingRenewalTask,
     private readonly aiDailyBriefTask: AiDailyBriefTask,
     private readonly aiProactiveNotificationsTask: AiProactiveNotificationsTask,
+    private readonly accountabilitySummaries: AccountabilitySummaryService,
+    private readonly news: NewsService,
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
 
   @Get('billing-renewals')
@@ -67,6 +73,23 @@ export class VercelCronController {
     return this.run('daily-briefs', 'daily', authorization, () =>
       this.aiDailyBriefTask.generateDailyBriefs(),
     );
+  }
+
+  @Get('accountability-summaries')
+  accountabilitySummariesRoute(@Headers('authorization') authorization?: string) {
+    return this.run('accountability-summaries', 'half-hourly', authorization, () =>
+      this.accountabilitySummaries.sendDueSummaries(),
+    );
+  }
+
+  @Get('news-refresh')
+  newsRefresh(@Headers('authorization') authorization?: string) {
+    return this.run('news-refresh', 'half-hourly', authorization, () => this.news.refreshAll());
+  }
+
+  @Get('exchange-rates')
+  exchangeRatesRefresh(@Headers('authorization') authorization?: string) {
+    return this.run('exchange-rates', 'daily', authorization, () => this.exchangeRates.refresh());
   }
 
   private async run(

@@ -19,7 +19,6 @@ import {
   PlatformAdminLoginDto,
   ExtendTenantDto,
   CreditTenantDto,
-  MarkInvoicePaidDto,
   ListTenantsQueryDto,
   ListInvoicesQueryDto,
   UpdateTenantLicenseDto,
@@ -336,37 +335,4 @@ export class PlatformAdminController {
     return this.adminService.listInvoices(query);
   }
 
-  @Get('claims')
-  @RequirePlatformPermission('billing.view')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Manual M-Pesa payment claims waiting across all companies' })
-  async listClaims() {
-    return this.adminService.listClaims();
-  }
-
-  @Post('invoices/:id/mark-paid')
-  @HttpCode(200)
-  @RequirePlatformPermission('billing.manage')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Manual reconciliation: mark a PENDING invoice PAID (mpesaCode optional)' })
-  async markInvoicePaid(
-    @Param('id') id: string,
-    @Body() dto: MarkInvoicePaidDto,
-    @Req() req: any,
-  ) {
-    const result = await this.adminService.markInvoicePaid(id, dto.mpesaCode, req.platformAdmin);
-    await this.audit.log({
-      action: 'BILLING_INVOICE_MARKED_PAID',
-      category: 'BILLING',
-      severity: 'WARN',
-      actor: req.platformAdmin,
-      targetType: 'SubscriptionInvoice',
-      targetId: id,
-      tenantId: result.tenantId,
-      summary: `${req.platformAdmin.email} marked an invoice paid${dto.mpesaCode ? ` (${dto.mpesaCode})` : ''}`,
-      metadata: { mpesaCode: dto.mpesaCode ?? null },
-      ctx: contextFromRequest(req),
-    });
-    return result;
-  }
 }

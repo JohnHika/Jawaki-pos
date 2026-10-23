@@ -4,9 +4,10 @@ import { InventoryService } from './inventory.service';
 import { CashFlowModule } from '../cash-flow/cash-flow.module';
 import { AiModule } from '../ai/ai.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AccountabilityModule } from '../accountability/accountability.module';
 
 @Module({
-  imports: [CashFlowModule, forwardRef(() => AiModule), NotificationsModule],
+  imports: [CashFlowModule, forwardRef(() => AiModule), NotificationsModule, AccountabilityModule],
   controllers: [InventoryController],
   providers: [InventoryService],
   exports: [InventoryService],

@@ -193,7 +193,7 @@ export class JengaPaymentService {
       throw new BadRequestException("Unknown payment reference");
     if (
       !forceQuery &&
-      ["completed", "failed", "cancelled"].includes(transaction.status)
+      ["completed", "failed", "cancelled", "canceled", "needs_review"].includes(transaction.status)
     ) {
       return this.statusResponse(transaction);
     }
@@ -209,9 +209,12 @@ export class JengaPaymentService {
       const order = response.data?.data?.order;
       const invoice = response.data?.data?.invoice;
       const paidAmount = new Prisma.Decimal(String(order?.amountPaid ?? 0));
+      const orderStatus = String(order?.orderStatus ?? "").toLowerCase();
       const completed =
-        String(order?.orderStatus).toLowerCase() === "paid" &&
+        orderStatus === "paid" &&
         paidAmount.equals(transaction.amount);
+      const failed = ["failed", "cancelled", "canceled", "expired", "rejected"].includes(orderStatus);
+      const paidAmountMismatch = orderStatus === "paid" && !paidAmount.equals(transaction.amount);
       const updated = await this.prisma.mpesaTransaction.update({
         where: { checkoutRequestId: reference },
         data: completed
@@ -221,7 +224,14 @@ export class JengaPaymentService {
               mpesaReceiptNumber:
                 invoice?.externalReference ?? transaction.mpesaReceiptNumber,
             }
-          : {},
+          : failed
+              ? { status: orderStatus === "canceled" ? "canceled" : orderStatus }
+              : paidAmountMismatch
+                  ? {
+                      status: "needs_review",
+                      resultDesc: `Provider confirmed a different amount than requested (${paidAmount.toString()} KES)`,
+                    }
+                  : {},
       });
       // Subscription renewal auto-charge: the reference the billing cron
       // pushed always starts with AXONSUB-. Once the authenticated status

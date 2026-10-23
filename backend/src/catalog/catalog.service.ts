@@ -2,7 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
+import { AccountabilityService } from '../accountability/accountability.service';
+import { percentChange } from '../accountability/accountability.rules';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { UploadsService } from '../uploads/uploads.service';
@@ -21,6 +24,7 @@ export class CatalogService {
     private prisma: PrismaService,
     private redisService: RedisService,
     private uploadsService: UploadsService,
+    @Optional() private accountability?: AccountabilityService,
   ) {}
 
   // ==================== CATEGORY OPERATIONS ====================
@@ -336,7 +340,12 @@ export class CatalogService {
     return this.formatProduct(product, branchId);
   }
 
-  async updateProduct(productId: string, tenantId: string, dto: UpdateProductDto) {
+  async updateProduct(
+    productId: string,
+    tenantId: string,
+    dto: UpdateProductDto,
+    userId?: string,
+  ) {
     const product = await this.prisma.product.findFirst({
       where: { id: productId, tenantId },
     });
@@ -417,7 +426,73 @@ export class CatalogService {
     });
 
     await this.invalidateProductCache(tenantId);
+    await this.recordPriceChange(product, updated, tenantId, userId);
     return this.formatProduct(updated);
+  }
+
+  /**
+   * A cashier-visible price moving, or a cost being quietly lowered, changes
+   * every margin figure after it, so both are written to the audit trail with
+   * who did it. Moves of `priceChangePercent` or more also alert the owner.
+   */
+  private async recordPriceChange(
+    before: { id: string; name: string; basePrice: unknown; costPrice: unknown; minPrice: unknown },
+    after: { id: string; name: string; basePrice: unknown; costPrice: unknown; minPrice: unknown },
+    tenantId: string,
+    userId?: string,
+  ) {
+    if (!this.accountability) return;
+    try {
+      const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+      const fields = ['basePrice', 'costPrice', 'minPrice'] as const;
+      const changed = fields.filter((f) => num(before[f]) !== num(after[f]));
+      if (changed.length === 0) return;
+
+      await this.accountability.record({
+        userId,
+        action: 'PRODUCT_PRICE_CHANGED',
+        entityType: 'Product',
+        entityId: before.id,
+        oldValues: Object.fromEntries(changed.map((f) => [f, num(before[f])])),
+        newValues: Object.fromEntries(changed.map((f) => [f, num(after[f])])),
+      });
+
+      const settings = await this.accountability.getSettings(tenantId);
+      const threshold = settings.alerts.priceChangePercent;
+      const moves = changed
+        .map((f) => ({ field: f, pct: percentChange(num(before[f]) ?? 0, num(after[f]) ?? 0) }))
+        .filter((m) => m.pct !== null && Math.abs(m.pct) >= threshold);
+      if (moves.length === 0) return;
+
+      const actor = await this.accountability.actorName(userId);
+      const label: Record<string, string> = {
+        basePrice: 'selling price',
+        costPrice: 'cost',
+        minPrice: 'minimum price',
+      };
+      const text = moves
+        .map(
+          (m) =>
+            `${label[m.field]} ${num(before[m.field])} → ${num(after[m.field])} (${m.pct! > 0 ? '+' : ''}${m.pct!.toFixed(0)}%)`,
+        )
+        .join(', ');
+      // Lowering a cost makes the margin look better on paper, which is the
+      // direction worth the owner's immediate attention.
+      const costDropped = moves.some((m) => m.field === 'costPrice' && m.pct! < 0);
+      await this.accountability.raise({
+        tenantId,
+        type: 'PRICE_CHANGE',
+        severity: costDropped ? 'HIGH' : 'MEDIUM',
+        title: 'Product price changed',
+        body: `${actor} changed ${after.name}: ${text}`,
+        actorUserId: userId,
+        entityType: 'Product',
+        entityId: before.id,
+        data: { moves },
+      });
+    } catch (error) {
+      // Recording must never undo an edit that has already committed.
+    }
   }
 
   async deleteProduct(productId: string, tenantId: string) {
@@ -788,6 +863,7 @@ export class CatalogService {
       basePrice: basePrice,
       price: currentPrice,
       costPrice: product.costPrice ? Number(product.costPrice) : undefined,
+      minPrice: product.minPrice ? Number(product.minPrice) : undefined,
       taxRate: Number(product.taxRate),
       unit: product.unit,
       pricingTiers,

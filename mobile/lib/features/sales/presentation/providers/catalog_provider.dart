@@ -13,36 +13,51 @@ final selectedCategoryProvider =
     StateProvider.autoDispose<String?>((ref) => null);
 final searchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
 
-Future<Map<String, dynamic>> _productToPosMap(
+Future<List<Map<String, dynamic>>> _productsToPosMaps(
   AppDatabase database,
-  Product product,
+  Iterable<Product> products,
 ) async {
-  final stock = await database.getStockForProduct(product.id);
-  final tiers = await database.getPricingTiersForProduct(product.id);
+  final activeProducts = products.where((product) => product.isActive).toList();
+  if (activeProducts.isEmpty) return [];
 
-  return {
-    'id': product.id,
-    'sku': product.sku,
-    'name': product.name,
-    'description': product.description,
-    'categoryId': product.categoryId,
-    'price': product.price,
-    'costPrice': product.costPrice,
-    'unit': product.unit,
-    'pricingTiers': tiers
-        .map((t) => {
-              'unit': t.unit,
-              'quantityPerUnit': t.quantityPerUnit,
-              'price': t.price,
-              'sortOrder': t.sortOrder,
-            })
-        .toList(),
-    'imageUrl': product.imageUrl,
-    'isActive': product.isActive,
-    'trackInventory': product.trackInventory,
-    'stock': stock?.quantity ?? 0,
-    'minStock': product.minStock,
-  };
+  final ids = activeProducts.map((product) => product.id).toList();
+  final branchId = getIt<StorageService>().getBranchId();
+  final metadata = await Future.wait<Object>([
+    database.getPricingTiersForProducts(ids),
+    branchId == null
+        ? Future.value(<String, LocalStockData>{})
+        : database.getStockForProducts(ids, branchId),
+  ]);
+  final tiersByProduct = metadata[0] as Map<String, List<ProductPricingTier>>;
+  final stockByProduct = metadata[1] as Map<String, LocalStockData>;
+
+  return activeProducts.map((product) {
+    final tiers = tiersByProduct[product.id] ?? const <ProductPricingTier>[];
+    final stock = stockByProduct[product.id];
+    return {
+      'id': product.id,
+      'sku': product.sku,
+      'name': product.name,
+      'description': product.description,
+      'categoryId': product.categoryId,
+      'price': product.price,
+      'costPrice': product.costPrice,
+      'unit': product.unit,
+      'pricingTiers': tiers
+          .map((tier) => {
+                'unit': tier.unit,
+                'quantityPerUnit': tier.quantityPerUnit,
+                'price': tier.price,
+                'sortOrder': tier.sortOrder,
+              })
+          .toList(),
+      'imageUrl': product.imageUrl,
+      'isActive': product.isActive,
+      'trackInventory': product.trackInventory,
+      'stock': stock?.quantity ?? 0,
+      'minStock': product.minStock,
+    };
+  }).toList();
 }
 
 /// Parse timestamp from various formats (ISO string or milliseconds since epoch)
@@ -222,16 +237,15 @@ LocalStockCompanion? _stockToCompanion(
 
 Future<void> syncCatalogCacheFromApi() async {
   final connectivity = getIt<ConnectivityService>();
-  // `isOnline` reflects whatever the last completed check found, but right
-  // after a cold start (e.g. fresh install/login) that check may still be
-  // in flight — the cached value defaults to offline until it resolves, so
-  // trusting it here would silently skip the very first sync a new device
-  // needs. Re-checking directly awaits the real platform-channel result
-  // (or its 5s timeout) instead of racing it.
-  final status = await connectivity.checkCurrentStatus();
-  if (status != ConnectionStatus.online) {
-    debugPrint('[CatalogSync] Skipped: connectivity check reported offline');
-    return;
+  // Connectivity is initialized before the app is shown. Reuse a confirmed
+  // online state immediately; only repeat the platform check when the cached
+  // state says offline (which can happen after a transient startup timeout).
+  if (!connectivity.isOnline) {
+    final status = await connectivity.checkCurrentStatus();
+    if (status != ConnectionStatus.online) {
+      debugPrint('[CatalogSync] Skipped: connectivity check reported offline');
+      return;
+    }
   }
 
   try {
@@ -239,8 +253,13 @@ Future<void> syncCatalogCacheFromApi() async {
     final database = getIt<AppDatabase>();
     final storageService = getIt<StorageService>();
 
-    debugPrint('[CatalogSync] Fetching categories...');
-    final categoriesResponse = await apiClient.getCategories();
+    final branchId = storageService.getBranchId();
+    debugPrint('[CatalogSync] Fetching categories and products...');
+    final responses = await Future.wait<Object>([
+      apiClient.getCategories(),
+      apiClient.getProducts(limit: 500, branchId: branchId),
+    ]);
+    final categoriesResponse = responses[0] as List<dynamic>;
     final flatCategories = _flattenCategories(categoriesResponse);
     final categoryItems = flatCategories
         .map(_categoryToCompanion)
@@ -249,12 +268,7 @@ Future<void> syncCatalogCacheFromApi() async {
     await database.replaceCategories(categoryItems);
     debugPrint('[CatalogSync] Stored ${categoryItems.length} categories');
 
-    final branchId = storageService.getBranchId();
-    debugPrint('[CatalogSync] Fetching products for branchId=$branchId...');
-    final productsResponse = await apiClient.getProducts(
-      limit: 500,
-      branchId: branchId,
-    );
+    final productsResponse = responses[1] as List<dynamic>;
     final productMaps = productsResponse
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
@@ -361,43 +375,21 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   final database = getIt<AppDatabase>();
-  final apiClient = getIt<ApiClient>();
-  final connectivity = getIt<ConnectivityService>();
-  if (connectivity.isOnline) {
-    try {
-      final categories = await apiClient.getCategories();
-      final flatCategories = _flattenCategories(categories);
-      await database.replaceCategories(
-        flatCategories
-            .map(_categoryToCompanion)
-            .whereType<CategoriesCompanion>()
-            .toList(),
-      );
-      return flatCategories.where((c) => c['isActive'] != false).toList();
-    } catch (e) {
-      // API unavailable
-    }
-  }
-
   final localCategories = await database.getAllCategories();
-  if (localCategories.isNotEmpty) {
-    return localCategories
-        .where((c) => c.isActive)
-        .map(
-          (c) => {
-            'id': c.id,
-            'name': c.name,
-            'description': c.description,
-            'parentId': c.parentId,
-            'imageUrl': c.imageUrl,
-            'sortOrder': c.sortOrder,
-            'isActive': c.isActive,
-          },
-        )
-        .toList();
-  }
-
-  return [];
+  return localCategories
+      .where((category) => category.isActive)
+      .map(
+        (category) => {
+          'id': category.id,
+          'name': category.name,
+          'description': category.description,
+          'parentId': category.parentId,
+          'imageUrl': category.imageUrl,
+          'sortOrder': category.sortOrder,
+          'isActive': category.isActive,
+        },
+      )
+      .toList();
 });
 
 // Products provider
@@ -438,10 +430,7 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
         }
       }
       final localProducts = await database.getAllProducts();
-      final mapped = <Map<String, dynamic>>[];
-      for (final product in localProducts.where((p) => p.isActive)) {
-        mapped.add(await _productToPosMap(database, product));
-      }
+      final mapped = await _productsToPosMaps(database, localProducts);
       if (mapped.isNotEmpty) return mapped;
 
       return productMaps;
@@ -452,11 +441,7 @@ final productsProvider = FutureProvider<List<Map<String, dynamic>>>((
 
   final localProducts = await database.getAllProducts();
   if (localProducts.isNotEmpty) {
-    final mapped = <Map<String, dynamic>>[];
-    for (final product in localProducts.where((p) => p.isActive)) {
-      mapped.add(await _productToPosMap(database, product));
-    }
-    return mapped;
+    return _productsToPosMaps(database, localProducts);
   }
 
   return [];
@@ -480,11 +465,7 @@ final filteredProductsProvider =
     products = await database.getAllProducts();
   }
 
-  final mapped = <Map<String, dynamic>>[];
-  for (final product in products.where((p) => p.isActive)) {
-    mapped.add(await _productToPosMap(database, product));
-  }
-  return mapped;
+  return _productsToPosMaps(database, products);
 });
 
 // Favorites provider
@@ -528,9 +509,5 @@ final favoriteProductsProvider = FutureProvider<List<Map<String, dynamic>>>((
   final database = getIt<AppDatabase>();
   final favorites = await database.getFavoriteProducts();
 
-  final mapped = <Map<String, dynamic>>[];
-  for (final product in favorites.where((p) => p.isActive)) {
-    mapped.add(await _productToPosMap(database, product));
-  }
-  return mapped;
+  return _productsToPosMaps(database, favorites);
 });

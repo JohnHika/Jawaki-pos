@@ -31,12 +31,27 @@ export class CustomersController {
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiResponse({ status: 201, description: 'Customer created' })
   async createCustomer(@Request() req: any, @Body() body: any) {
-    return this.customersService.createCustomer(req.user.tenantId, {
-      name: body.name,
-      phone: body.phone,
-      email: body.email,
-      address: body.address,
-    });
+    return this.customersService.createCustomer(
+      req.user.tenantId,
+      {
+        name: body.name,
+        phone: body.phone,
+        email: body.email,
+        address: body.address,
+        creditLimit: body.creditLimit,
+        idNumber: body.idNumber,
+        guarantorName: body.guarantorName,
+        guarantorPhone: body.guarantorPhone,
+      },
+      req.user.sub,
+    );
+  }
+
+  @Get(':id/credit')
+  @ApiOperation({ summary: 'Credit standing: limit, what they owe, and what is left' })
+  @ApiResponse({ status: 200, description: 'Credit standing' })
+  async getCreditStanding(@Param('id') id: string, @Request() req: any) {
+    return this.customersService.getCreditStanding(req.user.tenantId, id);
   }
 
   @Get()
@@ -61,12 +76,21 @@ export class CustomersController {
     @Request() req: any,
     @Body() body: any,
   ) {
-    return this.customersService.updateCustomer(req.user.tenantId, id, {
-      name: body.name,
-      phone: body.phone,
-      email: body.email,
-      address: body.address,
-    });
+    return this.customersService.updateCustomer(
+      req.user.tenantId,
+      id,
+      {
+        name: body.name,
+        phone: body.phone,
+        email: body.email,
+        address: body.address,
+        creditLimit: body.creditLimit,
+        idNumber: body.idNumber,
+        guarantorName: body.guarantorName,
+        guarantorPhone: body.guarantorPhone,
+      },
+      req.user.sub,
+    );
   }
 
   @Delete(':id')

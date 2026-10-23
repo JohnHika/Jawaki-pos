@@ -2,8 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  HttpCode,
-  HttpStatus,
   Param,
   Post,
   Put,
@@ -20,22 +18,17 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RecurringBillingService } from './recurring-billing.service';
 import { PaystackBillingService } from './paystack-billing.service';
-import {
-  ConfirmPaymentClaimDto,
-  SubmitPaymentDto,
-  UpdateBillingSettingsDto,
-} from './dto/billing.dto';
+import { UpdateBillingSettingsDto } from './dto/billing.dto';
 import { LegalPolicyService } from '../legal/legal-policy.service';
 
 /**
- * Recurring subscription billing (Jawaki): settings, manual paybill
- * claims, invoices, and entitlements.
+ * Recurring subscription billing: provider checkout, renewal settings,
+ * invoices, and entitlements.
  *
  * Route auth follows the subscription controller's legacy-role pattern:
  * plan/billing decisions are tenant-ownership concerns (there is no
- * `billing.manage` key in the seeded Permission catalog), so admin-only
- * routes use RolesGuard + @Roles(ADMIN) while staff-facing read/claim
- * routes stay behind plain JwtAuthGuard.
+ * `billing.manage` key in the seeded Permission catalog), so billing
+ * changes stay restricted to the company administrator.
  */
 @ApiTags('billing')
 @Controller({ path: 'billing', version: '1' })
@@ -92,55 +85,6 @@ export class BillingController {
       ).then(() => this.billing.updateBillingSettings(req.user.tenantId, dto));
     }
     return this.billing.updateBillingSettings(req.user.tenantId, dto);
-  }
-
-  @Post('submit-payment')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:
-      'Submit a manual paybill M-Pesa code against the current invoice (staff)',
-  })
-  submitPayment(@Req() req: any, @Body() dto: SubmitPaymentDto) {
-    return this.billing.submitManualPayment(
-      req.user.tenantId,
-      req.user.sub,
-      dto,
-    );
-  }
-
-  @Get('claims')
-  @UseGuards(RolesGuard)
-  @Roles(LegacyUserRole.ADMIN)
-  @ApiOperation({ summary: 'List manual M-Pesa payment claims awaiting review (owner only)' })
-  listClaims(@Req() req: any) {
-    return this.prisma.subscriptionPaymentClaim.findMany({
-      where: { tenantId: req.user.tenantId, status: 'PENDING' },
-      include: {
-        invoice: {
-          select: { id: true, plan: true, amount: true, currency: true },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-  }
-
-  @Post('claims/:id/confirm')
-  @UseGuards(RolesGuard)
-  @Roles(LegacyUserRole.ADMIN)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Approve or reject a manual payment claim (owner only)',
-  })
-  confirmClaim(
-    @Req() req: any,
-    @Param('id') claimId: string,
-    @Body() dto: ConfirmPaymentClaimDto,
-  ) {
-    return this.billing.confirmManualPayment(
-      req.user.tenantId,
-      claimId,
-      dto.approve,
-    );
   }
 
   @Get('invoices')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { LegalPolicyService } from '../legal/legal-policy.service';
 
@@ -136,7 +136,6 @@ export class SubscriptionService {
         subscriptionStatus: true,
         currentPeriodStart: true,
         currentPeriodEnd: true,
-        activationStatus: true,
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
@@ -147,20 +146,16 @@ export class SubscriptionService {
       tenant.subscriptionStatus === 'TRIAL' &&
       tenant.currentPeriodEnd != null &&
       tenant.currentPeriodEnd.getTime() > now.getTime();
-    const periodStart = isActiveTrial
-        ? tenant.currentPeriodStart ?? now
-        : now;
-    const periodEnd = isActiveTrial
-        ? tenant.currentPeriodEnd!
-        : this.addMonth(now);
+    if (!isActiveTrial) {
+      throw new ConflictException(
+        'Your trial has ended. Pay the open subscription invoice through Paystack before changing your plan.',
+      );
+    }
 
     return this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
         plan: newPlan,
-        subscriptionStatus: isActiveTrial ? 'TRIAL' : 'ACTIVE',
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
         maxBranches: plan.features.maxBranches,
         maxUsers: plan.features.maxUsers,
       },
@@ -173,12 +168,6 @@ export class SubscriptionService {
         maxUsers: true,
       },
     });
-  }
-
-  private addMonth(date: Date) {
-    const result = new Date(date);
-    result.setMonth(result.getMonth() + 1);
-    return result;
   }
 
   async listInvoices(tenantId: string) {

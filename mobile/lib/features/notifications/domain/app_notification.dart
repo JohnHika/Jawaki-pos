@@ -65,6 +65,11 @@ String routeForNotification(String type, Map<String, dynamic> data) {
       return '/inventory';
     case 'eod_reminder':
       return '/cash-flow/end-of-day';
+    case 'accountability_alert':
+    case 'daily_summary':
+      return '/shop-alerts';
+    case 'business_news':
+      return '/news';
     default:
       return '/notifications';
   }

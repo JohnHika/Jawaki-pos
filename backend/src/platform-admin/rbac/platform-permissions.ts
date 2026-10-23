@@ -25,7 +25,7 @@ export const PLATFORM_PERMISSIONS = [
   'tenants.users', // see a company's staff accounts and devices
   'tenants.security', // lock accounts, revoke sessions, force logout
   'billing.view',
-  'billing.manage', // mark invoices paid, issue credits
+  'billing.manage', // issue billing credits
   'team.view',
   'team.manage',
   'security.view',

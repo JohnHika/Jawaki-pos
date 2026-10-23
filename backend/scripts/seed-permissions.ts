@@ -87,6 +87,12 @@ const PERMISSIONS: PermissionDef[] = [
   { key: 'inventory.stock.view', feature: 'inventory', action: 'stock_view', label: 'View stock levels' },
   { key: 'inventory.stock.adjust', feature: 'inventory', action: 'stock_adjust', label: 'Adjust stock levels' },
 
+  // ---- inventory: stocktake ----
+  { key: 'inventory.stocktake.view', feature: 'inventory', action: 'stocktake_view', label: 'View stock counts' },
+  { key: 'inventory.stocktake.create', feature: 'inventory', action: 'stocktake_create', label: 'Start or cancel a stock count' },
+  { key: 'inventory.stocktake.count', feature: 'inventory', action: 'stocktake_count', label: 'Enter counted quantities and submit a count' },
+  { key: 'inventory.stocktake.approve', feature: 'inventory', action: 'stocktake_approve', label: 'Approve a stock count and see system quantities' },
+
   // ---- inventory: movements ----
   { key: 'inventory.movements.view', feature: 'inventory', action: 'movements_view', label: 'View stock movement history' },
 
@@ -125,7 +131,23 @@ const PERMISSIONS: PermissionDef[] = [
   { key: 'sales.discount', feature: 'sales', action: 'discount', label: 'Apply a manual discount' },
   { key: 'sales.bulk_create', feature: 'sales', action: 'bulk_create', label: 'Bulk create sales (offline sync)' },
   { key: 'sales.bulk_void', feature: 'sales', action: 'bulk_void', label: 'Bulk void sales' },
+  { key: 'sales.price_override', feature: 'sales', action: 'price_override', label: 'Sell below the minimum price or cost' },
+  { key: 'sales.credit_override', feature: 'sales', action: 'credit_override', label: 'Give credit over a customer limit' },
   { key: 'sales.close_end_of_day', feature: 'sales', action: 'close_end_of_day', label: 'Close the end of day (Z-report + cash count)' },
+
+  // ---- accountability ----
+  { key: 'accountability.view', feature: 'accountability', action: 'view', label: 'View alerts, rules and the daily summary' },
+  { key: 'accountability.manage', feature: 'accountability', action: 'manage', label: 'Change price, discount, credit and alert rules' },
+
+  // ---- imports / landed cost ----
+  { key: 'imports.view', feature: 'imports', action: 'view', label: 'View containers and landed cost' },
+  { key: 'imports.manage', feature: 'imports', action: 'manage', label: 'Create and edit containers, goods and costs' },
+  { key: 'imports.receive', feature: 'imports', action: 'receive', label: 'Receive a container into stock' },
+  { key: 'imports.payments', feature: 'imports', action: 'payments', label: 'Record and remove trader payments on a container' },
+
+  // ---- business news ----
+  { key: 'news.view', feature: 'news', action: 'view', label: 'Read business news' },
+  { key: 'news.manage', feature: 'news', action: 'manage', label: 'Refresh the news feeds' },
 
   // ---- customers ----
   { key: 'customers.view', feature: 'customers', action: 'view', label: 'View customers' },
@@ -239,6 +261,8 @@ const CASHIER_KEYS = [
   'inventory.stock_requests.update', 'inventory.stock_requests.cancel',
   'inventory.batches.view', 'inventory.batches.fefo_view',
   'sales.create', 'sales.view', 'sales.view_all',
+  'news.view',
+  'inventory.stocktake.view', 'inventory.stocktake.count',
   'customers.view', 'customers.create', 'customers.update', 'customers.credit_view',
   'cash_flow.settings_view', 'cash_flow.settings_update',
   'cash_ledger.view', 'cash_reconciliation.view',
@@ -263,6 +287,8 @@ const SUPERVISOR_EXTRA_KEYS = [
   'inventory.stock_requests.resolve',
   'inventory.restock_suggestions.view',
   'sales.void', 'sales.refund', 'sales.discount', 'sales.bulk_create', 'sales.bulk_void',
+  'sales.price_override',
+  'inventory.stocktake.create',
   'reporting.sales_summary', 'reporting.sales_trend', 'reporting.top_products', 'reporting.category_sales',
   'reporting.payment_breakdown', 'reporting.inventory_report',
   'cash_reconciliation.create',
@@ -285,6 +311,10 @@ const MANAGER_EXTRA_KEYS = [
   // Admin/manager close the day by default; admins can grant this to
   // specific supervisors/cashiers via per-user permission override.
   'sales.close_end_of_day',
+  'sales.credit_override',
+  'accountability.view',
+  'inventory.stocktake.approve',
+  'imports.view', 'imports.manage', 'imports.receive', 'imports.payments',
 ];
 
 const ADMIN_EXTRA_KEYS = [
@@ -301,6 +331,8 @@ const ADMIN_EXTRA_KEYS = [
   'app_updates.publish',
   'ai_billing.admin_view', 'ai_billing.admin_manage', 'ai_billing.admin_revenue',
   'payments.manual_approve',
+  'accountability.manage',
+  'news.manage',
 ];
 
 const SUPERVISOR_KEYS = [...CASHIER_KEYS, ...SUPERVISOR_EXTRA_KEYS];

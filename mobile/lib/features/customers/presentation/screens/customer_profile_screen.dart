@@ -7,6 +7,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../sales/presentation/providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
+import '../widgets/credit_limit_card.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final String customerId;
@@ -344,6 +345,11 @@ class _CustomerProfileScreenState
                                     ? DesignColors.error
                                     : DesignColors.success)),
                       ]),
+                      const SizedBox(height: 12),
+                      CreditLimitCard(
+                        customerId: widget.customerId,
+                        customerName: '${_customer!['name'] ?? 'this customer'}',
+                      ),
                       const SizedBox(height: 20),
                       // Payment schedule (installments)
                       SectionHeader(

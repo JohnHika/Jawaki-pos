@@ -3,7 +3,10 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
+import { AccountabilityService } from '../accountability/accountability.service';
+import { severityForAmount } from '../accountability/accountability.rules';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RedisService } from '../common/redis/redis.service';
 import { getDayBoundsInTimezone, todayInTimezone } from '../common/operating-hours';
@@ -25,6 +28,9 @@ export class SalesService {
     private redisService: RedisService,
     private cashFlowService: CashFlowService,
     private financeService: FinanceService,
+    // Optional so unit tests (and any caller that builds the service by hand)
+    // keep working without the accountability layer.
+    @Optional() private accountability?: AccountabilityService,
   ) {}
 
   async createSale(
@@ -33,6 +39,15 @@ export class SalesService {
     dto: CreateSaleDto,
     options: { verifiedMerchantMpesa?: boolean } = {},
   ) {
+    if (
+      dto.paymentMethod === PaymentMethod.MANUAL ||
+      dto.tenders?.some((tender) => tender.method === PaymentMethod.MANUAL)
+    ) {
+      throw new BadRequestException(
+        'Manual payment recording is unavailable. Choose cash, verified M-Pesa, or debt.',
+      );
+    }
+
     // M-Pesa sales are created only after the merchant Paystack charge has
     // been verified. The generic sales and offline-sync endpoints must never
     // turn a payment prompt into a completed sale.
@@ -175,6 +190,36 @@ export class SalesService {
       : dto.paymentMethod === PaymentMethod.CREDIT
         ? Math.max(totalAmount - paidAmount, 0)
         : 0;
+
+    // Price, discount and credit rules. A sale that carries an offlineId was
+    // already rung up at the counter while the phone had no signal, so it is
+    // flagged for the owner but never refused; a live sale can be refused.
+    const assessment = this.accountability
+      ? await this.accountability.assessSale({
+          userId,
+          tenantId,
+          branchId: dto.branchId,
+          customerId: dto.customerId,
+          overallDiscount: discountAmount,
+          creditAmount: creditPortion,
+          enforce: !dto.offlineId,
+          lines: saleItems.map((line) => {
+            const product = products.find((p) => p.id === line.productId);
+            return {
+              productId: line.productId,
+              name: line.productName,
+              quantity: Number(line.quantity),
+              unitPrice: Number(line.unitPrice),
+              discount: Number(line.discount),
+              costPrice: product?.costPrice != null ? Number(product.costPrice) : null,
+              minPrice: product?.minPrice != null ? Number(product.minPrice) : null,
+            };
+          }),
+        })
+      : { violations: [], blocked: false };
+    if (assessment.blocked) {
+      this.accountability!.refuse(assessment.violations);
+    }
 
     // Clients identify their device by its own uuid; Sale.deviceId is a foreign
     // key to the Device row id. Resolve it (within this company), and drop it
@@ -476,6 +521,19 @@ export class SalesService {
       return { ...newSale, payments: tenderPayments };
     });
 
+    if (this.accountability && assessment.violations.length > 0) {
+      await this.accountability.flagSale(
+        {
+          tenantId,
+          branchId: dto.branchId,
+          userId,
+          saleId: sale.id,
+          receiptNumber: sale.receiptNumber,
+        },
+        assessment.violations,
+      );
+    }
+
     return this.formatSale(sale);
   }
 
@@ -710,7 +768,63 @@ export class SalesService {
       return voidedSale;
     });
 
+    await this.recordVoid(sale, userId, tenantId, reason);
+
     return voided;
+  }
+
+  /**
+   * Audit entry + owner alert for a void. A void is the classic way to pocket
+   * cash (ring the sale, take the money, void it), so it is always recorded;
+   * it is HIGH when it is large or happens after the day was already closed.
+   */
+  private async recordVoid(
+    sale: { id: string; branchId: string; receiptNumber: string; totalAmount: unknown; createdAt: Date; paymentMethod: PaymentMethod },
+    userId: string,
+    tenantId: string,
+    reason: string,
+  ) {
+    if (!this.accountability) return;
+    try {
+      const settings = await this.accountability.getSettings(tenantId);
+      const amount = Number(sale.totalAmount);
+      const createdDay = new Date(
+        Date.UTC(
+          sale.createdAt.getUTCFullYear(),
+          sale.createdAt.getUTCMonth(),
+          sale.createdAt.getUTCDate(),
+        ),
+      );
+      const closed = await this.prisma.dailyClose.findFirst({
+        where: { branchId: sale.branchId, date: createdDay },
+        select: { id: true },
+      });
+      const severity = closed ? 'HIGH' : severityForAmount(amount, settings.alerts.voidAlertAmount);
+      const actor = await this.accountability.actorName(userId);
+
+      await this.accountability.record({
+        userId,
+        action: 'SALE_VOIDED',
+        entityType: 'Sale',
+        entityId: sale.id,
+        oldValues: { status: 'COMPLETED', totalAmount: amount, paymentMethod: sale.paymentMethod },
+        newValues: { status: 'VOIDED', reason },
+      });
+      await this.accountability.raise({
+        tenantId,
+        branchId: sale.branchId,
+        type: 'VOID',
+        severity,
+        title: closed ? 'Sale voided after day close' : 'Sale voided',
+        body: `${actor} voided receipt ${sale.receiptNumber} (KES ${Math.round(amount).toLocaleString('en-KE')}, ${sale.paymentMethod}). Reason: ${reason || 'none given'}`,
+        actorUserId: userId,
+        entityType: 'Sale',
+        entityId: sale.id,
+        data: { amount, reason, afterDayClose: !!closed },
+      });
+    } catch (error) {
+      // Recording must never undo a void that has already committed.
+    }
   }
 
   async createRefund(userId: string, tenantId: string, dto: CreateRefundDto) {
@@ -731,7 +845,7 @@ export class SalesService {
     }
 
     // Create refund
-    return this.prisma.$transaction(async (tx) => {
+    const createdRefund = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`
         SELECT id FROM sales WHERE id = ${dto.saleId} FOR UPDATE
       `;
@@ -849,6 +963,46 @@ export class SalesService {
 
       return refund;
     });
+
+    await this.recordRefund(createdRefund, sale, userId, tenantId, dto.reason);
+
+    return createdRefund;
+  }
+
+  private async recordRefund(
+    refund: { id: string; amount: unknown },
+    sale: { id: string; branchId: string; receiptNumber: string },
+    userId: string,
+    tenantId: string,
+    reason: string,
+  ) {
+    if (!this.accountability) return;
+    try {
+      const settings = await this.accountability.getSettings(tenantId);
+      const amount = Number(refund.amount);
+      const actor = await this.accountability.actorName(userId);
+      await this.accountability.record({
+        userId,
+        action: 'SALE_REFUNDED',
+        entityType: 'Sale',
+        entityId: sale.id,
+        newValues: { refundId: refund.id, amount, reason },
+      });
+      await this.accountability.raise({
+        tenantId,
+        branchId: sale.branchId,
+        type: 'REFUND',
+        severity: severityForAmount(amount, settings.alerts.refundAlertAmount),
+        title: 'Refund given',
+        body: `${actor} refunded KES ${Math.round(amount).toLocaleString('en-KE')} on receipt ${sale.receiptNumber}. Reason: ${reason || 'none given'}`,
+        actorUserId: userId,
+        entityType: 'Sale',
+        entityId: sale.id,
+        data: { amount, reason, refundId: refund.id },
+      });
+    } catch (error) {
+      // Recording must never undo a refund that has already committed.
+    }
   }
 
   async getDailySummary(branchId: string, date: string, tenantId: string) {
