@@ -207,20 +207,52 @@ export class MerchantPaymentsService {
       offlineId: `paystack-${reference}`,
     };
     try {
-      await this.prisma.merchantCharge.create({
-        data: {
-          tenantId: actor.tenantId,
-          requestId: input.requestId,
-          branchId: salePayload.branchId,
-          cashierId: actor.sub,
-          reference,
-          subaccountCode: payout.row.subaccountCode,
-          amount: new Prisma.Decimal(amount),
-          phone,
-          paystackEmail,
-          salePayload: salePayload as unknown as Prisma.InputJsonValue,
-        },
+      const charge = await this.prisma.$transaction(async (tx) => {
+        // A lost client request must not start another open prompt for the same
+        // cashier and branch. Serialize this check with charge creation.
+        const lockKey = `merchant-sale:${actor.tenantId}:${salePayload.branchId}:${actor.sub}`;
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
+        const sameRequest = await tx.merchantCharge.findUnique({
+          where: { tenantId_requestId: { tenantId: actor.tenantId, requestId: input.requestId } },
+        });
+        if (sameRequest) return { existing: sameRequest };
+
+        const openCharge = await tx.merchantCharge.findFirst({
+          where: {
+            tenantId: actor.tenantId,
+            branchId: salePayload.branchId,
+            cashierId: actor.sub,
+            purpose: 'SALE',
+            status: { in: ['PENDING', 'SETTLING', 'NEEDS_REVIEW'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { reference: true },
+        });
+        if (openCharge) {
+          throw new ConflictException(
+            `An earlier M-Pesa payment is still open (${openCharge.reference}). Check it in Payments before starting another request.`,
+          );
+        }
+
+        return {
+          created: await tx.merchantCharge.create({
+            data: {
+              tenantId: actor.tenantId,
+              requestId: input.requestId,
+              branchId: salePayload.branchId,
+              cashierId: actor.sub,
+              reference,
+              subaccountCode: payout.row.subaccountCode,
+              amount: new Prisma.Decimal(amount),
+              phone,
+              paystackEmail,
+              salePayload: salePayload as unknown as Prisma.InputJsonValue,
+            },
+          }),
+        };
       });
+      if ('existing' in charge) return this.presentStart(charge.existing);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const concurrent = await this.prisma.merchantCharge.findUnique({
@@ -318,23 +350,89 @@ export class MerchantPaymentsService {
     const paystackEmail = this.paystack.getMerchantPayerEmail?.() || 'billing@archeaxon.com';
     const reference = `CBDUE-${randomBytes(12).toString('hex')}`;
     try {
-      await this.prisma.merchantCharge.create({
-        data: {
-          tenantId: actor.tenantId,
-          requestId: input.requestId,
-          branchId: input.branchId,
-          cashierId: actor.sub,
-          reference,
-          subaccountCode: payout.row.subaccountCode,
-          amount: new Prisma.Decimal(input.amount),
-          phone,
-          paystackEmail,
-          salePayload: {},
-          purpose: 'RECEIVABLE',
-          receivableType: input.receivableType,
-          receivableId: input.receivableId,
-        },
+      const charge = await this.prisma.$transaction(async (tx) => {
+        // Debt collection may be initiated by more than one cashier. Prevent
+        // concurrent prompts from requesting more than the balance due.
+        const lockKey = `merchant-receivable:${actor.tenantId}:${input.receivableType}:${input.receivableId}`;
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
+        const sameRequest = await tx.merchantCharge.findUnique({
+          where: { tenantId_requestId: { tenantId: actor.tenantId, requestId: input.requestId } },
+        });
+        if (sameRequest) {
+          if (sameRequest.purpose !== 'RECEIVABLE' || sameRequest.receivableId !== input.receivableId ||
+              sameRequest.receivableType !== input.receivableType) {
+            throw new ConflictException('This payment request key was already used for a different request');
+          }
+          return { existing: sameRequest };
+        }
+
+        const currentReceivable = input.receivableType === 'retail'
+          ? await tx.retailReceivable.findFirst({
+              where: {
+                id: input.receivableId,
+                tenantId: actor.tenantId,
+                branchId: input.branchId,
+              },
+              select: { outstandingAmount: true, status: true },
+            })
+          : await tx.peerReceivable.findFirst({
+              where: {
+                id: input.receivableId,
+                tenantId: actor.tenantId,
+                branchId: input.branchId,
+              },
+              select: { outstandingAmount: true, status: true },
+            });
+        if (!currentReceivable) throw new NotFoundException('Receivable was not found for this business');
+        if (currentReceivable.status === 'PAID' || currentReceivable.status === 'WRITTEN_OFF') {
+          throw new ConflictException('This receivable is already closed');
+        }
+
+        const pending = await tx.merchantCharge.aggregate({
+          where: {
+            tenantId: actor.tenantId,
+            purpose: 'RECEIVABLE',
+            receivableType: input.receivableType,
+            receivableId: input.receivableId,
+            status: { in: ['PENDING', 'SETTLING', 'NEEDS_REVIEW'] },
+          },
+          _sum: { amount: true },
+        });
+        const outstandingCents = Math.round(
+          Number(currentReceivable.outstandingAmount) * 100,
+        );
+        const pendingCents = Math.round(Number(pending._sum.amount ?? 0) * 100);
+        const requestedCents = Math.round(input.amount * 100);
+        if (requestedCents + pendingCents > outstandingCents) {
+          throw new ConflictException(
+            pendingCents > 0
+              ? 'Another M-Pesa request is already open for this balance. Check it before requesting another payment.'
+              : 'Payment amount exceeds outstanding balance',
+          );
+        }
+
+        return {
+          created: await tx.merchantCharge.create({
+            data: {
+              tenantId: actor.tenantId,
+              requestId: input.requestId,
+              branchId: input.branchId,
+              cashierId: actor.sub,
+              reference,
+              subaccountCode: payout.row.subaccountCode,
+              amount: new Prisma.Decimal(input.amount),
+              phone,
+              paystackEmail,
+              salePayload: {},
+              purpose: 'RECEIVABLE',
+              receivableType: input.receivableType,
+              receivableId: input.receivableId,
+            },
+          }),
+        };
       });
+      if ('existing' in charge) return this.presentStart(charge.existing);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const concurrent = await this.prisma.merchantCharge.findUnique({

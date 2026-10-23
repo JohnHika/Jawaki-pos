@@ -796,6 +796,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         if (_isPayoutError(err)) {
           await _refreshPayoutStatus();
           if (mounted) await _showPayoutNotReady();
+        } else if (err.startsWith('An earlier M-Pesa payment is still open')) {
+          await _showPendingMpesaPayment(err);
         } else {
           showGlassSnackBar(
             context,
@@ -833,6 +835,32 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           color: DesignColors.accent,
         );
       }
+    }
+  }
+
+  Future<void> _showPendingMpesaPayment(String message) async {
+    final openPayments = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.pending_actions_rounded),
+        title: const Text('M-Pesa payment needs checking'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep cart'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.receipt_long_rounded),
+            label: const Text('Check payment'),
+          ),
+        ],
+      ),
+    );
+    if (openPayments == true && mounted) {
+      ref.read(paymentProvider.notifier).clearError();
+      await context.push('/payments');
     }
   }
 
