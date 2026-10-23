@@ -135,8 +135,7 @@ class _StubSource implements FinanceHubDataSource {
   BulkCollectionRequest? bulkRequest;
 
   @override
-  Future<void> recordRetailBulkCollection(
-      BulkCollectionRequest request) async {
+  Future<void> recordRetailBulkCollection(BulkCollectionRequest request) async {
     bulkRequest = request;
   }
 
@@ -146,6 +145,20 @@ class _StubSource implements FinanceHubDataSource {
   Future<void> recordPeerBulkCollection(BulkCollectionRequest request) async {
     peerBulkRequest = request;
   }
+
+  @override
+  Future<void> recordSupplierPayment(
+      String invoiceId, Map<String, dynamic> data) async {}
+
+  @override
+  Future<Map<String, dynamic>> startMerchantReceivablePayment(
+          Map<String, dynamic> data) async =>
+      <String, dynamic>{};
+
+  @override
+  Future<Map<String, dynamic>> getMerchantPaymentStatus(
+          String reference) async =>
+      <String, dynamic>{};
 }
 
 Widget _host(FinanceHubController controller) => ProviderScope(

@@ -48,9 +48,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Verify your ownership'), findsOneWidget);
-    expect(find.text('Verify with Google'), findsOneWidget);
+    expect(find.text('Secure ownership check'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Verify and create workspace'), findsOneWidget);
     expect(find.text('Use an email code instead'), findsOneWidget);
-    expect(find.textContaining('password'), findsOneWidget);
+    expect(
+      find.text(
+        'Counterbase does not collect or store an owner password during workspace setup.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('company name rejects server-invalid characters on step one',
