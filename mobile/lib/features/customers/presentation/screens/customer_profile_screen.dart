@@ -8,6 +8,7 @@ import '../../../../core/di/injection.dart';
 import '../../../sales/presentation/providers/cart_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../widgets/credit_limit_card.dart';
+import '../../../statements/presentation/widgets/send_statement_button.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final String customerId;
@@ -350,6 +351,14 @@ class _CustomerProfileScreenState
                         customerId: widget.customerId,
                         customerName: '${_customer!['name'] ?? 'this customer'}',
                       ),
+                      if ((_customer!['balance'] as num? ?? 0) > 0) ...[
+                        const SizedBox(height: 12),
+                        SendStatementButton(
+                          customerId: widget.customerId,
+                          name: '${_customer!['name'] ?? 'this customer'}',
+                          phone: _customer!['phone'] as String?,
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       // Payment schedule (installments)
                       SectionHeader(

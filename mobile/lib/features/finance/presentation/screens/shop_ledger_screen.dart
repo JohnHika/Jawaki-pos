@@ -11,6 +11,7 @@ import '../../domain/finance_models.dart';
 import '../providers/finance_hub_controller.dart';
 import '../widgets/shop_installment_sheet.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../statements/presentation/widgets/send_statement_button.dart';
 
 /// Everything one other shop owes us and has paid back: the running balance,
 /// each debt with its progress, and a dated list of every instalment received.
@@ -86,6 +87,14 @@ class ShopLedgerScreen extends ConsumerWidget {
               DesignSpacing.lg, DesignSpacing.md, DesignSpacing.lg, DesignSpacing.xxxl),
           children: <Widget>[
             FadeSlideIn(child: _BalanceCard(statement: statement)),
+            if (statement.outstanding > 0) ...[
+              const SizedBox(height: DesignSpacing.md),
+              SendStatementButton(
+                debtorId: shop.id,
+                name: shop.name,
+                phone: shop.phone,
+              ),
+            ],
             const SizedBox(height: DesignSpacing.xl),
             FadeSlideIn(
               delay: const Duration(milliseconds: 80),
