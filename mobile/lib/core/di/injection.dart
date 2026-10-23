@@ -28,7 +28,7 @@ export '../../features/billing/domain/entitlement_service.dart'
     show EntitlementService;
 
 final getIt = GetIt.instance;
-const _defaultApiUrl = 'https://counterbase-pos-api.vercel.app/api/v1';
+const _defaultApiUrl = 'https://api.archeaxon.com/api/v1';
 
 /// Configure all dependencies for the app
 /// This must be called after WidgetsFlutterBinding.ensureInitialized()
