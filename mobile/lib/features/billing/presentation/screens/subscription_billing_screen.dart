@@ -1441,10 +1441,6 @@ class _SubscriptionBillingScreenState
     return 'KES ${_formatAmount(plan.priceKes)}';
   }
 
-  num? _monthlyAmountFromSettings(Map<String, dynamic>? settings) {
-    return planById(settings?['plan']?.toString())?.priceKes;
-  }
-
   String _formatDate(String iso) {
     try {
       final dt = DateTime.parse(iso).toLocal();
@@ -1467,7 +1463,7 @@ class _SubscriptionBillingScreenState
 Color statusColor(String? status) => _statusColor(status);
 
 // ═══════════════════════════════════════════════════════════════════
-//  PAY WITH M-PESA SHEET — two steps: invoice summary → code entry
+//  CHANGE PLAN SHEET
 // ═══════════════════════════════════════════════════════════════════
 
 /// A single selectable plan row inside the change-plan sheet. Deliberately

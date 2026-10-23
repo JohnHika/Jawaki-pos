@@ -31,10 +31,7 @@ class _SpyApiClient extends ApiClient {
     'subscriptionStatus': 'ACTIVE',
     'currentPeriodEnd': '2026-09-20T00:00:00Z',
     'graceDays': 3,
-    'manualPaybill': {'phone': '0742126582', 'accountFormat': 'COMPANY-<id>'},
   };
-  Object? submitError;
-  Map<String, dynamic>? lastSubmitCall;
   Map<String, dynamic>? lastUpdateSettingsCall;
 
   @override
@@ -68,19 +65,6 @@ class _SpyApiClient extends ApiClient {
     return settingsData;
   }
 
-  @override
-  Future<Map<String, dynamic>> submitSubscriptionPayment({
-    required String mpesaCode,
-    double? amount,
-  }) async {
-    lastSubmitCall = {'mpesaCode': mpesaCode, 'amount': amount};
-    if (submitError != null) throw submitError!;
-    return {
-      'claimId': 'claim-1',
-      'status': 'PENDING_CONFIRMATION',
-      'message': 'Payment code received.',
-    };
-  }
 }
 
 void main() {
@@ -178,31 +162,21 @@ void main() {
     });
 
     testWidgets(
-        'Pay with M-Pesa sheet: invoice summary, then code entry '
-        'and submit', (tester) async {
+        'overdue subscriptions use provider checkout without manual code entry',
+        (tester) async {
+      spyApi.entitlementData = {
+        ...spyApi.entitlementData,
+        'status': 'PAST_DUE',
+        'daysRemaining': -1,
+        'restrictedMode': true,
+      };
       await tester
           .pumpWidget(MaterialApp.router(routerConfig: billingTestRouter()));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Pay with M-Pesa'));
-      await tester.pumpAndSettle();
-
-      // Step 1: invoice summary is visible.
-      expect(find.text('Subscription'), findsWidgets);
-      expect(find.text('Amount due'), findsOneWidget);
-      expect(find.text('Paybill'), findsOneWidget);
-
-      // Step 2: manual code entry path.
-      await tester.enterText(
-        find.widgetWithText(TextField, 'M-Pesa confirmation code'),
-        'QGH7XY92K1',
-      );
-      await tester.tap(find.text('Submit Payment Code'));
-      await tester.pumpAndSettle();
-
-      expect(spyApi.lastSubmitCall, isNotNull);
-      expect(spyApi.lastSubmitCall!['mpesaCode'], 'QGH7XY92K1');
-      // Sheet closed after submit.
+      expect(find.text('Pay subscription with Paystack'), findsOneWidget);
+      expect(find.text('M-Pesa confirmation code'), findsNothing);
+      expect(find.text('Paybill'), findsNothing);
       expect(find.text('Submit Payment Code'), findsNothing);
     });
 
