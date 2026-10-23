@@ -6,6 +6,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
+import '../../../coupons/presentation/widgets/coupon_row.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/cart_item_tile.dart';
 import '../../../../core/utils/format.dart';
@@ -224,6 +225,8 @@ class CartScreen extends ConsumerWidget {
           isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
       child: Column(
         children: [
+          const CouponRow(),
+          const SizedBox(height: DesignSpacing.sm),
           // Subtotal only earns its own line when something actually moves
           // it away from the final total (a discount or tax applied). When
           // there's neither, "Subtotal" and "Total" are the same number —

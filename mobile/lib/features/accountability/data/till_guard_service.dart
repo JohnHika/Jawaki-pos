@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/company_caches.dart';
 import '../../../core/services/till_guard.dart';
 import '../../../core/services/till_rules_cache.dart';
 import '../../../core/theme/design_system.dart';
@@ -13,7 +14,10 @@ import '../../../core/theme/design_system.dart';
 /// sale that slips through (or is made on a phone with stale rules) is still
 /// recorded for the owner when it syncs.
 class TillGuardService {
-  TillGuardService._();
+  TillGuardService._() {
+    // Rules and price floors belong to one company: forget them on sign-out.
+    CompanyCaches.register(_cache.clear);
+  }
 
   static final TillGuardService instance = TillGuardService._();
 

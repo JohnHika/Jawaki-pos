@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:axon_pos/core/di/injection.dart' as di;
+import 'company_caches.dart';
 import 'storage_service.dart';
 import 'lifecycle_lock_controller.dart';
 import '../../features/team/data/services/invitation_cache_service.dart';
@@ -452,6 +453,9 @@ class AuthService implements LifecycleLockAuth {
       // Non-fatal: the next login's sync will still overwrite stale rows
       // once it succeeds.
     }
+
+    // Till rules and coupons belong to one company too.
+    await CompanyCaches.clearAll();
 
     // Wipe the staff-invitation cache: it holds other people's names and
     // emails in plaintext, and the next login on this device may belong to

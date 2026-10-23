@@ -2102,6 +2102,117 @@ class ApiClient {
   Future<Map<String, dynamic>> getExchangeRates() async =>
       _payload(await _dio.get('/market/rates'));
 
+  // ── Coupons, referrals, statements, M-Pesa matching ───────────────────
+
+  Future<Map<String, dynamic>> getTillCoupons() async =>
+      _payload(await _dio.get('/coupons/till'));
+
+  Future<List<Map<String, dynamic>>> getCoupons() async =>
+      _payloadList(await _dio.get('/coupons'));
+
+  Future<Map<String, dynamic>> getCouponReport({int days = 30}) async =>
+      _payload(await _dio.get('/coupons/report', queryParameters: {'days': days}));
+
+  Future<Map<String, dynamic>> createCoupon(Map<String, dynamic> body) async =>
+      _payload(await _dio.post('/coupons', data: body));
+
+  Future<Map<String, dynamic>> updateCoupon(
+          String id, Map<String, dynamic> body) async =>
+      _payload(await _dio.patch('/coupons/$id', data: body));
+
+  Future<Map<String, dynamic>> deleteCoupon(String id) async =>
+      _payload(await _dio.delete('/coupons/$id'));
+
+  Future<Map<String, dynamic>> getReferralSummary() async =>
+      _payload(await _dio.get('/referrals/me'));
+
+  Future<Map<String, dynamic>> redeemCode(String code) async =>
+      _payload(await _dio.post('/referrals/redeem', data: {'code': code}));
+
+  Future<Map<String, dynamic>> getStatementSettings() async =>
+      _payload(await _dio.get('/statements/settings'));
+
+  Future<Map<String, dynamic>> updateStatementSettings(
+          Map<String, dynamic> body) async =>
+      _payload(await _dio.put('/statements/settings', data: body));
+
+  Future<Map<String, dynamic>> previewStatement(
+          {String? customerId, String? debtorId}) async =>
+      _payload(await _dio.get('/statements/preview', queryParameters: {
+        if (customerId != null) 'customerId': customerId,
+        if (debtorId != null) 'debtorId': debtorId,
+      }));
+
+  Future<Map<String, dynamic>> createStatementLink({
+    String? customerId,
+    String? debtorId,
+    String? message,
+    int? days,
+  }) async =>
+      _payload(await _dio.post('/statements/links', data: {
+        if (customerId != null) 'customerId': customerId,
+        if (debtorId != null) 'debtorId': debtorId,
+        if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+        if (days != null) 'days': days,
+      }));
+
+  Future<List<Map<String, dynamic>>> getStatementLinks(
+          {String? customerId, String? debtorId}) async =>
+      _payloadList(await _dio.get('/statements/links', queryParameters: {
+        if (customerId != null) 'customerId': customerId,
+        if (debtorId != null) 'debtorId': debtorId,
+      }));
+
+  Future<void> revokeStatementLink(String id) async {
+    await _dio.post('/statements/links/$id/revoke');
+  }
+
+  Future<List<Map<String, dynamic>>> getStatementClaims({String? status}) async =>
+      _payloadList(await _dio.get('/statements/claims', queryParameters: {
+        if (status != null) 'status': status,
+      }));
+
+  Future<Map<String, dynamic>> decideStatementClaim(String id,
+          {required bool confirm, double? amount}) async =>
+      _payload(await _dio.post('/statements/claims/$id/decide', data: {
+        'action': confirm ? 'CONFIRM' : 'REJECT',
+        if (amount != null) 'amount': amount,
+      }));
+
+  /// The server's address without the /api/v1 part: public pages such as the
+  /// statement link live there (https://host/s/TOKEN), outside the API prefix.
+  String absoluteUrl(String path) {
+    final base = baseUrl;
+    final apiAt = base.indexOf('/api/');
+    final origin = (apiAt > 0 ? base.substring(0, apiAt) : base)
+        .replaceAll(RegExp(r'/+$'), '');
+    return '$origin$path';
+  }
+
+  /// Downloads a statement PDF from its public link. No sign-in needed.
+  Future<List<int>> downloadStatementPdf(String path, {String lang = 'en'}) async {
+    final response = await _dio.get<List<int>>(
+      absoluteUrl('$path/pdf'),
+      queryParameters: {'lang': lang},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return response.data ?? const [];
+  }
+
+  Future<Map<String, dynamic>> parseMpesaMessages(String text) async =>
+      _payload(await _dio.post('/mpesa/parse', data: {'text': text}));
+
+  Future<Map<String, dynamic>> applyMpesaPayments(
+          List<Map<String, dynamic>> items) async =>
+      _payload(await _dio.post('/mpesa/apply', data: {'items': items}));
+
+  Future<Map<String, dynamic>> ignoreMpesaPayments(
+          List<Map<String, dynamic>> items) async =>
+      _payload(await _dio.post('/mpesa/ignore', data: {'items': items}));
+
+  Future<List<Map<String, dynamic>>> getMpesaHistory() async =>
+      _payloadList(await _dio.get('/mpesa/history'));
+
   String _mimeTypeForFile(String fileName) {
     final lower = fileName.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';

@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
+import 'package:axon_pos/core/services/coupon_rules.dart';
 
 const _uuid = Uuid();
 
@@ -104,6 +105,11 @@ class CartState {
   final String? customerName;
   final String? notes;
 
+  /// A shop coupon the cashier entered. Its value is worked out from the
+  /// lines every time (see [couponVerdict]), so it follows the cart: remove an
+  /// item and a minimum-spend coupon stops applying instead of overpaying.
+  final Coupon? coupon;
+
   const CartState({
     this.items = const [],
     this.discountPercent = 0,
@@ -111,18 +117,44 @@ class CartState {
     this.customerId,
     this.customerName,
     this.notes,
+    this.coupon,
   });
 
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
   double get subtotal => items.fold(0, (sum, item) => sum + item.total);
 
-  double get discount {
+  /// The cashier's own discount, which the shop's discount limit applies to.
+  double get manualDiscount {
     if (discountPercent > 0) {
       return subtotal * (discountPercent / 100);
     }
     return discountAmount;
   }
+
+  List<CouponLine> get couponLines => [
+        for (final item in items)
+          CouponLine(productId: item.productId, amount: item.total),
+      ];
+
+  CouponVerdict? get couponVerdict => coupon == null
+      ? null
+      : evaluateCoupon(coupon!, couponLines, customerId: customerId);
+
+  /// What the coupon takes off right now; zero if it no longer qualifies.
+  double get couponDiscount {
+    final verdict = couponVerdict;
+    if (verdict == null || !verdict.ok) return 0;
+    final room = subtotal - manualDiscount;
+    return verdict.discount > room ? (room > 0 ? room : 0) : verdict.discount;
+  }
+
+  /// This coupon's share of each line, in cart order, for the price guard.
+  List<double> get couponShares => couponDiscount > 0
+      ? spreadCouponDiscount(couponLines, coupon!.productIds, couponDiscount)
+      : List<double>.filled(items.length, 0);
+
+  double get discount => manualDiscount + couponDiscount;
 
   double get taxableAmount => subtotal - discount;
 
@@ -138,6 +170,8 @@ class CartState {
     String? customerId,
     String? customerName,
     String? notes,
+    Coupon? coupon,
+    bool clearCoupon = false,
   }) {
     return CartState(
       items: items ?? this.items,
@@ -146,6 +180,7 @@ class CartState {
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
       notes: notes ?? this.notes,
+      coupon: clearCoupon ? null : (coupon ?? this.coupon),
     );
   }
 }
@@ -453,6 +488,14 @@ class CartNotifier extends StateNotifier<CartState> {
 
   void setDiscountAmount(double amount) {
     state = state.copyWith(discountAmount: amount, discountPercent: 0);
+  }
+
+  void applyCoupon(Coupon coupon) {
+    state = state.copyWith(coupon: coupon);
+  }
+
+  void removeCoupon() {
+    state = state.copyWith(clearCoupon: true);
   }
 
   void setCustomer(String? customerId, {String? customerName}) {

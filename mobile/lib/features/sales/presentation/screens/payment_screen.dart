@@ -600,15 +600,27 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   /// The cart as the shop's price and discount rules see it.
-  List<GuardLine> _guardLines(CartState cart) => cart.items
-      .map((i) => GuardLine(
-            productId: i.productId,
-            name: i.productName,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            discount: i.discount,
-          ))
-      .toList();
+  /// A coupon's share of each line lowers the price the item really sold at,
+  /// so a coupon cannot hide a sale below cost, but it is the owner's own
+  /// approved discount and does not count against the cashier's limit.
+  List<GuardLine> _guardLines(CartState cart) {
+    final shares = cart.couponShares;
+    return [
+      for (var i = 0; i < cart.items.length; i++)
+        GuardLine(
+          productId: cart.items[i].productId,
+          name: cart.items[i].productName,
+          quantity: cart.items[i].quantity,
+          unitPrice: cart.items[i].unitPrice,
+          discount: cart.items[i].discount,
+          approvedDiscount: shares[i],
+        ),
+    ];
+  }
+
+  /// The coupon code to record with the sale, only if it actually took money off.
+  String? _couponCodeFor(CartState cart) =>
+      cart.couponDiscount > 0 ? cart.coupon?.code : null;
 
   Future<void> _processPayment({bool rulesChecked = false}) async {
     if (_selectedMethod == null) return;
@@ -633,7 +645,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       final allowed = await TillGuardService.instance.review(
         context,
         lines: _guardLines(cart),
-        cartDiscount: cart.discount,
+        cartDiscount: cart.manualDiscount,
         creditAmount: _selectedMethod == PaymentMethod.debt ? cart.total : 0,
         customerId: cart.customerId,
         customerName: cart.customerName,
@@ -654,6 +666,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           amount: cart.total,
           items: cart.items,
           customerId: cart.customerId,
+          discountAmount: cart.discount,
+          couponCode: _couponCodeFor(cart),
         );
         cashChangeDue = cashChange(total: cart.total, tendered: tendered);
         break;
@@ -670,6 +684,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           discountAmount: cart.discount,
           items: cart.items,
           customerId: cart.customerId,
+          couponCode: _couponCodeFor(cart),
         );
         break;
       case PaymentMethod.debt:
@@ -691,6 +706,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           items: cart.items,
           customerId: cart.customerId,
           customerName: cart.customerName,
+          discountAmount: cart.discount,
+          couponCode: _couponCodeFor(cart),
         );
         break;
       case PaymentMethod.split:
@@ -730,6 +747,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           items: cart.items,
           tenders: tenders,
           customerId: cart.customerId,
+          discountAmount: cart.discount,
+          couponCode: _couponCodeFor(cart),
         );
         break;
     }

@@ -40,6 +40,15 @@ class PaymentTender {
       );
 }
 
+/// A sale-wide discount and the coupon behind it, carried alongside the
+/// payment so the server records both (and not just a lower total).
+class _SaleExtras {
+  const _SaleExtras([this.discountAmount = 0, this.couponCode]);
+
+  final double discountAmount;
+  final String? couponCode;
+}
+
 // Payment state
 class PaymentState {
   final bool isProcessing;
@@ -108,6 +117,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required double amount,
     required List<CartItem> items,
     String? customerId,
+    double discountAmount = 0,
+    String? couponCode,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -122,11 +133,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         items: items,
         paymentMethod: 'CASH',
         total: amount,
+        discountAmount: discountAmount,
         customerId: customerId,
       );
 
-      await _syncOrQueueSale(
-          saleId, items, 'CASH', amount, null, null, customerId);
+      await _syncOrQueueSale(saleId, items, 'CASH', amount, null, null,
+          customerId, _SaleExtras(discountAmount, couponCode));
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -146,6 +158,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required double discountAmount,
     required List<CartItem> items,
     String? customerId,
+    String? couponCode,
   }) async {
     final previousReference = state.currentTransactionId;
     state = state.copyWith(isProcessing: true, error: null);
@@ -170,6 +183,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       final fingerprint = jsonEncode({
         'amount': amount,
         'discount': discountAmount,
+        'couponCode': couponCode,
         'phone': formattedPhone,
         'customerId': customerId,
         'items': items.map((item) => item.toJson()).toList(),
@@ -213,6 +227,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
                     })
                 .toList(),
             'discountAmount': discountAmount,
+            if (couponCode != null) 'couponCode': couponCode,
             'paymentMethod': 'MPESA',
             'paidAmount': amount,
           },
@@ -412,6 +427,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     String? customerName,
     String? notes,
+    double discountAmount = 0,
+    String? couponCode,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -436,6 +453,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         items: items,
         paymentMethod: 'CREDIT',
         total: amount,
+        discountAmount: discountAmount,
         paymentReference: customerId,
         customerId: customerId,
       );
@@ -444,8 +462,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // balance so the Customers screen and profile reflect what they owe.
       await _database.updateCustomerBalance(customerId, amount);
 
-      await _syncOrQueueSale(
-          saleId, items, 'CREDIT', amount, customerId, null, customerId);
+      await _syncOrQueueSale(saleId, items, 'CREDIT', amount, customerId, null,
+          customerId, _SaleExtras(discountAmount, couponCode));
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -465,6 +483,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required List<CartItem> items,
     required List<PaymentTender> tenders,
     String? customerId,
+    double discountAmount = 0,
+    String? couponCode,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -526,6 +546,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         items: items,
         paymentMethod: 'SPLIT',
         total: tenderTotal,
+        discountAmount: discountAmount,
         paymentReference: tendersJson,
         customerId: customerId,
       );
@@ -536,7 +557,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
 
       await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
-          tenders, customerId);
+          tenders, customerId, _SaleExtras(discountAmount, couponCode));
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -617,6 +638,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? paymentReference,
     List<PaymentTender>? tenders,
     String? customerId,
+    _SaleExtras extras = const _SaleExtras(),
   ]) async {
     if (!_connectivity.isOnline) {
       await _queueSaleForSync(
@@ -627,6 +649,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentReference,
         tenders,
         customerId,
+        extras,
       );
       return;
     }
@@ -640,6 +663,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentReference,
         tenders,
         customerId,
+        extras,
       );
       await _database.markSaleAsSynced(saleId);
       // The server numbers every sale itself. Adopt that number locally so the
@@ -661,6 +685,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentReference,
         tenders,
         customerId,
+        extras,
       );
     }
   }
@@ -673,6 +698,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? paymentReference,
     List<PaymentTender>? tenders,
     String? customerId,
+    _SaleExtras extras = const _SaleExtras(),
   ]) async {
     final branchId = _authService.branchId;
     // branchId is a required field on the server (CreateSaleDto.branchId).
@@ -701,6 +727,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
               })
           .toList(),
       'paymentMethod': paymentMethod,
+      if (extras.discountAmount > 0) 'discountAmount': extras.discountAmount,
+      if (extras.couponCode != null) 'couponCode': extras.couponCode,
       // The server's sale schema has no paymentReference or cashierId (the
       // cashier comes from the signed-in token). Sending them made every
       // direct upload fail with 400 and fall back to the slow queue.
@@ -721,6 +749,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? paymentReference,
     List<PaymentTender>? tenders,
     String? customerId,
+    _SaleExtras extras = const _SaleExtras(),
   ]) async {
     await _syncService.queueSyncItem(
       tableName: 'sales',
@@ -737,6 +766,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         'items': items.map((i) => i.toJson()).toList(),
         'paymentMethod': paymentMethod,
         'paymentReference': paymentReference,
+        if (extras.discountAmount > 0) 'discountAmount': extras.discountAmount,
+        if (extras.couponCode != null) 'couponCode': extras.couponCode,
         'paidAmount': total,
         'cashierId': _authService.userId,
         if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),

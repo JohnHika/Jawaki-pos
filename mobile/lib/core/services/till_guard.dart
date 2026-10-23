@@ -129,6 +129,7 @@ class GuardLine {
     required this.quantity,
     required this.unitPrice,
     required this.discount,
+    this.approvedDiscount = 0,
   });
 
   final String productId;
@@ -136,6 +137,11 @@ class GuardLine {
   final num quantity;
   final double unitPrice;
   final double discount;
+
+  /// Discount the owner already approved for this line, such as its share of a
+  /// coupon. It lowers the price the item really sold at, so selling under
+  /// cost is still caught, but it does not count against the cashier's limit.
+  final double approvedDiscount;
 }
 
 String _kes(num n) {
@@ -170,8 +176,10 @@ List<GuardIssue> assessPricing(
 
     final floor = rules.floors[line.productId];
     if (floor == null) continue;
-    final netUnit =
-        (line.unitPrice * line.quantity - line.discount) / line.quantity;
+    final netUnit = (line.unitPrice * line.quantity -
+            line.discount -
+            line.approvedDiscount) /
+        line.quantity;
 
     if (floor.cost > 0 && netUnit < floor.cost) {
       issues.add(GuardIssue(

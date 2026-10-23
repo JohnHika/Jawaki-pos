@@ -90,6 +90,33 @@ void main() {
       expect(issues.single.code, 'DISCOUNT_LIMIT');
     });
 
+    test('a coupon share can push a sale below cost without tripping the discount limit',
+        () {
+      // 2 x 500 = 1000. A 450 coupon share leaves 275 each, under the 300 cost.
+      const l = GuardLine(
+        productId: 'p1',
+        name: 'Sufuria',
+        quantity: 2,
+        unitPrice: 500,
+        discount: 0,
+        approvedDiscount: 450,
+      );
+      final issues = assessPricing(rules(), [l]);
+      expect(issues.map((i) => i.code).toList(), ['BELOW_COST']);
+    });
+
+    test('a coupon share that keeps the price above cost raises nothing', () {
+      const l = GuardLine(
+        productId: 'p1',
+        name: 'Sufuria',
+        quantity: 2,
+        unitPrice: 500,
+        discount: 0,
+        approvedDiscount: 100,
+      );
+      expect(assessPricing(rules(), [l]), isEmpty);
+    });
+
     test('does nothing when the guard is off or the product has no floor', () {
       expect(
           assessPricing(rules(priceMode: GuardMode.off), [line(price: 1)]),

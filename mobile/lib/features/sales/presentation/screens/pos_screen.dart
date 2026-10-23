@@ -19,6 +19,7 @@ import '../widgets/search_bar_widget.dart';
 import '../widgets/cart_summary_bar.dart';
 import '../../../../core/utils/format.dart';
 import '../../../accountability/data/till_guard_service.dart';
+import '../../../coupons/data/coupon_service.dart';
 
 class POSScreen extends ConsumerStatefulWidget {
   const POSScreen({super.key});
@@ -63,6 +64,8 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     // Fetch the shop's price and credit rules so the till can apply them
     // even if the signal drops later. Fire-and-forget; it never throws.
     TillGuardService.instance.refreshIfStale();
+    // The same for the shop's coupon codes.
+    CouponService.instance.refreshIfStale();
     // The grid renders instantly from the local cache via
     // filteredProductsProvider, which never talks to the API on its own —
     // nothing else refreshes stock/prices for a cashier who lands here
