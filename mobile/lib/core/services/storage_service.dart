@@ -38,6 +38,7 @@ class StorageService implements LifecycleLockStorage {
   static const String keyAuthLocked = 'auth_locked';
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
   static const String keyFinanceSnapshotPrefix = 'finance_snapshot_v1';
+  static const String keyHeldSalesPrefix = 'held_sales_v1';
   static const String keyHasSeenStaffTour = 'has_seen_staff_tour';
 
   Future<void> initialize() async {
@@ -269,6 +270,28 @@ class StorageService implements LifecycleLockStorage {
   /// are encoded so tenant or branch identifiers cannot collide with delimiters.
   static String financeSnapshotKey(String tenantId, String branchId) =>
       '$keyFinanceSnapshotPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}';
+
+  /// Held carts belong to one shop and one selling location. The scope stays
+  /// in the key so logging in to another shop cannot reveal an old cart.
+  static String heldSalesKey(String tenantId, String branchId) =>
+      '$keyHeldSalesPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}';
+
+  String? getHeldSalesSnapshot({
+    required String tenantId,
+    required String branchId,
+  }) {
+    if (!_initialized || _prefs == null) return null;
+    return _prefs!.getString(heldSalesKey(tenantId, branchId));
+  }
+
+  Future<void> saveHeldSalesSnapshot({
+    required String tenantId,
+    required String branchId,
+    required String snapshot,
+  }) async {
+    _checkInitialized();
+    await _prefs!.setString(heldSalesKey(tenantId, branchId), snapshot);
+  }
 
   /// Reads a cached Finance snapshot without awaiting platform I/O. Malformed
   /// values are treated as a cache miss so a corrupted preference never blocks

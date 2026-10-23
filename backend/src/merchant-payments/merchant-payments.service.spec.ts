@@ -224,6 +224,7 @@ describe('MerchantPaymentsService', () => {
         reference: 'CBDUE_ref',
         offlineId: 'paystack-CBDUE_ref',
       }),
+      true,
     );
     expect(prisma.merchantCharge.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'COMPLETED', receivablePaymentId: 'retail-payment-1' }),

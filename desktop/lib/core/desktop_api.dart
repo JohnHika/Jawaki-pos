@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
-const defaultApiBaseUrl = 'https://arche-axon-pos-api.onrender.com/api/v1';
+const defaultApiBaseUrl = 'https://api.archeaxon.com/api/v1';
 
 class ApiFailure implements Exception {
   const ApiFailure(this.message, {this.statusCode});

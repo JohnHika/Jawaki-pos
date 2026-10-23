@@ -6,7 +6,7 @@ the Counterbase team (roles and access), and platform security. Android only.
 - App: `aca/` (Flutter). Package `com.archeaxon.aca`, launcher name **ACA**.
 - API: the existing Counterbase backend (`backend/src/platform-admin/`), version-1 routes under
   `/api/v1/platform-admin/*`. ACA has **no demo mode and no local data**: its one data source is the live
-  server the Counterbase POS app also uses, `https://arche-axon-pos-api.onrender.com/api/v1`.
+  server the Counterbase POS app also uses, `https://api.archeaxon.com/api/v1`.
 
 ## Roles
 
@@ -39,9 +39,9 @@ every route (routes without an annotation are denied). The app only mirrors it t
 
 The platform-staff features need migration `20261021161501_platform_staff_rbac_security` (additive: new columns on
 `platform_admins`, new tables `platform_admin_sessions`, `platform_audit_logs`, `platform_tenant_notes`).
-`render.yaml` already runs `prisma migrate deploy` on start. Existing platform admin rows become `OWNER`.
+The Vercel backend build runs `prisma migrate deploy`. Existing platform admin rows become `OWNER`.
 
-Optional env var on Render: `PLATFORM_2FA_KEY` (secret used to seal staff authenticator secrets; falls back to
+Optional Vercel backend env var: `PLATFORM_2FA_KEY` (secret used to seal staff authenticator secrets; falls back to
 `JWT_REFRESH_SECRET`). **If you rotate whatever key is in use, staff must re-enrol two-step sign-in.**
 
 ## Building

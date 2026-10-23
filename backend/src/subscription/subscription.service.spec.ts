@@ -65,6 +65,7 @@ describe('SubscriptionService', () => {
           maxUsers: true,
           activationStatus: true,
           activationPaidAt: true,
+          settings: true,
         },
       });
     });
@@ -78,6 +79,20 @@ describe('SubscriptionService', () => {
       expect(prisma.tenant.findUnique).toHaveBeenCalledWith({
         where: { id: 'missing-tenant' },
         select: expect.any(Object),
+      });
+    });
+
+    it('reports legacy unpaid trial selections as pending without paid-plan limits', async () => {
+      const { service } = buildService({
+        prisma: { tenant: { findUnique: jest.fn().mockResolvedValue({
+          plan: 'ENTERPRISE', subscriptionStatus: 'TRIAL',
+          maxBranches: UNLIMITED_PLAN_LIMIT, maxUsers: UNLIMITED_PLAN_LIMIT,
+          settings: {},
+        }) } },
+      });
+      await expect(service.getCurrentPlan('trial-tenant')).resolves.toMatchObject({
+        plan: 'TRIAL', pendingPlan: 'ENTERPRISE', maxBranches: 1, maxUsers: 3,
+        planMeta: expect.objectContaining({ planId: 'TRIAL' }),
       });
     });
   });
@@ -127,16 +142,20 @@ describe('SubscriptionService', () => {
         },
       });
 
-      await service.changePlan('tenant-trial', 'BUSINESS');
+      const result = await service.changePlan('tenant-trial', 'BUSINESS');
 
       expect(prisma.tenant.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            plan: 'BUSINESS',
+            settings: expect.objectContaining({ pendingSubscriptionPlan: 'BUSINESS' }),
           }),
         }),
       );
       const updateData = prisma.tenant.update.mock.calls[0][0].data;
+      expect(result.pendingPlan).toBe('BUSINESS');
+      expect(updateData).not.toHaveProperty('plan');
+      expect(updateData).not.toHaveProperty('maxBranches');
+      expect(updateData).not.toHaveProperty('maxUsers');
       expect(updateData).not.toHaveProperty('subscriptionStatus');
       expect(updateData).not.toHaveProperty('currentPeriodStart');
       expect(updateData).not.toHaveProperty('currentPeriodEnd');
@@ -164,9 +183,7 @@ describe('SubscriptionService', () => {
       expect(prisma.tenant.update).toHaveBeenCalledWith({
         where: { id: 'tenant-1' },
         data: {
-          plan: 'ENTERPRISE',
-          maxBranches: UNLIMITED_PLAN_LIMIT,
-          maxUsers: UNLIMITED_PLAN_LIMIT,
+          settings: { pendingSubscriptionPlan: 'ENTERPRISE' },
         },
         select: {
           plan: true,
@@ -177,11 +194,7 @@ describe('SubscriptionService', () => {
           maxUsers: true,
         },
       });
-      expect(result).toMatchObject({
-        plan: 'ENTERPRISE',
-        maxBranches: UNLIMITED_PLAN_LIMIT,
-        maxUsers: UNLIMITED_PLAN_LIMIT,
-      });
+      expect(result.pendingPlan).toBe('ENTERPRISE');
       // Unlimited must be a large positive finite sentinel: consumers do
       // arithmetic/comparison on these values and a mobile formatter treats
       // >= 1000 as 'Unlimited'.
@@ -285,6 +298,16 @@ describe('SubscriptionService', () => {
           allowed: true,
         });
       }
+    });
+
+    it('does not grant Enterprise features from an unpaid trial selection', async () => {
+      const { service } = buildService({
+        prisma: { tenant: { findUnique: jest.fn().mockResolvedValue({
+          plan: 'ENTERPRISE', subscriptionStatus: 'TRIAL',
+        }) } },
+      });
+      await expect(service.getFeatureAccess('trial-tenant', 'priority_support'))
+        .resolves.toMatchObject({ allowed: false });
     });
 
     it('CORE keeps the 7-day taste window for taste features', async () => {

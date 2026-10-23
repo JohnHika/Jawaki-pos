@@ -549,10 +549,10 @@ export class MerchantPaymentsService {
         };
         const payment = charge.receivableType === 'retail'
           ? await this.finance.recordRetailPayment(
-              charge.cashierId, charge.tenantId, charge.receivableId, paymentDto,
+              charge.cashierId, charge.tenantId, charge.receivableId, paymentDto, true,
             )
           : await this.finance.recordPeerPayment(
-              charge.cashierId, charge.tenantId, charge.receivableId, paymentDto,
+              charge.cashierId, charge.tenantId, charge.receivableId, paymentDto, true,
             );
         const completed = await this.prisma.merchantCharge.update({
           where: { reference },

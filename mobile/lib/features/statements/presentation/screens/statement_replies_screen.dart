@@ -10,8 +10,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/statement_models.dart';
 import '../providers/statement_provider.dart';
 
-/// What customers said back from the statement link: "I have paid" (confirm it
-/// and the debt is cleared) or "I will pay on" (a promise to follow up).
+/// Customer responses to a statement link. A customer's "I have paid" claim
+/// stays informational until a provider-confirmed payment settles the debt.
 class StatementRepliesScreen extends ConsumerWidget {
   const StatementRepliesScreen({super.key});
 
@@ -73,20 +73,15 @@ class _ReplyCard extends ConsumerStatefulWidget {
 class _ReplyCardState extends ConsumerState<_ReplyCard> {
   bool _busy = false;
 
-  Future<void> _decide({required bool confirm, double? amount}) async {
+  Future<void> _decide({required bool confirm}) async {
     setState(() => _busy = true);
     try {
       final result = await getIt<ApiClient>()
-          .decideStatementClaim(widget.claim.id, confirm: confirm, amount: amount);
+          .decideStatementClaim(widget.claim.id, confirm: confirm);
       if (!mounted) return;
-      final applied = asDouble(result['applied']);
-      if (confirm && widget.claim.isPaid) {
-        showGlassSnackBar(
-          context,
-          'Recorded ${kesWhole(applied)} from ${widget.claim.debtorName}.',
-          icon: Icons.check_circle_outline_rounded,
-          color: DesignColors.success,
-        );
+      if (result['message'] is String) {
+        showGlassSnackBar(context, result['message'] as String,
+            icon: Icons.info_outline_rounded);
       }
       ref.invalidate(statementClaimsProvider);
     } catch (e) {
@@ -100,45 +95,6 @@ class _ReplyCardState extends ConsumerState<_ReplyCard> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<void> _confirmPaid() async {
-    final claim = widget.claim;
-    final controller = TextEditingController(
-        text: (claim.amount ?? 0).round().toString());
-    final amount = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Confirm payment from ${claim.debtorName}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-                'Check your M-Pesa messages for code ${claim.mpesaCode}. Enter the amount you actually received.'),
-            const SizedBox(height: DesignSpacing.md),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(prefixText: 'KES '),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final v = double.tryParse(controller.text.trim());
-              if (v != null && v > 0) Navigator.pop(ctx, v);
-            },
-            child: const Text('Record payment'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (amount != null) await _decide(confirm: true, amount: amount);
   }
 
   @override
@@ -176,8 +132,7 @@ class _ReplyCardState extends ConsumerState<_ReplyCard> {
               StatusBadge(label: badge, color: color),
             ]),
             const SizedBox(height: 4),
-            Text(headline,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(headline, style: const TextStyle(fontWeight: FontWeight.w600)),
             if (claim.isPaid && claim.mpesaCode != null)
               Text('M-Pesa code ${claim.mpesaCode}',
                   style: TextStyle(color: secondary)),
@@ -190,17 +145,38 @@ class _ReplyCardState extends ConsumerState<_ReplyCard> {
               '${claim.createdAt != null ? ' · ${timeAgo(claim.createdAt!)}' : ''}',
               style: TextStyle(color: secondary, fontSize: 13),
             ),
-            if (claim.isPending && canDecide) ...[
+            if (claim.isPending && claim.isPaid) ...[
+              const SizedBox(height: DesignSpacing.md),
+              const Text(
+                'This claim does not confirm payment. Send a Paystack '
+                'M-Pesa request from Finance; the debt updates after '
+                'Paystack verifies it.',
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              Row(children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => context.push('/finance'),
+                    icon: const Icon(Icons.phone_android_rounded),
+                    label: const Text('Open Finance'),
+                  ),
+                ),
+                if (canDecide) ...[
+                  const SizedBox(width: DesignSpacing.sm),
+                  OutlinedButton(
+                    onPressed: _busy ? null : () => _decide(confirm: false),
+                    child: const Text('Reject claim'),
+                  ),
+                ],
+              ]),
+            ],
+            if (claim.isPending && !claim.isPaid && canDecide) ...[
               const SizedBox(height: DesignSpacing.md),
               Row(children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: _busy
-                        ? null
-                        : claim.isPaid
-                            ? _confirmPaid
-                            : () => _decide(confirm: true),
-                    child: Text(claim.isPaid ? 'Confirm payment' : 'Noted'),
+                    onPressed: _busy ? null : () => _decide(confirm: true),
+                    child: const Text('Noted'),
                   ),
                 ),
                 const SizedBox(width: DesignSpacing.sm),

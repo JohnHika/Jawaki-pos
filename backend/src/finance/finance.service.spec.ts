@@ -106,7 +106,7 @@ describe('FinanceService', () => {
       amount: 40,
       method: 'MPESA',
       offlineId: 'offline-payment-1',
-    })).resolves.toMatchObject({ id: 'retail-payment-existing', amount: 40, method: 'MPESA' });
+    }, true)).resolves.toMatchObject({ id: 'retail-payment-existing', amount: 40, method: 'MPESA' });
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(cashFlow.recordEntry).not.toHaveBeenCalled();
@@ -132,15 +132,29 @@ describe('FinanceService', () => {
     }));
   });
 
-  it('does not add a cash ledger entry for an M-Pesa collection', async () => {
+  it('does not add a cash ledger entry for a verified M-Pesa collection', async () => {
     await service.recordRetailPayment(userId, tenantId, 'retail-1', {
       branchId,
       amount: 40,
       method: 'MPESA',
-    });
+    }, true);
 
     expect(cashFlow.recordEntry).not.toHaveBeenCalled();
   });
+
+  it.each(['MPESA', 'CARD'] as const)(
+    'rejects an unverified %s debt payment before changing the balance',
+    async (method) => {
+      await expect(service.recordRetailPayment(userId, tenantId, 'retail-1', {
+        branchId,
+        amount: 40,
+        method,
+        reference: 'claimed-payment-code',
+      })).rejects.toThrow('Electronic debt payments must be confirmed through the verified customer M-Pesa checkout.');
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps supplier, retail, and peer outstanding totals separate in the overview', async () => {
     await expect(service.getOverview(tenantId, branchId)).resolves.toEqual({

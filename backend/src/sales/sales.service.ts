@@ -63,6 +63,27 @@ export class SalesService {
       );
     }
 
+    // Other electronic methods have no verified settlement path into this
+    // endpoint. An arbitrary client reference cannot prove payment.
+    if (
+      dto.paymentMethod === PaymentMethod.PESAPAL ||
+      dto.paymentMethod === PaymentMethod.TOURISTTAP
+    ) {
+      throw new BadRequestException(
+        'Electronic sales can only be recorded after provider payment is verified.',
+      );
+    }
+    if (
+      dto.paymentMethod === PaymentMethod.SPLIT &&
+      dto.tenders?.some((tender) =>
+        tender.method !== PaymentMethod.CASH && tender.method !== PaymentMethod.CREDIT,
+      )
+    ) {
+      throw new BadRequestException(
+        'Split payments currently support cash and debt only. Use the verified M-Pesa checkout for electronic payments.',
+      );
+    }
+
     // Validate branch belongs to tenant
     const branch = await this.prisma.branch.findFirst({
       where: { id: dto.branchId, tenantId },

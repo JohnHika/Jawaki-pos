@@ -18,6 +18,10 @@ const buildPrisma = (overrides: Record<string, any> = {}): MockTx => {
       update: jest.fn(),
       ...(overrides.subscriptionInvoice ?? {}),
     },
+    subscriptionCardToken: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      ...(overrides.subscriptionCardToken ?? {}),
+    },
   };
   prisma.$transaction.mockImplementation((work: (tx: MockTx) => unknown) => work(prisma));
   return prisma;
@@ -115,6 +119,27 @@ describe('RecurringBillingService', () => {
   // Invoice idempotency per period
   // =========================================================================
   describe('invoice idempotency per period', () => {
+    it('bills the selected plan only after a trial ends', async () => {
+      const { service, prisma } = buildService();
+      prisma.tenant.findUnique.mockResolvedValue({
+        plan: 'TRIAL', subscriptionStatus: 'TRIAL',
+        currentPeriodEnd: new Date('2026-09-07T00:00:00Z'),
+        settings: { pendingSubscriptionPlan: 'BUSINESS' },
+      });
+      prisma.subscriptionInvoice.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      prisma.subscriptionInvoice.create.mockResolvedValue({ id: 'trial-invoice', status: 'PENDING' });
+
+      await service.getInvoiceForPayment('trial-tenant');
+
+      expect(prisma.subscriptionInvoice.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ plan: 'BUSINESS', amount: expect.anything() }),
+      });
+      expect(Number(prisma.subscriptionInvoice.create.mock.calls[0][0].data.amount)).toBe(6500);
+    });
+
     it('creates the new period invoice once and reuses it on the next tick', async () => {
       const now = new Date('2026-09-07T04:00:00Z');
       const tenant = {

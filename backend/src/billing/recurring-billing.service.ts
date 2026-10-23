@@ -11,7 +11,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { JengaPaymentService } from '../payments/jenga-payment.service';
 import { SubscriptionRenewalSettler } from './subscription-renewal-settler.service';
-import { PLAN_PRICING, VALID_PLANS } from '../subscription/subscription.service';
+import { PLAN_PRICING, VALID_PLANS, selectedTrialPlan } from '../subscription/subscription.service';
 import { describeLicense, resolveLicense } from '../license/license.catalog';
 import { LegalPolicyService } from '../legal/legal-policy.service';
 
@@ -64,6 +64,7 @@ export class RecurringBillingService {
         subscriptionStatus: true,
         currentPeriodStart: true,
         currentPeriodEnd: true,
+        settings: true,
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
@@ -74,6 +75,8 @@ export class RecurringBillingService {
 
     return {
       plan: tenant.plan,
+      pendingPlan: selectedTrialPlan(tenant.settings) ??
+        (tenant.subscriptionStatus === 'TRIAL' && tenant.plan !== 'TRIAL' ? tenant.plan : null),
       autoRenewEnabled: tenant.autoRenewEnabled && hasAutoRenewAuthorization,
       autoRenewAuthorizationRequired: !hasAutoRenewAuthorization,
       billingPhone: tenant.billingPhone,
@@ -158,7 +161,7 @@ export class RecurringBillingService {
     const due = await this.prisma.tenant.findMany({
       where: {
         currentPeriodEnd: { lte: now },
-        plan: { in: VALID_PLANS.filter((p) => p !== 'TRIAL') },
+        plan: { in: VALID_PLANS },
         activationStatus: 'ACTIVE',
       },
       select: {
@@ -170,13 +173,17 @@ export class RecurringBillingService {
         subscriptionStatus: true,
         currentPeriodStart: true,
         currentPeriodEnd: true,
+        settings: true,
       },
     });
 
     for (const tenant of due) {
       try {
         // Reuse an outstanding invoice before considering a new period.
-        const invoice = await this.ensureInvoiceForPeriod(tenant.id, tenant.plan, now);
+        const planForInvoice = tenant.plan === 'TRIAL'
+          ? selectedTrialPlan(tenant.settings) ?? 'CORE'
+          : tenant.plan;
+        const invoice = await this.ensureInvoiceForPeriod(tenant.id, planForInvoice, now);
 
         // Auto-charge only an unpaid invoice with no provider checkout already
         // in flight. A daily cron must never send duplicate STK prompts.
@@ -230,8 +237,21 @@ export class RecurringBillingService {
                 reason: 'Automatic M-Pesa prompt limit reached — use the Paystack invoice checkout',
               });
             } else {
-              const pushed = await this.fireRenewalCharge(tenant, invoice);
-              if (pushed) summary.charged.push(tenant.id);
+              // A saved Pesapal card can renew the same invoice. Never also
+              // send an automatic M-Pesa prompt for that company.
+              const cardToken = await this.prisma.subscriptionCardToken.findUnique({
+                where: { tenantId: tenant.id },
+                select: { status: true },
+              });
+              if (cardToken && ['ACTIVE', 'PENDING'].includes(cardToken.status)) {
+                summary.skipped.push({
+                  tenantId: tenant.id,
+                  reason: 'Card auto-renewal is active or being set up',
+                });
+              } else {
+                const pushed = await this.fireRenewalCharge(tenant, invoice);
+                if (pushed) summary.charged.push(tenant.id);
+              }
             }
           }
         }
@@ -573,7 +593,8 @@ export class RecurringBillingService {
     });
     if (!tenant) throw new NotFoundException('Company not found');
 
-    const planMeta = PLAN_PRICING[tenant.plan ?? 'TRIAL'] ?? PLAN_PRICING.TRIAL;
+    const effectivePlan = tenant.subscriptionStatus === 'TRIAL' ? 'TRIAL' : tenant.plan ?? 'TRIAL';
+    const planMeta = PLAN_PRICING[effectivePlan] ?? PLAN_PRICING.TRIAL;
     const status = tenant.subscriptionStatus ?? 'ACTIVE';
     const paidUntil = tenant.currentPeriodEnd ?? null;
     const msPerDay = 24 * 60 * 60 * 1000;
@@ -620,15 +641,19 @@ export class RecurringBillingService {
     }
 
     return {
-      plan: tenant.plan ?? 'TRIAL',
+      plan: effectivePlan,
       status,
       paidUntil,
       daysRemaining,
       daysOverdue,
       graceUntil,
       features: {
-        maxBranches: tenant.maxBranches ?? planMeta.features.maxBranches,
-        maxUsers: tenant.maxUsers ?? planMeta.features.maxUsers,
+        maxBranches: tenant.subscriptionStatus === 'TRIAL'
+          ? planMeta.features.maxBranches
+          : tenant.maxBranches ?? planMeta.features.maxBranches,
+        maxUsers: tenant.subscriptionStatus === 'TRIAL'
+          ? planMeta.features.maxUsers
+          : tenant.maxUsers ?? planMeta.features.maxUsers,
       },
       restrictedMode,
       restrictedReason,
@@ -678,7 +703,7 @@ export class RecurringBillingService {
         : paidUntil;
     const payload = {
       tenantId: tenant.id,
-      plan: tenant.plan ?? 'TRIAL',
+      plan: tenant.subscriptionStatus === 'TRIAL' ? 'TRIAL' : tenant.plan ?? 'TRIAL',
       validUntil: validUntil.toISOString(),
       offlineGraceUntil: new Date(
         validUntil.getTime() + OFFLINE_ENTITLEMENT_TTL_DAYS * 24 * 60 * 60 * 1000,
@@ -757,7 +782,7 @@ export class RecurringBillingService {
   private async getCurrentInvoice(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { plan: true, currentPeriodEnd: true, subscriptionStatus: true },
+      select: { plan: true, currentPeriodEnd: true, subscriptionStatus: true, settings: true },
     });
     if (!tenant) throw new NotFoundException('Company not found');
 
@@ -771,7 +796,10 @@ export class RecurringBillingService {
     // Period may not have ended yet — no open invoice.
     if (tenant.currentPeriodEnd && tenant.currentPeriodEnd > now) return null;
 
-    return this.ensureInvoiceForPeriod(tenantId, tenant.plan ?? 'CORE', now);
+    const planForInvoice = tenant.plan === 'TRIAL'
+      ? selectedTrialPlan(tenant.settings) ?? 'CORE'
+      : tenant.plan ?? 'CORE';
+    return this.ensureInvoiceForPeriod(tenantId, planForInvoice, now);
   }
 
   /** Return the current unpaid invoice for a customer-initiated checkout. */

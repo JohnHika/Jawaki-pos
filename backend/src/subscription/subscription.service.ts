@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { LegalPolicyService } from '../legal/legal-policy.service';
 
@@ -112,12 +113,19 @@ export class SubscriptionService {
         maxUsers: true,
         activationStatus: true,
         activationPaidAt: true,
+        settings: true,
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
-    const planMeta = PLAN_PRICING[tenant.plan ?? 'TRIAL'] ?? PLAN_PRICING.TRIAL;
+    const isTrial = tenant.subscriptionStatus === 'TRIAL';
+    const planMeta = PLAN_PRICING[isTrial ? 'TRIAL' : tenant.plan ?? 'TRIAL'] ?? PLAN_PRICING.TRIAL;
+    const { settings, ...currentPlan } = tenant;
     return {
-      ...tenant,
+      ...currentPlan,
+      plan: isTrial ? 'TRIAL' : currentPlan.plan,
+      maxBranches: isTrial ? PLAN_PRICING.TRIAL.features.maxBranches : currentPlan.maxBranches,
+      maxUsers: isTrial ? PLAN_PRICING.TRIAL.features.maxUsers : currentPlan.maxUsers,
+      pendingPlan: selectedTrialPlan(settings) ?? (isTrial && currentPlan.plan !== 'TRIAL' ? currentPlan.plan : null),
       planMeta,
       availablePlans: Object.values(PLAN_PRICING),
     };
@@ -136,11 +144,15 @@ export class SubscriptionService {
         subscriptionStatus: true,
         currentPeriodStart: true,
         currentPeriodEnd: true,
+        settings: true,
+        plan: true,
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
 
-    const plan = PLAN_PRICING[newPlan];
+    if (newPlan === 'TRIAL') {
+      throw new ConflictException('Select a paid plan to continue after your free trial.');
+    }
     const now = new Date();
     const isActiveTrial =
       tenant.subscriptionStatus === 'TRIAL' &&
@@ -152,12 +164,16 @@ export class SubscriptionService {
       );
     }
 
-    return this.prisma.tenant.update({
+    const currentSettings =
+      tenant.settings && typeof tenant.settings === 'object' && !Array.isArray(tenant.settings)
+        ? tenant.settings as Record<string, unknown>
+        : {};
+    const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        plan: newPlan,
-        maxBranches: plan.features.maxBranches,
-        maxUsers: plan.features.maxUsers,
+        // Selecting a future plan is not payment. Keep the trial's feature
+        // access and seat limits until a verified provider charge settles.
+        settings: { ...currentSettings, pendingSubscriptionPlan: newPlan } as Prisma.InputJsonValue,
       },
       select: {
         plan: true,
@@ -168,6 +184,7 @@ export class SubscriptionService {
         maxUsers: true,
       },
     });
+    return { ...updated, pendingPlan: newPlan };
   }
 
   async listInvoices(tenantId: string) {
@@ -188,13 +205,14 @@ export class SubscriptionService {
       where: { id: tenantId },
       select: {
         plan: true,
+        subscriptionStatus: true,
         currentPeriodStart: true,
         createdAt: true,
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
 
-    const plan = (tenant.plan ?? 'TRIAL').toUpperCase();
+    const plan = (tenant.subscriptionStatus === 'TRIAL' ? 'TRIAL' : tenant.plan ?? 'TRIAL').toUpperCase();
 
     // Enterprise plan always has everything.
     if (plan === 'ENTERPRISE') {
@@ -230,6 +248,14 @@ export class SubscriptionService {
     // Trial plan is limited to free features only.
     return { allowed: false, reason: 'trial' };
   }
+}
+
+export function selectedTrialPlan(settings: unknown): string | null {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+  const selected = (settings as Record<string, unknown>).pendingSubscriptionPlan;
+  return typeof selected === 'string' && selected !== 'TRIAL' && VALID_PLANS.includes(selected)
+    ? selected
+    : null;
 }
 
 export type FeatureKey =

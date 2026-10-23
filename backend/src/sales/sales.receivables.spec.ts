@@ -67,6 +67,35 @@ describe('SalesService receivable creation', () => {
     expect(prisma.branch.findFirst).not.toHaveBeenCalled();
   });
 
+  it.each([PaymentMethod.MPESA, PaymentMethod.PESAPAL, PaymentMethod.TOURISTTAP])(
+    'rejects an unverified %s split tender before creating a sale',
+    async (method) => {
+      await expect(service.createSale(userId, tenantId, {
+        ...baseSale,
+        paymentMethod: PaymentMethod.SPLIT,
+        tenders: [
+          { method: PaymentMethod.CASH, amount: 50 },
+          { method, amount: 50, reference: 'unverified-reference' },
+        ],
+      })).rejects.toThrow('Split payments currently support cash and debt only.');
+
+      expect(prisma.branch.findFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([PaymentMethod.PESAPAL, PaymentMethod.TOURISTTAP])(
+    'rejects an unverified %s sale',
+    async (paymentMethod) => {
+      await expect(service.createSale(userId, tenantId, {
+        ...baseSale,
+        paymentMethod,
+        paidAmount: 100,
+      })).rejects.toThrow('Electronic sales can only be recorded after provider payment is verified.');
+
+      expect(prisma.branch.findFirst).not.toHaveBeenCalled();
+    },
+  );
+
   it('creates an obligation for the whole unpaid pure CREDIT receipt inside the sale transaction', async () => {
     await service.createSale(userId, tenantId, { ...baseSale, paymentMethod: PaymentMethod.CREDIT, offlineId: 'sale-offline-1' });
 

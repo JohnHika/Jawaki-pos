@@ -62,10 +62,10 @@ export class CreateSaleItemDto {
   quantityPerUnit?: number;
 }
 
-// One payment component of a SPLIT sale — e.g. { method: CASH, amount: 500 }
-// plus { method: MPESA, amount: 300 } together covering one KES 800 total.
+// One payment component of a SPLIT sale. Only CASH and CREDIT are accepted
+// until electronic split tenders have a provider-verified settlement path.
 export class SaleTenderDto {
-  @ApiProperty({ enum: PaymentMethod, description: 'Must not itself be SPLIT' })
+  @ApiProperty({ enum: PaymentMethod, description: 'CASH or CREDIT only' })
   @IsEnum(PaymentMethod, { message: 'Invalid tender payment method' })
   method: PaymentMethod;
 

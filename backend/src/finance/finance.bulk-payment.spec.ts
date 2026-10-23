@@ -69,11 +69,17 @@ describe('FinanceService.recordRetailBulkPayment', () => {
     expect(locked).toEqual(['r-1', 'r-2']);
   });
 
-  it('does not record cash movements for non-cash methods', async () => {
-    await service.recordRetailBulkPayment(userId, tenantId, dto({ method: 'MPESA', reference: 'QWE123' }));
+  it.each(['MPESA', 'CARD'] as const)(
+    'rejects an unverified %s bulk payment before changing any debt',
+    async (method) => {
+      await expect(service.recordRetailBulkPayment(
+        userId, tenantId, dto({ method, reference: 'QWE123' }),
+      )).rejects.toThrow('Electronic debt payments must be confirmed through the verified customer M-Pesa checkout.');
 
-    expect(cashFlow.recordEntry).not.toHaveBeenCalled();
-  });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(cashFlow.recordEntry).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects duplicate receivables in one batch', async () => {
     await expect(

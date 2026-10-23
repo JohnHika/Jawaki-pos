@@ -1,9 +1,15 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/coupon_rules.dart';
+import 'package:axon_pos/core/services/storage_service.dart';
+
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 const _uuid = Uuid();
 
@@ -202,9 +208,166 @@ class ParkedSale {
 }
 
 class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
-  ParkedSalesNotifier() : super([]);
+  ParkedSalesNotifier({
+    required StorageService storage,
+    required String? tenantId,
+    required String? branchId,
+  })  : _storage = storage,
+        _tenantId = tenantId,
+        _branchId = branchId,
+        super(_restore(storage, tenantId, branchId));
+
+  final StorageService _storage;
+  final String? _tenantId;
+  final String? _branchId;
+  Future<void> _lastWrite = Future<void>.value();
+
+  static double? _amount(Object? value) {
+    final number = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
+    return number != null && number.isFinite ? number : null;
+  }
+
+  static List<ParkedSale> _restore(
+      StorageService storage, String? tenantId, String? branchId) {
+    if (tenantId == null ||
+        tenantId.isEmpty ||
+        branchId == null ||
+        branchId.isEmpty) {
+      return const [];
+    }
+    final raw =
+        storage.getHeldSalesSnapshot(tenantId: tenantId, branchId: branchId);
+    if (raw == null) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map ||
+          decoded['version'] != 1 ||
+          decoded['tenantId'] != tenantId ||
+          decoded['branchId'] != branchId ||
+          decoded['sales'] is! List) {
+        return const [];
+      }
+      final restored = <ParkedSale>[];
+      for (final row in decoded['sales'] as List) {
+        if (row is! Map || row['cart'] is! Map) continue;
+        try {
+          final cartJson = Map<String, dynamic>.from(row['cart'] as Map);
+          if (cartJson['items'] is! List) continue;
+          final items = <CartItem>[];
+          for (final item in cartJson['items'] as List) {
+            if (item is! Map) continue;
+            final id = item['id']?.toString() ?? '';
+            final productId = item['productId']?.toString() ?? '';
+            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+            final price = _amount(item['unitPrice']);
+            final discount = _amount(item['discount']) ?? 0;
+            if (id.isEmpty ||
+                productId.isEmpty ||
+                quantity <= 0 ||
+                price == null ||
+                price < 0 ||
+                discount < 0) {
+              continue;
+            }
+            items.add(CartItem(
+              id: id,
+              productId: productId,
+              productName: item['productName']?.toString() ?? '',
+              sku: item['sku']?.toString() ?? '',
+              quantity: quantity,
+              unitPrice: price,
+              discount: discount,
+              notes: item['notes']?.toString(),
+              saleUnit: item['saleUnit']?.toString(),
+              saleQuantity: _amount(item['saleQuantity']),
+              unitConversionFactor: _amount(item['unitConversionFactor']),
+            ));
+          }
+          if (items.isEmpty) continue;
+          final parkedAt = DateTime.tryParse(row['parkedAt']?.toString() ?? '');
+          final id = row['id']?.toString() ?? '';
+          if (id.isEmpty || parkedAt == null) continue;
+          Coupon? coupon;
+          if (cartJson['coupon'] is Map) {
+            try {
+              coupon = Coupon.fromJson(
+                  Map<String, dynamic>.from(cartJson['coupon'] as Map));
+            } catch (_) {
+              // A malformed coupon must not discard the rest of the held cart.
+            }
+          }
+          restored.add(ParkedSale(
+            id: id,
+            label: row['label']?.toString() ?? 'Held sale',
+            parkedAt: parkedAt,
+            cart: CartState(
+              items: items,
+              discountPercent: _amount(cartJson['discountPercent']) ?? 0,
+              discountAmount: _amount(cartJson['discountAmount']) ?? 0,
+              customerId: cartJson['customerId']?.toString(),
+              customerName: cartJson['customerName']?.toString(),
+              notes: cartJson['notes']?.toString(),
+              coupon: coupon,
+            ),
+          ));
+        } catch (_) {
+          // Skip an invalid entry while preserving other held sales.
+        }
+      }
+      return restored;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  void _persist() {
+    final tenantId = _tenantId;
+    final branchId = _branchId;
+    if (tenantId == null ||
+        tenantId.isEmpty ||
+        branchId == null ||
+        branchId.isEmpty) {
+      return;
+    }
+    final snapshot = jsonEncode({
+      'version': 1,
+      'tenantId': tenantId,
+      'branchId': branchId,
+      'sales': [
+        for (final sale in state)
+          {
+            'id': sale.id,
+            'label': sale.label,
+            'parkedAt': sale.parkedAt.toUtc().toIso8601String(),
+            'cart': {
+              'items': [for (final item in sale.cart.items) item.toJson()],
+              'discountPercent': sale.cart.discountPercent,
+              'discountAmount': sale.cart.discountAmount,
+              'customerId': sale.cart.customerId,
+              'customerName': sale.cart.customerName,
+              'notes': sale.cart.notes,
+              'coupon': sale.cart.coupon?.toJson(),
+            },
+          },
+      ],
+    });
+    // Queue writes so a quick hold/resume sequence cannot restore an older
+    // snapshot after a newer one. Keep the queue usable after an I/O error.
+    _lastWrite = _lastWrite
+        .then((_) => _storage.saveHeldSalesSnapshot(
+              tenantId: tenantId,
+              branchId: branchId,
+              snapshot: snapshot,
+            ))
+        .catchError((Object error) {
+      debugPrint('[HeldSales] Could not save held sales: $error');
+    });
+  }
 
   void park(CartState cart, {String? label}) {
+    if (cart.items.isEmpty) return;
     final name = label ?? cart.customerName ?? 'Sale #${state.length + 1}';
     state = [
       ...state,
@@ -215,22 +378,35 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
         parkedAt: DateTime.now(),
       ),
     ];
+    _persist();
   }
 
   CartState? resume(String id) {
-    final sale = state.firstWhere((s) => s.id == id);
+    final index = state.indexWhere((s) => s.id == id);
+    if (index < 0) return null;
+    final sale = state[index];
     state = state.where((s) => s.id != id).toList();
+    _persist();
     return sale.cart;
   }
 
   void remove(String id) {
     state = state.where((s) => s.id != id).toList();
+    _persist();
   }
 }
 
 final parkedSalesProvider =
     StateNotifierProvider<ParkedSalesNotifier, List<ParkedSale>>((ref) {
-  return ParkedSalesNotifier();
+  final scope = ref.watch(authControllerProvider.select((auth) => auth
+          .isAuthenticated
+      ? (auth.user?['tenantId']?.toString(), auth.user?['branchId']?.toString())
+      : (null, null)));
+  return ParkedSalesNotifier(
+    storage: getIt<StorageService>(),
+    tenantId: scope.$1,
+    branchId: scope.$2,
+  );
 });
 
 // ════════ CART NOTIFIER ════════
@@ -419,7 +595,8 @@ class CartNotifier extends StateNotifier<CartState> {
   /// keeping that line's price and unit. The result is worked out from the cart
   /// as it is AFTER the stock check, so rapid taps accumulate instead of
   /// overwriting each other. Going to zero or below removes the line.
-  Future<CartMutationResult> changeQuantityBy(String productId, int delta) async {
+  Future<CartMutationResult> changeQuantityBy(
+      String productId, int delta) async {
     final index = state.items.indexWhere((i) => i.productId == productId);
     if (index < 0) {
       return const CartMutationResult(

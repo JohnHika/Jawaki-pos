@@ -110,6 +110,9 @@ class _SubscriptionBillingScreenState
     return planById(_settings?['plan']?.toString());
   }
 
+  SubscriptionPlan? get _pendingPlan =>
+      planById(_settings?['pendingPlan']?.toString());
+
   @override
   void initState() {
     super.initState();
@@ -237,7 +240,9 @@ class _SubscriptionBillingScreenState
 
   void _showChangePlanSheet() {
     final currentPlan = (_billingPlan?.id ?? 'core').toLowerCase();
-    String selectedPlan = currentPlan == 'trial' ? 'core' : currentPlan;
+    String selectedPlan = currentPlan == 'trial'
+        ? (_pendingPlan?.id ?? 'core').toLowerCase()
+        : currentPlan;
     bool acceptedBillingTerms = false;
 
     showModalBottomSheet(
@@ -291,7 +296,7 @@ class _SubscriptionBillingScreenState
                   ),
                   const SizedBox(height: DesignSpacing.xs),
                   Text(
-                    'Your selected plan takes effect now. If you are in your free trial, the trial end date stays the same.',
+                    'Choose the plan for after your trial. Paid features start only after the subscription payment is confirmed.',
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
                           color: context.themed(DesignColors.darkTextSecondary),
                           height: 1.35,
@@ -367,7 +372,7 @@ class _SubscriptionBillingScreenState
                                 if (!mounted) return;
                                 showGlassSnackBar(
                                   context,
-                                  'Plan updated to ${planDisplayName(selectedPlan)}',
+                                  '${planDisplayName(selectedPlan)} saved for after your trial',
                                   icon: Icons.check_circle_rounded,
                                   color: DesignColors.success,
                                 );
@@ -934,7 +939,9 @@ class _SubscriptionBillingScreenState
                   plan == null
                       ? 'Reconnect to load your current plan'
                       : isTrial
-                          ? '${plan.name} · choose the plan for after your trial'
+                          ? _pendingPlan == null
+                              ? '${plan.name} · choose the plan for after your trial'
+                              : '${plan.name} · ${_pendingPlan!.name} selected for after your trial'
                           : isActive
                               ? '${plan.name} · active subscription'
                               : '${plan.name} · payment required',

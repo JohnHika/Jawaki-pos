@@ -13,7 +13,7 @@ This repo now supports automatic Android update publishing to Cloudflare R2.
 That means you no longer need to:
 
 - manually upload each APK to R2
-- manually change Render env vars for each release
+- manually change Vercel backend env vars for each release
 - publish GitHub Releases just for the updater
 
 ## One-time setup
@@ -117,7 +117,7 @@ For your current setup, use:
 
 - `R2_PUBLIC_BASE_URL=https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev`
 
-### 1. Render backend env
+### 1. Vercel backend env
 
 Set this in the backend environment:
 
@@ -178,7 +178,7 @@ Add:
 - `CF_R2_BUCKET=pos-updates`
 - `R2_PUBLIC_BASE_URL=https://pub-7f8ac9ce2a8c4e3cb5b1a89e37de7aec.r2.dev`
 
-### Render backend env
+### Vercel backend env
 
 Add:
 

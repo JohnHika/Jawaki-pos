@@ -33,6 +33,20 @@ describe('resolveLicense', () => {
     expect(isFeatureAllowed(lic, 'customReports')).toBe(false);
   });
 
+  it('limits unpaid trial selections to trial features and seats', () => {
+    const lic = resolveLicense(
+      tenant({
+        plan: 'ENTERPRISE', subscriptionStatus: 'TRIAL',
+        maxBranches: 999999, maxUsers: 999999,
+        settings: { license: { enforcement: 'enforce' } },
+      }),
+      { now: NOW },
+    );
+    expect(lic.plan).toBe('TRIAL');
+    expect(lic.limits).toEqual({ maxBranches: 1, maxUsers: 3 });
+    expect(isFeatureAllowed(lic, 'aiAssistant')).toBe(false);
+  });
+
   it('lets the operator grant or revoke a module regardless of plan', () => {
     const lic = resolveLicense(
       tenant({

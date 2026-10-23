@@ -194,7 +194,15 @@ export class FinanceService {
     return this.getPeerReceivable(tenantId, receivable.id);
   }
 
-  async recordRetailPayment(userId: string, tenantId: string, receivableId: string, dto: RecordReceivablePaymentDto) {
+  async recordRetailPayment(
+    userId: string,
+    tenantId: string,
+    receivableId: string,
+    dto: RecordReceivablePaymentDto,
+    // Only the Paystack merchant settlement service may pass this internal flag.
+    verifiedMerchantMpesa = false,
+  ) {
+    this.assertCollectionMethod(dto.method, verifiedMerchantMpesa);
     await this.assertBranch(tenantId, dto.branchId);
     if (dto.amount <= 0) throw new BadRequestException('Payment amount must be greater than zero');
     if (dto.offlineId) {
@@ -251,6 +259,7 @@ export class FinanceService {
     tenantId: string,
     dto: BulkRetailPaymentDto,
   ) {
+    this.assertCollectionMethod(dto.method);
     await this.assertBranch(tenantId, dto.branchId);
     const ids = dto.allocations.map((a) => a.receivableId);
     if (new Set(ids).size !== ids.length) {
@@ -311,7 +320,14 @@ export class FinanceService {
     return { count: payments.length, totalAmount, payments: payments.map((p) => this.formatPayment(p)) };
   }
 
-  async recordPeerPayment(userId: string, tenantId: string, receivableId: string, dto: RecordReceivablePaymentDto) {
+  async recordPeerPayment(
+    userId: string,
+    tenantId: string,
+    receivableId: string,
+    dto: RecordReceivablePaymentDto,
+    verifiedMerchantMpesa = false,
+  ) {
+    this.assertCollectionMethod(dto.method, verifiedMerchantMpesa);
     await this.assertBranch(tenantId, dto.branchId);
     if (dto.amount <= 0) throw new BadRequestException('Payment amount must be greater than zero');
     if (dto.offlineId) {
@@ -403,6 +419,16 @@ export class FinanceService {
       });
     }
     return payment;
+  }
+
+  private assertCollectionMethod(method: ReceivablePaymentMethod, verifiedMerchantMpesa = false) {
+    if (method === ReceivablePaymentMethod.CASH ||
+        (method === ReceivablePaymentMethod.MPESA && verifiedMerchantMpesa)) {
+      return;
+    }
+    throw new BadRequestException(
+      'Electronic debt payments must be confirmed through the verified customer M-Pesa checkout.',
+    );
   }
 
   private async getPeerReceivable(tenantId: string, id: string) {

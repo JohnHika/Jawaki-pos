@@ -495,7 +495,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final amountController =
         TextEditingController(text: amount.toStringAsFixed(0));
     final reference = TextEditingController();
-    String method = 'CASH';
     String? error;
     await showModalBottomSheet<void>(
       useRootNavigator: true,
@@ -506,16 +505,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         builder: (sheetContext, setSheetState) => _SheetFrame(
           title: title,
           children: <Widget>[
-            SegmentedButton<String>(
-              expandedInsets: EdgeInsets.zero,
-              segments: const <ButtonSegment<String>>[
-                ButtonSegment(value: 'CASH', label: Text('Cash')),
-                ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
-                ButtonSegment(value: 'CARD', label: Text('Card')),
-              ],
-              selected: <String>{method},
-              onSelectionChanged: (value) =>
-                  setSheetState(() => method = value.first),
+            const Text(
+              'Record cash already received. For M-Pesa, send a Paystack '
+              'request from this debt; its balance updates after verification.',
             ),
             const SizedBox(height: DesignSpacing.md),
             TextField(
@@ -536,7 +528,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 setSheetState(() => error = 'Amount must be greater than zero');
                 return;
               }
-              await onSave(parsed, method,
+              await onSave(parsed, 'CASH',
                   reference.text.trim().isEmpty ? null : reference.text.trim());
               if (sheetContext.mounted) Navigator.pop(sheetContext);
             }),
@@ -584,8 +576,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.receipt_long_rounded),
-            title: const Text('Record payment received'),
-            subtitle: const Text('Cash, M-Pesa, or card already collected'),
+            title: const Text('Record cash received'),
+            subtitle: const Text('Enter the cash collected from the customer'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.pop(sheetContext, 0),
           ),
@@ -1067,7 +1059,6 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     final reference = TextEditingController();
     // Fixed for this sheet so a retry after a dropped connection cannot pay twice.
     final offlineId = 'bulk-${DateTime.now().microsecondsSinceEpoch}';
-    String method = 'CASH';
     String? error;
     bool saving = false;
 
@@ -1110,16 +1101,9 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                         }),
               ),
               const SizedBox(height: DesignSpacing.md),
-              SegmentedButton<String>(
-                expandedInsets: EdgeInsets.zero,
-                segments: const <ButtonSegment<String>>[
-                  ButtonSegment(value: 'CASH', label: Text('Cash')),
-                  ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
-                  ButtonSegment(value: 'CARD', label: Text('Card')),
-                ],
-                selected: <String>{method},
-                onSelectionChanged: (value) =>
-                    setSheetState(() => method = value.first),
+              const Text(
+                'Record cash already received. For M-Pesa, request payment '
+                'on each debt so Paystack can verify and settle it.',
               ),
               const SizedBox(height: DesignSpacing.md),
               TextField(
@@ -1165,7 +1149,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     BulkCollectionRequest(
                       branchId: snapshot.branchId,
                       allocations: plan.allocations,
-                      method: method,
+                      method: 'CASH',
                       reference: reference.text.trim().isEmpty
                           ? null
                           : reference.text.trim(),

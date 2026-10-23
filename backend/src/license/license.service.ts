@@ -71,7 +71,7 @@ export class LicenseService {
   async getForTenant(tenantId: string): Promise<ResolvedLicense> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { plan: true, maxBranches: true, maxUsers: true, settings: true },
+      select: { plan: true, subscriptionStatus: true, maxBranches: true, maxUsers: true, settings: true },
     });
     if (!tenant) throw new NotFoundException('Company not found');
     return resolveLicense(tenant, { defaultMode: this.defaultMode() });
@@ -143,6 +143,7 @@ export class LicenseService {
         name: true,
         slug: true,
         plan: true,
+        subscriptionStatus: true,
         maxBranches: true,
         maxUsers: true,
         settings: true,

@@ -31,7 +31,7 @@ export class AppController {
    * proves the HTTP layer is alive — it never reaches Postgres, so Neon's
    * free compute still suspends after 5 idle minutes and the first user's
    * first query pays the full wake penalty. This endpoint runs SELECT 1
-   * so pinging it keeps BOTH Render and Neon warm.
+   * so pinging it keeps Neon's database compute ready.
    */
   @Get('/health/db')
   async healthDb() {

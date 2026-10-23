@@ -1,11 +1,7 @@
 name: Keep Backend Warm
 
-# Render's free tier spins the service down after ~15 minutes idle and takes
-# 30-60+ seconds to cold-start on the next request — longer than the mobile
-# app's 30s network timeout, so the first request after any idle period
-# (very often the user's login/catalog-sync right after opening the app)
-# times out and fails. Pinging /health well inside that 15-minute window
-# keeps the instance from ever fully sleeping.
+# Ping the Vercel API's DB health route to keep Neon's free database compute
+# ready for the next request after an idle period.
 
 on:
   schedule:
@@ -23,16 +19,16 @@ jobs:
         run: |
           set +e
           # Ping /health/db, not bare /health: /health never reaches
-          # Postgres, so Neon's free compute suspends after 5 idle minutes
+          # Postgres, so Neon's free compute can suspend after an idle period
           # and the first user pays the wake penalty on their first query.
-          # /health/db runs SELECT 1, keeping BOTH Render and Neon warm.
+          # /health/db runs SELECT 1, keeping Neon ready.
           status=$(curl -sS -o /dev/null -w "%{http_code}" \
             --connect-timeout 15 \
             --max-time 60 \
             --retry 2 \
             --retry-delay 5 \
             --retry-max-time 90 \
-            "https://arche-axon-pos-api.onrender.com/health/db")
+            "https://api.archeaxon.com/health/db")
           curl_exit=$?
           set -e
 

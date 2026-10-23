@@ -10,7 +10,7 @@
 class AcaConfig {
   AcaConfig._();
 
-  static const String productionApi = 'https://arche-axon-pos-api.onrender.com/api/v1';
+  static const String productionApi = 'https://api.archeaxon.com/api/v1';
 
   static const String apiBaseUrl = String.fromEnvironment(
     'ACA_API_BASE_URL',

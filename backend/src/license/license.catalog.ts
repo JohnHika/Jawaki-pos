@@ -53,6 +53,7 @@ export interface TenantLicenseSettings {
 
 export interface TenantForLicense {
   plan: string | null;
+  subscriptionStatus?: string | null;
   maxBranches: number | null;
   maxUsers: number | null;
   settings: unknown;
@@ -111,7 +112,10 @@ export function resolveLicense(
 ): ResolvedLicense {
   const now = opts.now ?? new Date();
   const stored = readLicenseSettings(tenant.settings);
-  const planId = tenant.plan ?? 'TRIAL';
+  // A selected paid plan is not a paid entitlement while the tenant is still
+  // in the free trial (including rows created by older plan-selection code).
+  const isTrial = tenant.subscriptionStatus === 'TRIAL';
+  const planId = isTrial ? 'TRIAL' : tenant.plan ?? 'TRIAL';
   const knownPlan = PLAN_PRICING[planId];
   const unknownPlan = !knownPlan;
   const planMeta = knownPlan ?? PLAN_PRICING.TRIAL;
@@ -133,7 +137,7 @@ export function resolveLicense(
   const seats = (explicit: unknown, column: number | null, planMax: number) => {
     if (positive(explicit)) return explicit;
     if (unknownPlan) return column && column > 0 ? column : UNLIMITED_PLAN_LIMIT;
-    return Math.max(column ?? 0, planMax);
+    return isTrial ? planMax : Math.max(column ?? 0, planMax);
   };
   const limits = {
     maxBranches: seats(stored.maxBranches, tenant.maxBranches, planMeta.features.maxBranches),
