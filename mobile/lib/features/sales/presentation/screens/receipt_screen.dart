@@ -13,7 +13,7 @@ import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/share_format_sheet.dart';
-import '../../../../core/widgets/motion_kit.dart';
+import '../../../../core/widgets/receipt_printer.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../providers/sales_provider.dart';
 
@@ -145,28 +145,28 @@ class ReceiptScreen extends ConsumerWidget {
         ],
       ),
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: receiptAsync.when(
-              data: (receipt) => _buildReceipt(
-                  context, receipt, ref.watch(tenantIdentityProvider).logoUrl),
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: DesignColors.accent),
-              ),
-              error: (e, _) => EmptyState(
-                icon: Icons.error_outline_rounded,
-                title: 'Failed to load receipt',
-                subtitle: 'Check your connection and try again.',
-                actionLabel: 'Retry',
-                iconColor: DesignColors.error,
-                onAction: () => ref.refresh(receiptProvider(saleId)),
-              ),
-            ),
-          ),
-          if (celebrate && receiptAsync.hasValue)
-            const Positioned.fill(child: ConfettiBurst()),
-        ],
+      body: receiptAsync.when(
+        data: (receipt) => _buildReceipt(
+            context, receipt, ref.watch(tenantIdentityProvider).logoUrl),
+        // The machine sits on "Processing" while the receipt loads, then
+        // starts printing the moment the data lands.
+        loading: () => ReceiptPrinterView(
+          key: const ValueKey('receipt-printer'),
+          ready: false,
+          celebrate: celebrate,
+          summaryTitle: 'Receipt',
+          summarySubtitle: 'Loading…',
+          summaryTotal: '',
+          paper: null,
+        ),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Failed to load receipt',
+          subtitle: 'Check your connection and try again.',
+          actionLabel: 'Retry',
+          iconColor: DesignColors.error,
+          onAction: () => ref.refresh(receiptProvider(saleId)),
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -193,108 +193,60 @@ class ReceiptScreen extends ConsumerWidget {
   Widget _buildReceipt(
       BuildContext context, Map<String, dynamic> receipt, String? logoUrl) {
     final items = receipt['items'] as List? ?? [];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     final lines = _renderReceiptLines(receipt, items);
-    final isVoided = (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
+    final isVoided =
+        (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
+    final rcp = receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
+    final total = (receipt['total'] as num?)?.toDouble() ?? 0;
+    final itemCount = items.length;
 
-    // Paper background is always light (like real thermal paper) with dark
-    // ink, regardless of app theme, so the preview reads as a printout.
-    const paperColor = Color(0xFFFAFAF7);
-    const inkColor = Color(0xFF1A1A1A);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(
-          vertical: DesignSpacing.xl, horizontal: DesignSpacing.lg),
-      child: Center(
-        child: Column(
-          children: [
-            if (celebrate && !isVoided) ...[
-              const RippleRings(
-                size: 150,
-                child: AnimatedCheckmark(
-                    size: 76, delay: Duration(milliseconds: 150)),
-              ),
-              FadeSlideIn(
-                delay: const Duration(milliseconds: 500),
-                child: Text(
-                  'Sale complete',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
-                    color: isDark
-                        ? DesignColors.darkTextPrimary
-                        : DesignColors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
-            ],
-            // A little "Preview of printed receipt (58mm)" caption so it's
-            // clear this mirrors the physical printout.
-            Text(
-              'RECEIPT PREVIEW',
-              style: TextStyle(
-                fontSize: 10,
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w700,
-                color: isDark
-                    ? DesignColors.darkTextTertiary
-                    : DesignColors.textTertiary,
+    return ReceiptPrinterView(
+      key: const ValueKey('receipt-printer'),
+      ready: true,
+      celebrate: celebrate && !isVoided,
+      voided: isVoided,
+      completeLabel: isVoided ? 'Sale voided' : 'Sale complete',
+      logo: Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: DesignColors.accent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.receipt_long_rounded,
+            size: 16, color: Colors.white),
+      ),
+      summaryTitle: itemCount == 1 ? '1 item' : '$itemCount items',
+      summarySubtitle: 'Receipt #$rcp',
+      summaryTotal: 'KES ${total.toStringAsFixed(2)}',
+      // ~58mm of paper: the monospace font at this size fits the printer's
+      // 32 columns, so what you see is what prints.
+      paper: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Company logo at the top of the paper, like a real branded
+          // receipt. Hidden if none is set.
+          if (logoUrl != null && logoUrl.isNotEmpty) ...[
+            Center(
+              child: Image.network(
+                logoUrl,
+                height: DesignSpacing.xxl + 24,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
             ),
             const SizedBox(height: DesignSpacing.md - 2),
-            Container(
-              // ~58mm of paper: a fixed narrow column. The monospace font at
-              // this size fits 32 chars, matching the printer's line width.
-              width: 280,
-              padding: const EdgeInsets.fromLTRB(14, 18, 14, 22),
-              decoration: BoxDecoration(
-                color: paperColor,
-                border: isVoided
-                    ? Border.all(color: DesignColors.error, width: 2)
-                    : null,
-                borderRadius: BorderRadius.circular(2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Company logo at the top of the paper, like a real
-                  // branded receipt. Grayscale-friendly; hidden if none set.
-                  if (logoUrl != null && logoUrl.isNotEmpty) ...[
-                    Center(
-                      child: Image.network(
-                        logoUrl,
-                        height: DesignSpacing.xxl + 24,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    ),
-                    const SizedBox(height: DesignSpacing.md - 2),
-                  ],
-                  Text(
-                    lines,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11.5,
-                      height: 1.35,
-                      color: inkColor,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
-        ),
+          Text(
+            lines,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 11.5,
+              height: 1.35,
+              color: Color(0xFF1A1A1A),
+              letterSpacing: 0,
+            ),
+          ),
+        ],
       ),
     );
   }
