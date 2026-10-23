@@ -250,26 +250,69 @@ export class PaystackService {
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
 
-    const payload = (await response.json()) as PaystackApiResponse<T>;
+    let payload: PaystackApiResponse<T>;
+    try {
+      payload = (await response.json()) as PaystackApiResponse<T>;
+    } catch {
+      this.logger.error(
+        `Paystack returned an unreadable response: ${options.method} ${path} — HTTP ${response.status}`,
+      );
+      throw new HttpException(
+        'Paystack returned an unreadable response. Check the payment status before retrying.',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
 
     if (!response.ok || !payload.status) {
-      // Provider error text can echo submitted bank or phone details.
+      // Provider errors help diagnose channel and account setup problems, but
+      // can echo customer phone, email, or bank details.
       const merchantPaymentRequest = path === '/subaccount' || path === '/charge';
+      const safeMessage = this.safeProviderMessage(payload.message);
       this.logger.error(
-        merchantPaymentRequest
-          ? `Paystack request failed: ${options.method} ${path} — HTTP ${response.status}`
-          : `Paystack request failed: ${options.method} ${path} — ${payload.message}`,
+        `Paystack request failed: ${options.method} ${path} — HTTP ${response.status}` +
+          (safeMessage ? ` — ${safeMessage}` : ''),
       );
       throw new HttpException(
         merchantPaymentRequest
           ? (path === '/subaccount'
-            ? 'Paystack could not verify that payout account. Check the bank and account number.'
-            : 'Paystack could not start this M-Pesa payment.')
-          : (payload.message || 'Paystack request failed'),
+            ? this.merchantPaymentFailure('payout', response.status, safeMessage)
+            : this.merchantPaymentFailure('mpesa', response.status, safeMessage))
+          : (safeMessage || 'Paystack request failed'),
         response.status || HttpStatus.BAD_GATEWAY,
       );
     }
 
     return payload;
+  }
+
+  private merchantPaymentFailure(kind: 'payout' | 'mpesa', status: number, detail: string) {
+    if (status === HttpStatus.UNAUTHORIZED) {
+      return 'The payment provider rejected its server credentials. Contact Counterbase support.';
+    }
+    if (status === HttpStatus.FORBIDDEN) {
+      return kind === 'mpesa'
+        ? 'M-Pesa is not enabled for this Paystack business. Check that the live M-Pesa channel is approved.'
+        : 'Paystack cannot create this payout account. Check the business account setup.';
+    }
+    if (detail) {
+      return kind === 'mpesa'
+        ? `Paystack rejected this M-Pesa request: ${detail}`
+        : `Paystack could not verify that payout account: ${detail}`;
+    }
+    return kind === 'mpesa'
+      ? 'Paystack could not start this M-Pesa payment. Check the customer phone number and try again.'
+      : 'Paystack could not verify that payout account. Check the bank and account number.';
+  }
+
+  private safeProviderMessage(message: unknown): string {
+    if (typeof message !== 'string') return '';
+    return message
+      .replace(/[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[email]')
+      .replace(/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9]+\b/gi, '[key]')
+      .replace(/\+?\d[\d\s()-]{6,}\d/g, '[number]')
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 180);
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, randomInt } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -7,6 +7,7 @@ import { TransactionalEmailService } from './transactional-email.service';
 export const OTP_TTL_MS = 10 * 60 * 1000;
 export const OTP_RESEND_MS = 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
+export const OTP_MAX_REQUESTS_PER_HOUR = 5;
 
 export type EmailOtpPurpose = 'WORKSPACE_CREATION' | 'STAFF_INVITE';
 
@@ -31,6 +32,21 @@ export class EmailOtpService {
     // active. This avoids turning the endpoint into an account oracle.
     if (existing && existing.resendAvailableAt > now) {
       return { accepted: true, challengeId: existing.id };
+    }
+
+    const requestsInWindow = await this.prisma.emailOtpChallenge.count({
+      where: {
+        purpose: input.purpose,
+        email,
+        tenantId: input.tenantId ?? null,
+        createdAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) },
+      },
+    });
+    if (requestsInWindow >= OTP_MAX_REQUESTS_PER_HOUR) {
+      throw new HttpException(
+        'Too many verification codes were requested. Try again later.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const code = String(randomInt(10_000_000, 100_000_000));

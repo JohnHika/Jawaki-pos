@@ -16,7 +16,7 @@ describe('MerchantPaymentsService', () => {
   function fixtures() {
     const prisma: any = {
       merchantPaymentAccount: {
-        findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE', subaccountCode: 'ACCT_shop1' }),
+        findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE', subaccountCode: 'ACCT_shop1', accountName: 'SHOP ONE' }),
         upsert: jest.fn(),
       },
       merchantCharge: {
@@ -78,8 +78,35 @@ describe('MerchantPaymentsService', () => {
     await expect(service.startMpesa(actor, {
       requestId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
       phoneNumber: '0712345678', customerEmail: 'customer@example.test', sale,
-    })).rejects.toThrow('Set up your business payout account');
+    })).rejects.toThrow('Verify your business payout bank account');
     expect(paystack.createMerchantMpesaCharge).not.toHaveBeenCalled();
+  });
+
+  it('blocks M-Pesa when an old payout record has no resolved account holder', async () => {
+    const { prisma, paystack, service } = fixtures();
+    prisma.merchantPaymentAccount.findUnique.mockResolvedValue({
+      status: 'ACTIVE', subaccountCode: 'ACCT_shop1', accountName: null,
+    });
+
+    await expect(service.startMpesa(actor, {
+      requestId: 'cccccccc-cccc-4ccc-accc-cccccccccccc',
+      phoneNumber: '0712345678', customerEmail: 'customer@example.test', sale,
+    })).rejects.toThrow('Verify your business payout bank account');
+
+    expect(paystack.createMerchantMpesaCharge).not.toHaveBeenCalled();
+  });
+
+  it('marks legacy bank details without a Paystack account name as unverified', async () => {
+    const { prisma, service } = fixtures();
+    prisma.merchantPaymentAccount.findUnique.mockResolvedValue({
+      status: 'ACTIVE', bankName: 'Test Bank', accountLast4: '7890', accountName: null,
+    });
+
+    await expect(service.account(actor)).resolves.toMatchObject({
+      status: 'PENDING_VERIFICATION',
+      bankName: 'Test Bank',
+      accountHolderVerified: false,
+    });
   });
 
   it('routes a server-priced charge to the shop subaccount', async () => {
@@ -91,7 +118,7 @@ describe('MerchantPaymentsService', () => {
     expect(result.status).toBe('PENDING');
     expect(paystack.createMerchantMpesaCharge).toHaveBeenCalledWith(expect.objectContaining({
       amountKes: 500, subaccountCode: 'ACCT_shop1', tenantId: 'shop-1',
-      phone: '254712345678',
+      phone: '+254712345678',
     }));
     expect(prisma.merchantCharge.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ tenantId: 'shop-1', subaccountCode: 'ACCT_shop1' }),
@@ -115,6 +142,23 @@ describe('MerchantPaymentsService', () => {
     const written = prisma.merchantPaymentAccount.upsert.mock.calls[0][0];
     expect(written.create.accountLast4).toBe('7890');
     expect(JSON.stringify(written)).not.toContain('1234567890');
+    expect(written.create.bankName).toBe('Test Bank');
+    expect(written.create.accountName).toBe('SHOP ONE');
+  });
+
+  it('does not activate a payout route if Paystack cannot resolve the account holder', async () => {
+    const { prisma, paystack, service } = fixtures();
+    paystack.createMerchantSubaccount.mockResolvedValue({
+      subaccount_code: 'ACCT_shop1', currency: 'KES', active: true,
+    });
+
+    await expect(service.configureAccount({
+      sub: 'owner-1', tenantId: 'shop-1', permissions: ['roles.update'],
+    }, {
+      bankCode: '001', accountNumber: '1234567890', confirmAccountOwnership: true,
+    })).rejects.toThrow('could not confirm the account holder name');
+
+    expect(prisma.merchantPaymentAccount.upsert).not.toHaveBeenCalled();
   });
 
   it('routes a requested debt payment through the merchant subaccount', async () => {
@@ -133,7 +177,7 @@ describe('MerchantPaymentsService', () => {
       amountKes: 250,
       subaccountCode: 'ACCT_shop1',
       tenantId: 'shop-1',
-      phone: '254712345678',
+      phone: '+254712345678',
     }));
     expect(prisma.merchantCharge.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({

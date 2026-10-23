@@ -65,6 +65,8 @@ export class AuthController {
   }
 
   @Post('workspaces/google')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 15 * 60 * 1000, limit: 10 } })
   @ApiOperation({ summary: 'Create a workspace from a server-verified Google identity' })
   async createWorkspaceWithGoogle(@Body() dto: CreateGoogleWorkspaceDto): Promise<AuthResponseDto> {
     return this.authService.createWorkspaceWithGoogle(dto);
@@ -72,12 +74,16 @@ export class AuthController {
 
   @Post('workspaces/email-otp')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 15 * 60 * 1000, limit: 10 } })
   @ApiOperation({ summary: 'Request a workspace email ownership code' })
   async requestWorkspaceEmailOtp(@Body() dto: RequestWorkspaceOtpDto) {
     return this.authService.requestWorkspaceEmailOtp(dto);
   }
 
   @Post('workspaces/email')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 15 * 60 * 1000, limit: 10 } })
   @ApiOperation({ summary: 'Create a workspace after consuming a verified email code' })
   async createWorkspaceWithEmailOtp(@Body() dto: CreateEmailWorkspaceDto): Promise<AuthResponseDto> {
     return this.authService.createWorkspaceWithEmailOtp(dto);

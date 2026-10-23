@@ -39,13 +39,17 @@ export class MerchantPaymentsService {
       where: { tenantId: actor.tenantId },
     });
     if (!row) return { status: 'NOT_CONFIGURED', provider: 'PAYSTACK', currency: 'KES' };
+    const accountName = row.accountName?.trim() || null;
     return {
-      status: row.status,
+      // Older records may have been marked ACTIVE even when Paystack did not
+      // return a resolved account holder. Do not represent those as verified.
+      status: row.status === 'ACTIVE' && !accountName ? 'PENDING_VERIFICATION' : row.status,
       provider: row.provider,
       currency: row.currency,
       bankCode: row.bankCode,
       bankName: row.bankName,
-      accountName: row.accountName,
+      accountName,
+      accountHolderVerified: Boolean(accountName),
       accountLast4: row.accountLast4,
       updatedAt: row.updatedAt,
     };
@@ -82,10 +86,16 @@ export class MerchantPaymentsService {
       accountNumber: dto.accountNumber,
       contactEmail: owner.email,
     });
+    const accountName = subaccount.account_name?.trim();
     if (!subaccount.subaccount_code || subaccount.active === false ||
         (subaccount.currency && subaccount.currency !== 'KES')) {
       throw new ServiceUnavailableException(
         'Paystack did not confirm a usable KES payout account. No payment route was changed.',
+      );
+    }
+    if (!accountName) {
+      throw new ServiceUnavailableException(
+        'Paystack could not confirm the account holder name. Check the bank and account number before accepting customer payments.',
       );
     }
 
@@ -97,7 +107,7 @@ export class MerchantPaymentsService {
           subaccountCode: subaccount.subaccount_code,
           bankCode: bank.code,
           bankName: bank.name,
-          accountName: subaccount.account_name?.trim() || null,
+          accountName,
           accountLast4: dto.accountNumber.slice(-4),
           currency: 'KES',
           status: 'ACTIVE',
@@ -106,7 +116,7 @@ export class MerchantPaymentsService {
           subaccountCode: subaccount.subaccount_code,
           bankCode: bank.code,
           bankName: bank.name,
-          accountName: subaccount.account_name?.trim() || null,
+          accountName,
           accountLast4: dto.accountNumber.slice(-4),
           currency: 'KES',
           status: 'ACTIVE',
@@ -133,8 +143,8 @@ export class MerchantPaymentsService {
     const account = await this.prisma.merchantPaymentAccount.findUnique({
       where: { tenantId: actor.tenantId },
     });
-    if (!account || account.status !== 'ACTIVE') {
-      throw new ConflictException('Set up your business payout account before accepting M-Pesa sales');
+    if (!account || account.status !== 'ACTIVE' || !account.accountName?.trim()) {
+      throw new ConflictException('Verify your business payout bank account in Customer payments before accepting M-Pesa sales');
     }
     if (input.sale.paymentMethod !== PaymentMethod.MPESA || input.sale.tenders?.length) {
       throw new BadRequestException('This checkout accepts one M-Pesa payment for one sale');
@@ -228,8 +238,8 @@ export class MerchantPaymentsService {
     const account = await this.prisma.merchantPaymentAccount.findUnique({
       where: { tenantId: actor.tenantId },
     });
-    if (!account || account.status !== 'ACTIVE') {
-      throw new ConflictException('Set up your business payout account before requesting debt payments');
+    if (!account || account.status !== 'ACTIVE' || !account.accountName?.trim()) {
+      throw new ConflictException('Verify your business payout bank account in Customer payments before requesting debt payments');
     }
     const receivable = input.receivableType === 'retail'
       ? await this.prisma.retailReceivable.findFirst({
@@ -509,7 +519,9 @@ export class MerchantPaymentsService {
 
   private normalizePhone(value: string) {
     const digits = value.replace(/\D/g, '');
-    return digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
+    if (digits.startsWith('0')) return `+254${digits.slice(1)}`;
+    if (digits.startsWith('254')) return `+${digits}`;
+    return `+254${digits}`;
   }
 
   private presentCharge(charge: {

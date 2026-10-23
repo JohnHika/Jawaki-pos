@@ -12,6 +12,7 @@ describe('EmailOtpService', () => {
     prisma = {
       emailOtpChallenge: {
         findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({
           id: 'challenge-opaque-id',
           ...data,
@@ -70,5 +71,18 @@ describe('EmailOtpService', () => {
     await expect(service.request({ purpose: 'WORKSPACE_CREATION', email: 'owner@example.test' }))
       .rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(prisma.emailOtpChallenge.create).not.toHaveBeenCalled();
+  });
+
+  it('limits verification-code sends per email over a rolling hour', async () => {
+    prisma.emailOtpChallenge.count.mockResolvedValue(5);
+    const service = new EmailOtpService(prisma, config, delivery as any);
+
+    await expect(service.request({
+      purpose: 'WORKSPACE_CREATION',
+      email: 'owner@example.test',
+    })).rejects.toThrow('Too many verification codes were requested');
+
+    expect(prisma.emailOtpChallenge.create).not.toHaveBeenCalled();
+    expect(delivery.sendOtp).not.toHaveBeenCalled();
   });
 });

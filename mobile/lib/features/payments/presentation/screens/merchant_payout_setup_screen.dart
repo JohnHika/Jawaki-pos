@@ -151,7 +151,9 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
 
   @override
   Widget build(BuildContext context) {
-    final ready = _account?['status'] == 'ACTIVE';
+    final ready = _account?['status'] == 'ACTIVE' &&
+        _account?['accountHolderVerified'] == true;
+    final needsVerification = _account?['status'] == 'PENDING_VERIFICATION';
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Customer payments', showBackButton: true),
       body: _loading
@@ -200,7 +202,11 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                               Icon(ready ? Icons.check_circle_rounded : Icons.info_outline_rounded,
                                   color: ready ? DesignColors.success : DesignColors.warning),
                               const SizedBox(width: 8),
-                              Text(ready ? 'Payout account connected' : 'Payout account needed',
+                              Text(ready
+                                  ? 'Payout account verified'
+                                  : needsVerification
+                                      ? 'Verify payout account'
+                                      : 'Payout account needed',
                                   style: const TextStyle(fontWeight: FontWeight.bold)),
                             ]),
                             AnimatedSize(
@@ -213,16 +219,31 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text('${_account?['bankName']} ·•••• ${_account?['accountLast4']}'),
-                                          if ((_account?['accountName']?.toString() ?? '').isNotEmpty)
-                                            Text('${_account?['accountName']}')
-                                          else
-                                            const Text('Paystack has not supplied an account name. Confirm the masked account and bank are correct.'),
+                                          Text('Account holder: ${_account?['accountName']}'),
+                                          const SizedBox(height: 6),
+                                          const Row(
+                                            children: [
+                                              Icon(Icons.verified_user_rounded,
+                                                  size: 18, color: DesignColors.success),
+                                              SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text('Account holder confirmed by Paystack'),
+                                              ),
+                                            ],
+                                          ),
                                           const SizedBox(height: 8),
                                           const Text('New customer payments will use this account. Payments already started keep their original payout route.'),
                                         ],
                                       ),
                                     )
-                                  : const SizedBox(width: double.infinity, height: 0),
+                                  : needsVerification
+                                      ? const Padding(
+                                          padding: EdgeInsets.only(top: 8),
+                                          child: Text(
+                                            'Paystack did not return an account holder name for these saved details. Re-enter the bank and account number to verify them before accepting payments.',
+                                          ),
+                                        )
+                                      : const SizedBox(width: double.infinity, height: 0),
                             ),
                           ],
                         ),
