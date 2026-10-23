@@ -95,6 +95,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
       setState(() {
         _account = account;
         _banks = banks;
+        _bankCode = account['bankCode']?.toString();
       });
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));

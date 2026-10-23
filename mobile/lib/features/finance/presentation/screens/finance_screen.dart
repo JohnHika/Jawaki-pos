@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/auth/app_roles.dart';
@@ -120,7 +122,8 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                               from: SlideFrom.right,
                               child: KeyedSubtree(
                                   key: ValueKey<int>(_tab),
-                                  child: _tabBody(snapshot, controller, permissions)))),
+                                  child: _tabBody(
+                                      snapshot, controller, permissions)))),
                     ],
                   ),
           ),
@@ -141,24 +144,38 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             payables: snapshot.payables,
             canCreateInvoices: permissions.canRecordRestock,
             onScan: permissions.canRecordRestock ? _pickAndScanReceipt : null,
-            onManual: permissions.canRecordRestock ? _showManualInvoiceDialog : null,
+            onManual:
+                permissions.canRecordRestock ? _showManualInvoiceDialog : null,
+            onOpenPayable: (item) => _showSupplierDetailsSheet(
+              item,
+              controller,
+              canRecordPayment: permissions.canRecordSupplierPayment,
+            ),
           ),
         2 => _RetailTab(
             receivables: snapshot.retailReceivables,
             canManageReceivables: permissions.canManageReceivables,
             onCollectForCustomer: () =>
                 _showBulkCollectionSheet(snapshot, controller),
-            onCollect: (item) => _showCollectionSheet(
+            onCollect: (item) => _showReceivableActions(
               title: 'Collect from ${item.customerName ?? 'customer'}',
               amount: item.outstandingAmount,
-              onSave: (amount, method, reference) =>
-                  controller.recordRetailCollection(
-                ReceivableCollectionRequest(
-                  receivableId: item.id,
-                  branchId: snapshot.branchId,
-                  amount: amount,
-                  method: method,
-                  reference: reference,
+              receivableId: item.id,
+              receivableType: 'retail',
+              branchId: snapshot.branchId,
+              controller: controller,
+              onRecordReceived: () => _showCollectionSheet(
+                title: 'Record payment from ${item.customerName ?? 'customer'}',
+                amount: item.outstandingAmount,
+                onSave: (amount, method, reference) =>
+                    controller.recordRetailCollection(
+                  ReceivableCollectionRequest(
+                    receivableId: item.id,
+                    branchId: snapshot.branchId,
+                    amount: amount,
+                    method: method,
+                    reference: reference,
+                  ),
                 ),
               ),
             ),
@@ -172,17 +189,25 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
             onAddShop: () => _showPeerShopSheet(controller),
             onAddReceivable: () =>
                 _showPeerReceivableSheet(snapshot, controller),
-            onCollect: (item) => _showCollectionSheet(
+            onCollect: (item) => _showReceivableActions(
               title: 'Collect from ${item.debtor.name}',
               amount: item.outstandingAmount,
-              onSave: (amount, method, reference) =>
-                  controller.recordPeerCollection(
-                ReceivableCollectionRequest(
-                  receivableId: item.id,
-                  branchId: snapshot.branchId,
-                  amount: amount,
-                  method: method,
-                  reference: reference,
+              receivableId: item.id,
+              receivableType: 'peer',
+              branchId: snapshot.branchId,
+              controller: controller,
+              onRecordReceived: () => _showCollectionSheet(
+                title: 'Record payment from ${item.debtor.name}',
+                amount: item.outstandingAmount,
+                onSave: (amount, method, reference) =>
+                    controller.recordPeerCollection(
+                  ReceivableCollectionRequest(
+                    receivableId: item.id,
+                    branchId: snapshot.branchId,
+                    amount: amount,
+                    method: method,
+                    reference: reference,
+                  ),
                 ),
               ),
             ),
@@ -482,7 +507,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
           title: title,
           children: <Widget>[
             SegmentedButton<String>(
-                expandedInsets: EdgeInsets.zero,
+              expandedInsets: EdgeInsets.zero,
               segments: const <ButtonSegment<String>>[
                 ButtonSegment(value: 'CASH', label: Text('Cash')),
                 ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
@@ -519,6 +544,522 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showReceivableActions({
+    required String title,
+    required double amount,
+    required String receivableId,
+    required String receivableType,
+    required String branchId,
+    required FinanceHubController controller,
+    required Future<void> Function() onRecordReceived,
+  }) async {
+    final choice = await showModalBottomSheet<int>(
+      useRootNavigator: true,
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _SheetFrame(
+        title: title,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(DesignSpacing.md),
+            decoration: BoxDecoration(
+              color: DesignColors.brand.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            ),
+            child: Row(children: [
+              const Icon(Icons.account_balance_wallet_rounded,
+                  color: DesignColors.brand),
+              const SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Text('Outstanding balance',
+                    style: Theme.of(context).textTheme.bodyMedium),
+              ),
+              Text(formatMoney(amount),
+                  style: DesignType.numeric(fontSize: 15)),
+            ]),
+          ),
+          const SizedBox(height: DesignSpacing.md),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.receipt_long_rounded),
+            title: const Text('Record payment received'),
+            subtitle: const Text('Cash, M-Pesa, or card already collected'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.pop(sheetContext, 0),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.phone_android_rounded,
+                color: DesignColors.brand),
+            title: const Text('Request M-Pesa payment'),
+            subtitle:
+                const Text('Send a verified Paystack prompt to the payer'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.pop(sheetContext, 1),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 0) {
+      await onRecordReceived();
+    } else if (choice == 1) {
+      await _showMerchantReceivablePaymentSheet(
+        title: title,
+        amount: amount,
+        receivableId: receivableId,
+        receivableType: receivableType,
+        branchId: branchId,
+        controller: controller,
+      );
+    }
+  }
+
+  Future<void> _showMerchantReceivablePaymentSheet({
+    required String title,
+    required double amount,
+    required String receivableId,
+    required String receivableType,
+    required String branchId,
+    required FinanceHubController controller,
+  }) async {
+    final formKey = GlobalKey<FormState>();
+    final amountController =
+        TextEditingController(text: amount.toStringAsFixed(2));
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    String? error;
+    bool saving = false;
+    await showModalBottomSheet<bool>(
+      useRootNavigator: true,
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Form(
+          key: formKey,
+          child: _SheetFrame(
+            title: 'Request M-Pesa payment',
+            children: [
+              Text(
+                '$title · ${formatMoney(amount)} outstanding',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: DesignSpacing.sm),
+              Text(
+                'Paystack will prompt the payer. Counterbase updates this debt only after the payment is verified.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(height: 1.4),
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextFormField(
+                controller: amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Amount to collect (KES)',
+                  prefixIcon: Icon(Icons.payments_outlined),
+                ),
+                validator: (value) {
+                  final entered = double.tryParse(value?.trim() ?? '');
+                  if (entered == null || entered < 3) {
+                    return 'Enter at least KES 3';
+                  }
+                  if (entered > amount) {
+                    return 'Amount exceeds the outstanding balance';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextFormField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Payer phone number',
+                  hintText: '712 345 678',
+                  prefixText: '+254 ',
+                  prefixIcon: Icon(Icons.phone_android_rounded),
+                ),
+                validator: (value) => _isKenyanPhone(value ?? '')
+                    ? null
+                    : 'Enter a valid Kenyan mobile number',
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextFormField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Payer email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+                validator: (value) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                        .hasMatch(value?.trim() ?? '')
+                    ? null
+                    : 'Enter a valid email address',
+              ),
+              if (error != null) ...[
+                const SizedBox(height: DesignSpacing.md),
+                Text(error!, style: const TextStyle(color: DesignColors.error)),
+              ],
+              const SizedBox(height: DesignSpacing.lg),
+              SizedBox(
+                width: double.infinity,
+                height: DesignSpacing.huge,
+                child: FilledButton.icon(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          setSheetState(() {
+                            saving = true;
+                            error = null;
+                          });
+                          try {
+                            final result = await controller
+                                .startMerchantReceivablePayment({
+                              'requestId': const Uuid().v4(),
+                              'receivableType': receivableType,
+                              'receivableId': receivableId,
+                              'branchId': branchId,
+                              'amount':
+                                  double.parse(amountController.text.trim()),
+                              'phoneNumber':
+                                  _normalizeKenyanPhone(phoneController.text),
+                              'customerEmail': emailController.text.trim(),
+                            });
+                            if (!sheetContext.mounted) return;
+                            Navigator.pop(sheetContext, true);
+                            if (mounted) {
+                              await _showMerchantPaymentStatus(
+                                result,
+                                controller,
+                              );
+                            }
+                          } catch (e) {
+                            final message = _financeRequestError(e);
+                            if (message.toLowerCase().contains(
+                                'set up your business payout account')) {
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                              if (mounted) {
+                                context.push('/payments/setup');
+                              }
+                            } else if (sheetContext.mounted) {
+                              setSheetState(() => error = message);
+                            }
+                          } finally {
+                            if (sheetContext.mounted) {
+                              setSheetState(() => saving = false);
+                            }
+                          }
+                        },
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                  label:
+                      Text(saving ? 'Sending request…' : 'Send M-Pesa request'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    amountController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+  }
+
+  Future<void> _showMerchantPaymentStatus(
+    Map<String, dynamic> initial,
+    FinanceHubController controller,
+  ) async {
+    var status = initial['status']?.toString() ?? 'PENDING';
+    var checking = false;
+    String? error;
+    final reference = initial['reference']?.toString() ?? '';
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final completed = status == 'COMPLETED';
+          final failed = status == 'FAILED';
+          return AlertDialog(
+            icon: Icon(
+              completed
+                  ? Icons.check_circle_rounded
+                  : failed
+                      ? Icons.error_rounded
+                      : Icons.phone_android_rounded,
+              color: completed
+                  ? DesignColors.success
+                  : failed
+                      ? DesignColors.error
+                      : DesignColors.brand,
+              size: 34,
+            ),
+            title: Text(completed
+                ? 'Debt payment received'
+                : failed
+                    ? 'Payment not completed'
+                    : 'Waiting for M-Pesa payment'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(completed
+                    ? 'Paystack confirmed the payment and the outstanding balance has been updated.'
+                    : failed
+                        ? 'The payer did not complete this payment. The debt remains open.'
+                        : 'Ask the payer to approve the prompt on their phone. The debt will update after Paystack confirms it.'),
+                const SizedBox(height: DesignSpacing.md),
+                SelectableText('Reference: $reference'),
+                if (error != null) ...[
+                  const SizedBox(height: DesignSpacing.sm),
+                  Text(error!,
+                      style: const TextStyle(color: DesignColors.error)),
+                ],
+              ],
+            ),
+            actions: [
+              if (completed || failed)
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Done'),
+                )
+              else ...[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Close'),
+                ),
+                FilledButton(
+                  onPressed: checking
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            checking = true;
+                            error = null;
+                          });
+                          try {
+                            final result = await controller
+                                .getMerchantPaymentStatus(reference);
+                            status = result['status']?.toString() ?? 'PENDING';
+                            if (status == 'COMPLETED') {
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                              await controller.refresh();
+                              if (mounted) {
+                                showGlassSnackBar(
+                                  context,
+                                  'M-Pesa payment verified. The debt balance is updated.',
+                                  icon: Icons.check_circle_rounded,
+                                  color: DesignColors.success,
+                                );
+                              }
+                            } else if (dialogContext.mounted) {
+                              setDialogState(() {});
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              setDialogState(
+                                  () => error = _financeRequestError(e));
+                            }
+                          } finally {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => checking = false);
+                            }
+                          }
+                        },
+                  child: Text(checking ? 'Checking…' : 'Check payment'),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showSupplierDetailsSheet(
+    FinancePayable payable,
+    FinanceHubController controller, {
+    required bool canRecordPayment,
+  }) async {
+    final formKey = GlobalKey<FormState>();
+    final amount = TextEditingController(
+        text: payable.outstandingAmount.toStringAsFixed(2));
+    final notes = TextEditingController();
+    String fundingSource = 'CASH_TILL';
+    String? error;
+    bool saving = false;
+    await showModalBottomSheet<void>(
+      useRootNavigator: true,
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Form(
+          key: formKey,
+          child: _SheetFrame(
+            title: tidySupplierName(payable.supplierName),
+            children: [
+              Text(payable.invoiceNumber ?? 'Supplier invoice',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: DesignSpacing.md),
+              _InvoiceBalanceSummary(payable: payable),
+              if (payable.payments.isNotEmpty) ...[
+                const SizedBox(height: DesignSpacing.lg),
+                Text('Payment history',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: DesignSpacing.xs),
+                for (final payment in payable.payments.take(4))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: const Icon(Icons.check_circle_outline_rounded,
+                        color: DesignColors.success),
+                    title: Text(formatMoney(payment.amount)),
+                    subtitle: Text(
+                      '${payment.fundingSource == 'CASH_TILL' ? 'Cash till' : 'Bank / M-Pesa'}'
+                      '${payment.paidAt == null ? '' : ' · ${DateFormat('d MMM y').format(payment.paidAt!.toLocal())}'}'
+                      '${payment.notes == null || payment.notes!.isEmpty ? '' : '\n${payment.notes}'}',
+                    ),
+                  ),
+              ],
+              if (canRecordPayment && payable.outstandingAmount > 0) ...[
+                const Divider(height: DesignSpacing.xxl),
+                Text('Record a supplier payment',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: DesignSpacing.xs),
+                Text(
+                  'This records a transfer you have already made. Counterbase does not send money to the supplier.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                SegmentedButton<String>(
+                  expandedInsets: EdgeInsets.zero,
+                  segments: const [
+                    ButtonSegment(value: 'CASH_TILL', label: Text('Cash till')),
+                    ButtonSegment(
+                        value: 'BANK_OR_MPESA', label: Text('Bank / M-Pesa')),
+                  ],
+                  selected: {fundingSource},
+                  onSelectionChanged: saving
+                      ? null
+                      : (value) =>
+                          setSheetState(() => fundingSource = value.first),
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                TextFormField(
+                  controller: amount,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Amount paid (KES)',
+                    prefixIcon: Icon(Icons.payments_outlined),
+                  ),
+                  validator: (value) {
+                    final parsed = double.tryParse(value?.trim() ?? '');
+                    if (parsed == null || parsed <= 0) {
+                      return 'Enter an amount greater than zero';
+                    }
+                    if (parsed > payable.outstandingAmount) {
+                      return 'Amount exceeds the outstanding balance';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: DesignSpacing.md),
+                TextFormField(
+                  controller: notes,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: 'Transfer reference or note (optional)',
+                    prefixIcon: Icon(Icons.receipt_long_outlined),
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: DesignSpacing.sm),
+                  Text(error!,
+                      style: const TextStyle(color: DesignColors.error)),
+                ],
+                const SizedBox(height: DesignSpacing.md),
+                SizedBox(
+                  width: double.infinity,
+                  height: DesignSpacing.huge,
+                  child: FilledButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            setSheetState(() {
+                              saving = true;
+                              error = null;
+                            });
+                            try {
+                              await controller.recordSupplierPayment(
+                                invoiceId: payable.id,
+                                amount: double.parse(amount.text.trim()),
+                                fundingSource: fundingSource,
+                                requestId: const Uuid().v4(),
+                                notes: notes.text.trim(),
+                              );
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                              if (mounted) {
+                                showGlassSnackBar(
+                                  context,
+                                  'Supplier payment recorded. Balance updated.',
+                                  icon: Icons.check_circle_rounded,
+                                  color: DesignColors.success,
+                                );
+                              }
+                            } catch (e) {
+                              if (sheetContext.mounted) {
+                                setSheetState(
+                                    () => error = _financeRequestError(e));
+                              }
+                            } finally {
+                              if (sheetContext.mounted) {
+                                setSheetState(() => saving = false);
+                              }
+                            }
+                          },
+                    icon: saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check_rounded),
+                    label: Text(saving ? 'Saving…' : 'Record payment'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    amount.dispose();
+    notes.dispose();
   }
 
   /// One payment from a customer, split across their open credits (oldest due first).
@@ -901,8 +1442,7 @@ class _CollectionsFeed extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('Collected today',
-                        style: theme.textTheme.labelLarge),
+                    Text('Collected today', style: theme.textTheme.labelLarge),
                     const SizedBox(height: 2),
                     CountUpText(formatMoney(todayTotal),
                         style: DesignType.numeric(fontSize: 26)
@@ -936,8 +1476,7 @@ class _CollectionsFeed extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
                 child: GlassCard(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: DesignSpacing.lg,
-                      vertical: DesignSpacing.md),
+                      horizontal: DesignSpacing.lg, vertical: DesignSpacing.md),
                   borderRadius: DesignSpacing.radiusMd,
                   child: Row(children: <Widget>[
                     Icon(
@@ -981,16 +1520,52 @@ String _whenLabel(DateTime d) {
   return '${DateFormat('d MMM').format(d)}, $time';
 }
 
+String _normalizeKenyanPhone(String value) {
+  var digits = value.replaceAll(RegExp(r'\D'), '');
+  if (digits.startsWith('0')) {
+    digits = digits.substring(1);
+  }
+  if (digits.startsWith('254')) {
+    digits = digits.substring(3);
+  }
+  return '254$digits';
+}
+
+bool _isKenyanPhone(String value) {
+  final digits = value.replaceAll(RegExp(r'\D'), '');
+  if (digits.length == 9) {
+    return digits.startsWith('7') || digits.startsWith('1');
+  }
+  if (digits.length == 10) {
+    return digits.startsWith('07') || digits.startsWith('01');
+  }
+  return digits.length == 12 &&
+      digits.startsWith('254') &&
+      (digits[3] == '7' || digits[3] == '1');
+}
+
+String _financeRequestError(Object error) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    final message = data is Map ? data['message'] : null;
+    if (message is List && message.isNotEmpty) return message.join(', ');
+    if (message != null) return message.toString();
+  }
+  return 'Could not complete this finance action. Check your connection and try again.';
+}
+
 class _SupplierTab extends StatelessWidget {
   const _SupplierTab(
       {required this.payables,
       required this.canCreateInvoices,
       required this.onScan,
-      required this.onManual});
+      required this.onManual,
+      required this.onOpenPayable});
   final List<FinancePayable> payables;
   final bool canCreateInvoices;
   final VoidCallback? onScan;
   final VoidCallback? onManual;
+  final ValueChanged<FinancePayable> onOpenPayable;
 
   @override
   Widget build(BuildContext context) =>
@@ -1016,8 +1591,7 @@ class _SupplierTab extends StatelessWidget {
           const SizedBox(height: DesignSpacing.lg),
         ],
         if (payables.isEmpty)
-          const _EmptyLedger(
-              message: 'No supplier payables yet.')
+          const _EmptyLedger(message: 'No supplier payables yet.')
         else
           ...payables.map((item) => _LedgerCard(
                 title: tidySupplierName(item.supplierName),
@@ -1025,6 +1599,8 @@ class _SupplierTab extends StatelessWidget {
                 value: item.outstandingAmount,
                 dueDate: item.dueDate,
                 icon: Icons.business_rounded,
+                action: 'Details',
+                onAction: () => onOpenPayable(item),
               )),
       ]);
 }
@@ -1047,10 +1623,11 @@ class _RetailTab extends StatelessWidget {
     // "Collect" on a KES 0 balance is just noise.
     final open = receivables.where((r) => r.outstandingAmount > 0).toList();
     return ListView(padding: DesignSpacing.paddingScreen, children: <Widget>[
-        if (open.isEmpty)
-          const _EmptyLedger(message: 'No customer credit is outstanding.')
-        else ...<Widget>[
-          if (canManageReceivables) SizedBox(
+      if (open.isEmpty)
+        const _EmptyLedger(message: 'No customer credit is outstanding.')
+      else ...<Widget>[
+        if (canManageReceivables)
+          SizedBox(
             height: DesignSpacing.huge,
             child: FilledButton.icon(
               onPressed: onCollectForCustomer,
@@ -1058,18 +1635,18 @@ class _RetailTab extends StatelessWidget {
               label: const Text('Collect for a customer'),
             ),
           ),
-          if (canManageReceivables) const SizedBox(height: DesignSpacing.md),
-          ...open.map((item) => _LedgerCard(
-                title: item.receiptNumber ?? 'Receipt',
-                subtitle: item.customerName ?? 'Customer',
-                value: item.outstandingAmount,
-                dueDate: item.dueDate,
-                icon: Icons.person_rounded,
-                action: canManageReceivables ? 'Collect' : null,
-                onAction: canManageReceivables ? () => onCollect(item) : null,
-              )),
-        ],
-      ]);
+        if (canManageReceivables) const SizedBox(height: DesignSpacing.md),
+        ...open.map((item) => _LedgerCard(
+              title: item.receiptNumber ?? 'Receipt',
+              subtitle: item.customerName ?? 'Customer',
+              value: item.outstandingAmount,
+              dueDate: item.dueDate,
+              icon: Icons.person_rounded,
+              action: canManageReceivables ? 'Collect' : null,
+              onAction: canManageReceivables ? () => onCollect(item) : null,
+            )),
+      ],
+    ]);
   }
 }
 
@@ -1217,14 +1794,14 @@ class _CountCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
       child: ListTile(
           minTileHeight: DesignSpacing.huge,
-          leading:
-              Wiggle(
-                  child: Icon(Icons.event_busy_rounded,
-                      color: context.readable(DesignColors.warning))),
+          leading: Wiggle(
+              child: Icon(Icons.event_busy_rounded,
+                  color: context.readable(DesignColors.warning))),
           title: const Text('Overdue'),
           trailing: Text('$overdue',
               style: DesignType.numeric(
-                  fontSize: 22, color: context.readable(DesignColors.warning)))));
+                  fontSize: 22,
+                  color: context.readable(DesignColors.warning)))));
 }
 
 class _LedgerCard extends StatelessWidget {
@@ -1286,8 +1863,7 @@ class _LedgerCard extends StatelessWidget {
                                 .textTheme
                                 .labelSmall
                                 ?.copyWith(
-                                  color:
-                                      isOverdue ? DesignColors.error : null,
+                                  color: isOverdue ? DesignColors.error : null,
                                   fontWeight:
                                       isOverdue ? FontWeight.w700 : null,
                                 ),
@@ -1391,6 +1967,66 @@ class _EmptyLedger extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
       padding: const EdgeInsets.all(DesignSpacing.xl),
       child: Text(message, textAlign: TextAlign.center));
+}
+
+class _InvoiceBalanceSummary extends StatelessWidget {
+  const _InvoiceBalanceSummary({required this.payable});
+  final FinancePayable payable;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(DesignSpacing.md),
+        decoration: BoxDecoration(
+          color: DesignColors.brand.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+          border: Border.all(color: DesignColors.brand.withValues(alpha: 0.12)),
+        ),
+        child: Row(children: [
+          Expanded(
+              child:
+                  _InvoiceAmount(label: 'Invoice', value: payable.totalAmount)),
+          Expanded(
+              child: _InvoiceAmount(label: 'Paid', value: payable.paidAmount)),
+          Expanded(
+            child: _InvoiceAmount(
+              label: 'Due',
+              value: payable.outstandingAmount,
+              emphasize: true,
+            ),
+          ),
+        ]),
+      );
+}
+
+class _InvoiceAmount extends StatelessWidget {
+  const _InvoiceAmount({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+  final String label;
+  final double value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              FinanceScreen.currencyFmt.format(value),
+              style: DesignType.numeric(
+                fontSize: 13,
+                color: emphasize ? DesignColors.warning : null,
+              ),
+            ),
+          ),
+        ],
+      );
 }
 
 class _SheetFrame extends StatelessWidget {

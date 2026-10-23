@@ -48,7 +48,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       appBar: AppBar(
         leadingWidth: 68,
         leading: AppBackButton(
-          color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+          color:
+              isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
           isDark: isDark,
           onPressed: () => context.pop(),
         ),
@@ -180,8 +181,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               subtitle: 'Customer pays your shop through Paystack',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
-              onTap: () =>
-                  setState(() => _selectedMethod = PaymentMethod.mpesa),
+              onTap: () => _selectMpesa(
+                cart.total,
+                hasPendingRequest: paymentState.currentTransactionId != null,
+              ),
             ),
             const SizedBox(height: DesignSpacing.md - 2),
 
@@ -232,42 +235,27 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   setState(() => _selectedMethod = PaymentMethod.split),
             ),
 
-            // Phone number input for M-Pesa
-            if (_selectedMethod == PaymentMethod.mpesa) ...[
-              const SizedBox(height: DesignSpacing.xxl),
-              const LabelDivider(label: 'M-PESA DETAILS'),
-              const SizedBox(height: DesignSpacing.md),
-              TextFormField(
-                controller: _phoneController,
-                enabled: paymentState.currentTransactionId == null,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  hintText: '0712345678',
-                  labelText: 'Phone Number',
-                  prefixIcon: const Icon(Icons.phone_rounded, size: 20),
-                  prefixText: '+254 ',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                    borderSide: BorderSide.none,
+            if (_selectedMethod == PaymentMethod.mpesa &&
+                paymentState.currentTransactionId != null) ...[
+              const SizedBox(height: DesignSpacing.lg),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  border: Border.all(
+                      color: DesignColors.accent.withValues(alpha: 0.25)),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.phone_android_rounded, color: DesignColors.accent),
+                  SizedBox(width: DesignSpacing.md),
+                  Expanded(
+                    child: Text(
+                      'M-Pesa request sent. Ask the customer to approve it, then check the payment status.',
+                    ),
                   ),
-                  filled: true,
-                  fillColor: isDark
-                      ? DesignColors.darkSurfaceElevated
-                      : DesignColors.surfaceMuted,
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.md),
-              TextFormField(
-                controller: _emailController,
-                enabled: paymentState.currentTransactionId == null,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Customer email',
-                  helperText: 'Required by Paystack for this payment',
-                  prefixIcon: Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(),
-                ),
+                ]),
               ),
             ],
 
@@ -341,6 +329,146 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
+  Future<void> _selectMpesa(
+    double total, {
+    required bool hasPendingRequest,
+  }) async {
+    setState(() => _selectedMethod = PaymentMethod.mpesa);
+    if (hasPendingRequest) return;
+    final ready = await _showMpesaDetailsSheet(total);
+    if (ready && mounted) await _processPayment();
+  }
+
+  Future<bool> _showMpesaDetailsSheet(double total) async {
+    final formKey = GlobalKey<FormState>();
+    return await showModalBottomSheet<bool>(
+          useRootNavigator: true,
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (sheetContext) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              DesignSpacing.xl,
+              DesignSpacing.sm,
+              DesignSpacing.xl,
+              MediaQuery.viewInsetsOf(sheetContext).bottom + DesignSpacing.xl,
+            ),
+            child: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('M-Pesa payment',
+                        style: Theme.of(sheetContext).textTheme.titleLarge),
+                    const SizedBox(height: DesignSpacing.xs),
+                    Text(
+                      'Enter the payer details. Paystack will send an M-Pesa prompt for the amount below.',
+                      style: Theme.of(sheetContext)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(height: 1.4),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(DesignSpacing.md),
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent.withValues(alpha: 0.10),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.receipt_long_rounded,
+                            color: DesignColors.accent),
+                        const SizedBox(width: DesignSpacing.md),
+                        const Expanded(child: Text('Amount due')),
+                        Text(
+                          'KES ${total.toStringAsFixed(2)}',
+                          style: DesignType.numeric(fontSize: 16),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    TextFormField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer phone number',
+                        hintText: '712 345 678',
+                        prefixText: '+254 ',
+                        prefixIcon: Icon(Icons.phone_android_rounded),
+                      ),
+                      validator: (value) => _isKenyanPhone(value ?? '')
+                          ? null
+                          : 'Enter a valid Kenyan mobile number',
+                    ),
+                    const SizedBox(height: DesignSpacing.md),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer email',
+                        helperText:
+                            'Paystack requires an email for this payment',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      validator: (value) =>
+                          RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                                  .hasMatch(value?.trim() ?? '')
+                              ? null
+                              : 'Enter a valid email address',
+                    ),
+                    const SizedBox(height: DesignSpacing.lg),
+                    SizedBox(
+                      width: double.infinity,
+                      child: GradientButton(
+                        label: 'Send M-Pesa request',
+                        icon: Icons.send_rounded,
+                        height: 54,
+                        borderRadius: DesignSpacing.radiusLg,
+                        onPressed: () {
+                          if (formKey.currentState!.validate()) {
+                            Navigator.pop(sheetContext, true);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ) ??
+        false;
+  }
+
+  String _normalizeKenyanPhone(String value) {
+    var digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    if (digits.startsWith('254')) {
+      digits = digits.substring(3);
+    }
+    return '254$digits';
+  }
+
+  bool _isKenyanPhone(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 9) {
+      return digits.startsWith('7') || digits.startsWith('1');
+    }
+    if (digits.length == 10) {
+      return digits.startsWith('07') || digits.startsWith('01');
+    }
+    return digits.length == 12 &&
+        digits.startsWith('254') &&
+        (digits[3] == '7' || digits[3] == '1');
+  }
+
   Future<void> _processPayment() async {
     if (_selectedMethod == null) return;
 
@@ -375,28 +503,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         cashChangeDue = cashChange(total: cart.total, tendered: tendered);
         break;
       case PaymentMethod.mpesa:
-        if (_phoneController.text.isEmpty) {
-          showGlassSnackBar(
-            context,
-            'Please enter phone number',
-            icon: Icons.warning_amber_rounded,
-            color: DesignColors.warning,
-          );
-          return;
-        }
-        if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-            .hasMatch(_emailController.text.trim())) {
-          showGlassSnackBar(
-            context,
-            'Enter the customer email for Paystack',
-            icon: Icons.email_outlined,
-            color: DesignColors.warning,
-          );
+        if (!_isKenyanPhone(_phoneController.text) ||
+            !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                .hasMatch(_emailController.text.trim())) {
+          final ready = await _showMpesaDetailsSheet(cart.total);
+          if (!ready || !mounted) return;
+          await _processPayment();
           return;
         }
         result = await paymentNotifier.processMpesaPayment(
           amount: cart.total,
-          phoneNumber: _phoneController.text,
+          phoneNumber: _normalizeKenyanPhone(_phoneController.text),
           customerEmail: _emailController.text,
           discountAmount: cart.discount,
           items: cart.items,

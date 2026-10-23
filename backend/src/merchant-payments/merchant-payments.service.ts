@@ -8,16 +8,21 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { LegacyUserRole, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
+import { PaymentMethod, PaymentStatus, Prisma, ReceivablePaymentMethod } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PaystackService } from '../ai-billing/paystack.service';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateSaleDto } from '../sales/dto/sales.dto';
 import { SalesService } from '../sales/sales.service';
-import { ConfigureMerchantPayoutDto, StartMerchantMpesaDto } from './dto/merchant-payments.dto';
+import {
+  ConfigureMerchantPayoutDto,
+  StartMerchantMpesaDto,
+  StartMerchantReceivableMpesaDto,
+} from './dto/merchant-payments.dto';
 import { LegalPolicyService } from '../legal/legal-policy.service';
+import { FinanceService } from '../finance/finance.service';
 
-type Actor = { sub: string; tenantId: string };
+type Actor = { sub: string; tenantId: string; permissions?: string[] };
 
 @Injectable()
 export class MerchantPaymentsService {
@@ -26,6 +31,7 @@ export class MerchantPaymentsService {
     private readonly paystack: PaystackService,
     private readonly sales: SalesService,
     @Optional() private readonly legalPolicies?: LegalPolicyService,
+    @Optional() private readonly finance?: FinanceService,
   ) {}
 
   async account(actor: Actor) {
@@ -37,6 +43,7 @@ export class MerchantPaymentsService {
       status: row.status,
       provider: row.provider,
       currency: row.currency,
+      bankCode: row.bankCode,
       bankName: row.bankName,
       accountName: row.accountName,
       accountLast4: row.accountLast4,
@@ -49,7 +56,9 @@ export class MerchantPaymentsService {
   }
 
   async configureAccount(actor: Actor, dto: ConfigureMerchantPayoutDto) {
-    await this.assertOwner(actor);
+    if (!actor.permissions?.includes('roles.update')) {
+      throw new ForbiddenException('You do not have permission to change payout details');
+    }
     await this.legalPolicies?.assertCurrentAcceptance(actor.tenantId, 'MERCHANT_PAYMENT_TERMS');
     if (dto.confirmAccountOwnership !== true) {
       throw new BadRequestException('Confirm that this payout account belongs to your business');
@@ -204,6 +213,118 @@ export class MerchantPaymentsService {
     }
   }
 
+  async startReceivableMpesa(actor: Actor, input: StartMerchantReceivableMpesaDto) {
+    const prior = await this.prisma.merchantCharge.findUnique({
+      where: { tenantId_requestId: { tenantId: actor.tenantId, requestId: input.requestId } },
+    });
+    if (prior) {
+      if (prior.purpose !== 'RECEIVABLE' || prior.receivableId !== input.receivableId ||
+          prior.receivableType !== input.receivableType) {
+        throw new ConflictException('This payment request key was already used for a different request');
+      }
+      return this.presentStart(prior);
+    }
+
+    const account = await this.prisma.merchantPaymentAccount.findUnique({
+      where: { tenantId: actor.tenantId },
+    });
+    if (!account || account.status !== 'ACTIVE') {
+      throw new ConflictException('Set up your business payout account before requesting debt payments');
+    }
+    const receivable = input.receivableType === 'retail'
+      ? await this.prisma.retailReceivable.findFirst({
+          where: { id: input.receivableId, tenantId: actor.tenantId, branchId: input.branchId },
+          select: { id: true, outstandingAmount: true, status: true },
+        })
+      : await this.prisma.peerReceivable.findFirst({
+          where: { id: input.receivableId, tenantId: actor.tenantId, branchId: input.branchId },
+          select: { id: true, outstandingAmount: true, status: true },
+        });
+    if (!receivable) throw new NotFoundException('Receivable was not found for this business');
+    if (receivable.status === 'PAID' || receivable.status === 'WRITTEN_OFF') {
+      throw new ConflictException('This receivable is already closed');
+    }
+    if (input.amount > Number(receivable.outstandingAmount)) {
+      throw new BadRequestException('Payment amount exceeds outstanding balance');
+    }
+
+    const phone = this.normalizePhone(input.phoneNumber);
+    const email = input.customerEmail.trim().toLowerCase();
+    const reference = `CBDUE-${randomBytes(12).toString('hex')}`;
+    try {
+      await this.prisma.merchantCharge.create({
+        data: {
+          tenantId: actor.tenantId,
+          requestId: input.requestId,
+          branchId: input.branchId,
+          cashierId: actor.sub,
+          reference,
+          subaccountCode: account.subaccountCode,
+          amount: new Prisma.Decimal(input.amount),
+          phone,
+          customerEmail: email,
+          salePayload: {},
+          purpose: 'RECEIVABLE',
+          receivableType: input.receivableType,
+          receivableId: input.receivableId,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const concurrent = await this.prisma.merchantCharge.findUnique({
+          where: { tenantId_requestId: { tenantId: actor.tenantId, requestId: input.requestId } },
+        });
+        if (concurrent) return this.presentStart(concurrent);
+      }
+      throw error;
+    }
+
+    try {
+      const prompt = await this.paystack.createMerchantMpesaCharge({
+        email,
+        amountKes: input.amount,
+        phone,
+        reference,
+        subaccountCode: account.subaccountCode,
+        tenantId: actor.tenantId,
+      });
+      if (prompt.reference !== reference) {
+        await this.prisma.merchantCharge.update({
+          where: { reference }, data: { status: 'NEEDS_REVIEW', providerStatus: 'reference_mismatch' },
+        });
+        throw new ServiceUnavailableException('Paystack returned an unexpected payment reference');
+      }
+      await this.prisma.merchantCharge.update({
+        where: { reference }, data: { providerStatus: prompt.status },
+      });
+      return {
+        reference,
+        status: 'PENDING',
+        amount: input.amount,
+        entityType: 'RECEIVABLE',
+        message: prompt.display_text ?? 'Approve the M-Pesa prompt on the customer phone',
+      };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
+      if (error instanceof HttpException && error.getStatus() >= 400 && error.getStatus() < 500) {
+        await this.prisma.merchantCharge.update({
+          where: { reference }, data: { status: 'FAILED', providerStatus: 'initiation_rejected' },
+        });
+        throw new BadRequestException(error.message);
+      }
+      await this.prisma.merchantCharge.update({
+        where: { reference }, data: { providerStatus: 'initiation_unknown' },
+      });
+      return {
+        reference,
+        status: 'PENDING',
+        amount: input.amount,
+        entityType: 'RECEIVABLE',
+        message: 'Payment request could not be confirmed yet. Check this reference before retrying.',
+      };
+    }
+  }
+
   async status(actor: Actor, reference: string) {
     const charge = await this.prisma.merchantCharge.findFirst({
       where: { tenantId: actor.tenantId, reference },
@@ -283,6 +404,33 @@ export class MerchantPaymentsService {
     }
 
     try {
+      if (charge.purpose === 'RECEIVABLE') {
+        if (!this.finance || !charge.receivableId ||
+            (charge.receivableType !== 'retail' && charge.receivableType !== 'peer')) {
+          throw new Error('Receivable charge details are incomplete');
+        }
+        const paymentDto = {
+          branchId: charge.branchId,
+          amount: Number(charge.amount),
+          method: ReceivablePaymentMethod.MPESA,
+          reference,
+          notes: 'Paystack M-Pesa debt collection',
+          offlineId: `paystack-${reference}`,
+        };
+        const payment = charge.receivableType === 'retail'
+          ? await this.finance.recordRetailPayment(
+              charge.cashierId, charge.tenantId, charge.receivableId, paymentDto,
+            )
+          : await this.finance.recordPeerPayment(
+              charge.cashierId, charge.tenantId, charge.receivableId, paymentDto,
+            );
+        const completed = await this.prisma.merchantCharge.update({
+          where: { reference },
+          data: { status: 'COMPLETED', receivablePaymentId: payment.id },
+        });
+        return this.presentCharge(completed);
+      }
+
       const sale = await this.sales.createSale(
         charge.cashierId,
         charge.tenantId,
@@ -359,22 +507,6 @@ export class MerchantPaymentsService {
     return total;
   }
 
-  private async assertOwner(actor: Actor) {
-    const onboarding = await this.prisma.tenantOnboarding.findUnique({
-      where: { tenantId: actor.tenantId }, select: { ownerUserId: true },
-    });
-    if (onboarding?.ownerUserId === actor.sub) return;
-    // Older workspaces predate TenantOnboarding; their original admin can
-    // still set a payout account without a platform-admin intervention.
-    if (!onboarding) {
-      const user = await this.prisma.user.findFirst({
-        where: { id: actor.sub, tenantId: actor.tenantId }, select: { role: true },
-      });
-      if (user?.role === LegacyUserRole.ADMIN) return;
-    }
-    throw new ForbiddenException('Only the business owner can change payout details');
-  }
-
   private normalizePhone(value: string) {
     const digits = value.replace(/\D/g, '');
     return digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
@@ -383,12 +515,18 @@ export class MerchantPaymentsService {
   private presentCharge(charge: {
     reference: string; status: string; providerStatus: string | null;
     amount: Prisma.Decimal; saleId: string | null; receiptNumber: string | null;
+    purpose?: string; receivableType?: string | null; receivableId?: string | null;
+    receivablePaymentId?: string | null;
   }) {
     return {
       reference: charge.reference,
       status: charge.status,
       providerStatus: charge.providerStatus,
       amount: Number(charge.amount),
+      purpose: charge.purpose ?? 'SALE',
+      receivableType: charge.receivableType ?? null,
+      receivableId: charge.receivableId ?? null,
+      receivablePaymentId: charge.receivablePaymentId ?? null,
       saleId: charge.saleId,
       receiptNumber: charge.receiptNumber,
     };
@@ -396,11 +534,15 @@ export class MerchantPaymentsService {
 
   private presentStart(charge: {
     reference: string; status: string; amount: Prisma.Decimal;
+    purpose?: string; receivableType?: string | null; receivableId?: string | null;
   }) {
     return {
       reference: charge.reference,
       status: charge.status,
       amount: Number(charge.amount),
+      purpose: charge.purpose ?? 'SALE',
+      receivableType: charge.receivableType ?? null,
+      receivableId: charge.receivableId ?? null,
       message: 'This payment request already exists. Check its status before retrying.',
     };
   }

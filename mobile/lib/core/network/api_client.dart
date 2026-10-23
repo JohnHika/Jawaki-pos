@@ -903,6 +903,13 @@ class ApiClient {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  Future<Map<String, dynamic>> startMerchantReceivableMpesaPayment(
+      Map<String, dynamic> data) async {
+    final response =
+        await _dio.post('/merchant-payments/receivables/mpesa', data: data);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<List<Map<String, dynamic>>> getRecentMerchantCharges() async {
     final response = await _dio.get('/merchant-payments/charges');
     return (response.data as List)

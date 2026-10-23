@@ -121,6 +121,10 @@ model MerchantCharge {
   phone          String
   customerEmail  String
   salePayload    Json
+  purpose        String   @default("SALE")
+  receivableType String?
+  receivableId   String?
+  receivablePaymentId String?
   status         String   @default("PENDING")
   providerStatus String?
   saleId         String?  @unique
@@ -1774,6 +1778,7 @@ enum SupplierInvoiceStatus {
 enum CashFundingSource {
   CASH_TILL
   CREDIT_SUPPLIER
+  BANK_OR_MPESA
 }
 
 model SupplierInvoice {
@@ -1830,6 +1835,8 @@ model SupplierPayment {
   invoiceId   String?
   amount      Decimal  @db.Decimal(10, 2)
   notes       String?
+  fundingSource CashFundingSource @default(CASH_TILL)
+  requestId   String?  @unique
   paidAt      DateTime @default(now())
   createdById String
   createdAt   DateTime @default(now())

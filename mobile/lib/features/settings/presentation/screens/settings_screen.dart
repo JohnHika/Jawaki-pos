@@ -180,12 +180,12 @@ class SettingsScreen extends ConsumerWidget {
         id: 'money',
         title: 'Money & plan',
         entries: [
-          if (isBillingAdmin)
+          if (perms.canManageMerchantPayout)
             SettingsEntry(
               id: 'merchant-payouts',
               icon: Icons.account_balance_rounded,
               title: 'Customer payments & payouts',
-              subtitle: 'Where product-sale payments reach your business',
+              subtitle: 'Manage the bank account for sales and debt collections',
               keywords: const ['bank', 'payout', 'settlement', 'paystack', 'mpesa'],
               onTap: () => context.push('/payments/setup'),
             ),

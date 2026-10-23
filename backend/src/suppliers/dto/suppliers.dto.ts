@@ -22,6 +22,7 @@ export enum SupplierInvoiceStatus {
 export enum CashFundingSource {
   CASH_TILL = 'CASH_TILL',
   CREDIT_SUPPLIER = 'CREDIT_SUPPLIER',
+  BANK_OR_MPESA = 'BANK_OR_MPESA',
 }
 
 export class CreateSupplierDto {
@@ -158,4 +159,9 @@ export class RecordSupplierPaymentDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Stable idempotency key for safe retries' })
+  @IsOptional()
+  @IsUUID('4')
+  requestId?: string;
 }

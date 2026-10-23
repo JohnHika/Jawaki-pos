@@ -98,6 +98,13 @@ export class FinanceService {
       dueDate: invoice.dueDate,
       status: invoice.status,
       createdAt: invoice.createdAt,
+      payments: invoice.payments.map((payment) => ({
+        id: payment.id,
+        amount: this.money(payment.amount),
+        notes: payment.notes,
+        fundingSource: payment.fundingSource,
+        paidAt: payment.paidAt,
+      })),
     }));
   }
 

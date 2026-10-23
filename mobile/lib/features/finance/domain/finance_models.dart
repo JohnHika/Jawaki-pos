@@ -137,6 +137,7 @@ class FinancePayable {
     required this.dueDate,
     required this.status,
     required this.createdAt,
+    this.payments = const <FinancePayablePayment>[],
   });
 
   final String id;
@@ -150,6 +151,7 @@ class FinancePayable {
   final DateTime? dueDate;
   final String status;
   final DateTime? createdAt;
+  final List<FinancePayablePayment> payments;
 
   factory FinancePayable.fromJson(Map<String, dynamic> json) {
     final supplier = _map(json['supplier']);
@@ -165,6 +167,8 @@ class FinancePayable {
       dueDate: _date(json['dueDate']),
       status: _requiredString(json, 'status'),
       createdAt: _date(json['createdAt']),
+      payments:
+          _list(json['payments']).map(FinancePayablePayment.fromJson).toList(),
     );
   }
 
@@ -182,6 +186,7 @@ class FinancePayable {
         'dueDate': _dateJson(dueDate),
         'status': status,
         'createdAt': _dateJson(createdAt),
+        'payments': payments.map((value) => value.toJson()).toList(),
       };
 
   @override
@@ -191,6 +196,39 @@ class FinancePayable {
 
   @override
   int get hashCode => toJson().toString().hashCode;
+}
+
+class FinancePayablePayment {
+  const FinancePayablePayment({
+    required this.id,
+    required this.amount,
+    required this.fundingSource,
+    required this.paidAt,
+    this.notes,
+  });
+
+  final String id;
+  final double amount;
+  final String fundingSource;
+  final DateTime? paidAt;
+  final String? notes;
+
+  factory FinancePayablePayment.fromJson(Map<String, dynamic> json) =>
+      FinancePayablePayment(
+        id: _requiredString(json, 'id'),
+        amount: _number(json['amount']),
+        fundingSource: _requiredString(json, 'fundingSource'),
+        paidAt: _date(json['paidAt']),
+        notes: _string(json['notes']),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'amount': amount,
+        'fundingSource': fundingSource,
+        'paidAt': _dateJson(paidAt),
+        'notes': notes,
+      };
 }
 
 class RetailReceivable {

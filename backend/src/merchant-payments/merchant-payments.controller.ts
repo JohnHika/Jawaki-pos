@@ -5,7 +5,11 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { SubscriptionGuard } from '../billing/subscription.guard';
-import { ConfigureMerchantPayoutDto, StartMerchantMpesaDto } from './dto/merchant-payments.dto';
+import {
+  ConfigureMerchantPayoutDto,
+  StartMerchantMpesaDto,
+  StartMerchantReceivableMpesaDto,
+} from './dto/merchant-payments.dto';
 import { MerchantPaymentsService } from './merchant-payments.service';
 
 @ApiTags('merchant-payments')
@@ -31,8 +35,10 @@ export class MerchantPaymentsController {
   }
 
   @Post('account')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('roles.update')
   configureAccount(
-    @CurrentUser() actor: { sub: string; tenantId: string },
+    @CurrentUser() actor: { sub: string; tenantId: string; permissions: string[] },
     @Body() body: ConfigureMerchantPayoutDto,
   ) {
     return this.payments.configureAccount(actor, body);
@@ -54,5 +60,15 @@ export class MerchantPaymentsController {
     @Param('reference') reference: string,
   ) {
     return this.payments.status(actor, reference);
+  }
+
+  @Post('receivables/mpesa')
+  @UseGuards(SubscriptionGuard, PermissionsGuard)
+  @RequirePermissions('finance.manage_receivables')
+  startReceivableMpesa(
+    @CurrentUser() actor: { sub: string; tenantId: string },
+    @Body() body: StartMerchantReceivableMpesaDto,
+  ) {
+    return this.payments.startReceivableMpesa(actor, body);
   }
 }

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsNotEmpty, IsString, IsUUID, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsNumber, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { CreateSaleDto } from '../../sales/dto/sales.dto';
 
 export class ConfigureMerchantPayoutDto {
@@ -28,4 +28,29 @@ export class StartMerchantMpesaDto {
   @ValidateNested()
   @Type(() => CreateSaleDto)
   sale!: CreateSaleDto;
+}
+
+export class StartMerchantReceivableMpesaDto {
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsIn(['retail', 'peer'])
+  receivableType!: 'retail' | 'peer';
+
+  @IsUUID('4')
+  receivableId!: string;
+
+  @IsUUID('4')
+  branchId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(3)
+  @Max(9_999_999)
+  amount!: number;
+
+  @IsString() @Matches(/^(?:\+?254|0)?(?:7|1)\d{8}$/)
+  phoneNumber!: string;
+
+  @IsEmail() @MaxLength(254)
+  customerEmail!: string;
 }

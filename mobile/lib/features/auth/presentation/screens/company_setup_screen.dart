@@ -124,7 +124,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   Future<void> _createWithGoogle() async {
     if (_isLoading) return;
     if (!_acceptedSignupPolicies) {
-      _showError('Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
+      _showError(
+          'Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
       return;
     }
     setState(() {
@@ -194,7 +195,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   Future<void> _createWithEmailOtp() async {
     if (_isLoading || _challengeId == null) return;
     if (!_acceptedSignupPolicies) {
-      _showError('Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
+      _showError(
+          'Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
       return;
     }
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -410,48 +412,121 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       case 2:
         return _StepContent(
           title: 'Open your first counter',
-          subtitle: 'Add the location where your first sale will happen.',
+          subtitle:
+              'Give your first location a clear name so your team can find it at checkout.',
           children: [
-            _field(
-              _branchNameController,
-              label: 'Branch name',
-              hint: 'Main Store',
-              icon: Icons.store_rounded,
-              validator: (value) => value == null || value.trim().length < 2
-                  ? 'Enter at least 2 characters'
-                  : null,
+            Container(
+              padding: const EdgeInsets.all(DesignSpacing.lg),
+              decoration: BoxDecoration(
+                color: DesignColors.accent.withValues(alpha: 0.09),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                border: Border.all(
+                  color: DesignColors.accent.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: DesignColors.accent.withValues(alpha: 0.15),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    child: const Icon(Icons.storefront_rounded,
+                        color: DesignColors.accent),
+                  ),
+                  const SizedBox(width: DesignSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Your first selling location',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: DesignSpacing.xs),
+                        Text(
+                          'You can add more branches and counters any time in Settings.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            _field(
-              _branchCodeController,
-              label: 'Branch code',
-              hint: 'MAIN',
-              icon: Icons.tag_rounded,
-              inputFormatters: [
-                UpperCaseTextFormatter(),
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-                LengthLimitingTextInputFormatter(20),
-              ],
-              validator: (value) => value == null || value.trim().length < 2
-                  ? 'Enter at least 2 characters'
-                  : null,
-            ),
-            const SizedBox(height: 16),
-            _field(
-              _branchAddressController,
-              label: 'Address (optional)',
-              hint: '123 Main Street, City',
-              icon: Icons.location_on_outlined,
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            _field(
-              _branchPhoneController,
-              label: 'Phone (optional)',
-              hint: '+254 700 000 000',
-              icon: Icons.phone_outlined,
-              keyboardType: TextInputType.phone,
-            ),
+            const SizedBox(height: DesignSpacing.xl),
+            LayoutBuilder(builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 580;
+              final name = _field(
+                _branchNameController,
+                label: 'Branch name',
+                hint: 'Main Store',
+                icon: Icons.store_rounded,
+                validator: (value) => value == null || value.trim().length < 2
+                    ? 'Enter at least 2 characters'
+                    : null,
+              );
+              final code = _field(
+                _branchCodeController,
+                label: 'Branch code',
+                hint: 'MAIN',
+                icon: Icons.tag_rounded,
+                inputFormatters: [
+                  UpperCaseTextFormatter(),
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                  LengthLimitingTextInputFormatter(20),
+                ],
+                validator: (value) => value == null || value.trim().length < 2
+                    ? 'Enter at least 2 characters'
+                    : null,
+              );
+              final address = _field(
+                _branchAddressController,
+                label: 'Address (optional)',
+                hint: 'Street, town or area',
+                icon: Icons.location_on_outlined,
+                maxLines: 1,
+              );
+              final phone = _field(
+                _branchPhoneController,
+                label: 'Phone (optional)',
+                hint: '+254 700 000 000',
+                icon: Icons.phone_outlined,
+                keyboardType: TextInputType.phone,
+              );
+              if (!wide) {
+                return Column(children: [
+                  name,
+                  const SizedBox(height: DesignSpacing.md),
+                  code,
+                  const SizedBox(height: DesignSpacing.md),
+                  address,
+                  const SizedBox(height: DesignSpacing.md),
+                  phone,
+                ]);
+              }
+              return Column(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: name),
+                  const SizedBox(width: DesignSpacing.md),
+                  Expanded(child: code),
+                ]),
+                const SizedBox(height: DesignSpacing.lg),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: address),
+                  const SizedBox(width: DesignSpacing.md),
+                  Expanded(child: phone),
+                ]),
+              ]);
+            }),
           ],
         );
       default:
@@ -464,48 +539,120 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     return _StepContent(
       title: 'Verify your ownership',
       subtitle: _verificationMode == _VerificationMode.google
-          ? 'Use your Google account to securely verify the first workspace owner.'
-          : 'We sent a code to $email. Enter it below to verify your email ownership.',
+          ? 'Choose a secure way to confirm you own this workspace.'
+          : 'Enter the code sent to $email to finish creating your workspace.',
       children: [
-        CheckboxListTile(
-          value: _acceptedSignupPolicies,
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          onChanged: _isLoading
-              ? null
-              : (value) => setState(() => _acceptedSignupPolicies = value ?? false),
-          title: const Text(
-            'I agree to the Terms of Service and Data Processing Addendum, and acknowledge the Privacy Notice.',
+        Container(
+          padding: const EdgeInsets.all(DesignSpacing.lg),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                DesignColors.accent.withValues(alpha: 0.16),
+                context.themed(DesignColors.darkSurfaceElevated),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+            border:
+                Border.all(color: DesignColors.accent.withValues(alpha: 0.26)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: DesignColors.accent.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.verified_user_rounded,
+                    color: DesignColors.accent),
+              ),
+              const SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Secure ownership check',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: DesignSpacing.xs),
+                    Text(
+                      'Only the verified owner can finish setup. Your password is never requested here.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 4,
-          children: [
-            TextButton(
-              onPressed: _isLoading ? null : () => context.push('/legal/terms'),
-              child: const Text('Terms of Service'),
-            ),
-            TextButton(
-              onPressed: _isLoading ? null : () => context.push('/legal/privacy'),
-              child: const Text('Privacy Notice'),
-            ),
-            TextButton(
-              onPressed: _isLoading ? null : () => context.push('/legal/data-processing'),
-              child: const Text('Data Processing Addendum'),
-            ),
-          ],
+        const SizedBox(height: DesignSpacing.lg),
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
+          decoration: BoxDecoration(
+            color: context.themed(DesignColors.darkSurfaceElevated),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+            border: Border.all(color: context.themed(DesignColors.darkBorder)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: _acceptedSignupPolicies,
+                onChanged: _isLoading
+                    ? null
+                    : (value) => setState(
+                        () => _acceptedSignupPolicies = value ?? false),
+              ),
+              const SizedBox(width: DesignSpacing.xs),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: DesignSpacing.md),
+                  child: Text(
+                    'I agree to the Terms of Service and Data Processing Addendum, and acknowledge the Privacy Notice.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(height: 1.4),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(
+            spacing: DesignSpacing.xs,
+            runSpacing: 0,
+            children: [
+              _legalLink('Terms', '/legal/terms'),
+              _legalLink('Privacy', '/legal/privacy'),
+              _legalLink('Data Processing', '/legal/data-processing'),
+            ],
+          ),
+        ),
+        const SizedBox(height: DesignSpacing.md),
         if (_verificationMode == _VerificationMode.google) ...[
           _VerificationCard(
             icon: Icons.verified_user_outlined,
-            title: 'Google verification',
+            title: 'Continue with Google',
             subtitle: _verifiedGoogleEmail == null
-                ? 'Recommended — Google verifies your identity before workspace creation.'
-                : 'Verified Google account: $_verifiedGoogleEmail',
+                ? 'Use your Google account to verify ownership and create your workspace.'
+                : 'Verified account: $_verifiedGoogleEmail',
             child: GradientButton(
-              label: 'Verify with Google',
+              label: _verifiedGoogleEmail == null
+                  ? 'Verify and create workspace'
+                  : 'Create workspace',
               icon: Icons.g_mobiledata_rounded,
               isLoading: _isLoading,
               onPressed: _isLoading || !_acceptedSignupPolicies
@@ -524,7 +671,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         ] else ...[
           _VerificationCard(
             icon: Icons.mark_email_read_outlined,
-            title: 'Email verification code',
+            title: 'Confirm with an email code',
             subtitle:
                 'Only the owner who can access this inbox can create the workspace.',
             child: _field(
@@ -574,14 +721,23 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         Text(
           'Counterbase does not collect or store an owner password during workspace setup.',
           textAlign: TextAlign.center,
-          style: Theme.of(context)
-              .textTheme
-              .labelMedium
-              ?.copyWith(color: context.themed(DesignColors.darkTextTertiary), height: 1.4),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: context.themed(DesignColors.darkTextTertiary),
+              height: 1.4),
         ),
       ],
     );
   }
+
+  Widget _legalLink(String label, String route) => TextButton.icon(
+        onPressed: _isLoading ? null : () => context.push(route),
+        icon: const Icon(Icons.open_in_new_rounded, size: 14),
+        label: Text(label),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          visualDensity: VisualDensity.compact,
+        ),
+      );
 
   Widget _buildFooter() {
     if (_currentStep == 3) {
@@ -621,7 +777,8 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary))),
+              style: TextStyle(
+                  color: context.themed(DesignColors.darkTextSecondary))),
           const SizedBox(height: 8),
           TextFormField(
             controller: controller,
@@ -630,16 +787,20 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             maxLines: maxLines,
             inputFormatters: inputFormatters,
             autovalidateMode: autovalidateMode,
-            style: TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
+            style:
+                TextStyle(color: context.themed(DesignColors.darkTextPrimary)),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(color: context.themed(DesignColors.darkTextTertiary)),
-              prefixIcon: Icon(icon, color: context.themed(DesignColors.darkTextSecondary)),
+              hintStyle: TextStyle(
+                  color: context.themed(DesignColors.darkTextTertiary)),
+              prefixIcon: Icon(icon,
+                  color: context.themed(DesignColors.darkTextSecondary)),
               filled: true,
               fillColor: context.themed(DesignColors.darkSurfaceElevated),
               errorMaxLines: 2,
               border: _inputBorder(context.themed(DesignColors.darkBorder)),
-              enabledBorder: _inputBorder(context.themed(DesignColors.darkBorder)),
+              enabledBorder:
+                  _inputBorder(context.themed(DesignColors.darkBorder)),
               focusedBorder: _inputBorder(DesignColors.brand, width: 1.5),
               errorBorder: _inputBorder(DesignColors.error),
               focusedErrorBorder: _inputBorder(DesignColors.error, width: 1.5),
@@ -759,10 +920,8 @@ class _Header extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Text('Step ${step + 1} of 4 · $label',
-                style: Theme.of(context)
-                    .textTheme
-                    .labelMedium
-                    ?.copyWith(color: context.themed(DesignColors.darkTextTertiary))),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: context.themed(DesignColors.darkTextTertiary))),
           ),
         ]),
       );
@@ -789,8 +948,9 @@ class _StepContent extends StatelessWidget {
       ),
       const SizedBox(height: DesignSpacing.md),
       Text(subtitle,
-          style: theme.textTheme.titleMedium
-              ?.copyWith(color: context.themed(DesignColors.darkTextSecondary), height: 1.4)),
+          style: theme.textTheme.titleMedium?.copyWith(
+              color: context.themed(DesignColors.darkTextSecondary),
+              height: 1.4)),
       const SizedBox(height: DesignSpacing.xxxl - 4),
       ...children,
     ]);
@@ -826,7 +986,8 @@ class _VerificationCard extends StatelessWidget {
           const SizedBox(height: DesignSpacing.sm - 2),
           Text(subtitle,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: context.themed(DesignColors.darkTextSecondary), height: 1.4)),
+                  color: context.themed(DesignColors.darkTextSecondary),
+                  height: 1.4)),
           const SizedBox(height: DesignSpacing.lg + 2),
           child,
         ]),
@@ -856,8 +1017,10 @@ class _ErrorPanel extends StatelessWidget {
             Expanded(
                 child: Text(message,
                     style: TextStyle(
-                        color: context.themed(DesignColors.darkTextSecondary)))),
-            IconButton(tooltip: 'Dismiss', 
+                        color:
+                            context.themed(DesignColors.darkTextSecondary)))),
+            IconButton(
+                tooltip: 'Dismiss',
                 onPressed: onDismiss,
                 icon: Icon(Icons.close_rounded,
                     color: context.themed(DesignColors.darkTextTertiary))),

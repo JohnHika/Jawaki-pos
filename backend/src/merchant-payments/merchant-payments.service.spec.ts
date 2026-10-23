@@ -1,7 +1,11 @@
 import { MerchantPaymentsService } from './merchant-payments.service';
 
 describe('MerchantPaymentsService', () => {
-  const actor = { sub: 'cashier-1', tenantId: 'shop-1' };
+  const actor = {
+    sub: 'cashier-1',
+    tenantId: 'shop-1',
+    permissions: ['roles.update'],
+  };
   const sale = {
     branchId: 'branch-1',
     paymentMethod: 'MPESA',
@@ -22,6 +26,12 @@ describe('MerchantPaymentsService', () => {
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      retailReceivable: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'receivable-1', outstandingAmount: 500, status: 'OPEN',
+        }),
+      },
+      peerReceivable: { findFirst: jest.fn() },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'branch-1' }) },
       product: { findMany: jest.fn().mockResolvedValue([{
         id: 'product-1', name: 'Rice', basePrice: 500, taxRate: 0,
@@ -49,7 +59,17 @@ describe('MerchantPaymentsService', () => {
       verifyTransaction: jest.fn(),
     };
     const sales: any = { createSale: jest.fn().mockResolvedValue({ id: 'sale-1', receiptNumber: 'RCP-1' }) };
-    return { prisma, paystack, sales, service: new MerchantPaymentsService(prisma, paystack, sales) };
+    const finance: any = {
+      recordRetailPayment: jest.fn().mockResolvedValue({ id: 'retail-payment-1' }),
+      recordPeerPayment: jest.fn().mockResolvedValue({ id: 'peer-payment-1' }),
+    };
+    return {
+      prisma,
+      paystack,
+      sales,
+      finance,
+      service: new MerchantPaymentsService(prisma, paystack, sales, undefined, finance),
+    };
   }
 
   it('refuses to charge a customer until that shop has an active payout account', async () => {
@@ -84,7 +104,9 @@ describe('MerchantPaymentsService', () => {
       status: 'ACTIVE', provider: 'PAYSTACK', currency: 'KES',
       bankName: 'Test Bank', accountName: 'SHOP ONE', accountLast4: '7890',
     });
-    await service.configureAccount({ sub: 'owner-1', tenantId: 'shop-1' }, {
+    await service.configureAccount({
+      sub: 'owner-1', tenantId: 'shop-1', permissions: ['roles.update'],
+    }, {
       bankCode: '001', accountNumber: '1234567890', confirmAccountOwnership: true,
     });
     expect(paystack.createMerchantSubaccount).toHaveBeenCalledWith(expect.objectContaining({
@@ -93,6 +115,75 @@ describe('MerchantPaymentsService', () => {
     const written = prisma.merchantPaymentAccount.upsert.mock.calls[0][0];
     expect(written.create.accountLast4).toBe('7890');
     expect(JSON.stringify(written)).not.toContain('1234567890');
+  });
+
+  it('routes a requested debt payment through the merchant subaccount', async () => {
+    const { prisma, paystack, service } = fixtures();
+    const result = await service.startReceivableMpesa(actor, {
+      requestId: 'bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb',
+      receivableType: 'retail',
+      receivableId: 'receivable-1',
+      branchId: 'branch-1',
+      amount: 250,
+      phoneNumber: '0712345678',
+      customerEmail: 'customer@example.test',
+    });
+    expect(result).toMatchObject({ status: 'PENDING', entityType: 'RECEIVABLE', amount: 250 });
+    expect(paystack.createMerchantMpesaCharge).toHaveBeenCalledWith(expect.objectContaining({
+      amountKes: 250,
+      subaccountCode: 'ACCT_shop1',
+      tenantId: 'shop-1',
+      phone: '254712345678',
+    }));
+    expect(prisma.merchantCharge.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        purpose: 'RECEIVABLE',
+        receivableId: 'receivable-1',
+        receivableType: 'retail',
+        requestId: 'bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb',
+      }),
+    }));
+  });
+
+  it('allocates a debt payment only after Paystack verifies the merchant settlement', async () => {
+    const { prisma, paystack, finance, service } = fixtures();
+    const charge = {
+      id: 'charge-debt-1', tenantId: 'shop-1', reference: 'CBDUE_ref',
+      subaccountCode: 'ACCT_shop1', amount: 250, status: 'PENDING',
+      providerStatus: null, purpose: 'RECEIVABLE', receivableType: 'retail',
+      receivableId: 'receivable-1', receivablePaymentId: null,
+      saleId: null, receiptNumber: null, salePayload: {}, branchId: 'branch-1',
+      cashierId: 'cashier-1',
+    };
+    prisma.merchantCharge.findFirst.mockResolvedValue(charge);
+    prisma.merchantCharge.findUnique.mockResolvedValue(charge);
+    prisma.merchantCharge.updateMany.mockResolvedValue({ count: 1 });
+    prisma.merchantCharge.update.mockImplementation(async ({ data }) => ({ ...charge, ...data }));
+    paystack.verifyTransaction.mockResolvedValue({
+      reference: 'CBDUE_ref', status: 'success', amount: 25000, currency: 'KES',
+      subaccount: { subaccount_code: 'ACCT_shop1' },
+    });
+
+    const result = await service.status(actor, 'CBDUE_ref');
+    expect(result).toMatchObject({
+      status: 'COMPLETED',
+      purpose: 'RECEIVABLE',
+      receivablePaymentId: 'retail-payment-1',
+    });
+    expect(finance.recordRetailPayment).toHaveBeenCalledWith(
+      'cashier-1',
+      'shop-1',
+      'receivable-1',
+      expect.objectContaining({
+        amount: 250,
+        method: 'MPESA',
+        reference: 'CBDUE_ref',
+        offlineId: 'paystack-CBDUE_ref',
+      }),
+    );
+    expect(prisma.merchantCharge.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'COMPLETED', receivablePaymentId: 'retail-payment-1' }),
+    }));
   });
 
   it('never creates a sale when Paystack confirms the wrong settlement subaccount', async () => {

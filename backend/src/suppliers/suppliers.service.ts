@@ -10,7 +10,7 @@ import {
   SupplierInvoiceStatus,
   CashFundingSource,
 } from './dto/suppliers.dto';
-import { Prisma, StockMovementType } from '@prisma/client';
+import { CashFundingSource as PrismaCashFundingSource, Prisma, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
@@ -322,64 +322,91 @@ export class SuppliersService {
    * was originally taken on credit (fundingSource CREDIT_SUPPLIER).
    */
   async recordPayment(userId: string, tenantId: string, invoiceId: string, dto: RecordSupplierPaymentDto) {
-    const invoice = await this.prisma.supplierInvoice.findFirst({ where: { id: invoiceId, tenantId } });
-    if (!invoice) throw new NotFoundException('Supplier invoice not found');
-
-    const currentDue = Number(invoice.dueAmount);
-    if (dto.amount > currentDue) {
-      throw new BadRequestException('Payment amount exceeds outstanding balance');
+    const fundingSource = dto.fundingSource ?? CashFundingSource.CASH_TILL;
+    if (dto.requestId) {
+      const existing = await this.prisma.supplierPayment.findUnique({
+        where: { requestId: dto.requestId }, include: { invoice: true },
+      });
+      if (existing) return this.assertSupplierPaymentRetry(existing, tenantId, invoiceId, dto, fundingSource);
     }
 
-    const newPaidAmount = Number(invoice.paidAmount) + dto.amount;
-    const newDueAmount = currentDue - dto.amount;
-    const newStatus =
-      newDueAmount <= 0 ? SupplierInvoiceStatus.PAID : SupplierInvoiceStatus.PARTIAL;
+    let payment: any;
+    try {
+      payment = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.$executeRaw`SELECT id FROM supplier_invoices WHERE id = ${invoiceId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+        const invoice = await tx.supplierInvoice.findFirst({ where: { id: invoiceId, tenantId } });
+        if (!invoice) throw new NotFoundException('Supplier invoice not found');
 
-    const payment = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const created = await tx.supplierPayment.create({
-        data: {
-          supplierId: invoice.supplierId,
-          invoiceId: invoice.id,
-          amount: dto.amount,
-          notes: dto.notes,
-          createdById: userId,
-        },
-      });
+        const currentDue = Number(invoice.dueAmount);
+        if (dto.amount > currentDue) {
+          throw new BadRequestException('Payment amount exceeds outstanding balance');
+        }
+        const newPaidAmount = Number(invoice.paidAmount) + dto.amount;
+        const newDueAmount = Math.max(0, currentDue - dto.amount);
+        const newStatus =
+          newDueAmount <= 0 ? SupplierInvoiceStatus.PAID : SupplierInvoiceStatus.PARTIAL;
 
-      await tx.supplierInvoice.update({
-        where: { id: invoice.id },
-        data: { paidAmount: newPaidAmount, dueAmount: newDueAmount, status: newStatus },
-      });
-
-      const fundingSource = dto.fundingSource ?? CashFundingSource.CASH_TILL;
-      // Later payments on a credit invoice move cash when funded from the
-      // till; the entry rides the same tx as the balance update so a crash
-      // can't record the payment while losing the cash outflow.
-      if (fundingSource === CashFundingSource.CASH_TILL) {
-        await this.cashFlowService.recordEntry({
-          tx,
-          branchId: invoice.branchId,
-          type: CashEntryType.RESTOCK_OUT,
-          amount: -dto.amount,
-          referenceType: 'supplier_payment',
-          referenceId: created.id,
-          note: dto.notes,
-          createdById: userId,
+        const created = await tx.supplierPayment.create({
+          data: {
+            supplierId: invoice.supplierId,
+            invoiceId: invoice.id,
+            amount: dto.amount,
+            notes: dto.notes,
+            fundingSource: fundingSource as unknown as PrismaCashFundingSource,
+            requestId: dto.requestId,
+            createdById: userId,
+          },
         });
-      }
+        await tx.supplierInvoice.update({
+          where: { id: invoice.id },
+          data: { paidAmount: newPaidAmount, dueAmount: newDueAmount, status: newStatus },
+        });
 
-      return created;
-    });
+        // Only cash from the till changes the branch cash balance. Bank or
+        // M-Pesa payments update the payable without implying a transfer was sent.
+        if (fundingSource === CashFundingSource.CASH_TILL) {
+          await this.cashFlowService.recordEntry({
+            tx,
+            branchId: invoice.branchId,
+            type: CashEntryType.RESTOCK_OUT,
+            amount: -dto.amount,
+            referenceType: 'supplier_payment',
+            referenceId: created.id,
+            note: dto.notes,
+            createdById: userId,
+          });
+        }
+        return created;
+      });
+    } catch (error) {
+      if (!dto.requestId || !this.isUniqueConstraint(error)) throw error;
+      const existing = await this.prisma.supplierPayment.findUnique({
+        where: { requestId: dto.requestId }, include: { invoice: true },
+      });
+      if (!existing) throw error;
+      return this.assertSupplierPaymentRetry(existing, tenantId, invoiceId, dto, fundingSource);
+    }
 
-    const fundingSource = dto.fundingSource ?? CashFundingSource.CASH_TILL;
     await this.auditService.record({
       userId,
       action: 'CREATE',
       entityType: 'supplier_payment',
       entityId: payment.id,
-      newValues: { amount: dto.amount, invoiceId: invoice.id, fundingSource },
+      newValues: { amount: dto.amount, invoiceId, fundingSource },
     });
-
     return payment;
+  }
+
+  private assertSupplierPaymentRetry(existing: any, tenantId: string, invoiceId: string,
+      dto: RecordSupplierPaymentDto, fundingSource: CashFundingSource) {
+    if (existing.invoiceId !== invoiceId || existing.invoice?.tenantId !== tenantId ||
+        Number(existing.amount) !== dto.amount || existing.fundingSource !== fundingSource) {
+      throw new BadRequestException('This payment request key was already used for a different payment');
+    }
+    return existing;
+  }
+
+  private isUniqueConstraint(error: unknown): boolean {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 }

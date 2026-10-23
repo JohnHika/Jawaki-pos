@@ -124,6 +124,14 @@ abstract class FinanceHubDataSource {
   Future<void> recordPeerCollection(ReceivableCollectionRequest request);
   Future<void> recordRetailBulkCollection(BulkCollectionRequest request);
   Future<void> recordPeerBulkCollection(BulkCollectionRequest request);
+  Future<void> recordSupplierPayment(
+          String invoiceId, Map<String, dynamic> data) =>
+      throw UnsupportedError('Supplier payments are not available');
+  Future<Map<String, dynamic>> startMerchantReceivablePayment(
+          Map<String, dynamic> data) =>
+      throw UnsupportedError('Merchant receivable payments are not available');
+  Future<Map<String, dynamic>> getMerchantPaymentStatus(String reference) =>
+      throw UnsupportedError('Merchant payment status is not available');
 }
 
 class FinanceHubController extends StateNotifier<FinanceHubState> {
@@ -245,6 +253,32 @@ class FinanceHubController extends StateNotifier<FinanceHubState> {
     await refresh();
   }
 
+  Future<void> recordSupplierPayment({
+    required String invoiceId,
+    required double amount,
+    required String fundingSource,
+    required String requestId,
+    String? notes,
+  }) async {
+    if (invoiceId.trim().isEmpty || amount <= 0 || requestId.trim().isEmpty) {
+      throw const FinanceFormException('Enter a valid supplier payment');
+    }
+    await _requireSource().recordSupplierPayment(invoiceId, <String, dynamic>{
+      'amount': amount,
+      'fundingSource': fundingSource,
+      'requestId': requestId,
+      if (_optional(notes) != null) 'notes': _optional(notes),
+    });
+    await refresh();
+  }
+
+  Future<Map<String, dynamic>> startMerchantReceivablePayment(
+          Map<String, dynamic> data) =>
+      _requireSource().startMerchantReceivablePayment(data);
+
+  Future<Map<String, dynamic>> getMerchantPaymentStatus(String reference) =>
+      _requireSource().getMerchantPaymentStatus(reference);
+
   FinanceHubDataSource _requireSource() {
     final source = _source;
     if (source == null) {
@@ -364,4 +398,19 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
           .toList(),
     );
   }
+
+  @override
+  Future<void> recordSupplierPayment(
+      String invoiceId, Map<String, dynamic> data) async {
+    await _apiClient.recordSupplierPayment(invoiceId, data);
+  }
+
+  @override
+  Future<Map<String, dynamic>> startMerchantReceivablePayment(
+          Map<String, dynamic> data) =>
+      _apiClient.startMerchantReceivableMpesaPayment(data);
+
+  @override
+  Future<Map<String, dynamic>> getMerchantPaymentStatus(String reference) =>
+      _apiClient.getMerchantMpesaStatus(reference);
 }
