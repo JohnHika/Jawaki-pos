@@ -31,7 +31,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
-        android:label="Counterbase"
+        android:label="@string/counterbase_app_label"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:installLocation="internalOnly"
@@ -79,7 +79,7 @@
             android:enabled="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher"
-            android:label="Counterbase">
+            android:label="@string/counterbase_app_label">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -92,7 +92,7 @@
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_streak"
             android:roundIcon="@mipmap/ic_launcher_streak"
-            android:label="Counterbase">
+            android:label="@string/counterbase_app_label">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -105,7 +105,7 @@
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_alert"
             android:roundIcon="@mipmap/ic_launcher_alert"
-            android:label="Counterbase">
+            android:label="@string/counterbase_app_label">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -118,7 +118,7 @@
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_gold"
             android:roundIcon="@mipmap/ic_launcher_gold"
-            android:label="Counterbase">
+            android:label="@string/counterbase_app_label">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

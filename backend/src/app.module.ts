@@ -18,6 +18,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { AppUpdatesModule } from './app-updates/app-updates.module';
 import { ApiV1Module } from './api-v1/api-v1.module';
 import { PaymentsModule } from './payments/payments.module';
+import { MerchantPaymentsModule } from './merchant-payments/merchant-payments.module';
 import { AuditModule } from './audit/audit.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CashFlowModule } from './cash-flow/cash-flow.module';
@@ -37,6 +38,7 @@ import { CardBillingModule } from './billing/card-billing.module';
 import { BillingModule } from './billing/billing.module';
 import { PartnersModule } from './partners/partners.module';
 import { LicenseModule } from './license/license.module';
+import { LegalPolicyModule } from './legal/legal-policy.module';
 import { AppController } from './app.controller';
 import { VercelCronController } from './vercel-cron.controller';
 
@@ -86,6 +88,7 @@ import { VercelCronController } from './vercel-cron.controller';
     AppUpdatesModule,
     ApiV1Module,
     PaymentsModule,
+    MerchantPaymentsModule,
     AuditModule,
     SuppliersModule,
     CashFlowModule,
@@ -104,6 +107,7 @@ import { VercelCronController } from './vercel-cron.controller';
     CardBillingModule,
     BillingModule,
     LicenseModule,
+    LegalPolicyModule,
     PartnersModule,
   ],
   controllers: [AppController, VercelCronController],

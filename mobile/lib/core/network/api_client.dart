@@ -15,6 +15,7 @@ class WorkspaceCreationRequest {
     required this.firstName,
     required this.lastName,
     required this.branch,
+    required this.acceptedPolicyTypes,
     this.companySlug,
     this.logo,
     this.logoPublicId,
@@ -26,6 +27,7 @@ class WorkspaceCreationRequest {
   final String firstName;
   final String lastName;
   final WorkspaceBranchDetails branch;
+  final List<String> acceptedPolicyTypes;
   final String? companySlug;
   final String? logo;
   final String? logoPublicId;
@@ -36,6 +38,7 @@ class WorkspaceCreationRequest {
         'companyName': companyName,
         'firstName': firstName,
         'lastName': lastName,
+        'acceptedPolicyTypes': acceptedPolicyTypes,
         if (companySlug != null && companySlug!.isNotEmpty)
           'companySlug': companySlug,
         if (logo != null && logo!.isNotEmpty) 'logo': logo,
@@ -160,6 +163,19 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getTenantOnboarding() async {
     final response = await _dio.get('/tenant-onboarding');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Record an owner acceptance for the current version of a Counterbase policy.
+  /// The server rejects unknown or stale versions.
+  Future<Map<String, dynamic>> acceptLegalPolicy({
+    required String policyType,
+    required String policyVersion,
+  }) async {
+    final response = await _dio.post('/legal/acceptances', data: {
+      'policyType': policyType,
+      'policyVersion': policyVersion,
+    });
     return response.data as Map<String, dynamic>;
   }
 
@@ -858,17 +874,40 @@ class ApiClient {
   }
 
   // Payment endpoints
-  Future<Map<String, dynamic>> initiateMpesaPayment(
-      Map<String, dynamic> data) async {
-    final response = await _dio.post('/payments/mpesa/initiate', data: data);
-    return response.data;
+  Future<Map<String, dynamic>> getMerchantPayoutAccount() async {
+    final response = await _dio.get('/merchant-payments/account');
+    return Map<String, dynamic>.from(response.data as Map);
   }
 
-  Future<Map<String, dynamic>> checkMpesaPaymentStatus(
-      String checkoutRequestId) async {
-    final response =
-        await _dio.get('/payments/mpesa/status/$checkoutRequestId');
-    return response.data;
+  Future<List<Map<String, dynamic>>> getMerchantPayoutBanks() async {
+    final response = await _dio.get('/merchant-payments/banks');
+    return (response.data as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> configureMerchantPayout(
+      Map<String, dynamic> data) async {
+    final response = await _dio.post('/merchant-payments/account', data: data);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<Map<String, dynamic>> startMerchantMpesaPayment(
+      Map<String, dynamic> data) async {
+    final response = await _dio.post('/merchant-payments/mpesa', data: data);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<Map<String, dynamic>> getMerchantMpesaStatus(String reference) async {
+    final response = await _dio.get('/merchant-payments/mpesa/$reference');
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> getRecentMerchantCharges() async {
+    final response = await _dio.get('/merchant-payments/charges');
+    return (response.data as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
   }
 
   Future<Map<String, dynamic>> initiatePesaPalPayment(
@@ -1854,10 +1893,13 @@ class ApiClient {
   Future<Map<String, dynamic>> updateBillingSettings({
     bool? autoRenewEnabled,
     String? billingPhone,
+    String? autoRenewAuthorizationVersion,
   }) async {
     final response = await _dio.put('/billing/settings', data: {
       if (autoRenewEnabled != null) 'autoRenewEnabled': autoRenewEnabled,
       if (billingPhone != null) 'billingPhone': billingPhone,
+      if (autoRenewAuthorizationVersion != null)
+        'autoRenewAuthorizationVersion': autoRenewAuthorizationVersion,
     });
     return response.data as Map<String, dynamic>;
   }

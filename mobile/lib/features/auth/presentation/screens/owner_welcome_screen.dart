@@ -338,7 +338,10 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
       case 'add_catalog':
         await _addFirstProduct();
       case 'activate_payment':
-        if (mounted) context.go('/payments');
+        if (mounted) {
+          await context.push<bool>('/payments/setup');
+          if (mounted) await _loadOnboarding();
+        }
       default:
         await _updateStep(key, 'COMPLETED');
     }
@@ -411,6 +414,6 @@ const _details = <String, _StepDetail>{
       'Create products before your first sale.', Icons.inventory_2_outlined,
       actionLabel: 'Add product'),
   'activate_payment': _StepDetail('activate_payment', 'Set up payments',
-      'Choose and configure how customers can pay.', Icons.payments_outlined,
-      actionLabel: 'Open payments'),
+      'Connect your bank account for product-sale payouts.', Icons.payments_outlined,
+      actionLabel: 'Connect payout account'),
 };

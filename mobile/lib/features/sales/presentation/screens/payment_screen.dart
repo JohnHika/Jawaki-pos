@@ -29,10 +29,12 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod? _selectedMethod;
   final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -175,7 +177,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             _PaymentMethodTile(
               icon: Icons.phone_android_rounded,
               title: 'M-Pesa',
-              subtitle: 'Pay via M-Pesa STK Push',
+              subtitle: 'Customer pays your shop through Paystack',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
               onTap: () =>
@@ -223,7 +225,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             _PaymentMethodTile(
               icon: Icons.call_split_rounded,
               title: 'Split Payment',
-              subtitle: 'Part cash, part M-Pesa, part debt',
+              subtitle: 'Part cash, part debt',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.split,
               onTap: () =>
@@ -237,6 +239,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               const SizedBox(height: DesignSpacing.md),
               TextFormField(
                 controller: _phoneController,
+                enabled: paymentState.currentTransactionId == null,
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   hintText: '0712345678',
@@ -251,6 +254,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   fillColor: isDark
                       ? DesignColors.darkSurfaceElevated
                       : DesignColors.surfaceMuted,
+                ),
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              TextFormField(
+                controller: _emailController,
+                enabled: paymentState.currentTransactionId == null,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Customer email',
+                  helperText: 'Required by Paystack for this payment',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
                 ),
               ),
             ],
@@ -292,7 +308,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
               DesignSpacing.lg, DesignSpacing.lg),
           child: GradientButton(
-            label: _getButtonText(),
+            label: _getButtonText(paymentState),
             icon: Icons.payment_rounded,
             onPressed: _selectedMethod == null || paymentState.isProcessing
                 ? null
@@ -306,12 +322,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
   }
 
-  String _getButtonText() {
+  String _getButtonText(PaymentState paymentState) {
     switch (_selectedMethod) {
       case PaymentMethod.cash:
         return 'Confirm Cash Payment';
       case PaymentMethod.mpesa:
-        return 'Send M-Pesa Request';
+        return paymentState.currentTransactionId == null
+            ? 'Send M-Pesa Request'
+            : 'Check M-Pesa Payment';
       case PaymentMethod.manual:
         return 'Confirm Manual Payment';
       case PaymentMethod.debt:
@@ -325,6 +343,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   Future<void> _processPayment() async {
     if (_selectedMethod == null) return;
+
+    if (ref.read(paymentProvider.notifier).hasUnresolvedMerchantPayment &&
+        _selectedMethod != PaymentMethod.mpesa) {
+      showGlassSnackBar(
+        context,
+        'Check the pending M-Pesa payment before taking another method.',
+        icon: Icons.pending_actions_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
 
     final cart = ref.read(cartProvider);
     final paymentNotifier = ref.read(paymentProvider.notifier);
@@ -355,9 +384,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           );
           return;
         }
+        if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+            .hasMatch(_emailController.text.trim())) {
+          showGlassSnackBar(
+            context,
+            'Enter the customer email for Paystack',
+            icon: Icons.email_outlined,
+            color: DesignColors.warning,
+          );
+          return;
+        }
         result = await paymentNotifier.processMpesaPayment(
           amount: cart.total,
           phoneNumber: _phoneController.text,
+          customerEmail: _emailController.text,
+          discountAmount: cart.discount,
           items: cart.items,
           customerId: cart.customerId,
         );
@@ -458,12 +499,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
-  /// Collects one or more tenders (method + amount, plus phone for M-Pesa)
+  /// Collects cash and debt tenders.
   /// that together must cover the sale total. Returns null if cancelled.
   Future<List<PaymentTender>?> _showSplitPaymentSheet(double total) async {
     final rows = <_TenderRow>[
       _TenderRow(method: 'CASH', amountController: TextEditingController()),
-      _TenderRow(method: 'MPESA', amountController: TextEditingController()),
+      _TenderRow(method: 'CREDIT', amountController: TextEditingController()),
     ];
 
     final confirmed = await showModalBottomSheet<bool>(
@@ -541,9 +582,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                                       items: const [
                                         DropdownMenuItem(
                                             value: 'CASH', child: Text('Cash')),
-                                        DropdownMenuItem(
-                                            value: 'MPESA',
-                                            child: Text('M-Pesa')),
                                         DropdownMenuItem(
                                             value: 'CREDIT',
                                             child: Text('Debt (owed)')),

@@ -18,7 +18,8 @@ Required before deploying the API:
 - `JWT_SECRET`, `JWT_REFRESH_SECRET`, and `OTP_PEPPER` — unique random staging
   values, separate from Render.
 - `CRON_SECRET` — a long random value used to authorize scheduled task routes.
-- `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` — Paystack **test** keys.
+- `PAYSTACK_SECRET_KEY` — Paystack **test** key. The current backend-hosted
+  checkout does not use `PAYSTACK_PUBLIC_KEY`.
 - `PUBLIC_API_URL` — `https://counterbase-pos-staging-api.vercel.app`.
   The activation and monthly checkout return URLs are derived from it.
 
@@ -32,11 +33,16 @@ before validating those features.
 
 ## Database migration
 
-All 36 Prisma migrations were applied to the isolated Neon staging database on
+All 38 Prisma migrations are applied to the isolated Neon staging database on
 2026-10-22 using its direct connection URL (`DATABASE_URL_UNPOOLED`). Keep the
 pooled `DATABASE_URL` for runtime traffic. For future schema changes, supply the
 direct URL as `DATABASE_URL` to `prisma migrate deploy`; do not point migrations
 at the Render production database.
+
+The `20261022130000_merchant_payouts` and
+`20261022140000_policy_acceptances` migrations are applied. The staging API now
+includes merchant payout setup, merchant M-Pesa charge routes, policy
+acceptance records, and explicit Auto-Renew authorization checks.
 
 ## Payment test callback
 
@@ -46,7 +52,9 @@ Configure Paystack's **Test** webhook URL as:
 https://counterbase-pos-staging-api.vercel.app/api/v1/billing/paystack/webhook
 ```
 
-That endpoint handles both one-time activation and monthly invoice events.
+The staging endpoint handles one-time activation, monthly invoice, and merchant
+product M-Pesa charge events. Use Paystack **Test** mode only for any checkout
+validation; no payment transactions were run during the policy deployment.
 The callback pages for activation and monthly checkout are derived from
 `PUBLIC_API_URL`.
 
@@ -54,9 +62,12 @@ The callback pages for activation and monthly checkout are derived from
 
 - The staging API is deployed and its `/health` and `/health/db` endpoints
   return `200`; Neon reports `connected`.
-- Add Paystack test keys and a staging email provider before testing account
-  verification and one-time or monthly checkout. Never put live Paystack keys
-  in this project.
+- Vercel has a `PAYSTACK_SECRET_KEY` variable and the staging email settings;
+  verify that the key is a test key (`sk_test_`) before charging in staging.
+  Never put live Paystack keys in this project.
+- Merchant-payment and policy-acceptance migrations are applied to Neon staging;
+  the API deployment is ready and the health and database-health endpoints
+  return `200`.
 
 ## Scheduled tasks
 

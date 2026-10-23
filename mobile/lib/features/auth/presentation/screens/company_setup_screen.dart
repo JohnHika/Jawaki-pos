@@ -10,6 +10,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:axon_pos/core/config/google_auth_config.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
+import 'package:axon_pos/core/legal/policy_catalog.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
@@ -73,6 +74,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   int _currentStep = 0;
   bool _isLoading = false;
+  bool _acceptedSignupPolicies = false;
   String? _errorMessage;
   String? _challengeId;
   String? _verifiedGoogleEmail;
@@ -111,6 +113,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               ? _verifiedGoogleEmail!
               : _emailController.text.trim(),
         ),
+        acceptedPolicyTypes: kSignupPolicyTypes,
       );
 
   String? _optional(TextEditingController controller) {
@@ -120,6 +123,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   Future<void> _createWithGoogle() async {
     if (_isLoading) return;
+    if (!_acceptedSignupPolicies) {
+      _showError('Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -186,6 +193,10 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
 
   Future<void> _createWithEmailOtp() async {
     if (_isLoading || _challengeId == null) return;
+    if (!_acceptedSignupPolicies) {
+      _showError('Accept the Terms of Service and Data Processing Addendum, and review the Privacy Notice, to create a workspace.');
+      return;
+    }
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
       _isLoading = true;
@@ -456,6 +467,36 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           ? 'Use your Google account to securely verify the first workspace owner.'
           : 'We sent a code to $email. Enter it below to verify your email ownership.',
       children: [
+        CheckboxListTile(
+          value: _acceptedSignupPolicies,
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: _isLoading
+              ? null
+              : (value) => setState(() => _acceptedSignupPolicies = value ?? false),
+          title: const Text(
+            'I agree to the Terms of Service and Data Processing Addendum, and acknowledge the Privacy Notice.',
+          ),
+        ),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 4,
+          children: [
+            TextButton(
+              onPressed: _isLoading ? null : () => context.push('/legal/terms'),
+              child: const Text('Terms of Service'),
+            ),
+            TextButton(
+              onPressed: _isLoading ? null : () => context.push('/legal/privacy'),
+              child: const Text('Privacy Notice'),
+            ),
+            TextButton(
+              onPressed: _isLoading ? null : () => context.push('/legal/data-processing'),
+              child: const Text('Data Processing Addendum'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         if (_verificationMode == _VerificationMode.google) ...[
           _VerificationCard(
             icon: Icons.verified_user_outlined,
@@ -467,7 +508,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               label: 'Verify with Google',
               icon: Icons.g_mobiledata_rounded,
               isLoading: _isLoading,
-              onPressed: _isLoading ? null : _createWithGoogle,
+              onPressed: _isLoading || !_acceptedSignupPolicies
+                  ? null
+                  : _createWithGoogle,
               height: 54,
               borderRadius: 14,
             ),
@@ -505,7 +548,9 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
             label: 'Verify email & create workspace',
             icon: Icons.verified_rounded,
             isLoading: _isLoading,
-            onPressed: _isLoading ? null : _createWithEmailOtp,
+            onPressed: _isLoading || !_acceptedSignupPolicies
+                ? null
+                : _createWithEmailOtp,
             height: 54,
             borderRadius: 14,
           ),

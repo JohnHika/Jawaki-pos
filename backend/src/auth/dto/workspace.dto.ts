@@ -1,5 +1,6 @@
-import { IsEmail, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsEmail, IsIn, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SIGNUP_REQUIRED_POLICY_TYPES } from '../../legal/policy-versions';
 
 export class WorkspaceBranchDto {
   @IsString() @MinLength(2) @MaxLength(100)
@@ -31,6 +32,9 @@ export class CreateWorkspaceBaseDto {
   settings?: Record<string, unknown>;
   @IsOptional() @IsUUID('4')
   deviceId?: string;
+  @IsArray() @ArrayMinSize(3) @ArrayMaxSize(3) @ArrayUnique()
+  @IsIn(SIGNUP_REQUIRED_POLICY_TYPES, { each: true })
+  acceptedPolicyTypes: string[];
   @ValidateNested() @Type(() => WorkspaceBranchDto)
   branch: WorkspaceBranchDto;
 }

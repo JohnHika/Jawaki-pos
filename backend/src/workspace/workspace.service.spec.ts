@@ -7,6 +7,7 @@ describe('WorkspaceService', () => {
       branch: { create: jest.fn().mockResolvedValue({ id: 'branch-1' }) },
       permission: { findMany: jest.fn().mockResolvedValue([{ key: 'users.create' }]) },
       user: { create: jest.fn().mockResolvedValue({ id: 'owner-1', tenantId: 'tenant-1', email: 'owner@example.test', role: 'ADMIN', branches: [{ branchId: 'branch-1', isPrimary: true, branch: { id: 'branch-1', name: 'Main' } }] }) },
+      policyAcceptance: { createMany: jest.fn() },
       role: { create: jest.fn().mockResolvedValue({ id: 'admin-role' }) },
       userRole: { create: jest.fn() },
       tenantOnboarding: { create: jest.fn() },
@@ -20,6 +21,7 @@ describe('WorkspaceService', () => {
     await service.createFromVerifiedIdentity({
       email: 'Owner@Example.test', provider: 'GOOGLE', firstName: 'Owner', lastName: 'Example',
       companyName: 'Acme Stores', companySlug: 'acme', branch: { name: 'Main', code: 'MAIN' },
+      acceptedPolicyTypes: ['TERMS_OF_SERVICE', 'PRIVACY_NOTICE', 'DATA_PROCESSING_ADDENDUM'],
     });
 
     expect(tx.user.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({

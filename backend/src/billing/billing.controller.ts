@@ -8,7 +8,9 @@ import {
   Post,
   Put,
   Req,
+  ServiceUnavailableException,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { LegacyUserRole } from '@prisma/client';
@@ -23,6 +25,7 @@ import {
   SubmitPaymentDto,
   UpdateBillingSettingsDto,
 } from './dto/billing.dto';
+import { LegalPolicyService } from '../legal/legal-policy.service';
 
 /**
  * Recurring subscription billing (Jawaki): settings, manual paybill
@@ -43,6 +46,7 @@ export class BillingController {
     private readonly billing: RecurringBillingService,
     private readonly paystackBilling: PaystackBillingService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly legalPolicies?: LegalPolicyService,
   ) {}
 
   @Post('paystack/initialize')
@@ -76,6 +80,17 @@ export class BillingController {
     summary: 'Update auto-renew / billing phone (owner only)',
   })
   updateSettings(@Req() req: any, @Body() dto: UpdateBillingSettingsDto) {
+    if (dto.autoRenewEnabled === true) {
+      if (!this.legalPolicies) {
+        throw new ServiceUnavailableException('Policy acceptance service is unavailable');
+      }
+      return this.legalPolicies.accept(
+        req.user.tenantId,
+        req.user.sub,
+        'AUTO_RENEWAL_AUTHORIZATION',
+        dto.autoRenewAuthorizationVersion ?? '',
+      ).then(() => this.billing.updateBillingSettings(req.user.tenantId, dto));
+    }
     return this.billing.updateBillingSettings(req.user.tenantId, dto);
   }
 

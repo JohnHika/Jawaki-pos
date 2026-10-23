@@ -9,7 +9,7 @@ describe('PlatformTeamService', () => {
   const ctx = { ip: '10.0.0.1' };
   const actor = (role: string, id = 'actor-1'): any => ({
     id,
-    email: `${role.toLowerCase()}@arche-axon.xyz`,
+    email: `${role.toLowerCase()}@archeaxon.com`,
     name: role,
     role,
     permissions: [],
@@ -17,7 +17,7 @@ describe('PlatformTeamService', () => {
   });
   const staff = (overrides: Record<string, any> = {}) => ({
     id: 'staff-1',
-    email: 'staff@arche-axon.xyz',
+    email: 'staff@archeaxon.com',
     name: 'Staff',
     phone: null,
     role: 'SUPPORT',
@@ -50,11 +50,11 @@ describe('PlatformTeamService', () => {
       prisma.platformAdmin.findUnique.mockResolvedValue(null);
       const result = await service.create(
         actor('ADMIN'),
-        { email: 'New@Arche-Axon.xyz', name: ' New Hire ', role: 'SUPPORT' },
+        { email: 'New@Archeaxon.com', name: ' New Hire ', role: 'SUPPORT' },
         ctx,
       );
       const data = prisma.platformAdmin.create.mock.calls[0][0].data;
-      expect(data.email).toBe('new@arche-axon.xyz');
+      expect(data.email).toBe('new@archeaxon.com');
       expect(data.mustChangePassword).toBe(true);
       expect(data.passwordHash).not.toBe(result.temporaryPassword);
       expect(await bcrypt.compare(result.temporaryPassword, data.passwordHash)).toBe(true);
@@ -81,7 +81,7 @@ describe('PlatformTeamService', () => {
     it('rejects a duplicate email', async () => {
       const { service } = build(staff());
       await expect(
-        service.create(actor('OWNER'), { email: 'staff@arche-axon.xyz', name: 'Dup', role: 'VIEWER' }, ctx),
+        service.create(actor('OWNER'), { email: 'staff@archeaxon.com', name: 'Dup', role: 'VIEWER' }, ctx),
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });

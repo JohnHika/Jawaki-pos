@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
@@ -35,12 +36,17 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
   final Set<String> _expandedPlans = {};
   static const _collapsedFeatureCount = 5;
   bool _isSubmitting = false;
+  bool _acceptedBillingTerms = false;
   String? _error;
 
   ApiClient get _apiClient => getIt<ApiClient>();
 
   Future<void> _continueWithPlan() async {
     if (_selectedPlanId == null) return;
+    if (!_acceptedBillingTerms) {
+      setState(() => _error = 'Accept the billing terms before continuing.');
+      return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -48,6 +54,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
     });
 
     try {
+      await _apiClient.acceptLegalPolicy(
+        policyType: 'BILLING_TERMS',
+        policyVersion: policyVersion('BILLING_TERMS'),
+      );
       // Backend `VALID_PLANS` are uppercase (TRIAL/CORE/BUSINESS/ENTERPRISE)
       // and changePlan() does not normalize case — send the uppercase id or
       // the backend rejects it with NotFoundException.
@@ -141,6 +151,27 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                   const SizedBox(height: 8),
                   _buildSetupFeeNotice(),
                   const SizedBox(height: 22),
+                  CheckboxListTile(
+                    value: _acceptedBillingTerms,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: _isSubmitting
+                        ? null
+                        : (value) => setState(
+                              () => _acceptedBillingTerms = value ?? false,
+                            ),
+                    title: const Text(
+                      'I agree to the subscription, billing and refund terms for the plan shown above.',
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => context.push('/legal/billing'),
+                      child: const Text('Read subscription and billing terms'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   if (_error != null) ...[
                     _buildErrorCard(_error!),
                     const SizedBox(height: 16),
@@ -150,7 +181,9 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
                         ? 'Saving your plan…'
                         : 'Continue with this plan',
                     icon: Icons.rocket_launch_rounded,
-                    onPressed: _selectedPlanId != null && !_isSubmitting
+                    onPressed: _selectedPlanId != null &&
+                            _acceptedBillingTerms &&
+                            !_isSubmitting
                         ? _continueWithPlan
                         : null,
                     height: 58,
@@ -233,7 +266,10 @@ class _PlanSelectionScreenState extends ConsumerState<PlanSelectionScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => setState(() => _selectedPlanId = plan.id),
+          onTap: () => setState(() {
+            if (_selectedPlanId != plan.id) _acceptedBillingTerms = false;
+            _selectedPlanId = plan.id;
+          }),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXxl + 4),
           child: AnimatedContainer(
             duration: DesignAnimation.fast,

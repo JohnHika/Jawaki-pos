@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { LegacyUserRole } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { POLICY_VERSIONS, SIGNUP_REQUIRED_POLICY_TYPES } from '../legal/policy-versions';
 
 export interface VerifiedWorkspaceInput {
   email: string;
@@ -13,6 +14,7 @@ export interface VerifiedWorkspaceInput {
   logoPublicId?: string;
   settings?: Record<string, unknown>;
   branch: { name: string; code?: string; address?: string; phone?: string; email?: string };
+  acceptedPolicyTypes: string[];
 }
 
 const ONBOARDING_STEPS = [
@@ -24,6 +26,10 @@ export class WorkspaceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createFromVerifiedIdentity(input: VerifiedWorkspaceInput) {
+    const accepted = new Set(input.acceptedPolicyTypes ?? []);
+    if (SIGNUP_REQUIRED_POLICY_TYPES.some((type) => !accepted.has(type))) {
+      throw new BadRequestException('Accept the current Terms of Service, Privacy Notice, and Data Processing Addendum before creating a workspace');
+    }
     const slug = input.companySlug || this.slugify(input.companyName);
     const existing = await this.prisma.tenant.findUnique({ where: { slug } });
     if (existing) throw new ConflictException('Company with this slug already exists');
@@ -57,6 +63,16 @@ export class WorkspaceService {
           branches: { create: { branchId: branch.id, isPrimary: true } },
         },
         include: { tenant: true, branches: { include: { branch: true } } },
+      });
+
+      await tx.policyAcceptance.createMany({
+        data: SIGNUP_REQUIRED_POLICY_TYPES.map((policyType) => ({
+          tenantId: tenant.id,
+          acceptedByUserId: user.id,
+          policyType,
+          policyVersion: POLICY_VERSIONS[policyType],
+          source: 'WORKSPACE_SIGNUP',
+        })),
       });
 
       const rolePermissions = new Map<string, string[]>([

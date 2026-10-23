@@ -56,7 +56,7 @@ export class DisableTwoFactorDto {
 }
 
 export class CreateStaffDto {
-  @ApiProperty({ example: 'amina@arche-axon.xyz' })
+  @ApiProperty({ example: 'amina@archeaxon.com' })
   @IsEmail()
   @MaxLength(160)
   email!: string;

@@ -24,11 +24,29 @@ export class TenantOnboardingService {
     // A 404 here is read by the app as an expired session, so answer with an
     // empty checklist instead.
     if (!onboarding) return { id: null, tenantId: actor.tenantId, steps: [] };
-    return onboarding;
+    const payout = await this.prisma.merchantPaymentAccount.findUnique({
+      where: { tenantId: actor.tenantId }, select: { status: true },
+    });
+    return {
+      ...onboarding,
+      steps: onboarding.steps.map((step) =>
+        step.key === 'activate_payment' && step.status === 'COMPLETED' && payout?.status !== 'ACTIVE'
+          ? { ...step, status: 'PENDING', completedAt: null }
+          : step,
+      ),
+    };
   }
 
   async updateStep(actor: Actor, key: string, status: 'PENDING' | 'DEFERRED' | 'COMPLETED') {
     const onboarding = await this.assertOwnerOrPermission(actor, 'users.create');
+    if (key === 'activate_payment' && status === 'COMPLETED') {
+      const payout = await this.prisma.merchantPaymentAccount.findUnique({
+        where: { tenantId: actor.tenantId }, select: { status: true },
+      });
+      if (payout?.status !== 'ACTIVE') {
+        throw new ConflictException('Connect a business payout account to complete payment setup');
+      }
+    }
     const step = await this.prisma.tenantOnboardingStep.updateMany({
       where: { onboardingId: onboarding.id, key },
       data: {

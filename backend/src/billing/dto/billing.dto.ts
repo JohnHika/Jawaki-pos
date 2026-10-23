@@ -17,6 +17,11 @@ export class UpdateBillingSettingsDto {
   @IsBoolean()
   autoRenewEnabled?: boolean;
 
+  @ApiPropertyOptional({ example: '2026-10-22-v1' })
+  @IsOptional()
+  @IsString()
+  autoRenewAuthorizationVersion?: string;
+
   @ApiPropertyOptional({
     example: '254712345678',
     description: 'Kenyan mobile number that receives the renewal STK push. Pass null to clear.',

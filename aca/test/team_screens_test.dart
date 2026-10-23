@@ -68,7 +68,7 @@ StaffMember staff(
 }) =>
     StaffMember(
       id: id,
-      email: '${name.split(' ').first.toLowerCase()}@arche-axon.xyz',
+      email: '${name.split(' ').first.toLowerCase()}@archeaxon.com',
       name: name,
       phone: phone,
       role: role,
@@ -90,7 +90,7 @@ StaffMember staff(
 AuditEntry audit(String summary) => AuditEntry(
       id: summary,
       actorId: 'x',
-      actorEmail: 'x@arche-axon.xyz',
+      actorEmail: 'x@archeaxon.com',
       actorRole: 'ADMIN',
       action: 'TEAM_STAFF_UPDATED',
       category: 'TEAM',
@@ -107,7 +107,7 @@ AuditEntry audit(String summary) => AuditEntry(
 
 StaffProfile profileOf(String id, String role) => StaffProfile(
       id: id,
-      email: 'me@arche-axon.xyz',
+      email: 'me@archeaxon.com',
       name: 'Me Myself',
       phone: null,
       role: role,
@@ -326,7 +326,7 @@ void main() {
       expect(repo.calls, isEmpty);
 
       await tester.enterText(find.widgetWithText(TextFormField, 'Full name'), 'Grace Mwangi');
-      await tester.enterText(find.widgetWithText(TextFormField, 'Work email'), 'grace@arche-axon.xyz');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Work email'), 'grace@archeaxon.com');
       await tester.enterText(find.widgetWithText(TextFormField, 'Phone (optional)'), '0700 111 222');
       // Let the text fields finish scrolling their caret into view before we scroll elsewhere.
       await tester.pumpAndSettle();
@@ -335,10 +335,10 @@ void main() {
       await tapVisible(tester, submit);
       await settle(tester);
 
-      expect(repo.calls, ['create:grace@arche-axon.xyz:Grace Mwangi:SUPPORT:0700 111 222']);
+      expect(repo.calls, ['create:grace@archeaxon.com:Grace Mwangi:SUPPORT:0700 111 222']);
       expect(find.text('Staff member added'), findsOneWidget);
       expect(find.text('Zq7!mK2#pL9@vX4t'), findsOneWidget);
-      expect(find.text('grace@arche-axon.xyz'), findsOneWidget);
+      expect(find.text('grace@archeaxon.com'), findsOneWidget);
       expect(find.text('Will not be shown again'), findsOneWidget);
       expect(find.text('Copy password'), findsOneWidget);
 
@@ -361,7 +361,7 @@ void main() {
       await tester.tap(find.widgetWithText(FloatingActionButton, 'Add staff'));
       await settle(tester);
       await tester.enterText(find.widgetWithText(TextFormField, 'Full name'), 'Grace Mwangi');
-      await tester.enterText(find.widgetWithText(TextFormField, 'Work email'), 'amina@arche-axon.xyz');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Work email'), 'amina@archeaxon.com');
       await tester.pumpAndSettle();
       final submit = find.widgetWithText(FilledButton, 'Add staff');
       await tapVisible(tester, submit);
@@ -399,13 +399,13 @@ void main() {
             sessions: 1,
             phone: '+254 700 000 111',
             lastLogin: DateTime.now().subtract(const Duration(hours: 5)),
-            activity: [audit('me@arche-axon.xyz updated amina@arche-axon.xyz')]),
+            activity: [audit('me@archeaxon.com updated amina@archeaxon.com')]),
       ];
       final (repo, session) = await setup(tester, myRole: 'OWNER', members: members);
       await tester.pumpWidget(app(repo, session, const StaffDetailScreen(staffId: 'a1', name: 'Amina Wanjiru')));
       await settle(tester);
 
-      expect(find.text('amina@arche-axon.xyz'), findsWidgets);
+      expect(find.text('amina@archeaxon.com'), findsWidgets);
       expect(find.text('+254 700 000 111'), findsOneWidget);
       for (final label in ['Edit details', 'Change role', 'Reset password', 'Unlock account', 'Sign out of all devices', 'Disable account']) {
         await reveal(tester, find.widgetWithText(ListTile, label));
@@ -413,7 +413,7 @@ void main() {
       }
       await reveal(tester, find.text('Pixel 7 · ACA 1.0.0'));
       await reveal(tester, find.text('See everything this person did'));
-      expect(find.text('me@arche-axon.xyz updated amina@arche-axon.xyz'), findsOneWidget);
+      expect(find.text('me@archeaxon.com updated amina@archeaxon.com'), findsOneWidget);
     });
 
     testWidgets('an admin looking at an owner gets read-only information', (tester) async {

@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { LegalPolicyService } from '../legal/legal-policy.service';
 
 export interface PlanPricing {
   planId: string;
@@ -91,7 +92,10 @@ export const VALID_PLANS = Object.keys(PLAN_PRICING);
 
 @Injectable()
 export class SubscriptionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly legalPolicies?: LegalPolicyService,
+  ) {}
 
   async getCurrentPlan(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
@@ -120,6 +124,7 @@ export class SubscriptionService {
   }
 
   async changePlan(tenantId: string, newPlan: string) {
+    await this.legalPolicies?.assertCurrentAcceptance(tenantId, 'BILLING_TERMS');
     if (!VALID_PLANS.includes(newPlan)) {
       throw new NotFoundException(`Invalid plan. Must be one of: ${VALID_PLANS.join(', ')}`);
     }

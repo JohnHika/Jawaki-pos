@@ -52,10 +52,13 @@ class _SpyApiClient extends ApiClient {
   Future<Map<String, dynamic>> updateBillingSettings({
     bool? autoRenewEnabled,
     String? billingPhone,
+    String? autoRenewAuthorizationVersion,
   }) async {
     lastUpdateSettingsCall = {
       if (autoRenewEnabled != null) 'autoRenewEnabled': autoRenewEnabled,
       if (billingPhone != null) 'billingPhone': billingPhone,
+      if (autoRenewAuthorizationVersion != null)
+        'autoRenewAuthorizationVersion': autoRenewAuthorizationVersion,
     };
     settingsData = {
       ...settingsData,

@@ -32,7 +32,7 @@ class BackgroundSyncService {
   static const String _immediateSyncTag = 'immediate-sync';
   static const String _defaultApiBaseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'https://arche-axon-pos-api.onrender.com/api/v1',
+    defaultValue: 'https://counterbase-pos-api.vercel.app/api/v1',
   );
 
   // Run every 15 minutes

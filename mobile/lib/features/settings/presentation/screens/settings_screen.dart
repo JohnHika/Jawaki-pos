@@ -182,6 +182,15 @@ class SettingsScreen extends ConsumerWidget {
         entries: [
           if (isBillingAdmin)
             SettingsEntry(
+              id: 'merchant-payouts',
+              icon: Icons.account_balance_rounded,
+              title: 'Customer payments & payouts',
+              subtitle: 'Where product-sale payments reach your business',
+              keywords: const ['bank', 'payout', 'settlement', 'paystack', 'mpesa'],
+              onTap: () => context.push('/payments/setup'),
+            ),
+          if (isBillingAdmin)
+            SettingsEntry(
               id: 'billing',
               icon: Icons.workspace_premium_rounded,
               title: 'Plan & billing',
@@ -347,6 +356,14 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'Tell us if something is not working',
             keywords: const ['bug', 'issue', 'error', 'feedback'],
             onTap: () => context.push('/settings/report-bug'),
+          ),
+          SettingsEntry(
+            id: 'legal',
+            icon: Icons.policy_outlined,
+            title: 'Legal & policies',
+            subtitle: 'Terms, privacy, billing, and payment policies',
+            keywords: const ['terms', 'privacy', 'policy', 'billing', 'payments'],
+            onTap: () => context.push('/legal'),
           ),
           SettingsEntry(
             id: 'updates',
@@ -1018,7 +1035,7 @@ class SettingsScreen extends ConsumerWidget {
                   const SettingsRow(
                     icon: Icons.email_outlined,
                     title: 'Email us',
-                    subtitle: 'support@arche-axon.xyz',
+                    subtitle: 'support@archeaxon.com',
                   ),
                   SettingsRow(
                     icon: Icons.phone_outlined,
@@ -1191,11 +1208,11 @@ class SettingsScreen extends ConsumerWidget {
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: () => launchUrl(
-                          Uri.parse('https://arche-axon.xyz'),
+                          Uri.parse('https://archeaxon.com'),
                           mode: LaunchMode.externalApplication,
                         ),
                         child: Text(
-                          'arche-axon.xyz',
+                          'archeaxon.com',
                           style: Theme.of(context)
                               .textTheme
                               .bodyMedium

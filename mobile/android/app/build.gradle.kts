@@ -24,6 +24,9 @@ val hasReleaseSigningConfig =
 val isReleaseTask = gradle.startParameter.taskNames.any {
     it.contains("Release", ignoreCase = true)
 }
+// A local staging preview gets its own package and app data so it can be
+// installed beside both the production app and the regular debug preview.
+val isStagingDebug = System.getenv("AXON_STAGING_BUILD") == "true"
 
 // google-services.json contains the production Firebase client only. The
 // isolated debug application ID intentionally does not use production
@@ -99,11 +102,10 @@ android {
     buildTypes {
         // Never let a locally installed debug APK occupy the production
         // package ID. Release builds must remain in-place upgrades for
-        // customers, while debug builds need to coexist with production
-        // without causing INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+        // customers, while debug and staging builds need separate package IDs.
         debug {
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            applicationIdSuffix = if (isStagingDebug) ".staging" else ".debug"
+            versionNameSuffix = if (isStagingDebug) "-staging" else "-debug"
         }
 
         release {

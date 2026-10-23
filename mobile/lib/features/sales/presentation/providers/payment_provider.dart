@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:drift/drift.dart' show Value;
@@ -70,6 +72,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   final AuthService _authService;
   final ConnectivityService _connectivity;
   final bool _verifiedDigitalPaymentsEnabled;
+  String? _pendingMpesaFingerprint;
+  String? _pendingMpesaRequestId;
+  String? _pendingLocalSaleId;
 
   PaymentNotifier({
     required ApiClient apiClient,
@@ -85,6 +90,19 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         _connectivity = connectivity,
         _verifiedDigitalPaymentsEnabled = verifiedDigitalPaymentsEnabled,
         super(const PaymentState());
+
+  bool get hasUnresolvedMerchantPayment => _pendingMpesaRequestId != null;
+
+  void acknowledgeMerchantPayment(String reference, String status) {
+    if (state.currentTransactionId != reference ||
+        (status != 'COMPLETED' && status != 'FAILED')) {
+      return;
+    }
+    _pendingLocalSaleId = null;
+    _pendingMpesaFingerprint = null;
+    _pendingMpesaRequestId = null;
+    state = const PaymentState();
+  }
 
   Future<String?> processCashPayment({
     required double amount,
@@ -152,9 +170,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<String?> processMpesaPayment({
     required double amount,
     required String phoneNumber,
+    required String customerEmail,
+    required double discountAmount,
     required List<CartItem> items,
     String? customerId,
   }) async {
+    final previousReference = state.currentTransactionId;
     state = state.copyWith(isProcessing: true, error: null);
 
     if (!_connectivity.isOnline) {
@@ -174,47 +195,118 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         formattedPhone = '254$formattedPhone';
       }
 
-      // Initiate STK Push
-      final response = await _apiClient.initiateMpesaPayment({
+      final fingerprint = jsonEncode({
         'amount': amount,
-        'phoneNumber': formattedPhone,
-        'reference': 'POS-${DateTime.now().millisecondsSinceEpoch}',
-        'description': 'POS Sale',
+        'discount': discountAmount,
+        'phone': formattedPhone,
+        'email': customerEmail.trim().toLowerCase(),
+        'customerId': customerId,
+        'items': items.map((item) => item.toJson()).toList(),
       });
-
-      final checkoutRequestId = response['checkout_request_id'];
-      state = state.copyWith(currentTransactionId: checkoutRequestId);
-
-      // Poll for payment status
-      final pollError = await _pollMpesaStatus(checkoutRequestId);
-
-      if (pollError != null) {
-        state = state.copyWith(
-          isProcessing: false,
-          error: pollError,
-        );
+      if (_pendingMpesaRequestId != null && _pendingMpesaFingerprint != fingerprint) {
+        state = state.copyWith(isProcessing: false,
+          error: 'An earlier M-Pesa payment is still open. Check it in Payments before changing the cart.');
         return null;
       }
 
-      // Create sale
-      final saleId = _uuid.v4();
-      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
-      await _createLocalSale(
-        saleId: saleId,
-        receiptNumber: receiptNumber,
-        items: items,
-        paymentMethod: 'MPESA',
-        total: amount,
-        paymentReference: checkoutRequestId,
-        customerId: customerId,
-      );
-      await _syncOrQueueSale(
-          saleId, items, 'MPESA', amount, checkoutRequestId, null, customerId);
+      // The server prices the cart, charges through the shop's Paystack
+      // subaccount, verifies the charge, and creates the receipt. The old
+      // host Jenga endpoint settled into Counterbase's own account.
+      final saleId = _pendingLocalSaleId ?? _uuid.v4();
+      final requestId = _pendingMpesaRequestId ?? _uuid.v4();
+      String? reference = previousReference;
+      if (reference == null) {
+        _pendingLocalSaleId = saleId;
+        _pendingMpesaRequestId = requestId;
+        _pendingMpesaFingerprint = fingerprint;
+        final response = await _apiClient.startMerchantMpesaPayment({
+        'requestId': requestId,
+        'phoneNumber': formattedPhone,
+        'customerEmail': customerEmail.trim().toLowerCase(),
+        'sale': {
+          'branchId': _authService.branchId,
+          if (_authService.deviceId != null) 'deviceId': _authService.deviceId,
+          if (customerId != null) 'customerId': customerId,
+          'items': items.map((item) => {
+            'productId': item.productId,
+            'quantity': item.quantity,
+            'unitPrice': item.unitPrice,
+            'discount': item.discount,
+            if (item.saleUnit != null) 'unit': item.saleUnit,
+            if (item.unitConversionFactor != null)
+              'quantityPerUnit': item.unitConversionFactor,
+          }).toList(),
+          'discountAmount': discountAmount,
+          'paymentMethod': 'MPESA',
+          'paidAmount': amount,
+        },
+        });
+        reference = response['reference']?.toString();
+      }
+      if (reference == null || reference.isEmpty) {
+        state = state.copyWith(
+          isProcessing: false,
+          error: 'The payment provider did not return a reference. Check the customer phone before retrying.',
+        );
+        return null;
+      }
+      _pendingLocalSaleId = saleId;
+      _pendingMpesaFingerprint = fingerprint;
+      state = state.copyWith(currentTransactionId: reference);
+      final verified = await _pollMerchantMpesaStatus(reference);
+      if (verified == null || verified['status'] != 'COMPLETED') {
+        final status = verified?['status']?.toString() ?? 'PENDING';
+        final message = status == 'FAILED'
+              ? 'M-Pesa payment failed. Reference: $reference'
+              : status == 'NEEDS_REVIEW'
+                  ? 'Payment was received but the receipt needs review. Give support reference $reference. Do not charge again.'
+                  : 'Payment is still pending. Press Check M-Pesa Payment to check this reference without a second charge: $reference.';
+        if (status == 'FAILED') {
+          _pendingLocalSaleId = null;
+          _pendingMpesaFingerprint = null;
+          _pendingMpesaRequestId = null;
+          state = PaymentState(error: message);
+        } else {
+          state = state.copyWith(isProcessing: false, error: message);
+        }
+        return null;
+      }
 
-      state = state.copyWith(isProcessing: false);
+      final receiptNumber = verified['receiptNumber']?.toString() ?? reference;
+      if (await _database.getPendingSaleById(saleId) == null) {
+        await _createLocalSale(
+          saleId: saleId,
+          receiptNumber: receiptNumber,
+          items: items,
+          paymentMethod: 'MPESA',
+          total: amount,
+          discountAmount: discountAmount,
+          paymentReference: reference,
+          customerId: customerId,
+        );
+      }
+      await _database.markSaleAsSynced(saleId);
+      try { await _syncService.pullChanges(); } catch (_) {}
+
+      _pendingLocalSaleId = null;
+      _pendingMpesaFingerprint = null;
+      _pendingMpesaRequestId = null;
+      state = const PaymentState();
       return saleId;
     } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
+      // Validation and authorization errors happen before the provider is
+      // prompted. Network and server errors keep the idempotency key so a
+      // retry can recover the original reference instead of charging twice.
+      if (state.currentTransactionId == null && e is DioException &&
+          [400, 401, 403, 404, 409, 422].contains(e.response?.statusCode)) {
+        _pendingLocalSaleId = null;
+        _pendingMpesaFingerprint = null;
+        _pendingMpesaRequestId = null;
+      }
+      state = state.copyWith(isProcessing: false,
+        error: state.currentTransactionId == null
+            ? _paymentError(e)
+            : 'Payment reference ${state.currentTransactionId} must be checked before retrying. No new charge will be sent.');
       return null;
     }
   }
@@ -382,8 +474,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  /// Records one sale paid via multiple tenders at once (e.g. part cash,
-  /// part M-Pesa, part debt). [tenders] must sum to at least [amount]; any
+  /// Records one sale paid via multiple tenders at once (part cash and debt).
+  /// [tenders] must sum to at least [amount]; any
   /// tender with method CASH contributes to the till, and any tender with
   /// method CREDIT is added to the customer's debt balance (which is why a
   /// customer is required when a split includes a debt portion).
@@ -395,18 +487,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
 
-    // MPESA sits alongside CASH and CREDIT as an always-available split
-    // tender (a standalone MPESA sale already works without any digital
-    // -payments flag — only PesaPal/TouristTap are gated behind
-    // _verifiedDigitalPaymentsEnabled, and that gate carries through here
-    // unchanged for anything else).
-    const supportedTenders = {'CASH', 'CREDIT', 'MPESA'};
+    if (tenders.any((tender) => tender.method == 'MPESA')) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Use a separate M-Pesa sale for provider-verified shop payouts. Split M-Pesa is not available yet.',
+      );
+      return null;
+    }
+
+    const supportedTenders = {'CASH', 'CREDIT'};
     if (!_verifiedDigitalPaymentsEnabled &&
         tenders.any((tender) => !supportedTenders.contains(tender.method))) {
       state = state.copyWith(
         isProcessing: false,
         error:
-            'Split payments can only use cash, M-Pesa and debt until digital payment verification is enabled.',
+            'Split payments can only use cash and debt until other payment methods are verified.',
       );
       return null;
     }
@@ -432,63 +527,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       return null;
     }
 
-    final mpesaTenders = tenders.where((t) => t.method == 'MPESA').toList();
-    if (mpesaTenders.isNotEmpty && !_connectivity.isOnline) {
-      state = state.copyWith(
-        isProcessing: false,
-        error: 'The M-Pesa portion of a split payment requires internet connection',
-      );
-      return null;
-    }
-
     try {
-      // Charge every M-Pesa tender FIRST, before the sale is created — a
-      // failed/declined STK push must never leave a half-created sale
-      // behind. Each confirmed tender's reference becomes the checkout
-      // request id, matching the standalone M-Pesa payment path.
-      var resolvedTenders = tenders;
-      if (mpesaTenders.isNotEmpty) {
-        final confirmed = <PaymentTender>[];
-        for (final tender in tenders) {
-          if (tender.method != 'MPESA') {
-            confirmed.add(tender);
-            continue;
-          }
-          final phone = tender.reference;
-          if (phone == null || phone.isEmpty) {
-            state = state.copyWith(
-              isProcessing: false,
-              error: 'Enter the M-Pesa phone number for the split payment',
-            );
-            return null;
-          }
-          String formattedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-          if (formattedPhone.startsWith('0')) {
-            formattedPhone = '254${formattedPhone.substring(1)}';
-          } else if (!formattedPhone.startsWith('254')) {
-            formattedPhone = '254$formattedPhone';
-          }
-          final response = await _apiClient.initiateMpesaPayment({
-            'amount': tender.amount,
-            'phoneNumber': formattedPhone,
-            'reference': 'POS-SPLIT-${DateTime.now().millisecondsSinceEpoch}',
-            'description': 'POS Split Sale',
-          });
-          final checkoutRequestId = response['checkout_request_id'];
-          final pollError = await _pollMpesaStatus(checkoutRequestId);
-          if (pollError != null) {
-            state = state.copyWith(isProcessing: false, error: pollError);
-            return null;
-          }
-          confirmed.add(PaymentTender(
-            method: 'MPESA',
-            amount: tender.amount,
-            reference: checkoutRequestId,
-          ));
-        }
-        resolvedTenders = confirmed;
-      }
-
       final saleId = _uuid.v4();
       final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -498,7 +537,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // adding a dedicated column/migration for what's still a single
       // nullable string slot everywhere else.
       final tendersJson =
-          jsonEncode(resolvedTenders.map((t) => t.toJson()).toList());
+          jsonEncode(tenders.map((t) => t.toJson()).toList());
 
       await _createLocalSale(
         saleId: saleId,
@@ -516,7 +555,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
 
       await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
-          resolvedTenders, customerId);
+          tenders, customerId);
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -532,6 +571,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required List<CartItem> items,
     required String paymentMethod,
     required double total,
+    double discountAmount = 0,
     String? paymentReference,
     String? customerId,
   }) async {
@@ -540,7 +580,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     // admin-configured rate, default 0). The previous hardcoded 16% recorded
     // tax the business never charged on offline sales: receipts printed a
     // wrong tax line and subtotal + tax ≠ total.
-    final tax = subtotal * (_authService.taxRatePercent / 100);
+    final tax = (subtotal - discountAmount) * (_authService.taxRatePercent / 100);
 
     // Create pending sale in local database
     await _database.createPendingSale(
@@ -548,6 +588,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         id: saleId,
         receiptNumber: receiptNumber,
         subtotal: subtotal,
+        discount: Value(discountAmount),
         tax: Value(tax),
         total: total,
         paymentMethod: paymentMethod,
@@ -722,38 +763,30 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     );
   }
 
-  /// Returns null when the payment completed, otherwise an error message
-  /// describing why the sale was not created.
-  Future<String?> _pollMpesaStatus(String checkoutRequestId) async {
-    const maxAttempts = 30;
-    const pollInterval = Duration(seconds: 2);
-
-    for (var i = 0; i < maxAttempts; i++) {
-      await Future.delayed(pollInterval);
-
+  Future<Map<String, dynamic>?> _pollMerchantMpesaStatus(String reference) async {
+    // Allow the provider time to register the offline mobile approval.
+    // The webhook can also settle it while this screen is open.
+    for (var attempt = 0; attempt < 11; attempt++) {
+      await Future.delayed(Duration(seconds: attempt == 0 ? 10 : 5));
       try {
-        final status =
-            await _apiClient.checkMpesaPaymentStatus(checkoutRequestId);
-        final normalizedStatus =
-            (status['status'] as String? ?? '').toUpperCase();
-
-        if (normalizedStatus == 'COMPLETED') {
-          return null;
-        } else if (normalizedStatus == 'FAILED' ||
-            normalizedStatus == 'CANCELLED') {
-          return 'M-Pesa payment failed or was cancelled';
+        final status = await _apiClient.getMerchantMpesaStatus(reference);
+        if (['COMPLETED', 'FAILED', 'NEEDS_REVIEW'].contains(status['status'])) {
+          return status;
         }
-        // Continue polling if still pending
-      } catch (e) {
-        // Continue polling on error
+      } catch (_) {
+        // Network interruption is not proof of failure or a reason to charge again.
       }
     }
+    return null;
+  }
 
-    // Poll exhaustion is NOT a confirmed failure: the STK push may still
-    // complete on the customer's phone. Report it as pending so the cashier
-    // verifies before retrying — retrying now could double-charge.
-    return 'M-Pesa payment is still pending. Verify the payment with the '
-        'customer before retrying to avoid double-charging.';
+  String _paymentError(Object error) {
+    if (error is DioException && error.response?.data is Map) {
+      final message = (error.response!.data as Map)['message'];
+      if (message is List) return message.join(', ');
+      if (message != null) return message.toString();
+    }
+    return 'Could not start payment. Check your connection and payout setup.';
   }
 }
 

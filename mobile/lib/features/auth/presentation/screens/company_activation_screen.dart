@@ -15,6 +15,7 @@ import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../subscription/domain/subscription_plans.dart';
 
 class CompanyActivationScreen extends ConsumerStatefulWidget {
   const CompanyActivationScreen({super.key, this.companyName});
@@ -292,6 +293,12 @@ class _CompanyActivationScreenState
                     index: 4,
                     child: _buildIncludesCard(),
                   ),
+                  const SizedBox(height: DesignSpacing.lg),
+                  StaggeredItem(
+                    itemKey: 'activation-monthly-pricing',
+                    index: 5,
+                    child: _buildMonthlyPlanPreview(),
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: DesignSpacing.lg),
                     _buildErrorCard(_error!),
@@ -512,6 +519,65 @@ class _CompanyActivationScreenState
               ),
             )
             .toList(),
+      ),
+    );
+  }
+
+  Widget _buildMonthlyPlanPreview() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+      decoration: BoxDecoration(
+        color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+        border: Border.all(color: context.themed(DesignColors.darkBorder)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Monthly plan after activation',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: context.themed(DesignColors.darkTextPrimary),
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'The KSh 35,000 payment above is one-time. Choose a monthly plan '
+            'after activation. Your selected plan starts with a 7-day trial; '
+            'monthly billing begins when the trial ends.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: context.themed(DesignColors.darkTextSecondary),
+                  height: 1.4,
+                ),
+          ),
+          const SizedBox(height: 10),
+          ...kAvailablePlans.map(
+            (plan) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      plan.name,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: context.themed(DesignColors.darkTextPrimary),
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                  Text(
+                    '${formatKes(plan.priceKes).replaceFirst('KES ', 'KSh ')} / month',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: context.themed(DesignColors.darkTextPrimary),
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

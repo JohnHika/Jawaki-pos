@@ -18,7 +18,7 @@ describe('PlatformAdminAuthService', () => {
 
   const baseAdmin = (overrides: Record<string, any> = {}) => ({
     id: 'admin-1',
-    email: 'owner@arche-axon.xyz',
+    email: 'owner@archeaxon.com',
     name: 'Owner',
     phone: null,
     role: 'OWNER',
@@ -65,12 +65,12 @@ describe('PlatformAdminAuthService', () => {
     it('signs in, resets failure counters, opens a session and audits it', async () => {
       const { service, prisma, audit, jwt } = build(baseAdmin({ failedLoginAttempts: 3 }));
       const result: any = await service.login(
-        { email: '  OWNER@arche-axon.xyz ', password: PASSWORD },
+        { email: '  OWNER@archeaxon.com ', password: PASSWORD },
         { ...ctx, device: 'Samsung S25' },
       );
 
       expect(prisma.platformAdmin.findUnique).toHaveBeenCalledWith({
-        where: { email: 'owner@arche-axon.xyz' },
+        where: { email: 'owner@archeaxon.com' },
       });
       expect(prisma.platformAdmin.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -101,7 +101,7 @@ describe('PlatformAdminAuthService', () => {
     it('counts a wrong password and locks the account on the fifth failure', async () => {
       const { service, prisma, audit } = build(baseAdmin({ failedLoginAttempts: MAX_FAILED_LOGINS - 1 }));
       await expect(
-        service.login({ email: 'owner@arche-axon.xyz', password: 'wrong-password-1A!' }, ctx),
+        service.login({ email: 'owner@archeaxon.com', password: 'wrong-password-1A!' }, ctx),
       ).rejects.toBeInstanceOf(UnauthorizedException);
 
       const data = prisma.platformAdmin.update.mock.calls[0][0].data;
@@ -117,7 +117,7 @@ describe('PlatformAdminAuthService', () => {
         baseAdmin({ lockedUntil: new Date(Date.now() + 10 * 60_000) }),
       );
       await expect(
-        service.login({ email: 'owner@arche-axon.xyz', password: PASSWORD }, ctx),
+        service.login({ email: 'owner@archeaxon.com', password: PASSWORD }, ctx),
       ).rejects.toMatchObject({ status: 423 });
       expect(prisma.platformAdminSession.create).not.toHaveBeenCalled();
     });
@@ -125,7 +125,7 @@ describe('PlatformAdminAuthService', () => {
     it('treats a disabled account like a bad password', async () => {
       const { service, audit } = build(baseAdmin({ status: 'DISABLED' }));
       await expect(
-        service.login({ email: 'owner@arche-axon.xyz', password: PASSWORD }, ctx),
+        service.login({ email: 'owner@archeaxon.com', password: PASSWORD }, ctx),
       ).rejects.toBeInstanceOf(UnauthorizedException);
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'AUTH_LOGIN_DISABLED_ACCOUNT' }),
@@ -141,7 +141,7 @@ describe('PlatformAdminAuthService', () => {
 
       it('asks for a code instead of issuing a session', async () => {
         const { service, prisma } = build(withTotp());
-        const result = await service.login({ email: 'owner@arche-axon.xyz', password: PASSWORD }, ctx);
+        const result = await service.login({ email: 'owner@archeaxon.com', password: PASSWORD }, ctx);
         expect(result).toEqual({ requiresTwoFactor: true });
         expect(prisma.platformAdminSession.create).not.toHaveBeenCalled();
       });
@@ -149,7 +149,7 @@ describe('PlatformAdminAuthService', () => {
       it('accepts a valid authenticator code', async () => {
         const { service } = build(withTotp());
         const result: any = await service.login(
-          { email: 'owner@arche-axon.xyz', password: PASSWORD, otp: totpNow(TOTP_SECRET) },
+          { email: 'owner@archeaxon.com', password: PASSWORD, otp: totpNow(TOTP_SECRET) },
           ctx,
         );
         expect(result.accessToken).toBeDefined();
@@ -158,7 +158,7 @@ describe('PlatformAdminAuthService', () => {
       it('counts a wrong code as a failed attempt', async () => {
         const { service, prisma, audit } = build(withTotp());
         await expect(
-          service.login({ email: 'owner@arche-axon.xyz', password: PASSWORD, otp: '000000' }, ctx),
+          service.login({ email: 'owner@archeaxon.com', password: PASSWORD, otp: '000000' }, ctx),
         ).rejects.toThrow('Invalid verification code');
         expect(prisma.platformAdmin.update.mock.calls[0][0].data.failedLoginAttempts).toBe(1);
         expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_2FA_FAILED' }));
@@ -168,7 +168,7 @@ describe('PlatformAdminAuthService', () => {
         const hash = sha256Hex('K7QD9MXA');
         const { service, prisma } = build({ ...withTotp(), twoFactorBackupHashes: [hash, 'other'] });
         const result: any = await service.login(
-          { email: 'owner@arche-axon.xyz', password: PASSWORD, otp: 'k7qd-9mxa' },
+          { email: 'owner@archeaxon.com', password: PASSWORD, otp: 'k7qd-9mxa' },
           ctx,
         );
         expect(result.accessToken).toBeDefined();
@@ -247,7 +247,7 @@ describe('PlatformAdminAuthService', () => {
   describe('changePassword', () => {
     const actor: any = {
       id: 'admin-1',
-      email: 'owner@arche-axon.xyz',
+      email: 'owner@archeaxon.com',
       role: 'OWNER',
       permissions: [],
       sessionId: 'sess-keep',

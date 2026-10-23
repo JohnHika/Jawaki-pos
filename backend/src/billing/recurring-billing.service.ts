@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -13,6 +14,7 @@ import { JengaPaymentService } from '../payments/jenga-payment.service';
 import { SubscriptionRenewalSettler } from './subscription-renewal-settler.service';
 import { PLAN_PRICING, VALID_PLANS } from '../subscription/subscription.service';
 import { describeLicense, resolveLicense } from '../license/license.catalog';
+import { LegalPolicyService } from '../legal/legal-policy.service';
 
 /** Grace days after an unpaid renewal before the tenant is suspended. */
 const GRACE_DAYS = 3;
@@ -44,6 +46,7 @@ export class RecurringBillingService {
     private readonly jenga: JengaPaymentService,
     private readonly config: ConfigService,
     private readonly settler: SubscriptionRenewalSettler,
+    @Optional() private readonly legalPolicies?: LegalPolicyService,
   ) {}
 
   // ===== ADMIN CONFIGURATION =====
@@ -65,10 +68,15 @@ export class RecurringBillingService {
       },
     });
     if (!tenant) throw new NotFoundException('Company not found');
+    const hasAutoRenewAuthorization = await this.legalPolicies?.hasCurrentAcceptance(
+      tenantId,
+      'AUTO_RENEWAL_AUTHORIZATION',
+    ) ?? false;
 
     return {
       plan: tenant.plan,
-      autoRenewEnabled: tenant.autoRenewEnabled,
+      autoRenewEnabled: tenant.autoRenewEnabled && hasAutoRenewAuthorization,
+      autoRenewAuthorizationRequired: !hasAutoRenewAuthorization,
       billingPhone: tenant.billingPhone,
       subscriptionStatus: tenant.subscriptionStatus,
       currentPeriodStart: tenant.currentPeriodStart,
@@ -96,11 +104,24 @@ export class RecurringBillingService {
       }
     }
 
+    if (input.autoRenewEnabled === true) {
+      await this.legalPolicies?.assertCurrentAcceptance(
+        tenantId,
+        'AUTO_RENEWAL_AUTHORIZATION',
+      );
+    }
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true },
+      select: { id: true, billingPhone: true },
     });
     if (!tenant) throw new NotFoundException('Company not found');
+    const nextBillingPhone = input.billingPhone !== undefined
+      ? input.billingPhone
+      : tenant.billingPhone;
+    if (input.autoRenewEnabled === true && !nextBillingPhone) {
+      throw new BadRequestException('Add a billing phone number before enabling Auto-Renew');
+    }
 
     const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -277,6 +298,10 @@ export class RecurringBillingService {
 
         // 2. Auto-charge if the invoice is still open.
         if (invoice.status === 'PENDING' || invoice.status === 'PENDING_CONFIRMATION') {
+          const hasAutoRenewAuthorization = await this.legalPolicies?.hasCurrentAcceptance(
+            tenant.id,
+            'AUTO_RENEWAL_AUTHORIZATION',
+          ) ?? false;
           if (invoice.provider === 'PAYSTACK' || invoice.provider === 'PAYSTACK_INITIALIZING') {
             // Do not send an M-Pesa prompt while this same invoice has an
             // active hosted checkout; that could collect twice.
@@ -284,7 +309,7 @@ export class RecurringBillingService {
               tenantId: tenant.id,
               reason: 'Paystack checkout is active for this invoice',
             });
-          } else if (!tenant.autoRenewEnabled || !tenant.billingPhone) {
+          } else if (!tenant.autoRenewEnabled || !tenant.billingPhone || !hasAutoRenewAuthorization) {
             summary.skipped.push({
               tenantId: tenant.id,
               reason: 'auto-renew disabled or no billing phone',

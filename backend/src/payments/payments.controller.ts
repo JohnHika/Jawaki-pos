@@ -1,5 +1,6 @@
 import {
   Body,
+  GoneException,
   Controller,
   Get,
   HttpCode,
@@ -17,21 +18,25 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
 import { RequirePermissions } from "../auth/decorators/require-permissions.decorator";
-import { InitiateMpesaDto } from "./dto/initiate-mpesa.dto";
 import { JengaPaymentService } from "./jenga-payment.service";
+import { PrismaService } from '../common/prisma/prisma.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags("payments")
 @Controller({ path: "payments", version: "1" })
 export class PaymentsController {
-  constructor(private readonly jenga: JengaPaymentService) {}
+  constructor(private readonly jenga: JengaPaymentService, private readonly prisma: PrismaService) {}
 
   @Post("mpesa/initiate")
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions("payments.mpesa_initiate")
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Send an Equity/Jenga M-Pesa STK payment prompt" })
-  initiateMpesaPayment(@Body() body: InitiateMpesaDto) {
-    return this.jenga.initiate(body);
+  @ApiOperation({ summary: "Retired host-account POS M-Pesa endpoint" })
+  initiateMpesaPayment() {
+    // The host Jenga credentials settle to Counterbase's account and must
+    // never collect a shop's product revenue. Subscription renewal invokes
+    // JengaPaymentService internally with its AXONSUB invoice reference.
+    throw new GoneException('Update Counterbase and connect the shop payout account to accept M-Pesa sales');
   }
 
   @Get("mpesa/status/:transactionId")
@@ -39,7 +44,7 @@ export class PaymentsController {
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Reconcile an M-Pesa payment with Jenga" })
   getMpesaStatus(@Param("transactionId") id: string) {
-    return this.jenga.status(id);
+    throw new GoneException('Use the merchant payment reference on the current Counterbase app');
   }
 
   // Public by design: Jenga cannot present an employee JWT. The body is
@@ -58,12 +63,15 @@ export class PaymentsController {
   @Get("methods")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
-  getEnabledPaymentMethods() {
+  async getEnabledPaymentMethods(@CurrentUser('tenantId') tenantId: string) {
+    const account = await this.prisma.merchantPaymentAccount.findUnique({
+      where: { tenantId }, select: { status: true },
+    });
     return [
       {
         id: "mpesa",
-        name: "M-Pesa (Equity/Jenga)",
-        enabled: this.jenga.isConfigured(),
+        name: "M-Pesa (merchant settlement)",
+        enabled: account?.status === 'ACTIVE',
       },
       { id: "pesapal", name: "Pesapal", enabled: false },
       { id: "touristtap", name: "TouristTap (NFC)", enabled: false },

@@ -42,9 +42,11 @@ import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/settings/presentation/screens/operating_hours_screen.dart';
 import '../../features/settings/presentation/screens/bug_report_screen.dart';
+import '../../features/legal/presentation/screens/legal_document_screen.dart';
 import '../../features/ai/presentation/screens/ai_memory_screen.dart';
 import '../../features/payments/presentation/screens/manual_payments_screen.dart';
 import '../../features/payments/presentation/screens/payments_hub_screen.dart';
+import '../../features/payments/presentation/screens/merchant_payout_setup_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/customers/presentation/screens/customer_profile_screen.dart';
 import '../../features/finance/presentation/screens/finance_screen.dart';
@@ -119,6 +121,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isActivationRoute = path == '/activation';
       final isInviteRoute =
           path == '/accept-invite' || path == '/set-password-after-invite';
+      final isLegalRoute = path == '/legal' || path.startsWith('/legal/');
 
       // Login routes
       final isLoginRoute = path == '/login' || path == '/pin-login';
@@ -138,14 +141,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // is reached (activation itself needs one), so it is intentionally
         // not allowed here — an unauthenticated visit falls through to the
         // company-choice redirect below like any other protected route.
-        if (isSetupRoute || isLoginRoute || isInviteRoute) {
+        if (isSetupRoute || isLoginRoute || isInviteRoute || isLegalRoute) {
           return null;
         }
         // Redirect all others to company-choice
         return '/company-choice';
       }
 
-      if (authService.requiresTenantActivation && !isActivationRoute) {
+      if (authService.requiresTenantActivation && !isActivationRoute && !isLegalRoute) {
         return '/activation';
       }
 
@@ -280,6 +283,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/legal',
+        name: 'legal-index',
+        builder: (context, state) => const LegalDocumentScreen(),
+      ),
+      GoRoute(
+        path: '/legal/:document',
+        name: 'legal-document',
+        builder: (context, state) => LegalDocumentScreen(
+          documentSlug: state.pathParameters['document'],
+        ),
+      ),
       // Setup/Onboarding Routes (for fresh installs)
       GoRoute(
         path: '/company-choice',
@@ -530,6 +545,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/payments',
             name: 'payments',
             builder: (context, state) => const PaymentsHubScreen(),
+          ),
+
+          GoRoute(
+            path: '/payments/setup',
+            name: 'merchant-payout-setup',
+            builder: (context, state) => const MerchantPayoutSetupScreen(),
           ),
 
           // Manual payments: request / approve payments taken outside the app

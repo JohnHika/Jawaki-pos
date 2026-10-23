@@ -4,10 +4,12 @@ import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
@@ -262,6 +264,7 @@ class _SubscriptionBillingScreenState
   void _showChangePlanSheet() {
     final currentPlan = (_billingPlan?.id ?? 'core').toLowerCase();
     String selectedPlan = currentPlan == 'trial' ? 'core' : currentPlan;
+    bool acceptedBillingTerms = false;
 
     showModalBottomSheet(
       useRootNavigator: true,
@@ -330,12 +333,39 @@ class _SubscriptionBillingScreenState
                       isSelected: selectedPlan == plan.id,
                       onTap: _isChangingPlan
                           ? null
-                          : () => setSheetState(() => selectedPlan = plan.id),
+                          : () => setSheetState(() {
+                                if (selectedPlan != plan.id) {
+                                  acceptedBillingTerms = false;
+                                }
+                                selectedPlan = plan.id;
+                              }),
                     ),
                     if (plan != kAvailablePlans.last)
                       const SizedBox(height: DesignSpacing.sm),
                   ],
                   const SizedBox(height: DesignSpacing.lg),
+                  CheckboxListTile(
+                    value: acceptedBillingTerms,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: _isChangingPlan
+                        ? null
+                        : (value) => setSheetState(
+                              () => acceptedBillingTerms = value ?? false,
+                            ),
+                    title: const Text(
+                      'I agree to the subscription, billing and refund terms for the plan shown above.',
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () =>
+                          GoRouter.of(sheetContext).push('/legal/billing'),
+                      child: const Text('Read subscription and billing terms'),
+                    ),
+                  ),
+                  const SizedBox(height: DesignSpacing.sm),
                   SizedBox(
                     width: double.infinity,
                     child: SettingsPrimaryButton(
@@ -343,11 +373,17 @@ class _SubscriptionBillingScreenState
                           ? 'Saving plan…'
                           : 'Continue with ${planDisplayName(selectedPlan)}',
                       isLoading: _isChangingPlan,
-                      onPressed: selectedPlan == currentPlan || _isChangingPlan
+                      onPressed: selectedPlan == currentPlan ||
+                              !acceptedBillingTerms ||
+                              _isChangingPlan
                           ? null
                           : () async {
                               setState(() => _isChangingPlan = true);
                               try {
+                                await _apiClient.acceptLegalPolicy(
+                                  policyType: 'BILLING_TERMS',
+                                  policyVersion: policyVersion('BILLING_TERMS'),
+                                );
                                 await _apiClient.changeSubscriptionPlan(
                                   planId: selectedPlan.toUpperCase(),
                                 );
@@ -1939,6 +1975,7 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
   late bool _autoRenew = widget.initialAutoRenew;
   late final _phoneController =
       TextEditingController(text: widget.initialPhone);
+  bool _acceptedAutoRenewal = false;
   bool _isSaving = false;
   String? _error;
 
@@ -1949,6 +1986,10 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
   }
 
   Future<void> _save() async {
+    if (_autoRenew && !_acceptedAutoRenewal) {
+      setState(() => _error = 'Accept the Auto-Renew Authorization before enabling it.');
+      return;
+    }
     setState(() {
       _isSaving = true;
       _error = null;
@@ -1957,6 +1998,9 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
       final updated = await getIt<ApiClient>().updateBillingSettings(
         autoRenewEnabled: _autoRenew,
         billingPhone: _phoneController.text.trim(),
+        autoRenewAuthorizationVersion: _autoRenew
+            ? policyVersion('AUTO_RENEWAL_AUTHORIZATION')
+            : null,
       );
       widget.onSaved(updated);
       if (!mounted) return;
@@ -2029,6 +2073,30 @@ class _AutoRenewSheetState extends ConsumerState<_AutoRenewSheet> {
                 ),
               ),
               const SizedBox(height: DesignSpacing.xl),
+              if (_autoRenew) ...[
+                CheckboxListTile(
+                  value: _acceptedAutoRenewal,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: _isSaving
+                      ? null
+                      : (value) => setState(
+                            () => _acceptedAutoRenewal = value ?? false,
+                          ),
+                  title: const Text(
+                    'I authorize monthly M-Pesa STK prompts for the invoice amount to this phone. Each prompt still requires approval on the phone.',
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () =>
+                        GoRouter.of(context).push('/legal/auto-renewal'),
+                    child: const Text('Read Auto-Renew Authorization'),
+                  ),
+                ),
+                const SizedBox(height: DesignSpacing.sm),
+              ],
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: DesignSpacing.lg),

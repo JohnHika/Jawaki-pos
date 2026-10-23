@@ -11,6 +11,11 @@ void main() {
       lastName: 'Lovelace',
       deviceId: 'a1d1d38f-f50c-4a3e-9089-929999999999',
       branch: WorkspaceBranchDetails(name: 'Main Store', code: 'MAIN'),
+      acceptedPolicyTypes: [
+        'TERMS_OF_SERVICE',
+        'PRIVACY_NOTICE',
+        'DATA_PROCESSING_ADDENDUM',
+      ],
     );
 
     expect(request.toJson().containsKey('password'), isFalse);
@@ -20,6 +25,11 @@ void main() {
       'lastName': 'Lovelace',
       'deviceId': 'a1d1d38f-f50c-4a3e-9089-929999999999',
       'branch': {'name': 'Main Store', 'code': 'MAIN'},
+      'acceptedPolicyTypes': [
+        'TERMS_OF_SERVICE',
+        'PRIVACY_NOTICE',
+        'DATA_PROCESSING_ADDENDUM',
+      ],
     });
   });
 

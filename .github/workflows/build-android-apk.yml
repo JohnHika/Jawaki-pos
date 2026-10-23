@@ -247,7 +247,7 @@ jobs:
           # build.gradle.kts alone does not stop Flutter's own engine/AOT
           # binaries from including every arch; --target-platform is the
           # flag that actually restricts what Flutter itself builds.
-          flutter build apk --release --target-platform android-arm64
+          flutter build apk --release --target-platform android-arm64 --dart-define=API_URL=https://counterbase-pos-api.vercel.app/api/v1
 
       - name: Verify Android release lineage
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'

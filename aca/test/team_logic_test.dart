@@ -25,7 +25,7 @@ List<RoleInfo> catalog(String actorRole) {
 StaffMember member({
   String id = 'u1',
   String name = 'Amina Wanjiru',
-  String email = 'amina@arche-axon.xyz',
+  String email = 'amina@archeaxon.com',
   String role = 'SUPPORT',
   String status = 'ACTIVE',
   bool mustChangePassword = false,
@@ -290,8 +290,8 @@ void main() {
       expect(validateStaffEmail('amina'), isNotNull);
       expect(validateStaffEmail('amina@'), isNotNull);
       expect(validateStaffEmail('amina@arche'), isNotNull);
-      expect(validateStaffEmail('a mina@arche-axon.xyz'), isNotNull);
-      expect(validateStaffEmail(' amina@arche-axon.xyz '), isNull);
+      expect(validateStaffEmail('a mina@archeaxon.com'), isNotNull);
+      expect(validateStaffEmail(' amina@archeaxon.com '), isNull);
       expect(validateStaffEmail('${'a' * 160}@x.io'), isNotNull);
     });
 

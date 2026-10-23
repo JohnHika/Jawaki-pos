@@ -4,3 +4,4 @@
 transcribe.py
 audio_input*
 .jest-localstorage
+.vercel

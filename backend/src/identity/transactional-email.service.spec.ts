@@ -6,7 +6,7 @@ describe('TransactionalEmailService', () => {
   const fetchMock = jest.fn();
   const values: Record<string, string> = {
     ZEPTOMAIL_SEND_API_KEY: 'test-api-key',
-    EMAIL_FROM: 'Counterbase <support@arche-axon.xyz>',
+    EMAIL_FROM: 'Counterbase <support@archeaxon.com>',
   };
   const originalFetch = global.fetch;
   let service: TransactionalEmailService;
@@ -27,7 +27,7 @@ describe('TransactionalEmailService', () => {
     fetchMock.mockResolvedValue({ ok: true });
 
     await service.sendOtp({
-      to: 'support@arche-axon.xyz',
+      to: 'support@archeaxon.com',
       code: '12345678',
       purpose: 'WORKSPACE_CREATION',
     });
@@ -37,8 +37,8 @@ describe('TransactionalEmailService', () => {
     expect(url.toString()).toBe('https://cpaas.zoho.com/v1.1/email');
     expect(request.headers.Authorization).toBe('Zoho-enczapikey test-api-key');
     expect(JSON.parse(request.body)).toEqual({
-      from: { address: 'support@arche-axon.xyz', name: 'Counterbase' },
-      to: [{ email_address: { address: 'support@arche-axon.xyz' } }],
+      from: { address: 'support@archeaxon.com', name: 'Counterbase' },
+      to: [{ email_address: { address: 'support@archeaxon.com' } }],
       subject: 'Your Counterbase verification code',
       textbody:
         'Your Counterbase verification code is 12345678. It expires in 10 minutes.',
@@ -50,7 +50,7 @@ describe('TransactionalEmailService', () => {
 
     await expect(
       service.sendOtp({
-        to: 'support@arche-axon.xyz',
+        to: 'support@archeaxon.com',
         code: '12345678',
         purpose: 'WORKSPACE_CREATION',
       }),
@@ -62,7 +62,7 @@ describe('TransactionalEmailService', () => {
 
     await expect(
       service.sendOtp({
-        to: 'support@arche-axon.xyz',
+        to: 'support@archeaxon.com',
         code: '12345678',
         purpose: 'WORKSPACE_CREATION',
       }),

@@ -25,7 +25,7 @@ const _backupCodes = [
 
 StaffProfile profile({bool twoFactor = false}) => StaffProfile(
       id: 'me',
-      email: 'me@arche-axon.xyz',
+      email: 'me@archeaxon.com',
       name: 'Me Myself',
       phone: '+254 700 000 000',
       role: 'OWNER',
@@ -87,7 +87,7 @@ class FakeRepo extends AcaRepository {
     calls.add('startSetup');
     return TwoFactorSetup(
       secret: _secret,
-      otpauthUri: 'otpauth://totp/ACA%20Counterbase:me@arche-axon.xyz?secret=$_secret&issuer=ACA%20Counterbase',
+      otpauthUri: 'otpauth://totp/ACA%20Counterbase:me@archeaxon.com?secret=$_secret&issuer=ACA%20Counterbase',
     );
   }
 
@@ -200,7 +200,7 @@ void main() {
 
       expect(find.text('Account & security'), findsOneWidget);
       expect(find.text('Me Myself'), findsOneWidget);
-      expect(find.text('me@arche-axon.xyz'), findsOneWidget);
+      expect(find.text('me@archeaxon.com'), findsOneWidget);
       expect(find.text('Owner'), findsOneWidget);
       expect(find.text('Member since 1 Jan 2026'), findsOneWidget);
       expect(find.text('Change password'), findsOneWidget);

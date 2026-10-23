@@ -16,6 +16,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TenantActivationService } from '../tenant-activation/tenant-activation.service';
 import { PaystackBillingService } from './paystack-billing.service';
+import { MerchantPaymentsService } from '../merchant-payments/merchant-payments.service';
 
 @ApiTags('billing')
 @Controller({ path: 'billing/paystack', version: '1' })
@@ -24,6 +25,7 @@ export class PaystackWebhookController {
     private readonly config: ConfigService,
     private readonly activation: TenantActivationService,
     private readonly billing: PaystackBillingService,
+    private readonly merchantPayments: MerchantPaymentsService,
   ) {}
 
   /** One Paystack dashboard endpoint handles activation and monthly invoices. */
@@ -42,6 +44,12 @@ export class PaystackWebhookController {
     }
     if (product === 'axon_subscription_invoice') {
       return this.billing.handleWebhook(event, data);
+    }
+    // Charge API notifications may omit metadata. The merchant handler only
+    // acts on references already created in merchant_charges, so this also
+    // reconciles those notifications without affecting platform invoices.
+    if (product === 'counterbase_merchant_sale' || (!product && event === 'charge.success')) {
+      return this.merchantPayments.handleWebhook(event, data);
     }
     return { received: true, handled: false };
   }

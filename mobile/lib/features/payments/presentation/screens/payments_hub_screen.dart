@@ -12,6 +12,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../sales/presentation/providers/payment_provider.dart';
 
 /// Payments Hub - overview of today's takings plus real links into
 /// Receipts, Payment Analytics, and Customer Credit/Installments.
@@ -31,6 +32,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   int _serverCount = 0;
   bool _isLoading = true;
   String? _error;
+  List<Map<String, dynamic>> _merchantCharges = const [];
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   /// Follows today's sales live, so a sale rung up while this tab sits in the
   /// background shows in "Today's Takings" instead of a stale first read.
   Future<void> _loadData() async {
+    unawaited(_refreshMerchantCharges());
     await _salesSub?.cancel();
     setState(() {
       _isLoading = true;
@@ -72,6 +75,39 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
         });
       },
     );
+  }
+
+  Future<void> _refreshMerchantCharges() async {
+    try {
+      final rows = await getIt<ApiClient>().getRecentMerchantCharges();
+      if (mounted) setState(() => _merchantCharges = rows);
+    } catch (_) {
+      // Offline takings remain available from the local database.
+    }
+  }
+
+  Future<void> _checkMerchantCharge(String reference) async {
+    try {
+      final charge = await getIt<ApiClient>().getMerchantMpesaStatus(reference);
+      await _refreshMerchantCharges();
+      await _refreshServerTotals();
+      if (!mounted) return;
+      final status = charge['status']?.toString() ?? 'PENDING';
+      ref.read(paymentProvider.notifier).acknowledgeMerchantPayment(reference, status);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        status == 'COMPLETED'
+            ? 'Payment confirmed. Receipt ${charge['receiptNumber'] ?? reference} is saved.'
+            : status == 'NEEDS_REVIEW'
+                ? 'Payment needs review. Give support reference $reference.'
+                : 'Payment status: $status · $reference',
+      )));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not check payment yet. Try again when online.')),
+        );
+      }
+    }
   }
 
   Future<void> _refreshServerTotals() async {
@@ -271,6 +307,41 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                         ],
                       )
                     ),
+
+                    if (ref.watch(currentUserProvider)?['role']?.toString().toUpperCase() == 'ADMIN') ...[
+                      const SizedBox(height: DesignSpacing.md),
+                      QuickActionTile(
+                        icon: Icons.account_balance_rounded,
+                        label: 'Payout account',
+                        subtitle: 'Where your shop receives customer payments',
+                        color: DesignColors.success,
+                        onTap: () => context.push('/payments/setup'),
+                      ),
+                    ],
+
+                    if (_merchantCharges.any((row) =>
+                        row['status'] == 'PENDING' || row['status'] == 'NEEDS_REVIEW' || row['status'] == 'SETTLING')) ...[
+                      const SizedBox(height: DesignSpacing.xxl),
+                      const SectionHeader(
+                        title: 'Payments to check',
+                        subtitle: 'Review these before requesting another M-Pesa payment',
+                        icon: Icons.pending_actions_rounded,
+                      ),
+                      const SizedBox(height: DesignSpacing.sm),
+                      ..._merchantCharges.where((row) =>
+                          row['status'] == 'PENDING' || row['status'] == 'NEEDS_REVIEW' || row['status'] == 'SETTLING')
+                          .map((row) {
+                        final reference = row['reference']?.toString() ?? '';
+                        return Card(child: ListTile(
+                          title: Text('KES ${row['amount']} · ${row['status']}'),
+                          subtitle: Text(reference),
+                          trailing: TextButton(
+                            onPressed: reference.isEmpty ? null : () => _checkMerchantCharge(reference),
+                            child: const Text('Check'),
+                          ),
+                        ));
+                      }),
+                    ],
 
                     Builder(builder: (context) {
                       final perms = ref.watch(permissionsProvider);

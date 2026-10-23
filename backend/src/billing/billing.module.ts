@@ -10,6 +10,8 @@ import { AiBillingModule } from '../ai-billing/ai-billing.module';
 import { TenantActivationModule } from '../tenant-activation/tenant-activation.module';
 import { PaystackBillingService } from './paystack-billing.service';
 import { PaystackWebhookController } from './paystack-webhook.controller';
+import { MerchantPaymentsModule } from '../merchant-payments/merchant-payments.module';
+import { LegalPolicyModule } from '../legal/legal-policy.module';
 
 /**
  * Jawaki recurring subscription billing (settings, manual claims, cron,
@@ -36,7 +38,7 @@ import { PaystackWebhookController } from './paystack-webhook.controller';
  *    the Jenga-backed PaymentsModule into their DI graphs.
  */
 @Module({
-  imports: [PaymentsModule, SubscriptionModule, AiBillingModule, TenantActivationModule],
+  imports: [PaymentsModule, SubscriptionModule, AiBillingModule, TenantActivationModule, MerchantPaymentsModule, LegalPolicyModule],
   controllers: [BillingController, PaystackWebhookController],
   providers: [
     RecurringBillingService,
