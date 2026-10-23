@@ -208,8 +208,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     if (perms.has('coupons.view')) {
       items.add(_NavItem(
-          icon: Icons.local_offer_outlined,
-          activeIcon: Icons.local_offer_rounded,
+          icon: Icons.confirmation_number_outlined,
+          activeIcon: Icons.confirmation_number_rounded,
           label: 'Coupons',
           path: '/coupons'));
     }
@@ -280,6 +280,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      // Keep the sheet below the status bar/cutout rather than full-bleed.
+      useSafeArea: true,
       builder: (context) => Container(
         padding: EdgeInsets.only(
           bottom: bottomPadding > 0
@@ -328,7 +330,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       padding: const EdgeInsets.all(DesignSpacing.sm),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [DesignColors.accent, DesignColors.accentLight],
+                          colors: [
+                            DesignColors.accent,
+                            DesignColors.accentLight
+                          ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -348,50 +353,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ]),
               ),
               const SizedBox(height: DesignSpacing.md),
-              ...moreItems.asMap().entries.map((entry) {
-                final item = entry.value;
-                return KeyedSubtree(
-                  key: switch (item.path) {
-                    '/inventory' => HomeNavKeys.moreSheetInventory,
-                    '/reports' => HomeNavKeys.moreSheetReports,
-                    '/settings' => HomeNavKeys.moreSheetSettings,
-                    _ => null,
-                  },
-                  child: ListTile(
-                    // ListTile paints ink on its nearest Material ancestor; the
-                    // sheet Container's BoxDecoration alone triggers the
-                    // "background color or ink splashes may be invisible"
-                    // assertion on newer Flutter versions.
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: DesignSpacing.xl, vertical: 2),
-                    // Keep every row at the 44px+ touch minimum.
-                    minTileHeight: 48,
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                          color: isDark
-                              ? DesignColors.brandSubtle
-                              : DesignColors.accent.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(
-                              DesignSpacing.radiusLg - 6)),
-                      child:
-                          Icon(item.icon,
-                              color: isDark
-                                  ? DesignColors.brand
-                                  : DesignColors.accent,
-                              size: 20),
-                    ),
-                    title: Text(item.label,
-                        style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go(item.path);
-                    },
+              // The list outgrows the screen once every module is enabled;
+              // scroll it instead of overflowing under the system bars.
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ...moreItems.asMap().entries.map((entry) {
+                        final item = entry.value;
+                        return KeyedSubtree(
+                          key: switch (item.path) {
+                            '/inventory' => HomeNavKeys.moreSheetInventory,
+                            '/reports' => HomeNavKeys.moreSheetReports,
+                            '/settings' => HomeNavKeys.moreSheetSettings,
+                            _ => null,
+                          },
+                          child: ListTile(
+                            // ListTile paints ink on its nearest Material ancestor; the
+                            // sheet Container's BoxDecoration alone triggers the
+                            // "background color or ink splashes may be invisible"
+                            // assertion on newer Flutter versions.
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: DesignSpacing.xl, vertical: 2),
+                            // Keep every row at the 44px+ touch minimum.
+                            minTileHeight: 48,
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                  color: isDark
+                                      ? DesignColors.brandSubtle
+                                      : DesignColors.accent
+                                          .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusLg - 6)),
+                              child: Icon(item.icon,
+                                  color: isDark
+                                      ? DesignColors.brand
+                                      : DesignColors.accent,
+                                  size: 20),
+                            ),
+                            title: Text(item.label,
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w600)),
+                            onTap: () {
+                              Navigator.pop(context);
+                              context.go(item.path);
+                            },
+                          ),
+                        );
+                      }),
+                    ],
                   ),
-                );
-              }),
+                ),
+              ),
             ],
           ),
         ),
@@ -418,148 +434,151 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
-    final atDashboard =
-        GoRouterState.of(context).uri.path == '/dashboard';
+    final atDashboard = GoRouterState.of(context).uri.path == '/dashboard';
 
     // Tabs are reached with context.go, so the stack holds a single page and
     // the system Back would close the app from every screen (go_router skips
     // PopScope on a one-page stack). Send Back to the Dashboard first; Back on
     // the Dashboard itself still leaves the app.
     return BackButtonListener(
-      onBackButtonPressed: () async {
-        // A sheet or dialog is on top of the shell: Back closes it instead of
-        // jumping to the Dashboard.
-        if (ModalRoute.of(context)?.isCurrent == false) {
-          // go_router would pop the shell's own page first, leaving the sheet
-          // open over the wrong screen — close the top modal explicitly.
-          await Navigator.of(context, rootNavigator: true).maybePop();
+        onBackButtonPressed: () async {
+          // A sheet or dialog is on top of the shell: Back closes it instead of
+          // jumping to the Dashboard.
+          if (ModalRoute.of(context)?.isCurrent == false) {
+            // go_router would pop the shell's own page first, leaving the sheet
+            // open over the wrong screen — close the top modal explicitly.
+            await Navigator.of(context, rootNavigator: true).maybePop();
+            return true;
+          }
+          // A screen was pushed on top of a tab (Settings -> Plan & Billing):
+          // let Back pop just that one step, like any app.
+          if (GoRouter.of(context).canPop()) return false;
+          if (atDashboard) return false;
+          context.go('/dashboard');
           return true;
-        }
-        // A screen was pushed on top of a tab (Settings -> Plan & Billing):
-        // let Back pop just that one step, like any app.
-        if (GoRouter.of(context).canPop()) return false;
-        if (atDashboard) return false;
-        context.go('/dashboard');
-        return true;
-      },
-      child: Scaffold(
-      body: Column(
-        children: [
-          // Offline Banner
-          StreamBuilder<ConnectionStatus>(
-            stream: connectivity.statusStream,
-            initialData: connectivity.currentStatus,
-            builder: (context, snapshot) {
-              final isOffline = snapshot.data == ConnectionStatus.offline;
-              if (!isOffline) return const SizedBox.shrink();
-              return Container(
-                width: double.infinity,
-                padding: EdgeInsets.only(
-                    top: MediaQuery.of(context).padding.top,
-                    bottom: DesignSpacing.sm),
-                decoration: BoxDecoration(
-                  color: DesignColors.warning.withValues(alpha: 0.12),
-                  border: Border(
-                      bottom: BorderSide(
-                          color: DesignColors.warning.withValues(alpha: 0.2))),
-                ),
-                child:
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                          color: DesignColors.warning, shape: BoxShape.circle)),
-                  const SizedBox(width: DesignSpacing.sm - 2),
-                  const Text('Offline Mode',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: DesignColors.warning)),
-                  const SizedBox(width: DesignSpacing.sm),
-                  Text('Sales will sync',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: DesignColors.warning.withValues(alpha: 0.7))),
-                ]),
-              );
-            },
-          ),
-          // Subscription restricted-mode / expiry reminder banner (watches
-          // the entitlement provider; passive, never blocks navigation).
-          // The routed Scaffold/scroll views need a finite remaining height,
-          // whether the subscription host shows a banner or only the child.
-          Expanded(
-            child: SubscriptionEntitlementHost(child: widget.child),
-          ),
-        ],
-      ),
-      // Floating pill bar: the active tab is an orange chip that springs in,
-      // the bar itself hovers above the page on a soft warm shadow.
-      bottomNavigationBar: Container(
-        color: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
-        padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
-        child: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.only(bottom: 10),
-          child: Container(
-            height: 66,
-            decoration: BoxDecoration(
-              color: isDark ? DesignColors.darkSurface : Colors.white,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(
-                color: isDark
-                    ? DesignColors.darkBorder
-                    : DesignColors.surfaceBorderLight,
-              ),
-              boxShadow: DesignShadows.soft(isDark),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ...visibleNavItems.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final item = entry.value;
-                  final isSelected = currentIndex == idx;
-                  return Expanded(
-                      child: KeyedSubtree(
-                    key: item.path == '/' ? HomeNavKeys.pos : null,
-                    child: _NavItemWidget(
-                        item: item,
-                        isSelected: isSelected,
-                        isPrimary: item.path == '/ai',
-                        onTap: () {
-                          if (!isSelected) HapticService().selection();
-                          context.go(item.path);
-                        },
-                        isDark: isDark),
-                  ));
-                }),
-                if (hasMore)
-                  Expanded(
-                      child: KeyedSubtree(
-                    key: HomeNavKeys.more,
-                    child: _NavItemWidget(
-                      item: _NavItem(
-                          icon: Icons.apps_outlined,
-                          activeIcon: Icons.apps_rounded,
-                          label: 'More',
-                          path: ''),
-                      isSelected: currentIndex >= maxVisible,
-                      isPrimary: false,
-                      onTap: () {
-                        HapticService().selection();
-                        _showMoreSheet(moreItems);
-                      },
-                      isDark: isDark,
+        },
+        child: Scaffold(
+          body: Column(
+            children: [
+              // Offline Banner
+              StreamBuilder<ConnectionStatus>(
+                stream: connectivity.statusStream,
+                initialData: connectivity.currentStatus,
+                builder: (context, snapshot) {
+                  final isOffline = snapshot.data == ConnectionStatus.offline;
+                  if (!isOffline) return const SizedBox.shrink();
+                  return Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.only(
+                        top: MediaQuery.of(context).padding.top,
+                        bottom: DesignSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: DesignColors.warning.withValues(alpha: 0.12),
+                      border: Border(
+                          bottom: BorderSide(
+                              color:
+                                  DesignColors.warning.withValues(alpha: 0.2))),
                     ),
-                  )),
-              ],
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                  color: DesignColors.warning,
+                                  shape: BoxShape.circle)),
+                          const SizedBox(width: DesignSpacing.sm - 2),
+                          const Text('Offline Mode',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: DesignColors.warning)),
+                          const SizedBox(width: DesignSpacing.sm),
+                          Text('Sales will sync',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: DesignColors.warning
+                                      .withValues(alpha: 0.7))),
+                        ]),
+                  );
+                },
+              ),
+              // Subscription restricted-mode / expiry reminder banner (watches
+              // the entitlement provider; passive, never blocks navigation).
+              // The routed Scaffold/scroll views need a finite remaining height,
+              // whether the subscription host shows a banner or only the child.
+              Expanded(
+                child: SubscriptionEntitlementHost(child: widget.child),
+              ),
+            ],
+          ),
+          // Floating pill bar: the active tab is an orange chip that springs in,
+          // the bar itself hovers above the page on a soft warm shadow.
+          bottomNavigationBar: Container(
+            color: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                height: 66,
+                decoration: BoxDecoration(
+                  color: isDark ? DesignColors.darkSurface : Colors.white,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(
+                    color: isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorderLight,
+                  ),
+                  boxShadow: DesignShadows.soft(isDark),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ...visibleNavItems.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final item = entry.value;
+                      final isSelected = currentIndex == idx;
+                      return Expanded(
+                          child: KeyedSubtree(
+                        key: item.path == '/' ? HomeNavKeys.pos : null,
+                        child: _NavItemWidget(
+                            item: item,
+                            isSelected: isSelected,
+                            isPrimary: item.path == '/ai',
+                            onTap: () {
+                              if (!isSelected) HapticService().selection();
+                              context.go(item.path);
+                            },
+                            isDark: isDark),
+                      ));
+                    }),
+                    if (hasMore)
+                      Expanded(
+                          child: KeyedSubtree(
+                        key: HomeNavKeys.more,
+                        child: _NavItemWidget(
+                          item: _NavItem(
+                              icon: Icons.apps_outlined,
+                              activeIcon: Icons.apps_rounded,
+                              label: 'More',
+                              path: ''),
+                          isSelected: currentIndex >= maxVisible,
+                          isPrimary: false,
+                          onTap: () {
+                            HapticService().selection();
+                            _showMoreSheet(moreItems);
+                          },
+                          isDark: isDark,
+                        ),
+                      )),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    ));
+        ));
   }
 }
 
@@ -617,47 +636,47 @@ class _NavItemWidget extends ConsumerWidget {
                   child: BreathingGlow(
                       radius: 18,
                       child: AnimatedContainer(
-                    duration: DesignAnimation.fast,
-                    curve: DesignAnimation.smooth,
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? DesignColors.accent
-                          : (isDark
-                              ? DesignColors.darkSurfaceElevated
-                              : Colors.white),
-                      borderRadius: BorderRadius.circular(18),
-                      border: isSelected
-                          ? null
-                          : Border.all(
-                              color: isDark
-                                  ? DesignColors.darkBorder
-                                  : DesignColors.surfaceBorder,
-                              width: 1.2,
+                        duration: DesignAnimation.fast,
+                        curve: DesignAnimation.smooth,
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? DesignColors.accent
+                              : (isDark
+                                  ? DesignColors.darkSurfaceElevated
+                                  : Colors.white),
+                          borderRadius: BorderRadius.circular(18),
+                          border: isSelected
+                              ? null
+                              : Border.all(
+                                  color: isDark
+                                      ? DesignColors.darkBorder
+                                      : DesignColors.surfaceBorder,
+                                  width: 1.2,
+                                ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: DesignColors.accent
+                                  .withValues(alpha: isSelected ? 0.35 : 0.0),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
                             ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: DesignColors.accent
-                              .withValues(alpha: isSelected ? 0.35 : 0.0),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
+                            if (!isDark && !isSelected)
+                              const BoxShadow(
+                                color: Color(0x228A6B45),
+                                blurRadius: 14,
+                                offset: Offset(0, 5),
+                              ),
+                          ],
                         ),
-                        if (!isDark && !isSelected)
-                          const BoxShadow(
-                            color: Color(0x228A6B45),
-                            blurRadius: 14,
-                            offset: Offset(0, 5),
+                        child: Center(
+                          child: AxonAiIcon(
+                            tenantLogoUrl: tenantLogoUrl,
+                            size: 28,
                           ),
-                      ],
-                    ),
-                    child: Center(
-                      child: AxonAiIcon(
-                        tenantLogoUrl: tenantLogoUrl,
-                        size: 28,
-                      ),
-                    ),
-                  )),
+                        ),
+                      )),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 42),
@@ -696,7 +715,8 @@ class _NavItemWidget extends ConsumerWidget {
                   width: isSelected ? 54 : 38,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: isSelected ? DesignColors.accent : Colors.transparent,
+                    color:
+                        isSelected ? DesignColors.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Center(
