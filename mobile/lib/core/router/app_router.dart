@@ -27,6 +27,11 @@ import '../../features/stocktake/presentation/screens/stock_counts_screen.dart';
 import '../../features/imports/presentation/screens/import_detail_screen.dart';
 import '../../features/imports/presentation/screens/imports_screen.dart';
 import '../../features/news/presentation/screens/business_news_screen.dart';
+import '../../features/coupons/presentation/screens/coupons_screen.dart';
+import '../../features/referrals/presentation/screens/referrals_screen.dart';
+import '../../features/statements/presentation/screens/mpesa_match_screen.dart';
+import '../../features/statements/presentation/screens/statement_replies_screen.dart';
+import '../../features/pricelist/presentation/screens/price_list_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/profit_adjustment_screen.dart';
 import '../../features/dashboard/presentation/screens/day_summary_screen.dart';
@@ -732,6 +737,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/news',
             name: 'business-news',
             builder: (context, state) => const BusinessNewsScreen(),
+          ),
+
+          // Growth and collections: coupons, referrals, debt statements,
+          // M-Pesa matching, price list
+          GoRoute(
+            path: '/coupons',
+            name: 'coupons',
+            builder: (context, state) => const CouponsScreen(),
+          ),
+          GoRoute(
+            path: '/referrals',
+            name: 'referrals',
+            builder: (context, state) => const ReferralsScreen(),
+          ),
+          GoRoute(
+            path: '/statements/replies',
+            name: 'statement-replies',
+            builder: (context, state) => const StatementRepliesScreen(),
+          ),
+          GoRoute(
+            path: '/mpesa-match',
+            name: 'mpesa-match',
+            builder: (context, state) => const MpesaMatchScreen(),
+          ),
+          GoRoute(
+            path: '/price-list',
+            name: 'price-list',
+            builder: (context, state) => const PriceListScreen(),
           ),
 
           // Finance Screen

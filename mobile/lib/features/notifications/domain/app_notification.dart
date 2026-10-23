@@ -70,6 +70,11 @@ String routeForNotification(String type, Map<String, dynamic> data) {
       return '/shop-alerts';
     case 'business_news':
       return '/news';
+    case 'statement_claim':
+    case 'statement_viewed':
+      return '/statements/replies';
+    case 'referral_reward':
+      return '/referrals';
     default:
       return '/notifications';
   }

@@ -463,6 +463,15 @@ class _SubscriptionBillingScreenState
                   index: 2,
                   child: _buildAutoRenewTile(),
                 ),
+                const SizedBox(height: DesignSpacing.md),
+                ListCard(
+                  leading: const Icon(Icons.redeem_rounded,
+                      color: DesignColors.accent),
+                  title: 'Free days',
+                  subtitle:
+                      'Invite other shops and get free days, or enter a promo code',
+                  onTap: () => context.push('/referrals'),
+                ),
                 const SizedBox(height: DesignSpacing.xl),
                 const SizedBox(height: DesignSpacing.xxl),
               ],

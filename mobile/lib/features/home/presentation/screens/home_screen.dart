@@ -198,6 +198,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Business News',
           path: '/news'));
     }
+    // Growth and collections. Same rule: only what the user may actually open.
+    if (perms.has('products.view')) {
+      items.add(_NavItem(
+          icon: Icons.sell_outlined,
+          activeIcon: Icons.sell_rounded,
+          label: 'Price List',
+          path: '/price-list'));
+    }
+    if (perms.has('coupons.view')) {
+      items.add(_NavItem(
+          icon: Icons.local_offer_outlined,
+          activeIcon: Icons.local_offer_rounded,
+          label: 'Coupons',
+          path: '/coupons'));
+    }
+    if (perms.has('statements.share')) {
+      items.add(_NavItem(
+          icon: Icons.mark_chat_read_outlined,
+          activeIcon: Icons.mark_chat_read_rounded,
+          label: 'Debt Replies',
+          path: '/statements/replies'));
+    }
+    if (perms.has('mpesa.reconcile')) {
+      items.add(_NavItem(
+          icon: Icons.rule_rounded,
+          activeIcon: Icons.rule_rounded,
+          label: 'Match M-Pesa',
+          path: '/mpesa-match'));
+    }
+    if (perms.has('referrals.view')) {
+      items.add(_NavItem(
+          icon: Icons.redeem_outlined,
+          activeIcon: Icons.redeem_rounded,
+          label: 'Invite Shops',
+          path: '/referrals'));
+    }
     // Trade partners are restricted by the backend to business owners and
     // managers, so keep the entry hidden for other legacy account roles.
     final legacyRole = ref.watch(userRoleProvider)?.toUpperCase();

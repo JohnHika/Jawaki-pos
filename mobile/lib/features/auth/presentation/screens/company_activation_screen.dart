@@ -15,6 +15,7 @@ import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../referrals/presentation/widgets/activation_code_card.dart';
 import '../../../subscription/domain/subscription_plans.dart';
 
 class CompanyActivationScreen extends ConsumerStatefulWidget {
@@ -299,6 +300,8 @@ class _CompanyActivationScreenState
                     index: 5,
                     child: _buildMonthlyPlanPreview(),
                   ),
+                  const SizedBox(height: DesignSpacing.md),
+                  const ActivationCodeCard(),
                   if (_error != null) ...[
                     const SizedBox(height: DesignSpacing.lg),
                     _buildErrorCard(_error!),
