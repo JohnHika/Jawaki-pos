@@ -77,6 +77,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   bool _acceptedSignupPolicies = false;
   String? _errorMessage;
   String? _challengeId;
+  String? _challengeEmail;
   String? _verifiedGoogleEmail;
   _VerificationMode _verificationMode = _VerificationMode.google;
 
@@ -182,6 +183,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       if (!mounted) return;
       setState(() {
         _challengeId = challengeId;
+        _challengeEmail = _emailController.text.trim();
         _verificationMode = _VerificationMode.emailOtp;
         _otpController.clear();
       });
@@ -352,15 +354,30 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         return _StepContent(
           title: 'Build your workspace',
           subtitle:
-              'Start with the business identity your team and customers will see.',
+              'Give your business a home. You can refine its details as you grow.',
           children: [
+            const _SetupEditorialCard(
+              index: '01 / BUSINESS',
+              icon: Icons.storefront_outlined,
+              title: 'One place for every sale.',
+              detail:
+                  'Your workspace connects counters, people, stock and payments under your business name.',
+            ),
+            const SizedBox(height: 28),
             _field(
               _companyNameController,
-              label: 'Company name',
-              hint: 'Your business name',
+              label: 'Business name',
+              hint: 'e.g. Acme Retail',
               icon: Icons.business_rounded,
               validator: _companyValidator,
               autovalidateMode: AutovalidateMode.onUserInteraction,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'This name appears on receipts and your team workspace.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextTertiary),
+                  ),
             ),
           ],
         );
@@ -368,36 +385,59 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
         return _StepContent(
           title: 'Meet the owner',
           subtitle:
-              'Tell us who will control this workspace. We will verify this identity next.',
+              'This person will control access, billing and payout settings.',
           children: [
-            Row(children: [
-              Expanded(
-                child: _field(
-                  _firstNameController,
-                  label: 'First name',
-                  hint: 'Ada',
-                  icon: Icons.person_outline_rounded,
-                  validator: _requiredName,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _field(
-                  _lastNameController,
-                  label: 'Last name',
-                  hint: 'Lovelace',
-                  icon: Icons.person_outline_rounded,
-                  validator: _requiredName,
-                ),
-              ),
-            ]),
-            const SizedBox(height: 16),
+            const _SetupEditorialCard(
+              index: '02 / OWNER',
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'Your account stays yours.',
+              detail:
+                  'Only the verified owner can create this workspace. You can invite your team after setup.',
+            ),
+            const SizedBox(height: 28),
+            LayoutBuilder(builder: (context, constraints) {
+              final first = _field(
+                _firstNameController,
+                label: 'First name',
+                hint: 'Ada',
+                icon: Icons.person_outline_rounded,
+                validator: _requiredName,
+              );
+              final last = _field(
+                _lastNameController,
+                label: 'Last name',
+                hint: 'Lovelace',
+                icon: Icons.person_outline_rounded,
+                validator: _requiredName,
+              );
+              if (constraints.maxWidth < 390) {
+                return Column(children: [
+                  first,
+                  const SizedBox(height: 16),
+                  last,
+                ]);
+              }
+              return Row(children: [
+                Expanded(child: first),
+                const SizedBox(width: 12),
+                Expanded(child: last),
+              ]);
+            }),
+            const SizedBox(height: 20),
             _field(
               _emailController,
-              label: 'Owner email (only for email-code verification)',
-              hint: 'Google supplies this after sign-in',
+              label: 'Owner email',
+              hint: 'name@business.com',
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
+              onChanged: (value) {
+                if (_challengeId != null && value.trim() != _challengeEmail) {
+                  setState(() {
+                    _challengeId = null;
+                    _otpController.clear();
+                  });
+                }
+              },
               validator: (value) {
                 final email = value?.trim() ?? '';
                 if (email.isEmpty &&
@@ -407,62 +447,29 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 return _emailValidator(value);
               },
             ),
+            const SizedBox(height: 10),
+            Text(
+              'Use this address for an email code, or continue with Google in the final step.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextTertiary),
+                    height: 1.45,
+                  ),
+            ),
           ],
         );
       case 2:
         return _StepContent(
           title: 'Open your first counter',
-          subtitle:
-              'Give your first location a clear name so your team can find it at checkout.',
+          subtitle: 'Name the place where your first sale will happen.',
           children: [
-            Container(
-              padding: const EdgeInsets.all(DesignSpacing.lg),
-              decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha: 0.09),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
-                border: Border.all(
-                  color: DesignColors.accent.withValues(alpha: 0.22),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: DesignColors.accent.withValues(alpha: 0.15),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusMd),
-                    ),
-                    child: const Icon(Icons.storefront_rounded,
-                        color: DesignColors.accent),
-                  ),
-                  const SizedBox(width: DesignSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Your first selling location',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800)),
-                        const SizedBox(height: DesignSpacing.xs),
-                        Text(
-                          'You can add more branches and counters any time in Settings.',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(height: 1.4),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            const _SetupEditorialCard(
+              index: '03 / FIRST LOCATION',
+              icon: Icons.point_of_sale_outlined,
+              title: 'Ready for the first customer.',
+              detail:
+                  'A branch keeps sales and inventory together. Add more locations later from Settings.',
             ),
-            const SizedBox(height: DesignSpacing.xl),
+            const SizedBox(height: 28),
             LayoutBuilder(builder: (context, constraints) {
               final wide = constraints.maxWidth >= 580;
               final name = _field(
@@ -488,45 +495,44 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                     ? 'Enter at least 2 characters'
                     : null,
               );
-              final address = _field(
-                _branchAddressController,
-                label: 'Address (optional)',
-                hint: 'Street, town or area',
-                icon: Icons.location_on_outlined,
-                maxLines: 1,
-              );
-              final phone = _field(
-                _branchPhoneController,
-                label: 'Phone (optional)',
-                hint: '+254 700 000 000',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              );
               if (!wide) {
                 return Column(children: [
                   name,
                   const SizedBox(height: DesignSpacing.md),
                   code,
-                  const SizedBox(height: DesignSpacing.md),
-                  address,
-                  const SizedBox(height: DesignSpacing.md),
-                  phone,
                 ]);
               }
-              return Column(children: [
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: name),
-                  const SizedBox(width: DesignSpacing.md),
-                  Expanded(child: code),
-                ]),
-                const SizedBox(height: DesignSpacing.lg),
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: address),
-                  const SizedBox(width: DesignSpacing.md),
-                  Expanded(child: phone),
-                ]),
-              ]);
+              return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: name),
+                    const SizedBox(width: DesignSpacing.md),
+                    Expanded(child: code),
+                  ]);
             }),
+            const SizedBox(height: 10),
+            Text(
+              'The code helps your team identify this branch in reports.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextTertiary),
+                  ),
+            ),
+            const SizedBox(height: 20),
+            _OptionalLocationDetails(
+              address: _field(
+                _branchAddressController,
+                label: 'Address',
+                hint: 'Street, town or area',
+                icon: Icons.location_on_outlined,
+              ),
+              phone: _field(
+                _branchPhoneController,
+                label: 'Phone',
+                hint: '+254 700 000 000',
+                icon: Icons.phone_outlined,
+                keyboardType: TextInputType.phone,
+              ),
+            ),
           ],
         );
       default:
@@ -535,149 +541,76 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   }
 
   Widget _buildVerificationStep() {
-    final email = _emailController.text.trim();
+    final byGoogle = _verificationMode == _VerificationMode.google;
     return _StepContent(
       title: 'Verify your ownership',
-      subtitle: _verificationMode == _VerificationMode.google
-          ? 'Choose a secure way to confirm you own this workspace.'
-          : 'Enter the code sent to $email to finish creating your workspace.',
+      subtitle: 'One final check before your business goes live.',
       children: [
-        Container(
-          padding: const EdgeInsets.all(DesignSpacing.lg),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                DesignColors.accent.withValues(alpha: 0.16),
-                context.themed(DesignColors.darkSurfaceElevated),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-            border:
-                Border.all(color: DesignColors.accent.withValues(alpha: 0.26)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: DesignColors.accent.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.verified_user_rounded,
-                    color: DesignColors.accent),
-              ),
-              const SizedBox(width: DesignSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Secure ownership check',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: DesignSpacing.xs),
-                    Text(
-                      'Only the verified owner can finish setup. Your password is never requested here.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(height: 1.4),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        const _SetupEditorialCard(
+          index: '04 / OWNERSHIP',
+          icon: Icons.verified_user_outlined,
+          title: 'Secure ownership check',
+          detail:
+              'Confirm your identity to protect your team, payments and business data.',
         ),
-        const SizedBox(height: DesignSpacing.lg),
-        Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: DesignSpacing.md, vertical: DesignSpacing.sm),
-          decoration: BoxDecoration(
-            color: context.themed(DesignColors.darkSurfaceElevated),
-            borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-            border: Border.all(color: context.themed(DesignColors.darkBorder)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Checkbox(
-                value: _acceptedSignupPolicies,
-                onChanged: _isLoading
-                    ? null
-                    : (value) => setState(
-                        () => _acceptedSignupPolicies = value ?? false),
-              ),
-              const SizedBox(width: DesignSpacing.xs),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: DesignSpacing.md),
-                  child: Text(
-                    'I agree to the Terms of Service and Data Processing Addendum, and acknowledge the Privacy Notice.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(height: 1.4),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        const SizedBox(height: 28),
+        Text('CHOOSE A METHOD',
+            style: DesignType.numeric(
+                fontSize: 11,
+                color: context.themed(DesignColors.darkTextTertiary),
+                letterSpacing: 1.2)),
+        const SizedBox(height: 12),
+        _VerificationMethodOption(
+          icon: Icons.g_mobiledata_rounded,
+          title: 'Continue with Google',
+          detail: 'Secure sign-in with your Google account',
+          selected: byGoogle,
+          onTap: _isLoading
+              ? null
+              : () =>
+                  setState(() => _verificationMode = _VerificationMode.google),
         ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Wrap(
-            spacing: DesignSpacing.xs,
-            runSpacing: 0,
-            children: [
-              _legalLink('Terms', '/legal/terms'),
-              _legalLink('Privacy', '/legal/privacy'),
-              _legalLink('Data Processing', '/legal/data-processing'),
-            ],
-          ),
+        const SizedBox(height: 10),
+        _VerificationMethodOption(
+          icon: Icons.mail_outline_rounded,
+          title: 'Use an email code instead',
+          detail: 'Send a one-time code to your inbox',
+          selected: !byGoogle,
+          onTap: _isLoading
+              ? null
+              : () => setState(
+                  () => _verificationMode = _VerificationMode.emailOtp),
         ),
-        const SizedBox(height: DesignSpacing.md),
-        if (_verificationMode == _VerificationMode.google) ...[
-          _VerificationCard(
-            icon: Icons.verified_user_outlined,
-            title: 'Continue with Google',
-            subtitle: _verifiedGoogleEmail == null
-                ? 'Use your Google account to verify ownership and create your workspace.'
-                : 'Verified account: $_verifiedGoogleEmail',
-            child: GradientButton(
-              label: _verifiedGoogleEmail == null
-                  ? 'Verify and create workspace'
-                  : 'Create workspace',
-              icon: Icons.g_mobiledata_rounded,
-              isLoading: _isLoading,
-              onPressed: _isLoading || !_acceptedSignupPolicies
-                  ? null
-                  : _createWithGoogle,
-              height: 54,
-              borderRadius: 14,
-            ),
+        if (!byGoogle) ...[
+          const SizedBox(height: 24),
+          _field(
+            _emailController,
+            label: 'Email for verification',
+            hint: 'name@business.com',
+            icon: Icons.alternate_email_rounded,
+            keyboardType: TextInputType.emailAddress,
+            validator: _emailValidator,
+            onChanged: (value) {
+              if (_challengeId != null && value.trim() != _challengeEmail) {
+                setState(() {
+                  _challengeId = null;
+                  _otpController.clear();
+                });
+              }
+            },
           ),
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: _isLoading ? null : _requestEmailOtp,
-            icon: const Icon(Icons.email_outlined),
-            label: const Text('Use an email code instead'),
-          ),
-        ] else ...[
-          _VerificationCard(
-            icon: Icons.mark_email_read_outlined,
-            title: 'Confirm with an email code',
-            subtitle:
-                'Only the owner who can access this inbox can create the workspace.',
-            child: _field(
+          if (_challengeId != null) ...[
+            const SizedBox(height: 18),
+            Text('Code sent to $_challengeEmail',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: DesignColors.success)),
+            const SizedBox(height: 12),
+            _field(
               _otpController,
-              label: '6–8 digit code',
-              hint: 'Enter the code',
+              label: 'Verification code',
+              hint: '6–8 digits',
               icon: Icons.password_rounded,
               keyboardType: TextInputType.number,
               inputFormatters: [
@@ -689,35 +622,88 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                       ? null
                       : 'Enter the 6–8 digit code from your email',
             ),
-          ),
-          const SizedBox(height: 16),
-          GradientButton(
-            label: 'Verify email & create workspace',
-            icon: Icons.verified_rounded,
-            isLoading: _isLoading,
-            onPressed: _isLoading || !_acceptedSignupPolicies
-                ? null
-                : _createWithEmailOtp,
-            height: 54,
-            borderRadius: 14,
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _isLoading ? null : _requestEmailOtp,
-            child: const Text('Resend code'),
-          ),
-          TextButton(
-            onPressed: _isLoading
-                ? null
-                : () => setState(() {
-                      _verificationMode = _VerificationMode.google;
-                      _challengeId = null;
-                      _otpController.clear();
-                    }),
-            child: const Text('Use Google instead'),
-          ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _isLoading ? null : _requestEmailOtp,
+                child: const Text('Resend code'),
+              ),
+            ),
+          ],
         ],
-        const SizedBox(height: DesignSpacing.md),
+        const SizedBox(height: 24),
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 16, 12),
+          decoration: BoxDecoration(
+            color: context.themed(DesignColors.darkSurface),
+            borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+            border: Border.all(color: context.themed(DesignColors.darkBorder)),
+          ),
+          child: Column(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Checkbox(
+                  value: _acceptedSignupPolicies,
+                  onChanged: _isLoading
+                      ? null
+                      : (value) => setState(
+                          () => _acceptedSignupPolicies = value ?? false)),
+              Expanded(
+                child: InkWell(
+                  onTap: _isLoading
+                      ? null
+                      : () => setState(() =>
+                          _acceptedSignupPolicies = !_acceptedSignupPolicies),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: Text(
+                      'I agree to the Terms of Service and Data Processing Addendum, and acknowledge the Privacy Notice.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(height: 1.4),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(spacing: 4, children: [
+                _legalLink('Terms', '/legal/terms'),
+                _legalLink('Privacy', '/legal/privacy'),
+                _legalLink('Data Processing', '/legal/data-processing'),
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 24),
+        GradientButton(
+          label: byGoogle
+              ? 'Verify and create workspace'
+              : _challengeId == null
+                  ? 'Send verification code'
+                  : 'Verify email & create workspace',
+          icon: byGoogle
+              ? Icons.arrow_forward_rounded
+              : _challengeId == null
+                  ? Icons.mark_email_unread_outlined
+                  : Icons.verified_rounded,
+          isLoading: _isLoading,
+          onPressed: _isLoading ||
+                  (byGoogle && !_acceptedSignupPolicies) ||
+                  (!byGoogle &&
+                      _challengeId != null &&
+                      !_acceptedSignupPolicies)
+              ? null
+              : byGoogle
+                  ? _createWithGoogle
+                  : _challengeId == null
+                      ? _requestEmailOtp
+                      : _createWithEmailOtp,
+          height: 54,
+          borderRadius: 14,
+        ),
+        const SizedBox(height: 16),
         Text(
           'Counterbase does not collect or store an owner password during workspace setup.',
           textAlign: TextAlign.center,
@@ -772,6 +758,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     int maxLines = 1,
     List<TextInputFormatter>? inputFormatters,
     AutovalidateMode? autovalidateMode,
+    ValueChanged<String>? onChanged,
   }) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,6 +769,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
           const SizedBox(height: 8),
           TextFormField(
             controller: controller,
+            onChanged: onChanged,
             validator: validator,
             keyboardType: keyboardType,
             maxLines: maxLines,
@@ -957,41 +945,145 @@ class _StepContent extends StatelessWidget {
   }
 }
 
-class _VerificationCard extends StatelessWidget {
-  const _VerificationCard(
-      {required this.icon,
-      required this.title,
-      required this.subtitle,
-      required this.child});
+class _SetupEditorialCard extends StatelessWidget {
+  const _SetupEditorialCard({
+    required this.index,
+    required this.icon,
+    required this.title,
+    required this.detail,
+  });
+
+  final String index;
   final IconData icon;
   final String title;
-  final String subtitle;
-  final Widget child;
+  final String detail;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(18),
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: context.themed(DesignColors.darkSurfaceElevated),
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          color: context.themed(DesignColors.darkSurface),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: DesignColors.accent),
-          const SizedBox(height: 12),
+          Row(children: [
+            Icon(icon, color: DesignColors.accent, size: 26),
+            const Spacer(),
+            Text(index,
+                style: DesignType.numeric(
+                    fontSize: 11,
+                    color: context.themed(DesignColors.darkTextTertiary),
+                    letterSpacing: 1.2)),
+          ]),
+          const SizedBox(height: 26),
           Text(title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w700)),
-          const SizedBox(height: DesignSpacing.sm - 2),
-          Text(subtitle,
+          const SizedBox(height: 8),
+          Text(detail,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: context.themed(DesignColors.darkTextSecondary),
-                  height: 1.4)),
-          const SizedBox(height: DesignSpacing.lg + 2),
-          child,
+                  height: 1.5)),
         ]),
       );
+}
+
+class _OptionalLocationDetails extends StatelessWidget {
+  const _OptionalLocationDetails({required this.address, required this.phone});
+  final Widget address;
+  final Widget phone;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: context.themed(DesignColors.darkSurface),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          border: Border.all(color: context.themed(DesignColors.darkBorder)),
+        ),
+        child: ExpansionTile(
+          title: const Text('Add location details'),
+          subtitle: const Text('Optional · useful on receipts'),
+          leading: const Icon(Icons.add_location_alt_outlined,
+              color: DesignColors.accent),
+          shape: const Border(),
+          collapsedShape: const Border(),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
+          children: [
+            address,
+            const SizedBox(height: 16),
+            phone,
+          ],
+        ),
+      );
+}
+
+class _VerificationMethodOption extends StatelessWidget {
+  const _VerificationMethodOption({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    required this.selected,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String detail;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+          child: AnimatedContainer(
+            duration: DesignAnimation.fast,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: selected
+                  ? DesignColors.accent.withValues(alpha: 0.09)
+                  : context.themed(DesignColors.darkSurface),
+              borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+              border: Border.all(
+                  color: selected
+                      ? DesignColors.accent
+                      : context.themed(DesignColors.darkBorder)),
+            ),
+            child: Row(children: [
+              Icon(icon,
+                  color: selected
+                      ? DesignColors.accent
+                      : context.themed(DesignColors.darkTextSecondary),
+                  size: 29),
+              const SizedBox(width: 14),
+              Expanded(
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: context.themed(DesignColors.darkTextPrimary))),
+                  const SizedBox(height: 3),
+                  Text(detail,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color:
+                              context.themed(DesignColors.darkTextSecondary))),
+                ],
+              )),
+              Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  color: selected
+                      ? DesignColors.accent
+                      : context.themed(DesignColors.darkTextTertiary),
+                  size: 20),
+            ]),
+          )));
 }
 
 class _ErrorPanel extends StatelessWidget {

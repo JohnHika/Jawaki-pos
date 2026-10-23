@@ -5,7 +5,6 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
-import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../catalog/presentation/widgets/add_edit_product_sheet.dart';
 
 typedef OnboardingLoader = Future<Map<String, dynamic>> Function();
@@ -108,7 +107,6 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     final name = widget.companyName?.trim();
-    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: context.themed(DesignColors.darkBg),
       body: SafeArea(
@@ -118,45 +116,9 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
             padding: const EdgeInsets.fromLTRB(DesignSpacing.xl,
                 DesignSpacing.xxl + 4, DesignSpacing.xl, DesignSpacing.xxl + 4),
             children: [
-              // First-mount entrance choreography: each onboarding section
-              // fades/rises in once, staggered (see StaggeredItem). Keys are
-              // stable so pull-to-refresh never replays them.
-              const StaggeredItem(
-                itemKey: 'welcome-mark',
-                child: Icon(Icons.storefront_rounded,
-                    color: DesignColors.brand, size: 52),
-              ),
-              const SizedBox(height: DesignSpacing.lg),
               StaggeredItem(
-                itemKey: 'welcome-title',
-                index: 1,
-                child: LetterRise(
-                  name?.isNotEmpty == true
-                      ? 'Welcome, $name'
-                      : 'Welcome to Counterbase',
-                  delay: const Duration(milliseconds: 300),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                      color: context.themed(DesignColors.darkTextPrimary),
-                      fontWeight: FontWeight.w800),
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.sm),
-              StaggeredItem(
-                itemKey: 'welcome-subtitle',
-                index: 2,
-                child: Text(
-                  'Your workspace is ready. Complete the essentials now or safely return later.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                      color: context.themed(DesignColors.darkTextSecondary), height: 1.4),
-                ),
-              ),
-              const SizedBox(height: DesignSpacing.lg + 2),
-              StaggeredItem(
-                itemKey: 'welcome-features',
-                index: 3,
-                child: _featureStrip(),
+                itemKey: 'welcome-hero',
+                child: _welcomeHero(name),
               ),
               const SizedBox(height: DesignSpacing.xl + 4),
               if (_isLoading)
@@ -195,15 +157,48 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
     );
   }
 
-  Widget _featureStrip() => const Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 8,
-        runSpacing: 8,
+  Widget _welcomeHero(String? name) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FeatureChip(
-              icon: Icons.point_of_sale_rounded, label: 'Sell products'),
-          _FeatureChip(icon: Icons.inventory_2_outlined, label: 'Track stock'),
-          _FeatureChip(icon: Icons.insights_outlined, label: 'See insights'),
+          Row(children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: context.themed(DesignColors.darkSurface),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: context.themed(DesignColors.darkBorder)),
+              ),
+              child: const Icon(Icons.storefront_outlined,
+                  color: DesignColors.accent, size: 21),
+            ),
+            const SizedBox(width: 12),
+            Text('COUNTERBASE / SETUP',
+                style: DesignType.numeric(
+                    fontSize: 11,
+                    color: context.themed(DesignColors.darkTextSecondary),
+                    letterSpacing: 1.1)),
+          ]),
+          const SizedBox(height: 38),
+          Text('Your workspace\nis ready.',
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                    color: context.themed(DesignColors.darkTextPrimary),
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  )),
+          const SizedBox(height: 15),
+          Text(
+            name?.isNotEmpty == true
+                ? '$name now has a place to run. Complete the essentials before your first sale.'
+                : 'Complete the essentials before your first sale. You can return here any time.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: context.themed(DesignColors.darkTextSecondary),
+                  height: 1.55,
+                ),
+          ),
+          const SizedBox(height: 25),
+          Container(height: 1, color: context.themed(DesignColors.darkBorder)),
         ],
       );
 
@@ -220,7 +215,8 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
           Text(
               'You can still add products now and retry the checklist when online.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary))),
+              style: TextStyle(
+                  color: context.themed(DesignColors.darkTextSecondary))),
           TextButton.icon(
               onPressed: _loadOnboarding,
               icon: const Icon(Icons.refresh_rounded),
@@ -233,16 +229,47 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
     final completed =
         steps.where((step) => step['status'] == 'COMPLETED').length;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('$completed of ${steps.length} completed',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: context.themed(DesignColors.darkTextPrimary),
-              fontWeight: FontWeight.w800)),
-      const SizedBox(height: DesignSpacing.sm),
-      LinearProgressIndicator(
-          value: steps.isEmpty ? 0 : completed / steps.length,
-          minHeight: DesignSpacing.sm - 1,
-          borderRadius: BorderRadius.circular(DesignSpacing.radiusFull - 1)),
-      const SizedBox(height: DesignSpacing.lg - 2),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: context.themed(DesignColors.darkSurface),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+          border: Border.all(color: context.themed(DesignColors.darkBorder)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('$completed / ${steps.length}',
+                style: DesignType.numeric(
+                    fontSize: 28,
+                    color: context.themed(DesignColors.darkTextPrimary))),
+            const Spacer(),
+            Text('$completed of ${steps.length} completed',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: context.themed(DesignColors.darkTextSecondary))),
+          ]),
+          const SizedBox(height: 18),
+          LinearProgressIndicator(
+              value: steps.isEmpty ? 0 : completed / steps.length,
+              minHeight: 5,
+              backgroundColor: context.themed(DesignColors.darkBorder),
+              color: DesignColors.accent,
+              borderRadius: BorderRadius.circular(8)),
+          const SizedBox(height: 13),
+          Text('SETUP PROGRESS',
+              style: DesignType.numeric(
+                  fontSize: 10,
+                  color: context.themed(DesignColors.darkTextTertiary),
+                  letterSpacing: 1)),
+        ]),
+      ),
+      const SizedBox(height: 26),
+      Text('Next steps',
+          style: Theme.of(context)
+              .textTheme
+              .titleLarge
+              ?.copyWith(color: context.themed(DesignColors.darkTextPrimary))),
+      const SizedBox(height: 14),
       ...steps.asMap().entries.map(
             (entry) => StaggeredItem(
               itemKey: 'welcome-step-${entry.value['key'] ?? entry.key}',
@@ -282,15 +309,11 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(detail.title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(color: context.themed(DesignColors.darkTextPrimary))),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: context.themed(DesignColors.darkTextPrimary))),
                 Text(detail.subtitle,
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelMedium
-                        ?.copyWith(color: context.themed(DesignColors.darkTextSecondary))),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: context.themed(DesignColors.darkTextSecondary))),
               ])),
           _statusBadge(status),
         ]),
@@ -367,28 +390,6 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
   }
 }
 
-class _FeatureChip extends StatelessWidget {
-  const _FeatureChip({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-            color: DesignColors.brand.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(99)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 15, color: DesignColors.brand),
-          const SizedBox(width: 5),
-          Text(label,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelMedium
-                  ?.copyWith(color: context.themed(DesignColors.darkTextSecondary)))
-        ]),
-      );
-}
-
 class _StepDetail {
   const _StepDetail(this.key, this.title, this.subtitle, this.icon,
       {this.actionLabel = 'Mark complete'});
@@ -413,7 +414,10 @@ const _details = <String, _StepDetail>{
   'add_catalog': _StepDetail('add_catalog', 'Add your catalog',
       'Create products before your first sale.', Icons.inventory_2_outlined,
       actionLabel: 'Add product'),
-  'activate_payment': _StepDetail('activate_payment', 'Set up payments',
-      'Connect your bank account for product-sale payouts.', Icons.payments_outlined,
+  'activate_payment': _StepDetail(
+      'activate_payment',
+      'Set up payments',
+      'Connect your bank account for product-sale payouts.',
+      Icons.payments_outlined,
       actionLabel: 'Connect payout account'),
 };
