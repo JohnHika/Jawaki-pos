@@ -756,7 +756,7 @@ class _BankSettlementCard extends StatelessWidget {
                                     Text(bankName,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: Colors.white,
                                           fontSize: compact ? 14 : 15,
                                           fontWeight: FontWeight.w700,
@@ -807,7 +807,7 @@ class _BankSettlementCard extends StatelessWidget {
                               _displayNumber,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: compact ? 17 : 19,
                                 fontWeight: FontWeight.w600,
