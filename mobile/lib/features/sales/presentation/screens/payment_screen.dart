@@ -399,12 +399,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   border: Border.all(
                       color: DesignColors.accent.withValues(alpha: 0.25)),
                 ),
-                child: const Row(children: [
-                  Icon(Icons.phone_android_rounded, color: DesignColors.accent),
-                  SizedBox(width: DesignSpacing.md),
+                child: Row(children: [
+                  const Icon(Icons.phone_android_rounded,
+                      color: DesignColors.accent),
+                  const SizedBox(width: DesignSpacing.md),
                   Expanded(
-                    child: Text(
-                      'M-Pesa request sent. Ask the customer to approve it, then check the payment status.',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Payment to $shopName',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'M-Pesa request sent. Ask the customer to approve it, then check the payment status. Paystack may show Counterbase on the phone prompt; confirmed funds settle to this shop’s verified payout account.',
+                        ),
+                      ],
                     ),
                   ),
                 ]),

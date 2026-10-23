@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -20,6 +21,7 @@ export class StatementTargetDto {
   })
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(80)
   customerId?: string;
 

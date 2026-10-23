@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import '../services/storage_service.dart';
@@ -2304,6 +2306,59 @@ class AppDatabase extends _$AppDatabase {
     ).get();
     if (result.isEmpty) return null;
     return _customerRowToMap(result.first);
+  }
+
+  /// Debt portions on local credit/split sales that have not reached the
+  /// server yet. Callers merge these into cloud receivables so offline sales
+  /// stay visible without trusting stale local balances after online payments.
+  Future<List<Map<String, dynamic>>> getUnsyncedCustomerDebtSales({
+    String? branchId,
+  }) async {
+    await createCustomersTable();
+    final rows = await customSelect(
+      "SELECT id, customer_id, receipt_number, total, payment_method, "
+      "payment_reference FROM pending_sales "
+      "WHERE is_synced = 0 AND customer_id IS NOT NULL "
+      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED', 'CANCELLED') "
+      "AND UPPER(payment_method) IN ('CREDIT', 'SPLIT')"
+      "${branchId == null ? '' : ' AND branch_id = ?'}",
+      variables: branchId == null ? const [] : [Variable.withString(branchId)],
+    ).get();
+    final debtSales = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final method = row.read<String>('payment_method').toUpperCase();
+      var amount = 0.0;
+      if (method == 'CREDIT') {
+        amount = row.read<double>('total');
+      } else {
+        final reference = row.readNullable<String>('payment_reference');
+        if (reference == null || reference.isEmpty) continue;
+        try {
+          final tenders = jsonDecode(reference);
+          if (tenders is! List) continue;
+          amount = tenders.whereType<Map>().where((tender) {
+            return (tender['method'] ?? '').toString().toUpperCase() ==
+                'CREDIT';
+          }).fold<double>(0, (sum, tender) {
+            final value = tender['amount'];
+            final parsed =
+                value is num ? value.toDouble() : double.tryParse('$value');
+            return sum + (parsed != null && parsed.isFinite ? parsed : 0);
+          });
+        } catch (_) {
+          // An unreadable split record must not take down the customer profile.
+          continue;
+        }
+      }
+      if (!amount.isFinite || amount <= 0.005) continue;
+      debtSales.add({
+        'id': row.read<String>('id'),
+        'customerId': row.read<String>('customer_id'),
+        'receiptNumber': row.read<String>('receipt_number'),
+        'amount': amount,
+      });
+    }
+    return debtSales;
   }
 
   Map<String, dynamic> _customerRowToMap(QueryRow r) {

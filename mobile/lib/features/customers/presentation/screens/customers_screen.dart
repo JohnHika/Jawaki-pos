@@ -8,6 +8,7 @@ import '../../../../core/services/auth_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
+import '../../../finance/domain/finance_models.dart';
 import '../widgets/add_customer_sheet.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
@@ -43,30 +44,64 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     super.dispose();
   }
 
-  /// Credit sales live on the server's receivables ledger (the same numbers
-  /// Finance shows). The phone's own customer table can lag behind it, so lay
-  /// the larger of the two on each customer. Best effort: offline, the local
-  /// figure stands.
+  /// Use server receivables for customers known to the server, then add only
+  /// local credit sales that are still waiting to sync. This lets a payment
+  /// from another device clear stale local balances without hiding offline
+  /// sales. Best effort: offline, the local figure stands.
   Future<List<Map<String, dynamic>>> _withServerBalances(
     List<Map<String, dynamic>> customers,
   ) async {
     try {
       final branchId = getIt<AuthService>().branchId;
       if (branchId == null) return customers;
-      final receivables =
-          await getIt<ApiClient>().getRetailReceivables(branchId);
+      final api = getIt<ApiClient>();
+      final results = await Future.wait<dynamic>([
+        api.getRetailReceivables(branchId),
+        api.getCustomers(),
+        getIt<AppDatabase>().getUnsyncedCustomerDebtSales(branchId: branchId),
+      ]);
+      final receivables = results[0] as List<RetailReceivable>;
+      final remoteCustomers = (results[1] as List<dynamic>)
+          .whereType<Map>()
+          .map((value) => Map<String, dynamic>.from(value))
+          .toList();
+      final unsyncedSales = results[2] as List<Map<String, dynamic>>;
+      final knownCustomerIds = remoteCustomers
+          .map((customer) => customer['id']?.toString())
+          .whereType<String>()
+          .toSet();
       final owed = <String, double>{};
+      final cloudReceipts = <String, Set<String>>{};
       for (final r in receivables) {
         final id = r.customerId;
-        if (id == null || r.outstandingAmount <= 0) continue;
-        owed[id] = (owed[id] ?? 0) + r.outstandingAmount;
+        if (id == null) continue;
+        final receipt = r.receiptNumber?.trim();
+        if (receipt != null && receipt.isNotEmpty) {
+          cloudReceipts.putIfAbsent(id, () => <String>{}).add(receipt);
+        }
+        if (r.outstandingAmount > 0) {
+          owed[id] = (owed[id] ?? 0) + r.outstandingAmount;
+        }
       }
-      if (owed.isEmpty) return customers;
+      final pendingDebt = <String, double>{};
+      for (final sale in unsyncedSales) {
+        final id = sale['customerId']?.toString();
+        if (id == null || !knownCustomerIds.contains(id)) continue;
+        final receipt = sale['receiptNumber']?.toString().trim() ?? '';
+        if (receipt.isNotEmpty &&
+            (cloudReceipts[id]?.contains(receipt) ?? false)) {
+          continue;
+        }
+        pendingDebt[id] = (pendingDebt[id] ?? 0) +
+            ((sale['amount'] as num?)?.toDouble() ?? 0);
+      }
       return customers.map((c) {
-        final server = owed[c['id']];
-        if (server == null) return c;
-        final local = (c['balance'] as num?)?.toDouble() ?? 0;
-        return <String, dynamic>{...c, 'balance': server > local ? server : local};
+        final id = c['id']?.toString();
+        if (id == null || !knownCustomerIds.contains(id)) return c;
+        return <String, dynamic>{
+          ...c,
+          'balance': (owed[id] ?? 0) + (pendingDebt[id] ?? 0),
+        };
       }).toList();
     } catch (_) {
       return customers;

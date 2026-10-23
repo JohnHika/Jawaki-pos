@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -33,7 +34,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   String? _loadError;
   bool _purchasesLoadFailed = false;
   bool _installmentsLoadFailed = false;
+  int _loadGeneration = 0;
   final Set<String> _savingInstallmentIds = <String>{};
+
+  String get _activeCustomerId =>
+      _customer?['id']?.toString() ?? widget.customerId;
 
   String get _customerName {
     final name = _customer?['name']?.toString().trim() ?? '';
@@ -68,15 +73,17 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final routeCustomerId = widget.customerId;
     setState(() {
       _isLoading = _customer == null;
       _loadError = null;
     });
     try {
       final db = getIt<AppDatabase>();
-      final customer = await db.getCustomer(widget.customerId);
+      final customer = await db.getCustomer(routeCustomerId);
+      if (!mounted || generation != _loadGeneration) return;
       if (customer == null) {
-        if (!mounted) return;
         setState(() {
           _customer = null;
           _purchases = [];
@@ -89,6 +96,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         });
         return;
       }
+      final customerId = customer['id']?.toString() ?? routeCustomerId;
 
       Future<T?> capture<T>(Future<T> request) async {
         try {
@@ -101,45 +109,92 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       final values = await Future.wait<dynamic>([
         capture(db.customSelect(
           'SELECT * FROM pending_sales WHERE customer_id = ? ORDER BY created_at DESC',
-          variables: [Variable.withString(widget.customerId)],
+          variables: [Variable.withString(customerId)],
         ).get()),
-        capture(db.getCustomerTopProducts(widget.customerId)),
-        capture(db.getCustomerInstallments(widget.customerId)),
+        capture(db.getCustomerTopProducts(customerId)),
+        capture(db.getCustomerInstallments(customerId)),
       ]);
       final purchases = values[0] as List<QueryRow>?;
       final topProducts = values[1] as List<Map<String, dynamic>>?;
       final installments = values[2] as List<Map<String, dynamic>>?;
-      if (mounted) {
-        setState(() {
-          _customer = customer;
-          if (purchases != null) {
-            _purchases = purchases
-                .map((r) => {
-                      'id': r.read<String>('id'),
-                      'total': r.read<double>('total'),
-                      'paymentMethod': r.read<String>('payment_method'),
-                      'createdAt': r.read<String>('created_at'),
-                    })
-                .toList();
-          }
-          if (topProducts != null) _topProducts = topProducts;
-          if (installments != null) _installments = installments;
-          _isLoading = false;
-          _purchasesLoadFailed = purchases == null;
-          _installmentsLoadFailed = installments == null;
-          _loadError =
-              purchases == null || topProducts == null || installments == null
-                  ? 'Some customer activity could not be loaded. Try again.'
-                  : null;
-        });
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _customer = customer;
+        if (purchases != null) {
+          _purchases = purchases
+              .map((r) => {
+                    'id': r.read<String>('id'),
+                    'total': r.read<double>('total'),
+                    'paymentMethod': r.read<String>('payment_method'),
+                    'createdAt': r.read<String>('created_at'),
+                  })
+              .toList();
+        }
+        if (topProducts != null) _topProducts = topProducts;
+        if (installments != null) _installments = installments;
+        _isLoading = false;
+        _purchasesLoadFailed = purchases == null;
+        _installmentsLoadFailed = installments == null;
+        _loadError =
+            purchases == null || topProducts == null || installments == null
+                ? 'Some customer activity could not be loaded. Try again.'
+                : null;
+      });
+      unawaited(_refreshCloudBalance(customerId, generation));
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _isLoading = false;
           _loadError = 'Could not load this customer. Try again.';
         });
       }
+    }
+  }
+
+  /// Keep the profile balance aligned with Finance after a payment is made on
+  /// another device, while retaining debt from sales still waiting to sync.
+  Future<void> _refreshCloudBalance(String customerId, int generation) async {
+    final branchId = getIt<AuthService>().branchId;
+    if (branchId == null || branchId.isEmpty) return;
+    try {
+      final receivables = await getIt<ApiClient>()
+          .getRetailReceivables(branchId)
+          .timeout(const Duration(seconds: 8));
+      final localDebtSales = await getIt<AppDatabase>()
+          .getUnsyncedCustomerDebtSales(branchId: branchId)
+          .catchError((_) => <Map<String, dynamic>>[]);
+
+      final customerReceivables =
+          receivables.where((item) => item.customerId == customerId).toList();
+      final cloudBalance = customerReceivables.fold<double>(
+        0,
+        (total, item) => total + item.outstandingAmount,
+      );
+      final cloudReceiptNumbers = customerReceivables
+          .map((item) => item.receiptNumber?.trim())
+          .whereType<String>()
+          .where((value) => value.isNotEmpty)
+          .toSet();
+      final localBalance = localDebtSales
+          .where((sale) => sale['customerId'] == customerId)
+          .where((sale) => !cloudReceiptNumbers
+              .contains(sale['receiptNumber']?.toString().trim()))
+          .fold<double>(
+            0,
+            (total, sale) =>
+                total + ((sale['amount'] as num?)?.toDouble() ?? 0),
+          );
+      final balance = (cloudBalance + localBalance).clamp(0, double.infinity);
+      if (!mounted ||
+          generation != _loadGeneration ||
+          _customer?['id']?.toString() != customerId) {
+        return;
+      }
+      setState(() {
+        _customer = <String, dynamic>{..._customer!, 'balance': balance};
+      });
+    } catch (_) {
+      // Keep the local balance visible when the network or API is unavailable.
     }
   }
 
@@ -291,7 +346,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                             });
                             try {
                               await getIt<AppDatabase>().addCustomerInstallment(
-                                widget.customerId,
+                                _activeCustomerId,
                                 amount,
                                 dueDate!,
                                 note: noteCtrl.text.trim(),
@@ -379,7 +434,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       if (allocationsJson == null || allocationsJson.isEmpty) {
         final customerReceivables = receivables
             .where((receivable) =>
-                receivable.customerId == widget.customerId &&
+                receivable.customerId == _activeCustomerId &&
                 receivable.outstandingAmount > 0.005)
             .toList();
         final plan = allocateOldestFirst(customerReceivables, amount);
@@ -494,7 +549,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 ? null
                 : () {
                     ref.read(cartProvider.notifier).setCustomer(
-                          widget.customerId,
+                          _activeCustomerId,
                           customerName: _customerName,
                         );
                     context.go('/');
@@ -670,13 +725,13 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       ),
                       const SizedBox(height: 12),
                       CreditLimitCard(
-                        customerId: widget.customerId,
+                        customerId: _activeCustomerId,
                         customerName: _customerName,
                       ),
                       if ((_customer!['balance'] as num? ?? 0) > 0) ...[
                         const SizedBox(height: 12),
                         SendStatementButton(
-                          customerId: widget.customerId,
+                          customerId: _activeCustomerId,
                           name: _customerName,
                           phone: _customer!['phone'] as String?,
                         ),
