@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
@@ -37,12 +38,23 @@ final _eodProvider =
     _captureEodRequest(api.getAvailableCash(branchId)),
     _captureEodRequest(api.getDailyClose(branchId, date: date)),
   ]);
-  if (results[0]['error'] != null) throw results[0]['error']!;
+  var summary = results[0]['value'] as Map<String, dynamic>?;
+  final summaryError = results[0]['error'];
+  var summaryFromDevice = false;
+  if (summary == null) {
+    // Keep the page useful during a cloud outage, while clearly marking the
+    // local figures as incomplete and preventing an unsafe close.
+    summary = await getIt<AppDatabase>()
+        .getDailySalesSummary(branchId, DateTime.now());
+    summaryFromDevice = true;
+  }
 
   final cashResult = results[1];
   final closeResult = results[2];
   return {
-    'summary': results[0]['value'] as Map<String, dynamic>,
+    'summary': summary,
+    'summaryError': summaryError,
+    'summaryFromDevice': summaryFromDevice,
     'cash': cashResult['value'] as Map<String, dynamic>?,
     'cashError': cashResult['error'],
     'close': closeResult['value'] as Map<String, dynamic>?,
@@ -111,6 +123,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
             summary,
             cash,
             close,
+            summaryError: data['summaryError'],
+            summaryFromDevice: data['summaryFromDevice'] == true,
             cashError: data['cashError'],
             closeError: data['closeError'],
             localServer: data['localServer'] == true,
@@ -131,7 +145,11 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
 
   Widget _buildBody(Map<String, dynamic> summary, Map<String, dynamic> cash,
       Map<String, dynamic>? close,
-      {Object? cashError, Object? closeError, bool localServer = false}) {
+      {Object? summaryError,
+      bool summaryFromDevice = false,
+      Object? cashError,
+      Object? closeError,
+      bool localServer = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final closed = close != null;
 
@@ -143,7 +161,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final expectedCash = cashError == null && cash['availableCash'] != null
         ? asDouble(cash['availableCash'])
         : null;
-    final closeStatusKnown = closeError == null;
+    final closeStatusKnown = closeError == null && summaryError == null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg,
@@ -183,7 +201,9 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         ),
         const SizedBox(height: DesignSpacing.lg),
 
-        if (cashError != null || closeError != null) ...[
+        if (summaryError != null ||
+            cashError != null ||
+            closeError != null) ...[
           StaggeredItem(
             itemKey: 'eod-partial-warning',
             child: Container(
@@ -200,13 +220,17 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                   const SizedBox(width: DesignSpacing.sm),
                   Expanded(
                     child: Text(
-                      closeError != null
-                          ? localServer
-                              ? 'Sales are saved on this device, but the local server cannot verify or record an end-of-day close. Reconnect to the cloud workspace and refresh before closing.'
-                              : 'Sales loaded, but close status could not be checked. ${apiErrorMessage(closeError)} Refresh before closing to avoid changing an existing close.'
-                          : localServer
-                              ? 'Sales are available on this device, but expected till cash is only available from the cloud workspace.'
-                              : 'Sales loaded, but expected till cash could not be fetched. ${apiErrorMessage(cashError!)} You can still review today’s sales.',
+                      summaryError != null
+                          ? summaryFromDevice
+                              ? 'Cloud sales totals are unavailable. Showing sales saved on this device; reconnect and refresh before closing so the report includes every device. ${apiErrorMessage(summaryError)}'
+                              : 'Sales totals could not be verified. ${apiErrorMessage(summaryError)} Reconnect and refresh before closing.'
+                          : closeError != null
+                              ? localServer
+                                  ? 'Sales are saved on this device, but the local server cannot verify or record an end-of-day close. Reconnect to the cloud workspace and refresh before closing.'
+                                  : 'Sales loaded, but close status could not be checked. ${apiErrorMessage(closeError)} Refresh before closing to avoid changing an existing close.'
+                              : localServer
+                                  ? 'Sales are available on this device, but expected till cash is only available from the cloud workspace.'
+                                  : 'Sales loaded, but expected till cash could not be fetched. ${apiErrorMessage(cashError!)} You can still review today’s sales.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -268,14 +292,17 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           itemKey: 'eod-close-cta',
           index: closed ? 3 : 2,
           child: GradientButton(
-            label: !closeStatusKnown
-                ? 'Connect to check close status'
-                : closed
-                    ? 'Re-close day'
-                    : 'Close end of day',
+            label: summaryError != null
+                ? 'Reconnect to verify sales'
+                : !closeStatusKnown
+                    ? 'Connect to check close status'
+                    : closed
+                        ? 'Re-close day'
+                        : 'Close end of day',
             icon: Icons.check_circle_outline_rounded,
-            onPressed:
-                closeStatusKnown ? () => _showCloseSheet(expectedCash) : null,
+            onPressed: closeStatusKnown && summaryError == null
+                ? () => _showCloseSheet(expectedCash)
+                : null,
             height: 52,
             borderRadius: DesignSpacing.radiusMd,
           ),

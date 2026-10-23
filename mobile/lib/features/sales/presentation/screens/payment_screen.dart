@@ -196,6 +196,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final cart = ref.watch(cartProvider);
     final paymentState = ref.watch(paymentProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shopName = ref.watch(tenantIdentityProvider).companyName;
 
     return Scaffold(
       appBar: AppBar(
@@ -334,7 +335,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               subtitle: _checkingPayoutStatus
                   ? 'Checking Paystack payout account'
                   : _canAcceptMpesa
-                      ? 'Customer pays your shop through Paystack'
+                      ? 'Customer pays $shopName through Paystack'
                       : 'Requires a verified business payout account',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.mpesa,
@@ -519,7 +520,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         style: Theme.of(sheetContext).textTheme.titleLarge),
                     const SizedBox(height: DesignSpacing.xs),
                     Text(
-                      'Enter the payer’s phone number. Paystack will send an M-Pesa prompt for $shopName and the amount below.',
+                      'This request is for $shopName. The M-Pesa prompt may show “PAYSTACK Account no. Counterbase”; Paystack controls that label. Confirmed payments settle to this shop’s verified payout account.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall

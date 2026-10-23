@@ -698,13 +698,52 @@ class AppDatabase extends _$AppDatabase {
   // Pending Sales
   Future<void> createPendingSale(
     PendingSalesCompanion sale,
-    List<PendingSaleItemsCompanion> items,
-  ) async {
+    List<PendingSaleItemsCompanion> items, {
+    double customerBalanceDelta = 0,
+    bool decrementLocalStock = false,
+  }) async {
     await transaction(() async {
       await into(pendingSales).insert(sale);
       await batch((batch) {
         batch.insertAll(pendingSaleItems, items);
       });
+
+      // A local sale, its stock deductions, and any new customer debt must
+      // commit together. Otherwise an error between these writes can leave a
+      // receipt without matching stock or debt, and a retry can double-charge.
+      if (customerBalanceDelta != 0) {
+        final customerId =
+            sale.customerId.present ? sale.customerId.value : null;
+        if (customerId == null || customerId.isEmpty) {
+          throw StateError('A customer is required for a debt sale');
+        }
+        await createCustomersTable();
+        final updatedCustomers = await customUpdate(
+          'UPDATE customers SET balance = balance + ? WHERE id = ?',
+          variables: [
+            Variable.withReal(customerBalanceDelta),
+            Variable.withString(customerId),
+          ],
+        );
+        if (updatedCustomers != 1) {
+          throw StateError('The selected customer could not be found');
+        }
+      }
+
+      if (decrementLocalStock) {
+        if (!sale.branchId.present || sale.branchId.value.isEmpty) {
+          throw StateError('A branch is required to update local stock');
+        }
+        final branchId = sale.branchId.value;
+        for (final item in items) {
+          if (!item.productId.present || !item.quantity.present) continue;
+          await decrementStock(
+            item.productId.value,
+            branchId,
+            item.quantity.value,
+          );
+        }
+      }
     });
   }
 
@@ -2053,9 +2092,19 @@ class AppDatabase extends _$AppDatabase {
       '  note TEXT, '
       '  status TEXT NOT NULL DEFAULT \'pending\', ' // pending, paid, overdue
       '  created_at TEXT NOT NULL, '
-      '  paid_at TEXT'
+      '  paid_at TEXT, '
+      '  collection_allocations TEXT'
       ')',
     );
+    final columns = await customSelect(
+      'PRAGMA table_info(customer_installments)',
+    ).get();
+    if (!columns
+        .any((row) => row.read<String>('name') == 'collection_allocations')) {
+      await customStatement(
+        'ALTER TABLE customer_installments ADD COLUMN collection_allocations TEXT',
+      );
+    }
   }
 
   Future<String> addCustomerInstallment(
@@ -2064,6 +2113,9 @@ class AppDatabase extends _$AppDatabase {
     DateTime dueDate, {
     String? note,
   }) async {
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError.value(amount, 'amount', 'Must be a positive amount');
+    }
     await createCustomerInstallmentsTable();
     final id = 'inst-${DateTime.now().microsecondsSinceEpoch}';
     await customInsert(
@@ -2100,20 +2152,100 @@ class AppDatabase extends _$AppDatabase {
             'status': r.read<String>('status'),
             'createdAt': r.read<String>('created_at'),
             'paidAt': r.readNullable<String>('paid_at'),
+            'collectionAllocations':
+                r.readNullable<String>('collection_allocations'),
           },
         )
         .toList();
   }
 
-  Future<void> markInstallmentPaid(String installmentId) async {
+  /// Persist the exact receivable split before sending a cash collection. If
+  /// the server accepts it and the phone loses its reply, retry with the same
+  /// allocations and idempotency key instead of collecting the cash twice.
+  Future<String> prepareInstallmentCollection(
+    String installmentId,
+    String allocationsJson,
+  ) async {
     await createCustomerInstallmentsTable();
-    await customStatement(
-      'UPDATE customer_installments SET status = \'paid\', paid_at = ? WHERE id = ?',
-      [
-        DateTime.now().toIso8601String(),
-        installmentId,
-      ],
-    );
+    return transaction(() async {
+      final current = await customSelect(
+        'SELECT status, collection_allocations FROM customer_installments WHERE id = ?',
+        variables: [Variable.withString(installmentId)],
+      ).getSingleOrNull();
+      if (current == null) throw StateError('Payment schedule was not found');
+      final status = current.read<String>('status').toLowerCase();
+      if (status != 'pending' && status != 'overdue') {
+        throw StateError('This payment schedule is already complete');
+      }
+      final existing = current.readNullable<String>('collection_allocations');
+      if (existing != null && existing.isNotEmpty) return existing;
+
+      final changed = await customUpdate(
+        'UPDATE customer_installments SET collection_allocations = ? '
+        'WHERE id = ? AND status IN (\'pending\', \'overdue\') '
+        'AND collection_allocations IS NULL',
+        variables: [
+          Variable.withString(allocationsJson),
+          Variable.withString(installmentId),
+        ],
+      );
+      if (changed == 1) return allocationsJson;
+
+      final latest = await customSelect(
+        'SELECT collection_allocations FROM customer_installments WHERE id = ?',
+        variables: [Variable.withString(installmentId)],
+      ).getSingleOrNull();
+      final saved = latest?.readNullable<String>('collection_allocations');
+      if (saved != null && saved.isNotEmpty) return saved;
+      throw StateError('Could not prepare this payment. Refresh and retry.');
+    });
+  }
+
+  Future<bool> markInstallmentPaid(String installmentId) async {
+    await createCustomerInstallmentsTable();
+    await createCustomersTable();
+    return transaction(() async {
+      final installment = await customSelect(
+        'SELECT customer_id, amount, status FROM customer_installments WHERE id = ?',
+        variables: [Variable.withString(installmentId)],
+      ).getSingleOrNull();
+      final status = installment?.read<String>('status').toLowerCase();
+      if (installment == null || (status != 'pending' && status != 'overdue')) {
+        return false;
+      }
+
+      final customerId = installment.read<String>('customer_id');
+      final amount = installment.read<double>('amount');
+      final paidAt = DateTime.now().toIso8601String();
+      final updatedInstallments = await customUpdate(
+        'UPDATE customer_installments SET status = \'paid\', paid_at = ? '
+        'WHERE id = ? AND status IN (\'pending\', \'overdue\')',
+        variables: [
+          Variable.withString(paidAt),
+          Variable.withString(installmentId),
+        ],
+      );
+      if (updatedInstallments != 1) return false;
+
+      // A stale screen must not let a scheduled amount push the account below
+      // zero. If the outstanding balance changed, roll back the paid marker as
+      // part of this transaction and ask the caller to refresh.
+      final updatedCustomers = await customUpdate(
+        'UPDATE customers SET balance = balance - ? '
+        'WHERE id = ? AND balance >= ? - 0.005',
+        variables: [
+          Variable.withReal(amount),
+          Variable.withString(customerId),
+          Variable.withReal(amount),
+        ],
+      );
+      if (updatedCustomers != 1) {
+        throw StateError(
+          'The outstanding balance changed. Refresh the customer and try again.',
+        );
+      }
+      return true;
+    });
   }
 
   /// Installments past their due date and still unpaid, across all

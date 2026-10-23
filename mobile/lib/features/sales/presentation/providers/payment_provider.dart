@@ -357,13 +357,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'CREDIT',
         total: amount,
         discountAmount: discountAmount,
+        customerBalanceDelta: amount,
         paymentReference: customerId,
         customerId: customerId,
       );
-
-      // The whole amount is owed — add it to the customer's running debt
-      // balance so the Customers screen and profile reflect what they owe.
-      await _database.updateCustomerBalance(customerId, amount);
 
       await _syncOrQueueSale(
         saleId,
@@ -468,14 +465,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentMethod: 'SPLIT',
         total: amount,
         discountAmount: discountAmount,
+        customerBalanceDelta: debtPortion,
         paymentReference: tendersJson,
         customerId: customerId,
       );
-
-      // The debt portion of the split becomes customer debt.
-      if (debtPortion > 0 && customerId != null) {
-        await _database.updateCustomerBalance(customerId, debtPortion);
-      }
 
       await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
           tenders, customerId, _SaleExtras(discountAmount, couponCode));
@@ -495,6 +488,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required String paymentMethod,
     required double total,
     double discountAmount = 0,
+    double customerBalanceDelta = 0,
     String? paymentReference,
     String? customerId,
   }) async {
@@ -539,16 +533,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
                 quantityPerUnit: Value(item.unitConversionFactor),
               ))
           .toList(),
+      customerBalanceDelta: customerBalanceDelta,
+      decrementLocalStock: true,
     );
-
-    // Decrement local stock
-    for (final item in items) {
-      await _database.decrementStock(
-        item.productId,
-        _authService.branchId!,
-        item.quantity,
-      );
-    }
   }
 
   Future<void> _syncOrQueueSale(
@@ -562,7 +549,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     _SaleExtras extras = const _SaleExtras(),
   ]) async {
     if (!_connectivity.isOnline) {
-      await _queueSaleForSync(
+      await _tryQueueSaleForSync(
         saleId,
         items,
         paymentMethod,
@@ -598,6 +585,34 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         await _syncService.pullChanges();
       } catch (_) {}
     } catch (_) {
+      await _tryQueueSaleForSync(
+        saleId,
+        items,
+        paymentMethod,
+        paidAmount,
+        paymentReference,
+        tenders,
+        customerId,
+        extras,
+      );
+    }
+  }
+
+  /// A local sale is committed before this sync attempt. If both network sync
+  /// and queue persistence fail, keep the valid local receipt successful so a
+  /// cashier isn't prompted to ring up the same sale again. The sync recovery
+  /// sweep can re-enqueue any remaining unsynced sale later.
+  Future<void> _tryQueueSaleForSync(
+    String saleId,
+    List<CartItem> items,
+    String paymentMethod,
+    double paidAmount,
+    String? paymentReference,
+    List<PaymentTender>? tenders,
+    String? customerId,
+    _SaleExtras extras,
+  ) async {
+    try {
       await _queueSaleForSync(
         saleId,
         items,
@@ -608,6 +623,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId,
         extras,
       );
+    } catch (_) {
+      // Recovery uses pending_sales.is_synced=false as its source of truth.
     }
   }
 

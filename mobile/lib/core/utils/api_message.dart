@@ -7,6 +7,8 @@ String apiErrorMessage(Object error) {
     if (data is Map) {
       final message = data['message'];
       if (message is String && message.trim().isNotEmpty) {
+        final validationMessage = _friendlyValidationMessage(message.trim());
+        if (validationMessage != null) return validationMessage;
         // Old API deployments returned Express/Nest's raw route miss to the
         // app, exposing paths like "Cannot POST /api/v1/mpesa/parse".
         if (RegExp(r'^Cannot (?:GET|POST|PUT|PATCH|DELETE) /api/v\d+/')
@@ -16,7 +18,8 @@ String apiErrorMessage(Object error) {
         return message;
       }
       if (message is List && message.isNotEmpty) {
-        return message.first.toString();
+        final first = message.first.toString();
+        return _friendlyValidationMessage(first) ?? first;
       }
       final inner = data['error'];
       if (inner is Map && inner['message'] is String) {
@@ -38,6 +41,13 @@ String apiErrorMessage(Object error) {
     }
   }
   return 'Something went wrong. Please try again.';
+}
+
+String? _friendlyValidationMessage(String message) {
+  if (message.trim().toLowerCase() == 'customerid must be a uuid') {
+    return 'This customer record needs to sync before a statement can be sent. Reconnect and try again.';
+  }
+  return null;
 }
 
 /// "just now", "5 min ago", "3 h ago", "Yesterday", "12 Oct".

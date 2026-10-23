@@ -21,6 +21,7 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
   List<Product> _products = [];
   List<Product> _filteredProducts = [];
   bool _isLoading = true;
+  bool _loadFailed = false;
   String? _selectedProductId;
 
   @override
@@ -38,7 +39,11 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
   }
 
   Future<void> _loadProducts() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _loadFailed = false;
+    });
 
     try {
       final db = getIt<AppDatabase>();
@@ -51,11 +56,9 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading products: $e');
+      debugPrint('Product picker load failed: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading products: $e')),
-        );
+        setState(() => _loadFailed = true);
       }
     } finally {
       if (mounted) {
@@ -151,23 +154,31 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
             controller: _searchController,
             autofocus: false,
             style: TextStyle(
-              color: isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary,
+              color: isDark
+                  ? DesignColors.darkTextPrimary
+                  : DesignColors.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'Search by name or SKU...',
               hintStyle: TextStyle(
-                color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+                color: isDark
+                    ? DesignColors.darkTextTertiary
+                    : DesignColors.textTertiary,
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
-                color: isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+                color: isDark
+                    ? DesignColors.darkTextTertiary
+                    : DesignColors.textTertiary,
               ),
               suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(tooltip: 'Clear search', 
+                  ? IconButton(
+                      tooltip: 'Clear search',
                       icon: Icon(
                         Icons.clear_rounded,
-                        color:
-                            isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary,
+                        color: isDark
+                            ? DesignColors.darkTextTertiary
+                            : DesignColors.textTertiary,
                       ),
                       onPressed: () => _searchController.clear(),
                     )
@@ -226,158 +237,183 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                     color: DesignColors.brand,
                   ),
                 )
-              : _filteredProducts.isEmpty
+              : _loadFailed
                   ? EmptyState(
-                      icon: Icons.inventory_2_outlined,
-                      title: _searchController.text.isEmpty
-                          ? 'No products available'
-                          : 'No products found',
-                      subtitle: _searchController.text.isNotEmpty
-                          ? 'Try a different search term'
-                          : null,
-                      actionIcon: Icons.clear_rounded,
-                      actionLabel: _searchController.text.isNotEmpty
-                          ? 'Clear search'
-                          : null,
-                      onAction: _searchController.text.isNotEmpty
-                          ? () => _searchController.clear()
-                          : null,
+                      icon: Icons.cloud_off_rounded,
+                      title: "Couldn't load products",
+                      subtitle: 'Check your connection and try again.',
+                      actionLabel: 'Try again',
+                      actionIcon: Icons.refresh_rounded,
+                      iconColor: DesignColors.warning,
+                      onAction: _loadProducts,
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _filteredProducts.length,
-                      itemBuilder: (context, index) {
-                        final product = _filteredProducts[index];
-                        final isSelected = product.id == _selectedProductId;
+                  : _filteredProducts.isEmpty
+                      ? EmptyState(
+                          icon: Icons.inventory_2_outlined,
+                          title: _searchController.text.isEmpty
+                              ? 'No products available'
+                              : 'No products found',
+                          subtitle: _searchController.text.isNotEmpty
+                              ? 'Try a different search term'
+                              : null,
+                          actionIcon: Icons.clear_rounded,
+                          actionLabel: _searchController.text.isNotEmpty
+                              ? 'Clear search'
+                              : null,
+                          onAction: _searchController.text.isNotEmpty
+                              ? () => _searchController.clear()
+                              : null,
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _filteredProducts.length,
+                          itemBuilder: (context, index) {
+                            final product = _filteredProducts[index];
+                            final isSelected = product.id == _selectedProductId;
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: GlassCard(
-                            onTap: () {
-                              setState(() => _selectedProductId = product.id);
-                            },
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            borderRadius: 12,
-                            blur: 8,
-                            tint: isSelected
-                                ? DesignColors.brand.withValues(alpha: 0.08)
-                                : Colors.transparent,
-                            borderColor: isSelected
-                                ? DesignColors.brand.withValues(alpha: 0.3)
-                                : (isDark
-                                    ? DesignColors.darkBorder
-                                    : DesignColors.surfaceBorder),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: DesignColors.brand
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      product.name[0].toUpperCase(),
-                                      style: const TextStyle(
-                                        color: DesignColors.brand,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: GlassCard(
+                                onTap: () {
+                                  setState(
+                                      () => _selectedProductId = product.id);
+                                },
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                borderRadius: 12,
+                                blur: 8,
+                                tint: isSelected
+                                    ? DesignColors.brand.withValues(alpha: 0.08)
+                                    : Colors.transparent,
+                                borderColor: isSelected
+                                    ? DesignColors.brand.withValues(alpha: 0.3)
+                                    : (isDark
+                                        ? DesignColors.darkBorder
+                                        : DesignColors.surfaceBorder),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: DesignColors.brand
+                                            .withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(
+                                            DesignSpacing.radiusMd),
                                       ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        product.name,
-                                        style: TextStyle(
-                                          fontWeight: isSelected
-                                              ? FontWeight.w700
-                                              : FontWeight.w600,
-                                          fontSize: 14,
-                                          color: isDark
-                                              ? DesignColors.darkTextPrimary
-                                              : DesignColors.textPrimary,
+                                      child: Center(
+                                        child: Text(
+                                          product.name.isEmpty
+                                              ? '?'
+                                              : String.fromCharCode(
+                                                  product.name.runes.first,
+                                                ).toUpperCase(),
+                                          style: const TextStyle(
+                                            color: DesignColors.brand,
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Row(
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'SKU: ${product.sku}',
+                                            product.name,
                                             style: TextStyle(
-                                              fontSize: 11,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w600,
+                                              fontSize: 14,
                                               color: isDark
-                                                  ? DesignColors
-                                                      .darkTextSecondary
-                                                  : DesignColors.textTertiary,
+                                                  ? DesignColors.darkTextPrimary
+                                                  : DesignColors.textPrimary,
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 1,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: product.isActive
-                                                  ? DesignColors.success
-                                                      .withValues(alpha: 0.14)
-                                                  : (isDark
-                                                      ? DesignColors.darkSurfaceElevated
-                                                      : DesignColors.surfaceBorder),
-                                              borderRadius:
-                                                  BorderRadius.circular(DesignSpacing.radiusSm),
-                                            ),
-                                            child: Text(
-                                              product.isActive
-                                                  ? 'Active'
-                                                  : 'Inactive',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                color: product.isActive
-                                                    ? DesignColors.success
-                                                    : (isDark
-                                                        ? DesignColors.darkTextTertiary
-                                                        : DesignColors.textTertiary),
-                                                fontWeight: FontWeight.w600,
+                                          const SizedBox(height: 2),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                'SKU: ${product.sku}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: isDark
+                                                      ? DesignColors
+                                                          .darkTextSecondary
+                                                      : DesignColors
+                                                          .textTertiary,
+                                                ),
                                               ),
-                                            ),
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 1,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: product.isActive
+                                                      ? DesignColors.success
+                                                          .withValues(
+                                                              alpha: 0.14)
+                                                      : (isDark
+                                                          ? DesignColors
+                                                              .darkSurfaceElevated
+                                                          : DesignColors
+                                                              .surfaceBorder),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          DesignSpacing
+                                                              .radiusSm),
+                                                ),
+                                                child: Text(
+                                                  product.isActive
+                                                      ? 'Active'
+                                                      : 'Inactive',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    color: product.isActive
+                                                        ? DesignColors.success
+                                                        : (isDark
+                                                            ? DesignColors
+                                                                .darkTextTertiary
+                                                            : DesignColors
+                                                                .textTertiary),
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
+                                    ),
+                                    Text(
+                                      formatMoney(product.price),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                        color: DesignColors.brand,
+                                      ),
+                                    ),
+                                    if (isSelected) ...[
+                                      const SizedBox(width: 8),
+                                      const Icon(
+                                        Icons.check_circle_rounded,
+                                        color: DesignColors.brand,
+                                        size: 22,
+                                      ),
                                     ],
-                                  ),
+                                  ],
                                 ),
-                                Text(
-                                  formatMoney(product.price),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14,
-                                    color: DesignColors.brand,
-                                  ),
-                                ),
-                                if (isSelected) ...[
-                                  const SizedBox(width: 8),
-                                  const Icon(
-                                    Icons.check_circle_rounded,
-                                    color: DesignColors.brand,
-                                    size: 22,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                              ),
+                            );
+                          },
+                        ),
         ),
 
         // Action Buttons
@@ -391,13 +427,17 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
                     ),
                     side: BorderSide(
-                      color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+                      color: isDark
+                          ? DesignColors.darkBorder
+                          : DesignColors.surfaceBorder,
                     ),
-                    foregroundColor:
-                        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary,
+                    foregroundColor: isDark
+                        ? DesignColors.darkTextSecondary
+                        : DesignColors.textSecondary,
                   ),
                   child: const Text('Cancel'),
                 ),
@@ -406,19 +446,21 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
               Expanded(
                 child: GradientButton(
                   label: 'Select',
-                  onPressed: _selectedProductId == null
-                      ? null
-                      : () {
-                          final selectedProduct = _products.firstWhere(
-                            (p) => p.id == _selectedProductId,
-                          );
-                          Navigator.pop(context, {
-                            'id': selectedProduct.id,
-                            'name': selectedProduct.name,
-                            'sku': selectedProduct.sku,
-                            'unit': selectedProduct.unit,
-                          });
-                        },
+                  onPressed:
+                      _isLoading || _loadFailed || _selectedProductId == null
+                          ? null
+                          : () {
+                              final matches = _products
+                                  .where((p) => p.id == _selectedProductId);
+                              if (matches.isEmpty) return;
+                              final selectedProduct = matches.first;
+                              Navigator.pop(context, {
+                                'id': selectedProduct.id,
+                                'name': selectedProduct.name,
+                                'sku': selectedProduct.sku,
+                                'unit': selectedProduct.unit,
+                              });
+                            },
                   height: 48,
                   borderRadius: 12,
                 ),

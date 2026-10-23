@@ -13,6 +13,7 @@ import '../../../../core/auth/app_roles.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/receipt_vision_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
+import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -618,6 +619,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     required FinanceHubController controller,
   }) async {
     final formKey = GlobalKey<FormState>();
+    final shopName = ref.read(tenantIdentityProvider).companyName;
     final amountController =
         TextEditingController(text: amount.toStringAsFixed(2));
     final phoneController = TextEditingController();
@@ -640,7 +642,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               ),
               const SizedBox(height: DesignSpacing.sm),
               Text(
-                'Paystack will prompt the payer. Counterbase updates this debt only after the payment is verified.',
+                'This request is for $shopName. The M-Pesa prompt may show “PAYSTACK Account no. Counterbase”; Paystack controls that label. The debt changes only after Paystack verifies payment.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
