@@ -137,7 +137,7 @@ class _CompanyActivationScreenState
       }
       if (!await launchUrl(
         Uri.parse(url),
-        mode: LaunchMode.externalApplication,
+        mode: LaunchMode.inAppBrowserView,
       )) {
         throw Exception('Could not open the secure payment page.');
       }

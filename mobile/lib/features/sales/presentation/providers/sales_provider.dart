@@ -72,12 +72,72 @@ List<Map<String, dynamic>>? _extractTenders(PendingSale sale) {
   }
 }
 
+double _receiptAmount(Object? value) {
+  final amount = value is num ? value.toDouble() : double.tryParse('$value');
+  return amount != null && amount.isFinite ? amount : 0;
+}
+
+Map<String, dynamic> _normalizeRemoteReceipt(Map<String, dynamic> response) {
+  final payload = response['data'] is Map
+      ? Map<String, dynamic>.from(response['data'] as Map)
+      : response;
+  final total = _receiptAmount(payload['total'] ?? payload['totalAmount']);
+  final paid = _receiptAmount(payload['paidAmount']);
+  final change = _receiptAmount(payload['changeAmount']);
+  final method = (payload['paymentMethod'] ?? 'CASH').toString().toUpperCase();
+  final rawTenders = payload['paymentTenders'] ?? payload['tenders'];
+  final tenders = rawTenders is List
+      ? rawTenders
+          .whereType<Map>()
+          .map((tender) => Map<String, dynamic>.from(tender))
+          .toList()
+      : const <Map<String, dynamic>>[];
+  final creditTenders = tenders
+      .where((tender) =>
+          (tender['method'] ?? '').toString().toUpperCase() == 'CREDIT')
+      .fold<double>(0, (sum, tender) => sum + _receiptAmount(tender['amount']));
+  final remaining = total - paid + change;
+  final outstanding = method == 'SPLIT' && creditTenders > 0
+      ? creditTenders
+      : remaining > 0
+          ? remaining
+          : 0.0;
+  final rawItems = payload['items'] as List? ?? const [];
+  final items = rawItems.whereType<Map>().map((item) {
+    final normalized = Map<String, dynamic>.from(item);
+    normalized['total'] = item['total'] ?? item['totalAmount'] ?? 0;
+    normalized['productName'] = item['productName'] ?? item['name'] ?? 'Item';
+    return normalized;
+  }).toList();
+  final branch = payload['branch'] is Map
+      ? Map<String, dynamic>.from(payload['branch'] as Map)
+      : const <String, dynamic>{};
+
+  return {
+    ...payload,
+    'subtotal': payload['subtotal'] ?? 0,
+    'discount': payload['discount'] ?? payload['discountAmount'] ?? 0,
+    'tax': payload['tax'] ?? payload['taxAmount'] ?? 0,
+    'total': total,
+    'branchName': payload['branchName'] ?? branch['name'],
+    'branchAddress': payload['branchAddress'] ?? branch['address'],
+    'branchPhone': payload['branchPhone'] ?? branch['phone'],
+    'cashierName': payload['cashierName'] ?? payload['userName'],
+    'customerName': payload['customerName'],
+    'customerPhone': payload['customerPhone'],
+    'paymentMethod': method,
+    'paymentTenders': tenders,
+    'outstandingBalance': outstanding,
+    'items': items,
+  };
+}
+
 // Receipt provider — reads the local sale first. The sale, its items, and
 // the customer all already exist locally the instant a sale is completed
 // (written by PaymentNotifier), so the receipt loads instantly and offline
 // instead of depending on a server round-trip that hasn't happened yet (or
 // hitting the wrong endpoint with a local id). Falls back to the remote
-// receipt only if the local row is genuinely missing.
+// sale by ID only if the local row is genuinely missing.
 final receiptProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, saleId) async {
   final database = getIt<AppDatabase>();
@@ -130,11 +190,10 @@ final receiptProvider =
     };
   }
 
-  // Local row missing (e.g. viewing an old sale from another device) —
-  // fall back to the server. getReceipt is keyed on receiptNumber, so this
-  // only succeeds if saleId happens to be a receipt number.
+  // Local row missing (e.g. viewing an old sale from another device) — fetch
+  // by sale ID, then adapt the API shape to the same receipt model above.
   final apiClient = getIt<ApiClient>();
-  return await apiClient.getReceipt(saleId);
+  return _normalizeRemoteReceipt(await apiClient.getSale(saleId));
 });
 
 // Daily summary provider

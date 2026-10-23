@@ -1209,7 +1209,7 @@ class SettingsScreen extends ConsumerWidget {
                       InkWell(
                         onTap: () => launchUrl(
                           Uri.parse('https://archeaxon.com'),
-                          mode: LaunchMode.externalApplication,
+                          mode: LaunchMode.inAppBrowserView,
                         ),
                         child: Text(
                           'archeaxon.com',

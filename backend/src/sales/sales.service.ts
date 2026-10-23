@@ -173,10 +173,9 @@ export class SalesService {
     const discountAmount = dto.discountAmount || 0;
     const totalAmount = subtotal + totalTax - discountAmount;
 
-    // SPLIT sales derive paidAmount from the sum of their tenders instead
-    // of a single top-level paidAmount — the two are mutually exclusive
-    // representations of the same thing, and tenders is the source of
-    // truth when present.
+    // SPLIT sales derive their payment amounts from the tender rows. CREDIT
+    // tenders are obligations, not money received, so keep them out of
+    // Sale.paidAmount while creating their receivable below.
     if (dto.paymentMethod === PaymentMethod.SPLIT) {
       if (!dto.tenders || dto.tenders.length < 2) {
         throw new BadRequestException('A split payment needs at least 2 tenders');
@@ -189,28 +188,47 @@ export class SalesService {
     }
 
     const tenderTotal = dto.tenders?.reduce((sum, t) => sum + t.amount, 0);
+    const splitCreditPortion = dto.paymentMethod === PaymentMethod.SPLIT
+      ? (dto.tenders ?? [])
+          .filter((tender) => tender.method === PaymentMethod.CREDIT)
+          .reduce((sum, tender) => sum + tender.amount, 0)
+      : 0;
+
+    if (
+      dto.paymentMethod === PaymentMethod.SPLIT &&
+      splitCreditPortion > 0 &&
+      Math.round(tenderTotal! * 100) > Math.round(totalAmount * 100)
+    ) {
+      throw new BadRequestException(
+        'A split payment that includes debt must add up exactly to the sale total.',
+      );
+    }
 
     // For CREDIT payment, paidAmount is optional (defaults to 0, creating an outstanding balance)
     const paidAmount = dto.paymentMethod === PaymentMethod.SPLIT
-      ? tenderTotal!
+      ? tenderTotal! - splitCreditPortion
       : dto.paymentMethod === PaymentMethod.CREDIT
         ? (dto.paidAmount ?? 0)
         : (dto.paidAmount ?? totalAmount);
 
-    const changeAmount = paidAmount - totalAmount;
+    const changeAmount = dto.paymentMethod === PaymentMethod.SPLIT
+      ? Math.round((tenderTotal! - totalAmount) * 100) / 100
+      : Math.round((paidAmount - totalAmount) * 100) / 100;
 
-    if (paidAmount < totalAmount && dto.paymentMethod !== PaymentMethod.CREDIT) {
+    if (
+      dto.paymentMethod === PaymentMethod.SPLIT
+        ? Math.round(tenderTotal! * 100) < Math.round(totalAmount * 100)
+        : Math.round(paidAmount * 100) < Math.round(totalAmount * 100) &&
+          dto.paymentMethod !== PaymentMethod.CREDIT
+    ) {
       throw new BadRequestException('Paid amount is less than total');
     }
 
     // A credit obligation is derived server-side from the receipt's payment
     // representation. Clients never provide a receivable balance. For SPLIT,
-    // only the explicit CREDIT tender becomes debt; cash/M-Pesa/card tenders
-    // remain settled sale components.
+    // only the explicit CREDIT tender becomes debt; cash tenders are settled.
     const creditPortion = dto.paymentMethod === PaymentMethod.SPLIT
-      ? (dto.tenders ?? [])
-          .filter((tender) => tender.method === PaymentMethod.CREDIT)
-          .reduce((sum, tender) => sum + tender.amount, 0)
+      ? splitCreditPortion
       : dto.paymentMethod === PaymentMethod.CREDIT
         ? Math.max(totalAmount - paidAmount, 0)
         : 0;

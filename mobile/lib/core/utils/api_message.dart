@@ -15,16 +15,19 @@ String apiErrorMessage(Object error) {
         }
         return message;
       }
-      if (message is List && message.isNotEmpty)
+      if (message is List && message.isNotEmpty) {
         return message.first.toString();
+      }
       final inner = data['error'];
       if (inner is Map && inner['message'] is String) {
         return inner['message'] as String;
       }
     }
     final status = error.response?.statusCode;
+    if (status == 401) return 'Your session expired. Sign in again.';
     if (status == 403) return "You don't have permission to do that.";
     if (status == 404) return 'That was not found.';
+    if (status == 429) return 'Too many requests. Wait a moment and try again.';
     if (status != null && status >= 500) {
       return 'Server error. Please try again in a moment.';
     }

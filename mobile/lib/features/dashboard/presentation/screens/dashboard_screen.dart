@@ -25,6 +25,7 @@ import '../../../accountability/presentation/widgets/shop_attention_card.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
+import '../../../news/presentation/providers/news_provider.dart';
 
 final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
   ref,
@@ -335,6 +336,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ),
               const SizedBox(height: DesignSpacing.xl),
+
+              if (ref.watch(permissionsProvider).has('news.view')) ...[
+                _BusinessNewsEntryCard(
+                  onOpen: () => context.push('/news'),
+                ),
+                const SizedBox(height: DesignSpacing.xl),
+              ],
 
               // Anything in the shop that needs the owner's eye (or an all-clear).
               const ShopAttentionCard(),
@@ -1186,5 +1194,107 @@ Sent from your POS workspace
       ],
     );
     await ExportDocumentService.sharePdf(bytes, 'daily_sales_report');
+  }
+}
+
+class _BusinessNewsEntryCard extends ConsumerWidget {
+  const _BusinessNewsEntryCard({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final digest = ref.watch(newsDigestProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final stories = digest.maybeWhen(
+      data: (value) => value.urgent.take(2).toList(),
+      orElse: () => const [],
+    );
+
+    return GlassCard(
+      onTap: onOpen,
+      padding: const EdgeInsets.all(DesignSpacing.lg),
+      borderRadius: DesignSpacing.radiusXl,
+      tint: DesignColors.info.withValues(alpha: 0.07),
+      borderColor: DesignColors.info.withValues(alpha: 0.2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: DesignColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                ),
+                child: const Icon(Icons.newspaper_rounded,
+                    color: DesignColors.info),
+              ),
+              const SizedBox(width: DesignSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Business News',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            )),
+                    Text('Market, tax and trade updates for your shop',
+                        style: TextStyle(color: secondary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_rounded,
+                  color: DesignColors.info),
+            ],
+          ),
+          if (stories.isNotEmpty) ...[
+            const SizedBox(height: DesignSpacing.md),
+            for (var i = 0; i < stories.length; i++) ...[
+              if (i > 0)
+                Divider(
+                  height: DesignSpacing.md,
+                  color: isDark
+                      ? DesignColors.darkBorder
+                      : DesignColors.surfaceBorder,
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 5),
+                    child: Icon(Icons.circle,
+                        size: 7, color: DesignColors.error),
+                  ),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      stories[i].title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: DesignSpacing.md),
+            Text(
+              digest.hasError
+                  ? 'Open the latest business updates when you are online.'
+                  : 'See updates that may affect your costs, stock and sales.',
+              style: TextStyle(color: secondary),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

@@ -921,19 +921,6 @@ class ApiClient {
         .toList();
   }
 
-  Future<Map<String, dynamic>> initiatePesaPalPayment(
-      Map<String, dynamic> data) async {
-    final response = await _dio.post('/payments/pesapal/initiate', data: data);
-    return response.data;
-  }
-
-  Future<Map<String, dynamic>> initiateTouristTapPayment(
-      Map<String, dynamic> data) async {
-    final response =
-        await _dio.post('/payments/touristtap/initiate', data: data);
-    return response.data;
-  }
-
   // Sync endpoints
   Future<Map<String, dynamic>> pushSyncEvents(Map<String, dynamic> data) async {
     final response = await _dio.post('/sync/push', data: data);

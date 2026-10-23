@@ -131,12 +131,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   Future<void> _showAddCustomerSheet() async {
-    final name = await showAddCustomerSheet(context);
-    if (name == null || !mounted) return;
+    final customer = await showAddCustomerSheet(context);
+    if (customer == null || !mounted) return;
     _loadCustomers();
     showGlassSnackBar(
       context,
-      '$name added',
+      '${customer.name} added',
       icon: Icons.check_circle_rounded,
       color: DesignColors.success,
     );

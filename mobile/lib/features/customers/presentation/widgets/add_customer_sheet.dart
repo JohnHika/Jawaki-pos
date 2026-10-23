@@ -10,24 +10,37 @@ import '../../../../core/services/sync_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/form_kit.dart';
 
-/// Opens the "Add customer" sheet. Resolves to the saved customer's name, or
-/// null if the sheet was dismissed without saving.
+/// The local customer record created by the add sheet.
+class AddedCustomer {
+  const AddedCustomer({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+/// Opens the "Add customer" sheet. Resolves to the saved customer, or null
+/// if the sheet was dismissed without saving.
 ///
 /// What a shop needs to track a credit client: a name, a phone number to
 /// follow up on, where their shop is, and (only if relevant) the credit they
 /// are taking today. Everything else stays out of the way.
-Future<String?> showAddCustomerSheet(BuildContext context) {
-  return GlassBottomSheet.show<String>(
+Future<AddedCustomer?> showAddCustomerSheet(
+  BuildContext context, {
+  bool allowInitialCredit = true,
+}) {
+  return GlassBottomSheet.show<AddedCustomer>(
     context,
     title: 'Add Customer',
     initialSize: 0.9,
     maxSize: 0.95,
-    child: const AddCustomerForm(),
+    child: AddCustomerForm(allowInitialCredit: allowInitialCredit),
   );
 }
 
 class AddCustomerForm extends StatefulWidget {
-  const AddCustomerForm({super.key});
+  const AddCustomerForm({super.key, this.allowInitialCredit = true});
+
+  final bool allowInitialCredit;
 
   @override
   State<AddCustomerForm> createState() => _AddCustomerFormState();
@@ -141,7 +154,7 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
         );
       }
       if (!mounted) return;
-      Navigator.of(context).pop(name);
+      Navigator.of(context).pop(AddedCustomer(id: customerId, name: name));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -254,7 +267,8 @@ class _AddCustomerFormState extends State<AddCustomerForm> {
                   const SizedBox(height: 14),
                   // Credit is a choice, not a form section: most new customers
                   // do not owe anything yet.
-                  Material(
+                  if (widget.allowInitialCredit)
+                    Material(
                     color: panel,
                     clipBehavior: Clip.antiAlias,
                     shape: RoundedRectangleBorder(

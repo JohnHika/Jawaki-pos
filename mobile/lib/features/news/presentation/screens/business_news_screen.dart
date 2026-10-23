@@ -30,9 +30,22 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
 
   Future<void> _open(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      if (mounted) {
+        showGlassSnackBar(context, 'This article link is invalid.',
+            icon: Icons.link_off_rounded, color: DesignColors.warning);
+      }
+      return;
+    }
+    // Keep articles in the app's in-app browser so staff can return directly
+    // to Counterbase without switching to a separate browser application.
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    } catch (_) {
+      // Keep link failures inside the app and present a recoverable message.
+    }
+    if (!opened && mounted) {
       showGlassSnackBar(context, "Couldn't open that link.",
           icon: Icons.link_off_rounded, color: DesignColors.warning);
     }

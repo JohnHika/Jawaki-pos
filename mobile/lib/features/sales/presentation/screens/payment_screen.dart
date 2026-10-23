@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import '../../../accountability/data/till_guard_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../customers/presentation/widgets/add_customer_sheet.dart';
 import '../providers/cart_provider.dart';
 import '../providers/catalog_provider.dart';
 import '../../domain/cash_tender.dart';
@@ -352,21 +355,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               icon: Icons.account_balance_wallet_outlined,
               title: 'Add to Debt',
               subtitle: cart.customerId == null
-                  ? 'Choose a customer in Cart first'
+                  ? 'Choose or add a customer to continue'
                   : 'Customer pays later',
               color: DesignColors.accent,
               isSelected: _selectedMethod == PaymentMethod.debt,
-              onTap: () {
+              onTap: () async {
                 if (cart.customerId == null) {
-                  showGlassSnackBar(
-                    context,
-                    'Choose a customer in Cart before selling on debt.',
-                    icon: Icons.person_off_rounded,
-                    color: DesignColors.warning,
-                  );
-                  return;
+                  final customer = await _showCustomerPicker();
+                  if (customer == null || !mounted) return;
+                  ref.read(cartProvider.notifier).setCustomer(
+                        customer.id,
+                        customerName: customer.name,
+                      );
                 }
-                setState(() => _selectedMethod = PaymentMethod.debt);
+                if (mounted) {
+                  setState(() => _selectedMethod = PaymentMethod.debt);
+                }
               },
             ),
             const SizedBox(height: DesignSpacing.md - 2),
@@ -626,6 +630,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   String? _couponCodeFor(CartState cart) =>
       cart.couponDiscount > 0 ? cart.coupon?.code : null;
 
+  Future<_CustomerChoice?> _showCustomerPicker() {
+    return showModalBottomSheet<_CustomerChoice>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => const _CustomerPickerSheet(),
+    );
+  }
+
   Future<void> _processPayment({bool rulesChecked = false}) async {
     if (_selectedMethod == null) return;
 
@@ -640,8 +655,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       return;
     }
 
-    final cart = ref.read(cartProvider);
+    var cart = ref.read(cartProvider);
     final paymentNotifier = ref.read(paymentProvider.notifier);
+
+    // Recover in place if the cashier chose debt before attaching a customer.
+    // The cart and its discounts remain intact while the customer is selected.
+    if (_selectedMethod == PaymentMethod.debt && cart.customerId == null) {
+      final customer = await _showCustomerPicker();
+      if (customer == null || !mounted) return;
+      ref.read(cartProvider.notifier).setCustomer(
+            customer.id,
+            customerName: customer.name,
+          );
+      cart = ref.read(cartProvider);
+    }
 
     // The shop's price, discount and credit rules. Checked once per sale (the
     // M-Pesa details sheet re-enters this method) and before any money moves.
@@ -668,6 +695,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         if (tendered == null || !mounted) return;
         result = await paymentNotifier.processCashPayment(
           amount: cart.total,
+          tenderedAmount: tendered,
           items: cart.items,
           customerId: cart.customerId,
           discountAmount: cart.discount,
@@ -719,16 +747,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         if (tenders == null) return; // cancelled
         // A split with a debt (CREDIT) portion needs a customer to owe it.
         final hasDebt = tenders.any((t) => t.method == 'CREDIT');
+        final tendered =
+            tenders.fold<double>(0, (sum, tender) => sum + tender.amount);
+        if (!hasDebt) {
+          cashChangeDue = cashChange(total: cart.total, tendered: tendered);
+        }
         if (hasDebt && cart.customerId == null) {
-          if (mounted) {
-            showGlassSnackBar(
-              context,
-              'Select a customer before adding a debt portion',
-              icon: Icons.person_off_rounded,
-              color: DesignColors.warning,
-            );
-          }
-          return;
+          final customer = await _showCustomerPicker();
+          if (customer == null || !mounted) return;
+          ref.read(cartProvider.notifier).setCustomer(
+                customer.id,
+                customerName: customer.name,
+              );
+          cart = ref.read(cartProvider);
         }
         // The debt part of a split is only known now, so check it here.
         final creditPart = tenders
@@ -826,10 +857,29 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               (sum, r) =>
                   sum + (double.tryParse(r.amountController.text) ?? 0));
           final remaining = total - entered;
-          final phoneMissing = rows.any((r) =>
-              r.method == 'MPESA' &&
-              (double.tryParse(r.amountController.text) ?? 0) > 0 &&
-              r.phoneController.text.trim().length < 9);
+          final remainingCents =
+              (total * 100).round() - (entered * 100).round();
+          final enteredRows = rows
+              .where((r) => (double.tryParse(r.amountController.text) ?? 0) > 0)
+              .length;
+          final debtAmount = rows
+              .where((r) => r.method == 'CREDIT')
+              .fold<double>(
+                  0,
+                  (sum, r) =>
+                      sum + (double.tryParse(r.amountController.text) ?? 0));
+          final debtOverpaid = debtAmount > 0 && remainingCents < 0;
+          final splitIncomplete = enteredRows < 2;
+          final canConfirm =
+              remainingCents <= 0 && !debtOverpaid && !splitIncomplete;
+          final statusMessage = splitIncomplete
+              ? 'Enter an amount for at least two tenders.'
+              : debtOverpaid
+                  ? 'A split with debt must add up exactly to the amount due.'
+                  : remainingCents > 0
+                      ? 'Remaining: KES ${remaining.toStringAsFixed(2)}'
+                      : 'Fully covered'
+                          '${remainingCents < 0 ? ' (change: KES ${(-remaining).toStringAsFixed(2)})' : ''}';
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -861,7 +911,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       children: rows.asMap().entries.map((entry) {
                         final index = entry.key;
                         final row = entry.value;
-                        final isMpesa = row.method == 'MPESA';
                         return Container(
                           margin: const EdgeInsets.only(
                               bottom: DesignSpacing.md - 2),
@@ -920,38 +969,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(
                                           minWidth: 48, minHeight: 48),
-                                      onPressed: () => setSheetState(
-                                          () => rows.removeAt(index)),
+                                      onPressed: () => setSheetState(() {
+                                        rows
+                                            .removeAt(index)
+                                            .amountController
+                                            .dispose();
+                                      }),
                                       icon: const Icon(
                                           Icons.remove_circle_outline_rounded,
                                           color: DesignColors.error),
                                     ),
                                 ],
                               ),
-                              if (isMpesa) ...[
-                                const SizedBox(height: DesignSpacing.sm),
-                                TextField(
-                                  controller: row.phoneController,
-                                  keyboardType: TextInputType.phone,
-                                  decoration: InputDecoration(
-                                    labelText: 'M-Pesa phone number',
-                                    hintText: '0712345678',
-                                    prefixIcon: const Icon(
-                                        Icons.phone_android_rounded,
-                                        size: 18),
-                                    filled: true,
-                                    fillColor: isDark
-                                        ? DesignColors.darkSurface
-                                        : Colors.white,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(
-                                          DesignSpacing.radiusSm),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                  ),
-                                  onChanged: (_) => setSheetState(() {}),
-                                ),
-                              ],
                             ],
                           ),
                         );
@@ -970,20 +999,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 Container(
                   padding: const EdgeInsets.all(DesignSpacing.md),
                   decoration: BoxDecoration(
-                    color: (remaining > 0.01
-                            ? DesignColors.warning
-                            : DesignColors.success)
+                    color: (canConfirm
+                            ? DesignColors.success
+                            : DesignColors.warning)
                         .withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: Text(
-                    remaining > 0.01
-                        ? 'Remaining: KES ${remaining.toStringAsFixed(2)}'
-                        : 'Fully covered'
-                            '${remaining < -0.01 ? ' (change: KES ${(-remaining).toStringAsFixed(2)})' : ''}',
+                    statusMessage,
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: remaining > 0.01
+                      color: !canConfirm
                           ? DesignColors.warning
                           : DesignColors.success,
                     ),
@@ -993,9 +1019,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: (remaining > 0.01 || phoneMissing)
-                        ? null
-                        : () => Navigator.pop(sheetContext, true),
+                    onPressed: canConfirm
+                        ? () => Navigator.pop(sheetContext, true)
+                        : null,
                     child: const Text('Confirm Split'),
                   ),
                 ),
@@ -1006,24 +1032,255 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ),
     );
 
-    if (confirmed != true) return null;
+    if (confirmed != true) {
+      for (final row in rows) {
+        row.amountController.dispose();
+      }
+      return null;
+    }
 
-    return rows
+    final tenders = rows
         .where((r) => (double.tryParse(r.amountController.text) ?? 0) > 0)
         .map((r) => PaymentTender(
               method: r.method,
               amount: double.parse(r.amountController.text),
-              reference:
-                  r.method == 'MPESA' ? r.phoneController.text.trim() : null,
             ))
         .toList();
+    for (final row in rows) {
+      row.amountController.dispose();
+    }
+    return tenders;
+  }
+}
+
+class _CustomerChoice {
+  const _CustomerChoice({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+class _CustomerPickerSheet extends StatefulWidget {
+  const _CustomerPickerSheet();
+
+  @override
+  State<_CustomerPickerSheet> createState() => _CustomerPickerSheetState();
+}
+
+class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _customers = const [];
+  bool _loading = true;
+  bool _failed = false;
+  int _request = 0;
+  Timer? _searchDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomers();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCustomers() async {
+    final request = ++_request;
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    try {
+      final customers = await getIt<AppDatabase>()
+          .searchCustomers(_searchController.text.trim());
+      if (!mounted || request != _request) return;
+      setState(() {
+        _customers = customers;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() {
+        _failed = true;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _addCustomer() async {
+    // The sale records today's credit after selection. Hiding the opening
+    // balance control here prevents the same debt from being recorded twice.
+    final added =
+        await showAddCustomerSheet(context, allowInitialCredit: false);
+    if (added == null || !mounted) return;
+    Navigator.of(context).pop(_CustomerChoice(id: added.id, name: added.name));
+  }
+
+  void _choose(Map<String, dynamic> customer) {
+    Navigator.of(context).pop(_CustomerChoice(
+      id: customer['id'] as String,
+      name: customer['name'] as String? ?? 'Customer',
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
+    final maxHeight = (screenHeight - keyboardHeight - DesignSpacing.xxl)
+        .clamp(240.0, screenHeight)
+        .toDouble();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        DesignSpacing.lg,
+        DesignSpacing.xs,
+        DesignSpacing.lg,
+        keyboardHeight + DesignSpacing.lg,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Who is buying on credit?',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: DesignSpacing.xs),
+            Text(
+                'Choose an existing customer or add one. Your sale stays here.',
+                style: TextStyle(color: secondary)),
+            const SizedBox(height: DesignSpacing.md),
+            TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (_) {
+                setState(() {});
+                _searchDebounce?.cancel();
+                _searchDebounce =
+                    Timer(const Duration(milliseconds: 220), _loadCustomers);
+              },
+              decoration: InputDecoration(
+                hintText: 'Search name or phone',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _searchController.clear();
+                          _loadCustomers();
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
+            ),
+            const SizedBox(height: DesignSpacing.sm),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: DesignColors.accent))
+                  : _failed
+                      ? EmptyState(
+                          icon: Icons.cloud_off_rounded,
+                          title: 'Customers could not load',
+                          subtitle: 'Try again or add a customer to continue.',
+                          actionLabel: 'Retry',
+                          onAction: _loadCustomers,
+                        )
+                      : _customers.isEmpty
+                          ? EmptyState(
+                              icon: Icons.person_search_rounded,
+                              title: 'No matching customers',
+                              subtitle:
+                                  'Add this customer and continue the sale.',
+                              actionLabel: 'Add customer',
+                              actionIcon: Icons.person_add_alt_1_rounded,
+                              onAction: _addCustomer,
+                            )
+                          : ListView.separated(
+                              itemCount: _customers.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: DesignSpacing.xs),
+                              itemBuilder: (context, index) {
+                                final customer = _customers[index];
+                                final name =
+                                    customer['name'] as String? ?? 'Customer';
+                                final phone =
+                                    customer['phone'] as String? ?? '';
+                                final balance =
+                                    (customer['balance'] as num?)?.toDouble() ??
+                                        0;
+                                return Material(
+                                  color: surface,
+                                  borderRadius: BorderRadius.circular(
+                                      DesignSpacing.radiusMd),
+                                  child: ListTile(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(
+                                          DesignSpacing.radiusMd),
+                                      side: BorderSide(
+                                        color: isDark
+                                            ? DesignColors.darkBorder
+                                            : DesignColors.surfaceBorder,
+                                      ),
+                                    ),
+                                    leading: CircleAvatar(
+                                      backgroundColor: DesignColors.accent
+                                          .withValues(alpha: 0.12),
+                                      foregroundColor: DesignColors.accent,
+                                      child: Text(name.isEmpty
+                                          ? '?'
+                                          : name[0].toUpperCase()),
+                                    ),
+                                    title: Text(name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
+                                    subtitle: Text([
+                                      if (phone.isNotEmpty) phone,
+                                      if (balance > 0)
+                                        'Owes KES ${balance.toStringAsFixed(0)}',
+                                    ].join(' · ')),
+                                    trailing: const Icon(
+                                        Icons.arrow_forward_rounded,
+                                        color: DesignColors.accent),
+                                    onTap: () => _choose(customer),
+                                  ),
+                                );
+                              },
+                            ),
+            ),
+            const SizedBox(height: DesignSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _addCustomer,
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: const Text('Add a new customer'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
 class _TenderRow {
   String method;
   final TextEditingController amountController;
-  final TextEditingController phoneController = TextEditingController();
 
   _TenderRow({required this.method, required this.amountController});
 }

@@ -16,6 +16,7 @@ class SalesRoutes {
     r.post('/api/v1/sales', _handleCreateSale);
     r.get('/api/v1/sales', _handleGetSales);
     r.get('/api/v1/sales/daily-summary', _handleDailySummary);
+    r.get('/api/v1/sales/summary/<branchId>/<date>', _handleBranchDailySummary);
     r.get('/api/v1/sales/<id>', _handleGetSale);
     r.get('/api/v1/sales/<saleId>/receipt', _handleGetReceipt);
     r.post('/api/v1/sales/<id>/void', _handleVoidSale);
@@ -28,11 +29,13 @@ class SalesRoutes {
       return _error(400, 'Request body is required');
     }
 
-    final items = (body['items'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final items =
+        (body['items'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
 
     final saleCompanion = PendingSalesCompanion(
       id: Value(body['id'] as String? ?? _uuid()),
-      receiptNumber: Value(body['receiptNumber'] as String? ?? _generateReceiptNo()),
+      receiptNumber:
+          Value(body['receiptNumber'] as String? ?? _generateReceiptNo()),
       subtotal: Value((body['subtotal'] as num?)?.toDouble() ?? 0),
       discount: Value((body['discount'] as num?)?.toDouble() ?? 0),
       tax: Value((body['tax'] as num?)?.toDouble() ?? 0),
@@ -48,22 +51,25 @@ class SalesRoutes {
       isSynced: const Value(false),
     );
 
-    final itemCompanions = items.map((i) => PendingSaleItemsCompanion(
-      saleId: Value(body['id'] as String? ?? _uuid()),
-      productId: Value(i['productId'] as String? ?? ''),
-      productName: Value(i['productName'] as String? ?? ''),
-      sku: Value(i['sku'] as String? ?? ''),
-      quantity: Value((i['quantity'] as num?)?.toInt() ?? 1),
-      unitPrice: Value((i['unitPrice'] as num?)?.toDouble() ?? 0),
-      discount: Value((i['discount'] as num?)?.toDouble() ?? 0),
-      total: Value((i['total'] as num?)?.toDouble() ?? 0),
-    )).toList();
+    final itemCompanions = items
+        .map((i) => PendingSaleItemsCompanion(
+              saleId: Value(body['id'] as String? ?? _uuid()),
+              productId: Value(i['productId'] as String? ?? ''),
+              productName: Value(i['productName'] as String? ?? ''),
+              sku: Value(i['sku'] as String? ?? ''),
+              quantity: Value((i['quantity'] as num?)?.toInt() ?? 1),
+              unitPrice: Value((i['unitPrice'] as num?)?.toDouble() ?? 0),
+              discount: Value((i['discount'] as num?)?.toDouble() ?? 0),
+              total: Value((i['total'] as num?)?.toDouble() ?? 0),
+            ))
+        .toList();
 
     await _db.createPendingSale(saleCompanion, itemCompanions);
 
     return shelf.Response(
       201,
-      body: jsonEncode({'message': 'Sale created', 'id': saleCompanion.id.value}),
+      body:
+          jsonEncode({'message': 'Sale created', 'id': saleCompanion.id.value}),
       headers: {'content-type': 'application/json'},
     );
   }
@@ -71,8 +77,12 @@ class SalesRoutes {
   /// GET /api/v1/sales?startDate=&endDate=&page=&limit=
   Future<shelf.Response> _handleGetSales(shelf.Request request) async {
     final params = request.url.queryParameters;
-    final startDate = params['startDate'] != null ? DateTime.parse(params['startDate']!) : DateTime.now().subtract(const Duration(days: 30));
-    final endDate = params['endDate'] != null ? DateTime.parse(params['endDate']!) : DateTime.now();
+    final startDate = params['startDate'] != null
+        ? DateTime.parse(params['startDate']!)
+        : DateTime.now().subtract(const Duration(days: 30));
+    final endDate = params['endDate'] != null
+        ? DateTime.parse(params['endDate']!)
+        : DateTime.now();
     final page = int.tryParse(params['page'] ?? '1') ?? 1;
     final limit = int.tryParse(params['limit'] ?? '50') ?? 50;
 
@@ -93,7 +103,8 @@ class SalesRoutes {
   }
 
   /// GET /api/v1/sales/<id>
-  Future<shelf.Response> _handleGetSale(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleGetSale(
+      shelf.Request request, String id) async {
     final sales = await _db.getSalesByDateRange(
       DateTime.now().subtract(const Duration(days: 365)),
       DateTime.now().add(const Duration(days: 1)),
@@ -107,23 +118,26 @@ class SalesRoutes {
     return shelf.Response.ok(
       jsonEncode({
         ..._saleToMap(sale),
-        'items': items.map((i) => {
-          'id': i.id,
-          'productId': i.productId,
-          'productName': i.productName,
-          'sku': i.sku,
-          'quantity': i.quantity,
-          'unitPrice': i.unitPrice,
-          'discount': i.discount,
-          'total': i.total,
-        }).toList(),
+        'items': items
+            .map((i) => {
+                  'id': i.id,
+                  'productId': i.productId,
+                  'productName': i.productName,
+                  'sku': i.sku,
+                  'quantity': i.quantity,
+                  'unitPrice': i.unitPrice,
+                  'discount': i.discount,
+                  'total': i.total,
+                })
+            .toList(),
       }),
       headers: {'content-type': 'application/json'},
     );
   }
 
   /// GET /api/v1/sales/<saleId>/receipt
-  Future<shelf.Response> _handleGetReceipt(shelf.Request request, String saleId) async {
+  Future<shelf.Response> _handleGetReceipt(
+      shelf.Request request, String saleId) async {
     return _handleGetSale(request, saleId);
   }
 
@@ -136,8 +150,27 @@ class SalesRoutes {
     );
   }
 
+  /// GET /api/v1/sales/summary/<branchId>/<date>
+  Future<shelf.Response> _handleBranchDailySummary(
+    shelf.Request request,
+    String branchId,
+    String date,
+  ) async {
+    final parsedDate = DateTime.tryParse(date);
+    if (parsedDate == null || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)) {
+      return _error(400, 'A valid date in YYYY-MM-DD format is required');
+    }
+
+    final summary = await _db.getDailySalesSummary(branchId, parsedDate);
+    return shelf.Response.ok(
+      jsonEncode(summary),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
   /// POST /api/v1/sales/<id>/void
-  Future<shelf.Response> _handleVoidSale(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleVoidSale(
+      shelf.Request request, String id) async {
     await _db.customStatement(
       'UPDATE pending_sales SET status = \'VOIDED\' WHERE id = ${Sql.str(id)}',
     );

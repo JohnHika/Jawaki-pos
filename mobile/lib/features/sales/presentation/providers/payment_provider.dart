@@ -20,7 +20,7 @@ const _uuid = Uuid();
 /// Backend enum values (not the display-only [PaymentMethod] enum in
 /// payment_screen.dart) — this must match what CreateSaleDto expects.
 class PaymentTender {
-  final String method; // 'CASH' | 'MPESA' | 'PESAPAL' | 'TOURISTTAP' | 'CREDIT'
+  final String method; // 'CASH' | 'CREDIT'
   final double amount;
   final String? reference;
 
@@ -80,7 +80,6 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   final SyncService _syncService;
   final AuthService _authService;
   final ConnectivityService _connectivity;
-  final bool _verifiedDigitalPaymentsEnabled;
   String? _pendingMpesaFingerprint;
   String? _pendingMpesaRequestId;
   String? _pendingLocalSaleId;
@@ -91,13 +90,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required SyncService syncService,
     required AuthService authService,
     required ConnectivityService connectivity,
-    bool verifiedDigitalPaymentsEnabled = false,
   })  : _apiClient = apiClient,
         _database = database,
         _syncService = syncService,
         _authService = authService,
         _connectivity = connectivity,
-        _verifiedDigitalPaymentsEnabled = verifiedDigitalPaymentsEnabled,
         super(const PaymentState());
 
   bool get hasUnresolvedMerchantPayment => _pendingMpesaRequestId != null;
@@ -115,12 +112,24 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
   Future<String?> processCashPayment({
     required double amount,
+    required double tenderedAmount,
     required List<CartItem> items,
     String? customerId,
     double discountAmount = 0,
     String? couponCode,
   }) async {
     state = state.copyWith(isProcessing: true, error: null);
+
+    if (!amount.isFinite ||
+        !tenderedAmount.isFinite ||
+        amount <= 0 ||
+        (tenderedAmount * 100).round() < (amount * 100).round()) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Cash received must cover the sale total.',
+      );
+      return null;
+    }
 
     try {
       final saleId = _uuid.v4();
@@ -137,8 +146,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId: customerId,
       );
 
-      await _syncOrQueueSale(saleId, items, 'CASH', amount, null, null,
-          customerId, _SaleExtras(discountAmount, couponCode));
+      await _syncOrQueueSale(
+        saleId,
+        items,
+        'CASH',
+        tenderedAmount,
+        null,
+        null,
+        customerId,
+        _SaleExtras(discountAmount, couponCode),
+      );
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -307,120 +324,6 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  Future<String?> processPesaPalPayment({
-    required double amount,
-    required List<CartItem> items,
-    String? customerId,
-  }) async {
-    state = state.copyWith(isProcessing: true, error: null);
-
-    if (!_verifiedDigitalPaymentsEnabled) {
-      state = state.copyWith(
-        isProcessing: false,
-        error:
-            'PesaPal is temporarily unavailable while secure payment verification is being enabled.',
-      );
-      return null;
-    }
-
-    if (!_connectivity.isOnline) {
-      state = state.copyWith(
-        isProcessing: false,
-        error: 'PesaPal payments require internet connection',
-      );
-      return null;
-    }
-
-    try {
-      final response = await _apiClient.initiatePesaPalPayment({
-        'amount': amount,
-        'currency': 'KES',
-        'description': 'POS Sale',
-      });
-
-      // Handle redirect URL for web payment
-      // This would typically open a webview
-      final orderId = response['orderId'];
-
-      // For now, simulate successful payment
-      final saleId = _uuid.v4();
-      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
-      await _createLocalSale(
-        saleId: saleId,
-        receiptNumber: receiptNumber,
-        items: items,
-        paymentMethod: 'PESAPAL',
-        total: amount,
-        paymentReference: orderId,
-        customerId: customerId,
-      );
-      await _syncOrQueueSale(
-          saleId, items, 'PESAPAL', amount, orderId, null, customerId);
-
-      state = state.copyWith(isProcessing: false);
-      return saleId;
-    } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
-      return null;
-    }
-  }
-
-  Future<String?> processTouristTapPayment({
-    required double amount,
-    required List<CartItem> items,
-    String? customerId,
-  }) async {
-    state = state.copyWith(isProcessing: true, error: null);
-
-    if (!_verifiedDigitalPaymentsEnabled) {
-      state = state.copyWith(
-        isProcessing: false,
-        error:
-            'TouristTap is temporarily unavailable while secure payment verification is being enabled.',
-      );
-      return null;
-    }
-
-    if (!_connectivity.isOnline) {
-      state = state.copyWith(
-        isProcessing: false,
-        error: 'TouristTap payments require internet connection',
-      );
-      return null;
-    }
-
-    try {
-      final response = await _apiClient.initiateTouristTapPayment({
-        'amount': amount,
-        'currency': 'KES',
-      });
-
-      final transactionId = response['transactionId'];
-
-      // NFC payment would be initiated here
-      // For now, simulate successful payment
-      final saleId = _uuid.v4();
-      final receiptNumber = 'RCP-${DateTime.now().millisecondsSinceEpoch}';
-      await _createLocalSale(
-        saleId: saleId,
-        receiptNumber: receiptNumber,
-        items: items,
-        paymentMethod: 'TOURISTTAP',
-        total: amount,
-        paymentReference: transactionId,
-        customerId: customerId,
-      );
-      await _syncOrQueueSale(
-          saleId, items, 'TOURISTTAP', amount, transactionId, null, customerId);
-
-      state = state.copyWith(isProcessing: false);
-      return saleId;
-    } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
-      return null;
-    }
-  }
-
   Future<String?> processCreditPayment({
     required double amount,
     required List<CartItem> items,
@@ -462,8 +365,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // balance so the Customers screen and profile reflect what they owe.
       await _database.updateCustomerBalance(customerId, amount);
 
-      await _syncOrQueueSale(saleId, items, 'CREDIT', amount, customerId, null,
-          customerId, _SaleExtras(discountAmount, couponCode));
+      await _syncOrQueueSale(
+        saleId,
+        items,
+        'CREDIT',
+        0,
+        customerId,
+        null,
+        customerId,
+        _SaleExtras(discountAmount, couponCode),
+      );
 
       state = state.copyWith(isProcessing: false);
       return saleId;
@@ -474,10 +385,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }
 
   /// Records one sale paid via multiple tenders at once (part cash and debt).
-  /// [tenders] must sum to at least [amount]; any
-  /// tender with method CASH contributes to the till, and any tender with
-  /// method CREDIT is added to the customer's debt balance (which is why a
-  /// customer is required when a split includes a debt portion).
+  /// [tenders] must cover [amount] and include at least two positive amounts.
+  /// A split containing debt must equal the total exactly so change cannot be
+  /// mistaken for additional customer debt.
   Future<String?> processSplitPayment({
     required double amount,
     required List<CartItem> items,
@@ -498,18 +408,20 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
 
     const supportedTenders = {'CASH', 'CREDIT'};
-    if (!_verifiedDigitalPaymentsEnabled &&
-        tenders.any((tender) => !supportedTenders.contains(tender.method))) {
+    if (tenders.length < 2 ||
+        tenders.any((tender) =>
+            !supportedTenders.contains(tender.method) ||
+            !tender.amount.isFinite ||
+            tender.amount <= 0)) {
       state = state.copyWith(
         isProcessing: false,
-        error:
-            'Split payments can only use cash and debt until other payment methods are verified.',
+        error: 'Split payments need positive amounts for cash or debt only.',
       );
       return null;
     }
 
     final tenderTotal = tenders.fold<double>(0, (sum, t) => sum + t.amount);
-    if (tenderTotal < amount) {
+    if ((tenderTotal * 100).round() < (amount * 100).round()) {
       state = state.copyWith(
         isProcessing: false,
         error: 'Tenders (KES ${tenderTotal.toStringAsFixed(2)}) do not cover '
@@ -521,6 +433,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     final debtPortion = tenders
         .where((t) => t.method == 'CREDIT')
         .fold<double>(0, (sum, t) => sum + t.amount);
+    if (debtPortion > 0 &&
+        (tenderTotal * 100).round() > (amount * 100).round()) {
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'A split that includes debt must add up exactly to the amount due. Adjust the cash or debt amounts.',
+      );
+      return null;
+    }
     if (debtPortion > 0 && customerId == null) {
       state = state.copyWith(
         isProcessing: false,
@@ -545,7 +466,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         receiptNumber: receiptNumber,
         items: items,
         paymentMethod: 'SPLIT',
-        total: tenderTotal,
+        total: amount,
         discountAmount: discountAmount,
         paymentReference: tendersJson,
         customerId: customerId,
@@ -634,7 +555,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String saleId,
     List<CartItem> items,
     String paymentMethod,
-    double total, [
+    double paidAmount, [
     String? paymentReference,
     List<PaymentTender>? tenders,
     String? customerId,
@@ -645,7 +566,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         saleId,
         items,
         paymentMethod,
-        total,
+        paidAmount,
         paymentReference,
         tenders,
         customerId,
@@ -659,7 +580,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         saleId,
         items,
         paymentMethod,
-        total,
+        paidAmount,
         paymentReference,
         tenders,
         customerId,
@@ -681,7 +602,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         saleId,
         items,
         paymentMethod,
-        total,
+        paidAmount,
         paymentReference,
         tenders,
         customerId,
@@ -694,7 +615,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String saleId,
     List<CartItem> items,
     String paymentMethod,
-    double total, [
+    double paidAmount, [
     String? paymentReference,
     List<PaymentTender>? tenders,
     String? customerId,
@@ -732,7 +653,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // The server's sale schema has no paymentReference or cashierId (the
       // cashier comes from the signed-in token). Sending them made every
       // direct upload fail with 400 and fall back to the slow queue.
-      'paidAmount': total,
+      'paidAmount': paidAmount,
       if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
     });
     // The API wraps payloads as {success, data}; older responses are bare.
@@ -745,7 +666,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String saleId,
     List<CartItem> items,
     String paymentMethod,
-    double total, [
+    double paidAmount, [
     String? paymentReference,
     List<PaymentTender>? tenders,
     String? customerId,
@@ -768,7 +689,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         'paymentReference': paymentReference,
         if (extras.discountAmount > 0) 'discountAmount': extras.discountAmount,
         if (extras.couponCode != null) 'couponCode': extras.couponCode,
-        'paidAmount': total,
+        'paidAmount': paidAmount,
         'cashierId': _authService.userId,
         if (tenders != null) 'tenders': tenders.map((t) => t.toJson()).toList(),
       },

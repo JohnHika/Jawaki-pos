@@ -1671,6 +1671,48 @@ class AppDatabase extends _$AppDatabase {
     };
   }
 
+  /// Completed sales totals for one branch and local business date.
+  /// Mirrors the cloud End of Day summary response for phone-server mode.
+  Future<Map<String, dynamic>> getDailySalesSummary(
+    String branchId,
+    DateTime date,
+  ) async {
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final row = await customSelect(
+      'SELECT '
+      'COUNT(*) AS total_transactions, '
+      'COALESCE(SUM(total), 0) AS total_sales, '
+      'COALESCE(SUM(tax), 0) AS total_tax, '
+      'COALESCE(SUM(discount), 0) AS total_discount, '
+      "COALESCE(SUM(CASE WHEN UPPER(payment_method) = 'CASH' THEN total ELSE 0 END), 0) AS cash_sales, "
+      "COALESCE(SUM(CASE WHEN UPPER(payment_method) = 'MPESA' THEN total ELSE 0 END), 0) AS mpesa_sales, "
+      "COALESCE(SUM(CASE WHEN UPPER(payment_method) = 'CREDIT' THEN total ELSE 0 END), 0) AS credit_sales "
+      'FROM pending_sales '
+      'WHERE branch_id = ? AND created_at >= ? AND created_at < ? '
+      "AND UPPER(status) = 'COMPLETED'",
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(startOfDay),
+        Variable.withDateTime(endOfDay),
+      ],
+    ).getSingle();
+
+    return {
+      'date':
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+      'totalSales': row.read<double>('total_sales'),
+      'totalTransactions': row.read<int>('total_transactions'),
+      'totalTax': row.read<double>('total_tax'),
+      'totalDiscount': row.read<double>('total_discount'),
+      'cashSales': row.read<double>('cash_sales'),
+      'mpesaSales': row.read<double>('mpesa_sales'),
+      'cardSales': 0.0,
+      'creditSales': row.read<double>('credit_sales'),
+      'outstandingBalance': 0.0,
+    };
+  }
+
   /// Weekly summary for analytics dashboard.
   Future<Map<String, dynamic>> getWeeklySummary(
     DateTime from,

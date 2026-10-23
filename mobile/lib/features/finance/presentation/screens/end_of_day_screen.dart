@@ -6,6 +6,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -26,17 +27,37 @@ final _eodProvider =
   if (branchId == null) return {'noBranch': true};
   final api = getIt<ApiClient>();
   final date = _todayIso();
+  final apiHost = Uri.tryParse(api.baseUrl)?.host;
+  final isLocalServer =
+      apiHost == '127.0.0.1' || apiHost == 'localhost' || apiHost == '::1';
+  // Sales figures are essential; cash and close status are secondary. A
+  // failure in either secondary request must not blank the whole report.
   final results = await Future.wait([
-    api.getSalesDailySummary(branchId, date),
-    api.getAvailableCash(branchId),
-    api.getDailyClose(branchId, date: date),
+    _captureEodRequest(api.getSalesDailySummary(branchId, date)),
+    _captureEodRequest(api.getAvailableCash(branchId)),
+    _captureEodRequest(api.getDailyClose(branchId, date: date)),
   ]);
+  if (results[0]['error'] != null) throw results[0]['error']!;
+
+  final cashResult = results[1];
+  final closeResult = results[2];
   return {
-    'summary': results[0] as Map<String, dynamic>,
-    'cash': results[1] as Map<String, dynamic>,
-    'close': results[2],
+    'summary': results[0]['value'] as Map<String, dynamic>,
+    'cash': cashResult['value'] as Map<String, dynamic>?,
+    'cashError': cashResult['error'],
+    'close': closeResult['value'] as Map<String, dynamic>?,
+    'closeError': closeResult['error'],
+    'localServer': isLocalServer,
   };
 });
+
+Future<Map<String, dynamic>> _captureEodRequest<T>(Future<T> request) async {
+  try {
+    return {'value': await request};
+  } catch (error) {
+    return {'error': error};
+  }
+}
 
 class EndOfDayScreen extends ConsumerStatefulWidget {
   const EndOfDayScreen({super.key});
@@ -86,13 +107,20 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           final summary = (data['summary'] as Map<String, dynamic>?) ?? {};
           final cash = (data['cash'] as Map<String, dynamic>?) ?? {};
           final close = data['close'] as Map<String, dynamic>?;
-          return _buildBody(summary, cash, close);
+          return _buildBody(
+            summary,
+            cash,
+            close,
+            cashError: data['cashError'],
+            closeError: data['closeError'],
+            localServer: data['localServer'] == true,
+          );
         },
         loading: () => const _EodSkeletonList(),
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: "Couldn't load today's figures",
-          subtitle: 'Check your connection and try again.',
+          subtitle: apiErrorMessage(e),
           iconColor: DesignColors.error,
           actionLabel: 'Retry',
           onAction: () => ref.invalidate(_eodProvider),
@@ -101,20 +129,21 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     );
   }
 
-  Widget _buildBody(
-    Map<String, dynamic> summary,
-    Map<String, dynamic> cash,
-    Map<String, dynamic>? close,
-  ) {
+  Widget _buildBody(Map<String, dynamic> summary, Map<String, dynamic> cash,
+      Map<String, dynamic>? close,
+      {Object? cashError, Object? closeError, bool localServer = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final closed = close != null;
 
-    final totalSales = (summary['totalSales'] as num?)?.toDouble() ?? 0;
-    final txns = (summary['totalTransactions'] as num?)?.toInt() ?? 0;
-    final cashSales = (summary['cashSales'] as num?)?.toDouble() ?? 0;
-    final mpesaSales = (summary['mpesaSales'] as num?)?.toDouble() ?? 0;
-    final creditSales = (summary['creditSales'] as num?)?.toDouble() ?? 0;
-    final expectedCash = (cash['availableCash'] as num?)?.toDouble();
+    final totalSales = asDouble(summary['totalSales']);
+    final txns = asInt(summary['totalTransactions']);
+    final cashSales = asDouble(summary['cashSales']);
+    final mpesaSales = asDouble(summary['mpesaSales']);
+    final creditSales = asDouble(summary['creditSales']);
+    final expectedCash = cashError == null && cash['availableCash'] != null
+        ? asDouble(cash['availableCash'])
+        : null;
+    final closeStatusKnown = closeError == null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg,
@@ -142,7 +171,9 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                     closed
                         ? 'Day closed${close['closedByName'] != null ? ' by ${close['closedByName']}' : ''}'
                             '${_closedAtSuffix(close)}'
-                        : 'Today is still open',
+                        : closeStatusKnown
+                            ? 'Today is still open'
+                            : 'Close status unavailable',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -151,6 +182,40 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           ),
         ),
         const SizedBox(height: DesignSpacing.lg),
+
+        if (cashError != null || closeError != null) ...[
+          StaggeredItem(
+            itemKey: 'eod-partial-warning',
+            child: Container(
+              padding: const EdgeInsets.all(DesignSpacing.md),
+              decoration: BoxDecoration(
+                color: DesignColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: DesignColors.warning),
+                  const SizedBox(width: DesignSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      closeError != null
+                          ? localServer
+                              ? 'Sales are saved on this device, but the local server cannot verify or record an end-of-day close. Reconnect to the cloud workspace and refresh before closing.'
+                              : 'Sales loaded, but close status could not be checked. ${apiErrorMessage(closeError)} Refresh before closing to avoid changing an existing close.'
+                          : localServer
+                              ? 'Sales are available on this device, but expected till cash is only available from the cloud workspace.'
+                              : 'Sales loaded, but expected till cash could not be fetched. ${apiErrorMessage(cashError!)} You can still review today’s sales.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.lg),
+        ],
 
         const SettingsGroupLabel("Today's sales"),
         StaggeredItem(
@@ -176,14 +241,11 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
             itemKey: 'eod-close-details',
             index: 2,
             child: GroupedCard(dividerIndent: 14, children: [
-              _summaryRow(
-                  'Counted cash',
-                  _currencyFmt.format((close['countedCash'] as num).toDouble()),
-                  isDark),
+              _summaryRow('Counted cash',
+                  _currencyFmt.format(asDouble(close['countedCash'])), isDark),
               _summaryRow(
                 'Discrepancy',
-                _currencyFmt
-                    .format((close['cashDiscrepancy'] as num).toDouble()),
+                _currencyFmt.format(asDouble(close['cashDiscrepancy'])),
                 isDark,
               ),
             ]),
@@ -206,9 +268,14 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           itemKey: 'eod-close-cta',
           index: closed ? 3 : 2,
           child: GradientButton(
-            label: closed ? 'Re-close day' : 'Close end of day',
+            label: !closeStatusKnown
+                ? 'Connect to check close status'
+                : closed
+                    ? 'Re-close day'
+                    : 'Close end of day',
             icon: Icons.check_circle_outline_rounded,
-            onPressed: () => _showCloseSheet(expectedCash),
+            onPressed:
+                closeStatusKnown ? () => _showCloseSheet(expectedCash) : null,
             height: 52,
             borderRadius: DesignSpacing.radiusMd,
           ),
@@ -391,7 +458,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not close the day. Please try again.',
+        showGlassSnackBar(context, apiErrorMessage(e),
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     }

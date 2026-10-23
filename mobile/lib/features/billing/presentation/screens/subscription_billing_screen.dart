@@ -1069,7 +1069,7 @@ class _SubscriptionBillingScreenState
           uri.host != 'checkout.paystack.com') {
         throw Exception('Paystack returned an invalid checkout link.');
       }
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) {
         throw Exception('Could not open the Paystack checkout page.');
       }
     } catch (error) {
