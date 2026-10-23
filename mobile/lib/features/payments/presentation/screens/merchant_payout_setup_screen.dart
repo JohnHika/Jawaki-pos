@@ -31,6 +31,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
   bool _saving = false;
   bool _ownsAccount = false;
   bool _acceptedPaymentTerms = false;
+  bool _isChangingPayout = false;
 
   @override
   void initState() {
@@ -138,9 +139,16 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
       setState(() {
         _account = account;
         _ownsAccount = false;
+        _isChangingPayout = false;
       });
+      final verified = account['status'] == 'ACTIVE' &&
+          account['paystackVerified'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Business payout account connected.')),
+        SnackBar(
+          content: Text(verified
+              ? 'Paystack verified your payout account.'
+              : 'Payout details saved. The payment administrator must verify this subaccount in Paystack before customer M-Pesa and debt payments are enabled. Cash and manual payments remain available.'),
+        ),
       );
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
@@ -151,8 +159,11 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
 
   @override
   Widget build(BuildContext context) {
+    final paystackVerified = _account?['paystackVerified'] == true ||
+        (_account?['paystackVerified'] == null &&
+            _account?['accountHolderVerified'] == true);
     final ready = _account?['status'] == 'ACTIVE' &&
-        _account?['accountHolderVerified'] == true;
+        paystackVerified;
     final needsVerification = _account?['status'] == 'PENDING_VERIFICATION';
     return Scaffold(
       appBar: const BrandedAppBar(title: 'Customer payments', showBackButton: true),
@@ -172,7 +183,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                           style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 8),
                       const Text(
-                        'Connect your business bank account to accept customer M-Pesa payments in Counterbase. Paystack sends your share to this account. Your Counterbase plan is billed separately.',
+                        'Connect your business bank account to accept customer M-Pesa and debt payments. Paystack sends those payments to this account. Cash and manually recorded payments work without payout setup. Your Counterbase plan is billed separately.',
                       ),
                     ],
                   )),
@@ -192,7 +203,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                       ),
                     ),
                     child: Card(
-                      key: ValueKey(ready),
+                      key: ValueKey('$ready:$needsVerification'),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
@@ -205,7 +216,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                               Text(ready
                                   ? 'Payout account verified'
                                   : needsVerification
-                                      ? 'Verify payout account'
+                                      ? 'Paystack verification pending'
                                       : 'Payout account needed',
                                   style: const TextStyle(fontWeight: FontWeight.bold)),
                             ]),
@@ -219,7 +230,8 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text('${_account?['bankName']} ·•••• ${_account?['accountLast4']}'),
-                                          Text('Account holder: ${_account?['accountName']}'),
+                                          if (_account?['accountName']?.toString().trim().isNotEmpty == true)
+                                            Text('Account holder: ${_account?['accountName']}'),
                                           const SizedBox(height: 6),
                                           const Row(
                                             children: [
@@ -227,7 +239,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                   size: 18, color: DesignColors.success),
                                               SizedBox(width: 6),
                                               Expanded(
-                                                child: Text('Account holder confirmed by Paystack'),
+                                                child: Text('Paystack has verified this payout account'),
                                               ),
                                             ],
                                           ),
@@ -240,7 +252,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                       ? const Padding(
                                           padding: EdgeInsets.only(top: 8),
                                           child: Text(
-                                            'Paystack did not return an account holder name for these saved details. Re-enter the bank and account number to verify them before accepting payments.',
+                                            'Paystack has received these payout details. The payment administrator must verify this subaccount in Paystack before customer M-Pesa and debt payments are enabled. Cash and manually recorded payments are available now.',
                                           ),
                                         )
                                       : const SizedBox(width: double.infinity, height: 0),
@@ -251,10 +263,18 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                     ),
                   )),
                   const SizedBox(height: 24),
-                  _enter(3, Column(
+                  if ((ready || needsVerification) && !_isChangingPayout)
+                    _enter(3, OutlinedButton.icon(
+                      onPressed: () => setState(() => _isChangingPayout = true),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: Text(ready ? 'Change payout details' : 'Edit submitted details'),
+                    )),
+                  _enter(3, (ready || needsVerification) && !_isChangingPayout
+                      ? const SizedBox.shrink()
+                      : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(ready ? 'Change payout account' : 'Connect payout account',
+                      Text(ready || needsVerification ? 'Payout account details' : 'Connect payout account',
                           style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
@@ -329,8 +349,9 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                       ],
                     ],
                   )),
-                  const SizedBox(height: 20),
-                  _enter(4, FilledButton.icon(
+                  if ((!ready && !needsVerification) || _isChangingPayout) ...[
+                    const SizedBox(height: 20),
+                    _enter(4, FilledButton.icon(
                     onPressed: _saving || _banks.isEmpty ? null : _save,
                     icon: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
@@ -344,12 +365,13 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                       child: Text(
                         _saving
                             ? 'Verifying payout details…'
-                            : ready ? 'Update payout account' : 'Connect payout account',
-                        key: ValueKey((_saving, ready)),
+                            : ready || needsVerification ? 'Update payout account' : 'Connect payout account',
+                        key: ValueKey((_saving, ready, needsVerification)),
                       ),
                     ),
-                  )),
-                  if (ready) ...[
+                    )),
+                  ],
+                  if (ready && !_isChangingPayout) ...[
                     const SizedBox(height: 12),
                     _enter(4, OutlinedButton(
                       onPressed: () => context.pop(true), child: const Text('Done'))),

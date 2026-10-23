@@ -410,9 +410,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       keyboardType: TextInputType.emailAddress,
                       autocorrect: false,
                       decoration: const InputDecoration(
-                        labelText: 'Customer email',
+                        labelText: 'Payer email',
                         helperText:
-                            'Paystack requires an email for this payment',
+                            'Paystack uses this as the customer email for this sale. It is separate from the shop subscription email.',
                         prefixIcon: Icon(Icons.email_outlined),
                       ),
                       validator: (value) =>

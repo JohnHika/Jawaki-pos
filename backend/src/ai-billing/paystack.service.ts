@@ -36,6 +36,7 @@ interface PaystackSubaccount {
   account_name?: string;
   currency?: string;
   active?: boolean;
+  is_verified?: boolean;
 }
 
 interface PaystackApiResponse<T> {
@@ -130,6 +131,37 @@ export class PaystackService {
         primary_contact_email: input.contactEmail,
       },
     });
+    return response.data;
+  }
+
+  async getMerchantSubaccount(subaccountCode: string): Promise<PaystackSubaccount> {
+    const response = await this.request<PaystackSubaccount>(
+      `/subaccount/${encodeURIComponent(subaccountCode)}`,
+      { method: 'GET' },
+    );
+    return response.data;
+  }
+
+  async updateMerchantSubaccount(subaccountCode: string, input: {
+    businessName: string;
+    bankCode: string;
+    accountNumber: string;
+    contactEmail: string;
+  }): Promise<PaystackSubaccount> {
+    const response = await this.request<PaystackSubaccount>(
+      `/subaccount/${encodeURIComponent(subaccountCode)}`,
+      {
+        method: 'PUT',
+        body: {
+          business_name: input.businessName,
+          settlement_bank: input.bankCode,
+          account_number: input.accountNumber,
+          percentage_charge: 0,
+          primary_contact_email: input.contactEmail,
+          active: true,
+        },
+      },
+    );
     return response.data;
   }
 
@@ -231,7 +263,7 @@ export class PaystackService {
 
   private async request<T>(
     path: string,
-    options: { method: 'GET' | 'POST'; body?: Record<string, unknown> },
+    options: { method: 'GET' | 'POST' | 'PUT'; body?: Record<string, unknown> },
   ): Promise<PaystackApiResponse<T>> {
     if (!this.secretKey) {
       throw new HttpException(
@@ -266,7 +298,7 @@ export class PaystackService {
     if (!response.ok || !payload.status) {
       // Provider errors help diagnose channel and account setup problems, but
       // can echo customer phone, email, or bank details.
-      const merchantPaymentRequest = path === '/subaccount' || path === '/charge';
+      const merchantPaymentRequest = path.startsWith('/subaccount') || path === '/charge';
       const safeMessage = this.safeProviderMessage(payload.message);
       this.logger.error(
         `Paystack request failed: ${options.method} ${path} — HTTP ${response.status}` +

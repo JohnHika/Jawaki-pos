@@ -1106,6 +1106,8 @@ class _SubscriptionBillingScreenState
   // ── Actions ─────────────────────────────────────────────────────────
 
   Widget _buildPayWithMpesaButton() {
+    final payerEmail =
+        getIt<AuthService>().currentUser?['email']?.toString().trim() ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1137,6 +1139,26 @@ class _SubscriptionBillingScreenState
               borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             ),
           ),
+        ),
+        const SizedBox(height: DesignSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline_rounded,
+                size: 18, color: DesignColors.textSecondary),
+            const SizedBox(width: DesignSpacing.xs),
+            Expanded(
+              child: Text(
+                payerEmail.isEmpty
+                    ? 'Paystack uses the signed-in shop account email as the payer email for this subscription. Counterbase’s Paystack contact email is configured separately.'
+                    : 'Subscription payer email: $payerEmail. This is the signed-in shop account; Counterbase’s Paystack contact email is configured separately.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: DesignColors.textSecondary,
+                      height: 1.35,
+                    ),
+              ),
+            ),
+          ],
         ),
       ],
     );

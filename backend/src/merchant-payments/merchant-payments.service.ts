@@ -8,7 +8,13 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { PaymentMethod, PaymentStatus, Prisma, ReceivablePaymentMethod } from '@prisma/client';
+import {
+  MerchantPaymentAccount,
+  PaymentMethod,
+  PaymentStatus,
+  Prisma,
+  ReceivablePaymentMethod,
+} from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PaystackService } from '../ai-billing/paystack.service';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -39,19 +45,19 @@ export class MerchantPaymentsService {
       where: { tenantId: actor.tenantId },
     });
     if (!row) return { status: 'NOT_CONFIGURED', provider: 'PAYSTACK', currency: 'KES' };
-    const accountName = row.accountName?.trim() || null;
+    const payout = await this.refreshPayoutVerification(row);
+    const accountName = payout.row.accountName?.trim() || null;
     return {
-      // Older records may have been marked ACTIVE even when Paystack did not
-      // return a resolved account holder. Do not represent those as verified.
-      status: row.status === 'ACTIVE' && !accountName ? 'PENDING_VERIFICATION' : row.status,
-      provider: row.provider,
-      currency: row.currency,
-      bankCode: row.bankCode,
-      bankName: row.bankName,
+      status: payout.status,
+      provider: payout.row.provider,
+      currency: payout.row.currency,
+      bankCode: payout.row.bankCode,
+      bankName: payout.row.bankName,
       accountName,
       accountHolderVerified: Boolean(accountName),
-      accountLast4: row.accountLast4,
-      updatedAt: row.updatedAt,
+      paystackVerified: payout.paystackVerified,
+      accountLast4: payout.row.accountLast4,
+      updatedAt: payout.row.updatedAt,
     };
   }
 
@@ -79,47 +85,75 @@ export class MerchantPaymentsService {
     const bank = availableBanks.find((item) => item.code === dto.bankCode);
     if (!bank) throw new BadRequestException('Select a supported Kenyan bank');
 
-    // The full account number is sent to Paystack and never persisted here.
-    const subaccount = await this.paystack.createMerchantSubaccount({
+    const existing = await this.prisma.merchantPaymentAccount.findUnique({
+      where: { tenantId: actor.tenantId },
+    });
+    const payoutDetails = {
       businessName: tenant.name,
       bankCode: bank.code,
       accountNumber: dto.accountNumber,
       contactEmail: owner.email,
-    });
-    const accountName = subaccount.account_name?.trim();
-    if (!subaccount.subaccount_code || subaccount.active === false ||
+    };
+    // Reuse an existing Paystack subaccount when a merchant changes banks so
+    // an old settlement route is not left active as an orphan.
+    const subaccount = existing && this.paystack.updateMerchantSubaccount
+      ? await this.paystack.updateMerchantSubaccount(existing.subaccountCode, payoutDetails)
+      : await this.paystack.createMerchantSubaccount(payoutDetails);
+    const subaccountCode = subaccount.subaccount_code || existing?.subaccountCode;
+    if (!subaccountCode || subaccount.active === false ||
         (subaccount.currency && subaccount.currency !== 'KES')) {
       throw new ServiceUnavailableException(
         'Paystack did not confirm a usable KES payout account. No payment route was changed.',
       );
     }
-    if (!accountName) {
+
+    let providerAccount = subaccount;
+    if (typeof providerAccount.is_verified !== 'boolean' &&
+        typeof this.paystack.getMerchantSubaccount === 'function') {
+      try {
+        providerAccount = await this.paystack.getMerchantSubaccount(subaccountCode);
+      } catch {
+        // Preserve the submitted bank details, but keep M-Pesa locked until
+        // Paystack's verification state can be confirmed.
+      }
+    }
+    const accountName = providerAccount.account_name?.trim() || null;
+    // Older non-production adapters may not expose Paystack's verification
+    // endpoint. In production the explicit is_verified flag is authoritative.
+    const paystackVerified = typeof this.paystack.getMerchantSubaccount !== 'function'
+      ? Boolean(accountName)
+      : providerAccount.subaccount_code === subaccountCode &&
+        providerAccount.is_verified === true && providerAccount.active !== false;
+    if (typeof this.paystack.getMerchantSubaccount !== 'function' && !accountName) {
       throw new ServiceUnavailableException(
         'Paystack could not confirm the account holder name. Check the bank and account number before accepting customer payments.',
       );
     }
+    const accountStatus = providerAccount.active === false
+      ? 'INACTIVE'
+      : paystackVerified ? 'ACTIVE' : 'PENDING_VERIFICATION';
 
     await this.prisma.$transaction(async (tx) => {
       await tx.merchantPaymentAccount.upsert({
         where: { tenantId: actor.tenantId },
         create: {
           tenantId: actor.tenantId,
-          subaccountCode: subaccount.subaccount_code,
+          subaccountCode,
           bankCode: bank.code,
           bankName: bank.name,
           accountName,
           accountLast4: dto.accountNumber.slice(-4),
           currency: 'KES',
-          status: 'ACTIVE',
+          status: accountStatus,
         },
         update: {
-          subaccountCode: subaccount.subaccount_code,
+          subaccountCode,
           bankCode: bank.code,
           bankName: bank.name,
           accountName,
           accountLast4: dto.accountNumber.slice(-4),
           currency: 'KES',
-          status: 'ACTIVE',
+          status: accountStatus,
         },
       });
       const onboarding = await tx.tenantOnboarding.findUnique({
@@ -128,7 +162,9 @@ export class MerchantPaymentsService {
       if (onboarding) {
         await tx.tenantOnboardingStep.updateMany({
           where: { onboardingId: onboarding.id, key: 'activate_payment' },
-          data: { status: 'COMPLETED', completedAt: new Date(), deferredAt: null },
+          data: paystackVerified
+            ? { status: 'COMPLETED', completedAt: new Date(), deferredAt: null }
+            : { status: 'PENDING', completedAt: null, deferredAt: null },
         });
       }
     });
@@ -143,8 +179,14 @@ export class MerchantPaymentsService {
     const account = await this.prisma.merchantPaymentAccount.findUnique({
       where: { tenantId: actor.tenantId },
     });
-    if (!account || account.status !== 'ACTIVE' || !account.accountName?.trim()) {
+    if (!account) {
       throw new ConflictException('Verify your business payout bank account in Customer payments before accepting M-Pesa sales');
+    }
+    const payout = await this.refreshPayoutVerification(account);
+    if (!payout.paystackVerified || payout.status !== 'ACTIVE') {
+      throw new ConflictException(
+        'Verify your business payout bank account in Customer payments. Paystack must confirm it before customer M-Pesa sales; cash and manually recorded sales remain available.',
+      );
     }
     if (input.sale.paymentMethod !== PaymentMethod.MPESA || input.sale.tenders?.length) {
       throw new BadRequestException('This checkout accepts one M-Pesa payment for one sale');
@@ -169,7 +211,7 @@ export class MerchantPaymentsService {
           branchId: salePayload.branchId,
           cashierId: actor.sub,
           reference,
-          subaccountCode: account.subaccountCode,
+          subaccountCode: payout.row.subaccountCode,
           amount: new Prisma.Decimal(amount),
           phone,
           customerEmail: input.customerEmail.trim().toLowerCase(),
@@ -192,7 +234,7 @@ export class MerchantPaymentsService {
         amountKes: amount,
         phone,
         reference,
-        subaccountCode: account.subaccountCode,
+        subaccountCode: payout.row.subaccountCode,
         tenantId: actor.tenantId,
       });
       if (prompt.reference !== reference) {
@@ -238,8 +280,14 @@ export class MerchantPaymentsService {
     const account = await this.prisma.merchantPaymentAccount.findUnique({
       where: { tenantId: actor.tenantId },
     });
-    if (!account || account.status !== 'ACTIVE' || !account.accountName?.trim()) {
+    if (!account) {
       throw new ConflictException('Verify your business payout bank account in Customer payments before requesting debt payments');
+    }
+    const payout = await this.refreshPayoutVerification(account);
+    if (!payout.paystackVerified || payout.status !== 'ACTIVE') {
+      throw new ConflictException(
+        'Verify your business payout bank account in Customer payments. Paystack must confirm it before customer M-Pesa debt payments; cash and manually recorded payments remain available.',
+      );
     }
     const receivable = input.receivableType === 'retail'
       ? await this.prisma.retailReceivable.findFirst({
@@ -269,7 +317,7 @@ export class MerchantPaymentsService {
           branchId: input.branchId,
           cashierId: actor.sub,
           reference,
-          subaccountCode: account.subaccountCode,
+          subaccountCode: payout.row.subaccountCode,
           amount: new Prisma.Decimal(input.amount),
           phone,
           customerEmail: email,
@@ -295,7 +343,7 @@ export class MerchantPaymentsService {
         amountKes: input.amount,
         phone,
         reference,
-        subaccountCode: account.subaccountCode,
+        subaccountCode: payout.row.subaccountCode,
         tenantId: actor.tenantId,
       });
       if (prompt.reference !== reference) {
@@ -359,6 +407,67 @@ export class MerchantPaymentsService {
     if (!charge) return { received: true, handled: false };
     await this.verifyAndSettle(charge.reference);
     return { received: true, handled: true };
+  }
+
+  private async refreshPayoutVerification(row: MerchantPaymentAccount) {
+    const legacyVerified = row.status === 'ACTIVE' && Boolean(row.accountName?.trim());
+    if (typeof this.paystack.getMerchantSubaccount !== 'function') {
+      return {
+        row,
+        status: row.status === 'ACTIVE' && !legacyVerified
+          ? 'PENDING_VERIFICATION'
+          : row.status,
+        paystackVerified: legacyVerified,
+      };
+    }
+
+    try {
+      const providerAccount = await this.paystack.getMerchantSubaccount(row.subaccountCode);
+      if (providerAccount.subaccount_code !== row.subaccountCode ||
+          typeof providerAccount.is_verified !== 'boolean') {
+        return {
+          row,
+          status: row.status === 'ACTIVE' ? 'PENDING_VERIFICATION' : row.status,
+          paystackVerified: false,
+        };
+      }
+
+      const paystackVerified = providerAccount.is_verified && providerAccount.active !== false;
+      const status = providerAccount.active === false
+        ? 'INACTIVE'
+        : paystackVerified ? 'ACTIVE' : 'PENDING_VERIFICATION';
+      const accountName = providerAccount.account_name?.trim() || row.accountName;
+      const changed = status !== row.status || accountName !== row.accountName;
+      const updated = changed
+        ? await this.prisma.merchantPaymentAccount.update({
+            where: { tenantId: row.tenantId },
+            data: { status, accountName },
+          })
+        : row;
+      if (status !== row.status) {
+        const onboarding = await this.prisma.tenantOnboarding.findUnique({
+          where: { tenantId: row.tenantId },
+          select: { id: true },
+        });
+        if (onboarding) {
+          await this.prisma.tenantOnboardingStep.updateMany({
+            where: { onboardingId: onboarding.id, key: 'activate_payment' },
+            data: status === 'ACTIVE'
+              ? { status: 'COMPLETED', completedAt: new Date(), deferredAt: null }
+              : { status: 'PENDING', completedAt: null, deferredAt: null },
+          });
+        }
+      }
+      return { row: updated, status, paystackVerified };
+    } catch {
+      // Do not authorize a new charge from stale local state when Paystack's
+      // current verification status cannot be confirmed.
+      return {
+        row,
+        status: row.status === 'ACTIVE' ? 'PENDING_VERIFICATION' : row.status,
+        paystackVerified: false,
+      };
+    }
   }
 
   private async verifyAndSettle(reference: string) {
