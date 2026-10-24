@@ -229,7 +229,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_cart.state.items.single.quantity, 1);
-    expect(find.textContaining('out of stock'), findsOneWidget);
+    expect(find.textContaining('Only 1 unit'), findsOneWidget);
   });
   testWidgets('the stepper fits a narrow phone with large text',
       (tester) async {

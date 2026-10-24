@@ -780,7 +780,8 @@ class CartNotifier extends StateNotifier<CartState> {
     if (deltaValue == 0) return const CartMutationResult.success();
 
     final current = state.items[index];
-    final wanted = _quantityAtSupportedPrecision(current.quantity + deltaValue);
+    final currentStepQuantity = _quantityBeforeStepping(current);
+    final wanted = _quantityAtSupportedPrecision(currentStepQuantity + deltaValue);
     if (wanted > 0 && wanted % 1 != 0 && !current.allowFractions) {
       return const CartMutationResult(
         success: false,
@@ -813,8 +814,8 @@ class CartNotifier extends StateNotifier<CartState> {
             latestConversionValue > 0
         ? latestConversionValue
         : 1.0;
-    final newQuantity =
-        _quantityAtSupportedPrecision(latestItem.quantity + deltaValue);
+    final newQuantity = _quantityAtSupportedPrecision(
+        _quantityBeforeStepping(latestItem) + deltaValue);
     if (newQuantity <= 0) {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
@@ -838,6 +839,23 @@ class CartNotifier extends StateNotifier<CartState> {
     );
     state = state.copyWith(items: updatedItems);
     return const CartMutationResult.success();
+  }
+
+  /// Older cart rows could retain fractional sale-tier counts even when the
+  /// product was configured for whole units. Normalize those rows to the
+  /// nearest whole tier before applying a +/- step, so an old 1.08-box line
+  /// steps from one box instead of carrying a stray base unit forward.
+  double _quantityBeforeStepping(CartItem item) {
+    if (item.allowFractions || item.saleUnit == null) return item.quantity;
+    final conversion = item.unitConversionFactor;
+    if (conversion == null || !conversion.isFinite || conversion <= 0) {
+      return item.quantity;
+    }
+    final saleQuantity = item.saleQuantity;
+    final tierCount = saleQuantity != null && saleQuantity.isFinite
+        ? saleQuantity
+        : item.quantity / conversion;
+    return _quantityAtSupportedPrecision(tierCount.round() * conversion);
   }
 
   bool _sameSaleTier(CartItem item, String? saleUnit, double conversion) {

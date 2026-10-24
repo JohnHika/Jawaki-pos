@@ -518,7 +518,13 @@ class AppDatabase extends _$AppDatabase {
             // SQLite's dynamic typing safely preserves old integer quantities
             // in REAL-affinity columns; this migration adds the product flag.
             // Existing products remain whole-unit only until an owner opts in.
-            await m.addColumn(products, products.allowFractions);
+            final productTable = await customSelect(
+              "SELECT name FROM sqlite_master "
+              "WHERE type = 'table' AND name = 'products'",
+            ).getSingleOrNull();
+            if (productTable != null) {
+              await m.addColumn(products, products.allowFractions);
+            }
           }
         },
         beforeOpen: (details) async {

@@ -402,18 +402,21 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                           BorderRadius.circular(DesignSpacing.radiusMd),
                       border: Border.all(color: fieldBorder),
                     ),
-                    child: SwitchListTile.adaptive(
-                      value: _allowFractions,
-                      onChanged: (value) =>
-                          setState(() => _allowFractions = value),
-                      activeTrackColor: DesignColors.brand,
-                      secondary:
-                          Icon(Icons.scale_outlined, color: secondaryColor),
-                      title: Text('Sell partial quantities',
-                          style: TextStyle(color: titleColor)),
-                      subtitle: Text(
-                        'Allow amounts such as 0.5 ${_unitPriceTiers.first.unit}.',
-                        style: TextStyle(color: secondaryColor),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: SwitchListTile.adaptive(
+                        value: _allowFractions,
+                        onChanged: (value) =>
+                            setState(() => _allowFractions = value),
+                        activeTrackColor: DesignColors.brand,
+                        secondary:
+                            Icon(Icons.scale_outlined, color: secondaryColor),
+                        title: Text('Sell partial quantities',
+                            style: TextStyle(color: titleColor)),
+                        subtitle: Text(
+                          'Allow amounts such as 0.5 ${_unitPriceTiers.first.unit}.',
+                          style: TextStyle(color: secondaryColor),
+                        ),
                       ),
                     ),
                   ),

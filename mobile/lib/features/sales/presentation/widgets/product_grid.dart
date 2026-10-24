@@ -494,7 +494,7 @@ class _ProductCard extends ConsumerWidget {
       context,
       currentStock <= 0
           ? '$productName is out of stock. Receive inventory before selling.'
-          : 'Only ${_ProductCard._formatCount(currentStock)} units of $productName are available.',
+          : 'Only ${_ProductCard._formatCount(currentStock)} ${currentStock == 1 ? 'unit is' : 'units are'} available for $productName.',
       icon: Icons.inventory_2_outlined,
       color: DesignColors.error,
     );
