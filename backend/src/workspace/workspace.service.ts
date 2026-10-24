@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { LegacyUserRole } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { POLICY_VERSIONS, SIGNUP_REQUIRED_POLICY_TYPES } from '../legal/policy-versions';
+import { DEFAULT_ROLE_PERMISSIONS } from '../permissions/default-role-permissions';
 
 export interface VerifiedWorkspaceInput {
   email: string;
@@ -75,12 +76,13 @@ export class WorkspaceService {
         })),
       });
 
-      const rolePermissions = new Map<string, string[]>([
-        ['Cashier', permissions.map((p) => p.key).filter((key) => /^(sales|products|customers)\./.test(key))],
-        ['Supervisor', permissions.map((p) => p.key).filter((key) => /^(sales|products|customers|inventory)\./.test(key))],
-        ['Manager', permissions.map((p) => p.key).filter((key) => !/^(permissions|roles)\./.test(key))],
-        ['Admin', permissions.map((p) => p.key)],
-      ]);
+      const availablePermissions = new Set(permissions.map((permission) => permission.key));
+      const rolePermissions = new Map(
+        Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([name, keys]) => [
+          name,
+          keys.filter((key) => availablePermissions.has(key)),
+        ]),
+      );
       let adminRoleId = '';
       for (const [name, keys] of rolePermissions) {
         const role = await tx.role.create({

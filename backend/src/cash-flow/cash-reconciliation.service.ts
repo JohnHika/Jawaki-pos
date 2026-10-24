@@ -29,8 +29,8 @@ export class CashReconciliationService {
     });
     if (!branch) throw new NotFoundException('Branch not found');
 
-    const { mode, availableCash } = await this.cashFlowService.getAvailableCash(branchId);
-    const expectedCash = availableCash;
+    const { mode, expectedPhysicalCash } = await this.cashFlowService.getAvailableCash(branchId);
+    const expectedCash = expectedPhysicalCash;
     const discrepancy = dto.countedCash - expectedCash;
 
     const lastReconciliation = await this.prisma.cashReconciliation.findFirst({

@@ -58,6 +58,9 @@ export class AvailableCashResponseDto {
   @ApiProperty()
   availableCash: number;
 
+  @ApiProperty({ description: 'Expected physical cash in the till, excluding non-cash revenue' })
+  expectedPhysicalCash: number;
+
   @ApiProperty()
   todaysCashIn: number;
 
@@ -68,6 +71,7 @@ export class AvailableCashResponseDto {
   breakdown: {
     salesCashIn?: number;
     allRevenue?: number;
+    expectedPhysicalCash?: number;
     receivableCollections?: number;
     restockOut: number;
     expenseOut: number;

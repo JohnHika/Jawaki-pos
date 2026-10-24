@@ -1,9 +1,33 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { DEFAULT_ROLE_PERMISSIONS } from './default-role-permissions';
 
 @Injectable()
 export class PermissionsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly cashierDefaultPermissions = new Set(
+    DEFAULT_ROLE_PERMISSIONS.Cashier,
+  );
+
+  private addRolePermissions(
+    effective: Set<string>,
+    role: { name: string; isSystem: boolean; permissions: { permissionKey: string }[] },
+  ) {
+    for (const permission of role.permissions) {
+      // Old workspace creation granted every sales/products/customers key to
+      // Cashiers. Clamp those system roles at read time as well as in the
+      // seed, so the fix takes effect immediately after deployment.
+      if (
+        role.isSystem &&
+        role.name === 'Cashier' &&
+        !this.cashierDefaultPermissions.has(permission.permissionKey)
+      ) {
+        continue;
+      }
+      effective.add(permission.permissionKey);
+    }
+  }
 
   /**
    * Effective permissions = union of every assigned role's permissions,
@@ -14,7 +38,15 @@ export class PermissionsService {
     const [userRoles, overrides] = await Promise.all([
       this.prisma.userRole.findMany({
         where: { userId },
-        select: { role: { select: { permissions: { select: { permissionKey: true } } } } },
+        select: {
+          role: {
+            select: {
+              name: true,
+              isSystem: true,
+              permissions: { select: { permissionKey: true } },
+            },
+          },
+        },
       }),
       this.prisma.userPermissionOverride.findMany({
         where: { userId },
@@ -24,9 +56,7 @@ export class PermissionsService {
 
     const effective = new Set<string>();
     for (const userRole of userRoles) {
-      for (const rp of userRole.role.permissions) {
-        effective.add(rp.permissionKey);
-      }
+      this.addRolePermissions(effective, userRole.role);
     }
 
     // Backward compatibility for users created before granular roles were
@@ -54,11 +84,13 @@ export class PermissionsService {
               name: roleName,
             },
           },
-          select: { permissions: { select: { permissionKey: true } } },
+          select: {
+            name: true,
+            isSystem: true,
+            permissions: { select: { permissionKey: true } },
+          },
         });
-        for (const permission of fallbackRole?.permissions ?? []) {
-          effective.add(permission.permissionKey);
-        }
+        if (fallbackRole) this.addRolePermissions(effective, fallbackRole);
       }
     }
 

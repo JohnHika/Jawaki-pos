@@ -144,6 +144,7 @@ export class CashFlowService {
       return {
         mode,
         availableCash: runningBalance,
+        expectedPhysicalCash: runningBalance,
         todaysCashIn: salesCashIn + receivableCollections,
         todaysCashOut,
         breakdown: {
@@ -167,13 +168,29 @@ export class CashFlowService {
         _sum: { totalAmount: true },
       });
       const allRevenue = Number(revenue._sum.totalAmount) || 0;
+      // Keep the restock budget's configured all-revenue behavior, while
+      // exposing a separate till-only amount for physical cash reconciliation.
+      const [salesCashIn, receivableCollections] = await Promise.all([
+        this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay),
+        this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay),
+      ]);
+      const expectedPhysicalCash = salesCashIn + receivableCollections - todaysCashOut;
 
       return {
         mode,
         availableCash: allRevenue - todaysCashOut,
+        expectedPhysicalCash,
         todaysCashIn: allRevenue,
         todaysCashOut,
-        breakdown: { allRevenue, restockOut, expenseOut, manualAdjustment },
+        breakdown: {
+          allRevenue,
+          salesCashIn,
+          receivableCollections,
+          expectedPhysicalCash,
+          restockOut,
+          expenseOut,
+          manualAdjustment,
+        },
       };
     }
 
@@ -183,6 +200,7 @@ export class CashFlowService {
     return {
       mode,
       availableCash: salesCashIn + receivableCollections - todaysCashOut,
+      expectedPhysicalCash: salesCashIn + receivableCollections - todaysCashOut,
       todaysCashIn: salesCashIn + receivableCollections,
       todaysCashOut,
       breakdown: { salesCashIn, receivableCollections, restockOut, expenseOut, manualAdjustment },

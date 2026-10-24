@@ -1,5 +1,12 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.97+2140 (October 24, 2026)
+
+### More reliable checkout, finance, and customer follow-up
+- Keep the selected sale price tier and whole-pack quantity when changing cart quantities; reject conflicting price tiers instead of silently changing the price.
+- Clarify customer statement recovery when an older API rejects an offline customer ID, and prevent a customer-reported M-Pesa code from being treated as verified money received.
+- Restrict cashier sales visibility to their own sales, protect offline reconciliation with its sync permission, and calculate expected till cash from physical cash movements rather than card or M-Pesa revenue.
+
 ## v1.0.95+2138 (October 24, 2026)
 
 ### Recover customer statements automatically

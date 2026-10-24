@@ -173,8 +173,13 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     final cashSales = asDouble(summary['cashSales']);
     final mpesaSales = asDouble(summary['mpesaSales']);
     final creditSales = asDouble(summary['creditSales']);
-    final expectedCash = cashError == null && cash['availableCash'] != null
-        ? asDouble(cash['availableCash'])
+    final cashMode = cash['mode']?.toString();
+    final physicalCash = cash['expectedPhysicalCash'] ??
+        ((cashMode == 'CASH_ONLY' || cashMode == 'RUNNING_BALANCE')
+            ? cash['availableCash']
+            : null);
+    final expectedCash = cashError == null && physicalCash is num
+        ? asDouble(physicalCash)
         : null;
     final closeStatusKnown = closeError == null && summaryError == null;
 

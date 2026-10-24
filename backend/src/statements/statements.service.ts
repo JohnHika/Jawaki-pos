@@ -585,55 +585,8 @@ export class StatementsService {
       return { id: claimId, status: 'CONFIRMED', applied: 0, unallocated: 0 };
     }
 
-    const code = claim.mpesaCode as string;
-    const used = await this.prisma.mpesaEntry.findUnique({
-      where: { tenantId_code: { tenantId, code } },
-    });
-    if (used && used.status === 'MATCHED') {
-      throw new ConflictException('This M-Pesa code was already used to clear a payment.');
-    }
-
-    const amount = dto.amount ?? Number(claim.amount);
-    const result = await this.collections.applyPayment({
-      tenantId,
-      userId,
-      target: { customerId: claim.link.customerId, debtorId: claim.link.debtorId },
-      amount,
-      method: 'MPESA',
-      reference: code,
-      notes: 'Confirmed from the customer statement link',
-      idempotencyKey: `claim:${claim.id}`,
-    });
-
-    await this.prisma.mpesaEntry.upsert({
-      where: { tenantId_code: { tenantId, code } },
-      create: {
-        tenantId,
-        code,
-        amount,
-        senderName: claim.payerName,
-        status: 'MATCHED',
-        matchedCustomerId: claim.link.customerId,
-        matchedDebtorId: claim.link.debtorId,
-        createdById: userId,
-      },
-      update: {
-        status: 'MATCHED',
-        matchedCustomerId: claim.link.customerId,
-        matchedDebtorId: claim.link.debtorId,
-      },
-    });
-    await this.prisma.statementClaim.update({
-      where: { id: claimId },
-      data: { status: 'CONFIRMED', amount: result.applied, decidedAt: new Date(), decidedById: userId },
-    });
-    await this.audit.record({
-      userId,
-      action: 'STATEMENT_CLAIM_CONFIRMED',
-      entityType: 'StatementClaim',
-      entityId: claimId,
-      newValues: { code, applied: result.applied, unallocated: result.unallocated },
-    });
-    return { id: claimId, status: 'CONFIRMED', ...result };
+    throw new BadRequestException(
+      'A customer-reported M-Pesa code is not proof of payment. Verify it in Paystack or match it against a trusted M-Pesa statement before recording money.',
+    );
   }
 }

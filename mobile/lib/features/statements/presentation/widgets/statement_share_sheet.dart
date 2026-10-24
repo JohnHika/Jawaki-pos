@@ -206,11 +206,15 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       await _load();
     } catch (e) {
       if (!mounted) return;
+      final customerNeedsSync = _isCustomerSyncValidation(e);
       setState(() {
         _loading = false;
         _customerNeedsSync = true;
-        _loadError =
-            e is StateError ? e.message.toString() : apiErrorMessage(e);
+        _loadError = customerNeedsSync
+            ? 'This customer record has not reached the workspace yet. Sync the customer and try again.'
+            : e is StateError
+                ? e.message.toString()
+                : apiErrorMessage(e);
       });
     }
   }

@@ -44,7 +44,8 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
   @Post()
-  @UseGuards(SubscriptionGuard)
+  @UseGuards(SubscriptionGuard, PermissionsGuard)
+  @RequirePermissions('sales.create')
   @ApiOperation({ summary: 'Create a new sale' })
   @ApiResponse({ status: 201, description: 'Sale created', type: SaleResponseDto })
   async createSale(@Request() req: any, @Body() dto: CreateSaleDto) {
@@ -52,13 +53,21 @@ export class SalesController {
   }
 
   @Get()
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.view')
   @ApiOperation({ summary: 'Get sales with filtering and pagination' })
   @ApiResponse({ status: 200, description: 'Paginated sales', type: PaginatedSalesDto })
   async getSales(@Request() req: any, @Query() query: SalesQueryDto) {
-    return this.salesService.getSales(req.user.tenantId, query);
+    const canViewAll = req.user.permissions?.includes('sales.view_all') === true;
+    return this.salesService.getSales(
+      req.user.tenantId,
+      canViewAll ? query : { ...query, userId: req.user.sub },
+    );
   }
 
   @Post('offline-reconciliation')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sync.push')
   @ApiOperation({ summary: 'Check which device sales are already on the server' })
   async reconcileOfflineSales(
     @Request() req: any,
@@ -68,6 +77,8 @@ export class SalesController {
   }
 
   @Get('summary/:branchId/:date')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('reporting.sales_summary')
   @ApiOperation({ summary: 'Get daily sales summary for a branch' })
   @ApiResponse({ status: 200, description: 'Daily summary', type: DailySummaryDto })
   async getDailySummary(
@@ -79,27 +90,47 @@ export class SalesController {
   }
 
   @Get('credit')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('customers.credit_view')
   @ApiOperation({ summary: 'Get credit sales with outstanding balances' })
   @ApiResponse({ status: 200, description: 'Credit sales with outstanding balances' })
   async getCreditSales(
     @Request() req: any,
     @Query() query: SalesQueryDto,
   ) {
-    return this.salesService.getCreditSalesWithOutstandingBalance(req.user.tenantId, query);
+    const canViewAll = req.user.permissions?.includes('sales.view_all') === true;
+    return this.salesService.getCreditSalesWithOutstandingBalance(
+      req.user.tenantId,
+      canViewAll ? query : { ...query, userId: req.user.sub },
+    );
   }
 
   @Get('receipt/:receiptNumber')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.view')
   @ApiOperation({ summary: 'Get sale by receipt number' })
   @ApiResponse({ status: 200, description: 'Sale details', type: SaleResponseDto })
   async getReceipt(@Param('receiptNumber') receiptNumber: string, @Request() req: any) {
-    return this.salesService.getReceipt(receiptNumber, req.user.tenantId);
+    const canViewAll = req.user.permissions?.includes('sales.view_all') === true;
+    return this.salesService.getReceipt(
+      receiptNumber,
+      req.user.tenantId,
+      canViewAll ? undefined : req.user.sub,
+    );
   }
 
   @Get(':id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.view')
   @ApiOperation({ summary: 'Get sale by ID' })
   @ApiResponse({ status: 200, description: 'Sale details', type: SaleResponseDto })
   async getSale(@Param('id') id: string, @Request() req: any) {
-    return this.salesService.getSale(id, req.user.tenantId);
+    const canViewAll = req.user.permissions?.includes('sales.view_all') === true;
+    return this.salesService.getSale(
+      id,
+      req.user.tenantId,
+      canViewAll ? undefined : req.user.sub,
+    );
   }
 
   @Post(':id/void')

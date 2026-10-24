@@ -137,8 +137,8 @@ class _CashReconciliationScreenState
       // regardless of what's shown here.
     }
 
-    final expectedCash =
-        expected != null ? (expected['availableCash'] as num).toDouble() : null;
+    final physicalCash = expected?['expectedPhysicalCash'];
+    final expectedCash = physicalCash is num ? physicalCash.toDouble() : null;
     final countController = TextEditingController();
     final notesController = TextEditingController();
 
@@ -176,7 +176,7 @@ class _CashReconciliationScreenState
                   const SizedBox(height: DesignSpacing.xs),
                   Text(
                     expectedCash != null
-                        ? 'System expects: ${_currencyFmt.format(expectedCash)}'
+                        ? 'Expected in till: ${_currencyFmt.format(expectedCash)}'
                         : 'Could not load expected cash figure',
                     style: TextStyle(
                         color: isDark

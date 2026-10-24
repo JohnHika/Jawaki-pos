@@ -102,7 +102,7 @@ export class StatementsController {
 
   @Post('claims/:id/decide')
   @RequirePermissions('statements.share', 'finance.manage_receivables')
-  @ApiOperation({ summary: 'Confirm (records the payment) or reject a customer reply' })
+  @ApiOperation({ summary: 'Acknowledge a promise or reject a claim; customer-reported payments are not proof of receipt' })
   decide(
     @CurrentUser('id') userId: string,
     @CurrentUser('tenantId') tenantId: string,

@@ -252,36 +252,15 @@ describe('deciding a reply', () => {
     return ctx;
   };
 
-  it('records the payment, burns the M-Pesa code and marks the reply confirmed', async () => {
+  it('does not settle an M-Pesa code reported by a customer', async () => {
     const { service, state, collections, audit } = await setup();
-    const result = await service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM' });
-    expect(collections.applyPayment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: 't',
-        target: { customerId: 'c1', debtorId: null },
-        amount: 2_000,
-        method: 'MPESA',
-        reference: 'QJK1A2B3C4',
-        idempotencyKey: 'claim:claim-1',
-      }),
-    );
-    expect(result).toMatchObject({ status: 'CONFIRMED', applied: 2_000 });
-    expect(state.entries[0]).toMatchObject({ code: 'QJK1A2B3C4', status: 'MATCHED', matchedCustomerId: 'c1' });
-    expect(state.claims[0].status).toBe('CONFIRMED');
-    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'STATEMENT_CLAIM_CONFIRMED' }));
-  });
-
-  it('uses the amount the owner actually received when it differs', async () => {
-    const { service, collections } = await setup();
-    await service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM', amount: 1_500 });
-    expect(collections.applyPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 1_500 }));
-  });
-
-  it('will not use an M-Pesa code that already cleared another payment', async () => {
-    const { service, state, collections } = await setup();
-    state.entries.push({ code: 'QJK1A2B3C4', status: 'MATCHED' });
-    await expect(service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM' }),
+    ).rejects.toThrow('not proof of payment');
     expect(collections.applyPayment).not.toHaveBeenCalled();
+    expect(state.entries).toHaveLength(0);
+    expect(state.claims[0].status).toBe('PENDING');
+    expect(audit.record).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'STATEMENT_CLAIM_CONFIRMED' }));
   });
 
   it('rejects without recording any money', async () => {
@@ -294,8 +273,11 @@ describe('deciding a reply', () => {
 
   it('only decides each reply once, and a promise records no money', async () => {
     const ctx = await setup();
-    await ctx.service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM' });
-    await expect(ctx.service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      ctx.service.decideClaim('owner', 't', 'claim-1', { action: 'CONFIRM' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await ctx.service.decideClaim('owner', 't', 'claim-1', { action: 'REJECT' });
+    await expect(ctx.service.decideClaim('owner', 't', 'claim-1', { action: 'REJECT' })).rejects.toBeInstanceOf(ConflictException);
 
     const link = ctx.state.links[0];
     const soon = new Date(Date.now() + 3 * DAY).toISOString().slice(0, 10);

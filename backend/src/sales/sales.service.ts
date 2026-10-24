@@ -754,11 +754,12 @@ export class SalesService {
     };
   }
 
-  async getSale(saleId: string, tenantId: string) {
+  async getSale(saleId: string, tenantId: string, userId?: string) {
     const sale = await this.prisma.sale.findFirst({
       where: {
         id: saleId,
         branch: { tenantId },
+        ...(userId ? { userId } : {}),
       },
       include: {
         items: {
@@ -783,11 +784,12 @@ export class SalesService {
     return this.formatSale(sale, true);
   }
 
-  async getReceipt(receiptNumber: string, tenantId: string) {
+  async getReceipt(receiptNumber: string, tenantId: string, userId?: string) {
     const sale = await this.prisma.sale.findFirst({
       where: {
         receiptNumber,
         branch: { tenantId },
+        ...(userId ? { userId } : {}),
       },
       include: {
         items: true,
@@ -1205,7 +1207,7 @@ export class SalesService {
     tenantId: string,
     query: SalesQueryDto,
   ) {
-    const { branchId, startDate, endDate, page = 1, limit = 50 } = query;
+    const { branchId, userId, startDate, endDate, page = 1, limit = 50 } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -1215,6 +1217,7 @@ export class SalesService {
     };
 
     if (branchId) where.branchId = branchId;
+    if (userId) where.userId = userId;
 
     const createdAt = await this.resolveCreatedAtRange(tenantId, branchId, startDate, endDate);
     if (createdAt) where.createdAt = createdAt;

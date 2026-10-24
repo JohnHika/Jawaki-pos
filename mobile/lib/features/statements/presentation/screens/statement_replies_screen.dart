@@ -148,9 +148,9 @@ class _ReplyCardState extends ConsumerState<_ReplyCard> {
             if (claim.isPending && claim.isPaid) ...[
               const SizedBox(height: DesignSpacing.md),
               const Text(
-                'This claim does not confirm payment. Send a Paystack '
-                'M-Pesa request from Finance; the debt updates after '
-                'Paystack verifies it.',
+                'This is the customer’s claim, not payment confirmation. Check '
+                'Paystack or a trusted M-Pesa statement before recording it. '
+                'A new payment request is only for money still owed.',
               ),
               const SizedBox(height: DesignSpacing.sm),
               Row(children: [

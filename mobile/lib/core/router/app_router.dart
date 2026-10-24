@@ -234,7 +234,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // The dashboard calls shop-wide reporting endpoints. Keep it out of
         // reach for cashier roles that cannot read reporting data, including
         // direct links and restored navigation state.
-        if (path == '/dashboard' && !perms.canSeeDashboard) {
+        if ((path == '/dashboard' || path.startsWith('/dashboard/')) &&
+            !perms.canSeeDashboard) {
           return '/';
         }
         // Finance endpoints use finance.view. Reporting permissions do not
