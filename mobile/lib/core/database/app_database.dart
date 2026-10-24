@@ -41,6 +41,8 @@ class Products extends Table {
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get trackInventory =>
       boolean().withDefault(const Constant(true))();
+  BoolColumn get allowFractions =>
+      boolean().withDefault(const Constant(false))();
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -120,7 +122,7 @@ class CartItems extends Table {
   TextColumn get productId => text()();
   TextColumn get productName => text()();
   TextColumn get sku => text()();
-  IntColumn get quantity => integer()();
+  RealColumn get quantity => real()();
   RealColumn get unitPrice => real()();
   RealColumn get discount => real().withDefault(const Constant(0))();
   RealColumn get total => real()();
@@ -163,7 +165,7 @@ class PendingSaleItems extends Table {
   TextColumn get productId => text()();
   TextColumn get productName => text()();
   TextColumn get sku => text()();
-  IntColumn get quantity => integer()();
+  RealColumn get quantity => real()();
   RealColumn get unitPrice => real()();
   RealColumn get discount => real().withDefault(const Constant(0))();
   RealColumn get total => real()();
@@ -363,7 +365,7 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion =>
-      13; // v13: performance indexes (products/tiers/stock)
+      14; // v14: fractional POS quantities and product setting
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -511,6 +513,12 @@ class AppDatabase extends _$AppDatabase {
               'idx_local_stock_product_branch',
               'CREATE INDEX IF NOT EXISTS idx_local_stock_product_branch ON local_stock (product_id, branch_id)',
             );
+          }
+          if (from >= 9 && from < 14) {
+            // SQLite's dynamic typing safely preserves old integer quantities
+            // in REAL-affinity columns; this migration adds the product flag.
+            // Existing products remain whole-unit only until an owner opts in.
+            await m.addColumn(products, products.allowFractions);
           }
         },
         beforeOpen: (details) async {
@@ -1389,8 +1397,9 @@ class AppDatabase extends _$AppDatabase {
   Future<void> decrementStock(
     String productId,
     String branchId,
-    int quantity,
+    num quantity,
   ) async {
+    final amount = quantity.toDouble();
     final stock = await getProductStock(productId, branchId);
     if (stock != null) {
       await (update(localStock)
@@ -1400,7 +1409,7 @@ class AppDatabase extends _$AppDatabase {
             ))
           .write(
         LocalStockCompanion(
-          quantity: Value(stock.quantity - quantity),
+          quantity: Value(stock.quantity - amount),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -1409,7 +1418,7 @@ class AppDatabase extends _$AppDatabase {
       // silently did nothing, so the first sale of a product never showed
       // any deduction. Create the row so the sale is reflected; the next
       // catalog sync corrects it to the server's (now-decremented) value.
-      final start = (0 - quantity);
+      final start = -amount;
       await into(localStock).insert(
         LocalStockCompanion.insert(
           id: 'stock-$branchId-$productId',
@@ -1822,7 +1831,7 @@ class AppDatabase extends _$AppDatabase {
           (r) => {
             'productId': r.read<String>('product_id'),
             'productName': r.read<String>('product_name'),
-            'totalQty': r.read<int>('total_qty'),
+            'totalQty': (r.data['total_qty'] as num? ?? 0).toDouble(),
             'totalRevenue': r.read<double>('total_revenue'),
           },
         )
@@ -1856,7 +1865,7 @@ class AppDatabase extends _$AppDatabase {
           (r) => {
             'categoryId': r.read<String>('category_id'),
             'categoryName': r.read<String>('category_name'),
-            'totalQty': r.read<int>('total_qty'),
+            'totalQty': (r.data['total_qty'] as num? ?? 0).toDouble(),
             'totalRevenue': r.read<double>('total_revenue'),
           },
         )
@@ -1941,7 +1950,7 @@ class AppDatabase extends _$AppDatabase {
       'transactionCount': result.read<int>('count'),
       'totalRevenue': result.read<double>('revenue'),
       'avgTicket': result.read<double>('avg_ticket'),
-      'itemsSold': itemsResult.read<int>('items_sold'),
+      'itemsSold': (itemsResult.data['items_sold'] as num? ?? 0).toDouble(),
     };
   }
 
@@ -2038,7 +2047,7 @@ class AppDatabase extends _$AppDatabase {
       'transactionCount': result.read<int>('count'),
       'totalRevenue': result.read<double>('revenue'),
       'avgTicket': result.read<double>('avg_ticket'),
-      'itemsSold': itemsResult.read<int>('items_sold'),
+      'itemsSold': (itemsResult.data['items_sold'] as num? ?? 0).toDouble(),
     };
   }
 
@@ -2078,7 +2087,7 @@ class AppDatabase extends _$AppDatabase {
       'transactionCount': result.read<int>('count'),
       'totalRevenue': result.read<double>('revenue'),
       'avgTicket': result.read<double>('avg_ticket'),
-      'itemsSold': itemsResult.read<int>('items_sold'),
+      'itemsSold': (itemsResult.data['items_sold'] as num? ?? 0).toDouble(),
     };
   }
 
@@ -2165,7 +2174,7 @@ class AppDatabase extends _$AppDatabase {
         .map(
           (r) => {
             'date': r.read<String>('date'),
-            'itemsSold': r.read<int>('items_sold'),
+            'itemsSold': (r.data['items_sold'] as num? ?? 0).toDouble(),
           },
         )
         .toList();
@@ -2263,7 +2272,7 @@ class AppDatabase extends _$AppDatabase {
           (r) => {
             'productId': r.read<String>('product_id'),
             'productName': r.read<String>('product_name'),
-            'totalQty': r.read<int>('total_qty'),
+            'totalQty': (r.data['total_qty'] as num? ?? 0).toDouble(),
             'totalRevenue': r.read<double>('total_revenue'),
           },
         )
@@ -2989,7 +2998,7 @@ class AppDatabase extends _$AppDatabase {
           (r) => <String, dynamic>{
             'productId': r.read<String>('product_id'),
             'productName': r.read<String>('product_name'),
-            'totalQty': r.read<int>('total_qty'),
+            'totalQty': (r.data['total_qty'] as num? ?? 0).toDouble(),
             'timesBought': r.read<int>('times_bought'),
           },
         )
@@ -3478,7 +3487,7 @@ class AppDatabase extends _$AppDatabase {
         'stock-$branchId-$productId',
         productId,
         branchId,
-        quantity.round(),
+        quantity,
         nowIso,
       ],
     );

@@ -247,10 +247,9 @@ class SyncRoutes {
                 Value(payload['paymentMethod']?.toString() ?? 'CASH'),
             paymentReference: Value(payload['paymentReference']?.toString()),
             customerId: Value(payload['customerId']?.toString()),
-            cashierId: Value(
-                payload['cashierId']?.toString() ??
-                    payload['userId']?.toString() ??
-                    ''),
+            cashierId: Value(payload['cashierId']?.toString() ??
+                payload['userId']?.toString() ??
+                ''),
             branchId: Value(payload['branchId']?.toString() ?? ''),
             notes: Value(payload['notes']?.toString()),
             status: Value(payload['status']?.toString() ?? 'COMPLETED'),
@@ -270,7 +269,7 @@ class SyncRoutes {
                   (item['product'] is Map
                       ? (item['product'] as Map)['sku']?.toString() ?? ''
                       : ''),
-              quantity: _parseNumber(item['quantity'])?.round() ?? 0,
+              quantity: _parseNumber(item['quantity']) ?? 0,
               unitPrice: _parseNumber(item['unitPrice']) ?? 0,
               discount: Value(_parseNumber(item['discount']) ?? 0),
               total: _parseNumber(
@@ -296,7 +295,7 @@ class SyncRoutes {
   Future<void> _processStockAdjusted(Map<String, dynamic> payload) async {
     final productId = payload['productId'] as String?;
     final branchId = payload['branchId'] as String?;
-    final quantity = (payload['quantity'] as num?)?.toInt();
+    final quantity = (payload['quantity'] as num?)?.toDouble();
     if (productId != null && branchId != null && quantity != null) {
       await _db.decrementStock(productId, branchId, quantity);
     }

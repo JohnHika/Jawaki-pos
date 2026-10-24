@@ -24,7 +24,8 @@ class ReceiptScreen extends ConsumerWidget {
   /// after a sale is completed — never when re-opening an old receipt.
   final bool celebrate;
 
-  const ReceiptScreen({super.key, required this.saleId, this.celebrate = false});
+  const ReceiptScreen(
+      {super.key, required this.saleId, this.celebrate = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,7 +47,8 @@ class ReceiptScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: Container(
           margin: const EdgeInsets.only(left: DesignSpacing.xs),
-          child: IconButton(tooltip: 'Close receipt', 
+          child: IconButton(
+            tooltip: 'Close receipt',
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
@@ -72,7 +74,8 @@ class ReceiptScreen extends ConsumerWidget {
           ),
         ),
         centerTitle: false,
-        backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
+        backgroundColor:
+            isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [
@@ -80,11 +83,11 @@ class ReceiptScreen extends ConsumerWidget {
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha:0.08),
+                color: DesignColors.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
-              child:
-                  const Icon(Icons.share_outlined, size: 20, color: DesignColors.accent),
+              child: const Icon(Icons.share_outlined,
+                  size: 20, color: DesignColors.accent),
             ),
             tooltip: 'Share receipt',
             onPressed: () async {
@@ -120,7 +123,7 @@ class ReceiptScreen extends ConsumerWidget {
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
-                color: DesignColors.accent.withValues(alpha:0.08),
+                color: DesignColors.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child: const Icon(Icons.print_outlined,
@@ -129,11 +132,12 @@ class ReceiptScreen extends ConsumerWidget {
             tooltip: 'Print receipt',
             onPressed: () => _printReceipt(context, receiptAsync.valueOrNull),
           ),
-          IconButton(tooltip: 'Void sale', 
+          IconButton(
+            tooltip: 'Void sale',
             icon: Container(
               padding: const EdgeInsets.all(DesignSpacing.sm),
               decoration: BoxDecoration(
-                color: DesignColors.error.withValues(alpha:0.08),
+                color: DesignColors.error.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
               ),
               child: const Icon(Icons.block_rounded,
@@ -160,8 +164,7 @@ class ReceiptScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(DesignSpacing.md),
                 decoration: BoxDecoration(
                   color: DesignColors.warning.withValues(alpha: 0.12),
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusMd),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   border: Border.all(
                     color: DesignColors.warning.withValues(alpha: 0.35),
                   ),
@@ -233,7 +236,8 @@ class ReceiptScreen extends ConsumerWidget {
     final lines = _renderReceiptLines(receipt, items);
     final isVoided =
         (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
-    final rcp = receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
+    final rcp =
+        receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
     final total = (receipt['total'] as num?)?.toDouble() ?? 0;
     final itemCount = items.length;
 
@@ -344,7 +348,8 @@ class ReceiptScreen extends ConsumerWidget {
 
     // Header — store name + address, centered. (Logo is drawn as an image on
     // the thermal print + PDF; the text preview keeps the name prominent.)
-    b.writeln(center((receipt['branchName'] ?? 'POS Store').toString().toUpperCase()));
+    b.writeln(center(
+        (receipt['branchName'] ?? 'POS Store').toString().toUpperCase()));
     final addr = (receipt['branchAddress'] ?? '').toString();
     if (addr.isNotEmpty) {
       for (final l in wrapName(addr)) {
@@ -356,7 +361,8 @@ class ReceiptScreen extends ConsumerWidget {
     b.writeln(rule);
 
     // VOIDED banner — impossible to miss.
-    final isVoided = (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
+    final isVoided =
+        (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
     if (isVoided) {
       b.writeln(center('*** VOIDED SALE ***'));
       final vr = (receipt['voidReason'] ?? '').toString();
@@ -369,7 +375,8 @@ class ReceiptScreen extends ConsumerWidget {
     }
 
     // Receipt meta.
-    final rcp = receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
+    final rcp =
+        receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase();
     b.writeln('Receipt #$rcp');
     b.writeln(_formatDateTime(receipt['createdAt']));
     if (receipt['cashierName'] != null) {
@@ -387,7 +394,7 @@ class ReceiptScreen extends ConsumerWidget {
     // line showing how it was sold. When sold as a multi-unit tier (box/pack
     // with quantityPerUnit > 1), also show the per-base-unit price.
     for (final item in items) {
-      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
       final name = (item['productName'] ?? item['name'] ?? '').toString();
       final unitPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0;
       final total = (item['total'] as num?)?.toDouble() ?? 0;
@@ -400,14 +407,16 @@ class ReceiptScreen extends ConsumerWidget {
 
       // "  2 box @ 1,200.00" (unit label if known, else plain qty).
       final unitLabel = unit.isNotEmpty ? ' $unit' : '';
-      b.writeln(lr('  $qty$unitLabel @ ${money(unitPrice)}', money(total)));
+      b.writeln(lr('  ${_formatQuantity(qty)}$unitLabel @ ${money(unitPrice)}',
+          money(total)));
 
       // When a tier bundles base units, show the effective per-piece price:
       // "    (12 pcs @ 100.00 each)".
       if (unit.isNotEmpty && perUnit > 1) {
         final perPiece = unitPrice / perUnit;
-        final pieces = (perUnit * qty).round();
-        b.writeln('    ($pieces pcs @ ${money(perPiece)} each)');
+        final pieces = perUnit * qty;
+        b.writeln(
+            '    (${_formatQuantity(pieces)} pcs @ ${money(perPiece)} each)');
       }
     }
     b.writeln(rule);
@@ -429,7 +438,8 @@ class ReceiptScreen extends ConsumerWidget {
     b.writeln(dblRule);
 
     // Payment detail — how it was paid, in full.
-    final method = (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
+    final method =
+        (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
     final tenders = receipt['paymentTenders'] as List?;
     if (method == 'SPLIT' && tenders != null && tenders.isNotEmpty) {
       b.writeln('Paid by (split):');
@@ -468,10 +478,19 @@ class ReceiptScreen extends ConsumerWidget {
 
   String _formatDateTime(dynamic dateTime) {
     if (dateTime == null) return 'N/A';
-    final dt =
-        dateTime is DateTime ? dateTime : DateTime.parse(dateTime.toString()).toLocal();
+    final dt = dateTime is DateTime
+        ? dateTime
+        : DateTime.parse(dateTime.toString()).toLocal();
     return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
   }
+
+  String _formatQuantity(double quantity) =>
+      quantity == quantity.roundToDouble()
+          ? quantity.toStringAsFixed(0)
+          : quantity
+              .toStringAsFixed(3)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
 
   String _buildShareText(Map<String, dynamic> receipt) {
     final items = receipt['items'] as List? ?? [];
@@ -481,7 +500,8 @@ class ReceiptScreen extends ConsumerWidget {
     if ((receipt['branchAddress'] as String?)?.isNotEmpty == true) {
       buffer.writeln(receipt['branchAddress']);
     }
-    buffer.writeln('Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}');
+    buffer.writeln(
+        'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}');
     buffer.writeln(_formatDateTime(receipt['createdAt']));
     if ((receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED') {
       buffer.writeln('*** VOIDED SALE ***');
@@ -492,22 +512,26 @@ class ReceiptScreen extends ConsumerWidget {
 
     for (final item in items) {
       final name = item['productName'] ?? '';
-      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
       final unit = (item['unit'] ?? '').toString().trim();
       final unitPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0;
       final perUnit = (item['quantityPerUnit'] as num?)?.toDouble() ?? 0;
       final total = (item['total'] as num?)?.toStringAsFixed(2) ?? '0.00';
-      final label = unit.isNotEmpty ? '$qty $unit' : '$qty';
+      final label = unit.isNotEmpty
+          ? '${_formatQuantity(qty)} $unit'
+          : _formatQuantity(qty);
       buffer.writeln('$name');
       buffer.writeln('  $label @ ${unitPrice.toStringAsFixed(2)} — KES $total');
       if (unit.isNotEmpty && perUnit > 1) {
         final perPiece = unitPrice / perUnit;
-        buffer.writeln('  (${(perUnit * qty).round()} pcs @ ${perPiece.toStringAsFixed(2)} each)');
+        buffer.writeln(
+            '  (${_formatQuantity(perUnit * qty)} pcs @ ${perPiece.toStringAsFixed(2)} each)');
       }
     }
 
     buffer.writeln('---');
-    buffer.writeln('Subtotal: KES ${((receipt['subtotal'] as num?) ?? 0).toStringAsFixed(2)}');
+    buffer.writeln(
+        'Subtotal: KES ${((receipt['subtotal'] as num?) ?? 0).toStringAsFixed(2)}');
     final discount = (receipt['discount'] as num?) ?? 0;
     if (discount > 0) {
       buffer.writeln('Discount: -KES ${discount.toStringAsFixed(2)}');
@@ -516,14 +540,17 @@ class ReceiptScreen extends ConsumerWidget {
     if (getIt<AuthService>().showTaxOnReceipt && tax > 0) {
       buffer.writeln('Tax: KES ${tax.toStringAsFixed(2)}');
     }
-    buffer.writeln('Total: KES ${((receipt['total'] as num?) ?? 0).toStringAsFixed(2)}');
+    buffer.writeln(
+        'Total: KES ${((receipt['total'] as num?) ?? 0).toStringAsFixed(2)}');
 
-    final method = (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
+    final method =
+        (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
     final tenders = receipt['paymentTenders'] as List?;
     if (method == 'SPLIT' && tenders != null && tenders.isNotEmpty) {
       buffer.writeln('Paid by (split):');
       for (final t in tenders) {
-        buffer.writeln('  ${t['method']}: KES ${((t['amount'] as num?) ?? 0).toStringAsFixed(2)}');
+        buffer.writeln(
+            '  ${t['method']}: KES ${((t['amount'] as num?) ?? 0).toStringAsFixed(2)}');
       }
     } else {
       buffer.writeln('Paid by: $method');
@@ -543,7 +570,8 @@ class ReceiptScreen extends ConsumerWidget {
       WidgetRef ref, Map<String, dynamic> receipt) async {
     final items = receipt['items'] as List? ?? [];
     final identity = ref.read(tenantIdentityProvider);
-    final logoBytes = await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
+    final logoBytes =
+        await ExportDocumentService.fetchLogoBytes(identity.logoUrl);
 
     final subtotal = ((receipt['subtotal'] as num?) ?? 0).toStringAsFixed(2);
     final discount = (receipt['discount'] as num?) ?? 0;
@@ -560,7 +588,8 @@ class ReceiptScreen extends ConsumerWidget {
 
     // Payment breakdown into the summary: split tenders line-by-line, else
     // the single method; plus any balance owed.
-    final method = (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
+    final method =
+        (receipt['paymentMethod'] ?? 'CASH').toString().toUpperCase();
     final tenders = receipt['paymentTenders'] as List?;
     if (method == 'SPLIT' && tenders != null && tenders.isNotEmpty) {
       for (final t in tenders) {
@@ -579,20 +608,25 @@ class ReceiptScreen extends ConsumerWidget {
 
     // Per-item row: qty with unit label + per-unit-within-tier breakdown.
     String itemQtyLabel(Map item) {
-      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
       final unit = (item['unit'] ?? '').toString().trim();
       final perUnit = (item['quantityPerUnit'] as num?)?.toDouble() ?? 0;
       final unitPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0;
-      var label = unit.isNotEmpty ? '$qty $unit @ ${unitPrice.toStringAsFixed(2)}' : '$qty';
+      var label = unit.isNotEmpty
+          ? '${_formatQuantity(qty)} $unit @ ${unitPrice.toStringAsFixed(2)}'
+          : _formatQuantity(qty);
       if (unit.isNotEmpty && perUnit > 1) {
-        label += ' (${(perUnit * qty).round()} pcs @ ${(unitPrice / perUnit).toStringAsFixed(2)})';
+        label +=
+            ' (${_formatQuantity(perUnit * qty)} pcs @ ${(unitPrice / perUnit).toStringAsFixed(2)})';
       }
       return label;
     }
 
-    final voided = (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
+    final voided =
+        (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
     final bytes = await ExportDocumentService.buildPdfReport(
-      title: 'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}'
+      title:
+          'Receipt #${receipt['receiptNumber'] ?? saleId.substring(0, 8).toUpperCase()}'
           '${voided ? '  —  VOIDED' : ''}',
       companyName: (receipt['branchName'] as String?)?.isNotEmpty == true
           ? receipt['branchName']
@@ -622,7 +656,8 @@ class ReceiptScreen extends ConsumerWidget {
         ),
       ],
     );
-    await ExportDocumentService.sharePdf(bytes, 'receipt_${receipt['receiptNumber'] ?? saleId}');
+    await ExportDocumentService.sharePdf(
+        bytes, 'receipt_${receipt['receiptNumber'] ?? saleId}');
   }
 
   /// Silent counterpart to [_printReceipt] for the "auto-print after each

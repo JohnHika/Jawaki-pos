@@ -300,20 +300,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         from: SlideFrom.left,
                         distance: 18,
                         child: Text(
-                      identity.userFirstName.isNotEmpty
-                          ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
-                          : 'Good ${_getGreeting()}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineSmall
-                          ?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
+                          identity.userFirstName.isNotEmpty
+                              ? 'Good ${_getGreeting()}, ${identity.userFirstName}'
+                              : 'Good ${_getGreeting()}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
                                     ? DesignColors.darkTextPrimary
                                     : DesignColors.textPrimary,
-                          ),
-                    )),
+                              ),
+                        )),
                     const SizedBox(height: DesignSpacing.xs - 2),
                     Text(
                       identity.companyName,
@@ -577,12 +577,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-revenue',
                 index: 0,
-                child: FlashOnChange(trigger: summary['totalRevenue'], radius: 20, child: MetricCard(
-                  title: "Today's Revenue",
-                  value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
-                  icon: Icons.trending_up_rounded,
-                  color: DesignColors.success,
-                )),
+                child: FlashOnChange(
+                    trigger: summary['totalRevenue'],
+                    radius: 20,
+                    child: MetricCard(
+                      title: "Today's Revenue",
+                      value: _currencyFmt.format(summary['totalRevenue'] ?? 0),
+                      icon: Icons.trending_up_rounded,
+                      color: DesignColors.success,
+                    )),
               ),
             ),
             // Transactions
@@ -591,12 +594,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-transactions',
                 index: 1,
-                child: FlipIn(delay: const Duration(milliseconds: 160), child: MetricCard(
-                  title: 'Transactions',
-                  value: '${summary['transactionCount'] ?? 0}',
-                  icon: Icons.receipt_long_rounded,
-                  color: DesignColors.brand,
-                )),
+                child: FlipIn(
+                    delay: const Duration(milliseconds: 160),
+                    child: MetricCard(
+                      title: 'Transactions',
+                      value: '${summary['transactionCount'] ?? 0}',
+                      icon: Icons.receipt_long_rounded,
+                      color: DesignColors.brand,
+                    )),
               ),
             ),
             // Avg. Ticket
@@ -605,12 +610,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-avg-ticket',
                 index: 2,
-                child: SwingIn(angle: 0.12, delay: const Duration(milliseconds: 240), child: MetricCard(
-                  title: 'Avg. Ticket',
-                  value: _currencyFmt.format(summary['avgTicket'] ?? 0),
-                  icon: Icons.shopping_cart_rounded,
-                  color: DesignColors.info,
-                )),
+                child: SwingIn(
+                    angle: 0.12,
+                    delay: const Duration(milliseconds: 240),
+                    child: MetricCard(
+                      title: 'Avg. Ticket',
+                      value: _currencyFmt.format(summary['avgTicket'] ?? 0),
+                      icon: Icons.shopping_cart_rounded,
+                      color: DesignColors.info,
+                    )),
               ),
             ),
             // Items Sold
@@ -619,12 +627,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               child: StaggeredItem(
                 itemKey: 'dash-metric-items-sold',
                 index: 3,
-                child: ZoomSettle(delay: const Duration(milliseconds: 320), child: MetricCard(
-                  title: 'Items Sold',
-                  value: '${summary['itemsSold'] ?? 0}',
-                  icon: Icons.inventory_2_rounded,
-                  color: DesignColors.accent,
-                )),
+                child: ZoomSettle(
+                    delay: const Duration(milliseconds: 320),
+                    child: MetricCard(
+                      title: 'Items Sold',
+                      value: '${summary['itemsSold'] ?? 0}',
+                      icon: Icons.inventory_2_rounded,
+                      color: DesignColors.accent,
+                    )),
               ),
             ),
           ],
@@ -644,14 +654,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final revenue = (summary['totalRevenue'] as num?)?.toDouble() ?? 0;
     final transactions = (summary['transactionCount'] as num?)?.toInt() ?? 0;
     final avgTicket = (summary['avgTicket'] as num?)?.toDouble() ?? 0;
-    final itemsSold = (summary['itemsSold'] as num?)?.toInt() ?? 0;
+    final itemsSold = (summary['itemsSold'] as num?)?.toDouble() ?? 0;
 
     return <String>[
       transactions == 0
           ? 'No sales have landed today yet. Start with fast-moving items and watch stock before checkout.'
           : '$transactions transactions have brought in ${_currencyFmt.format(revenue)} today.',
       avgTicket > 0
-          ? 'Average ticket is ${_currencyFmt.format(avgTicket)} across $itemsSold sold items.'
+          ? 'Average ticket is ${_currencyFmt.format(avgTicket)} across ${countLabel(itemsSold, 'item')} sold.'
           : 'Average ticket will appear once the first sale is completed.',
       itemsSold > 0
           ? 'Keep an eye on inventory after each sale so zero-stock items stay blocked from POS.'
@@ -666,103 +676,114 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
     final cardBorder =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
-    return BorderDraw(radius: 18, color: DesignColors.accent.withValues(alpha: 0.55), delay: const Duration(milliseconds: 300), child: ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Stack(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(DesignSpacing.lg),
-            decoration: BoxDecoration(
-              color: isDark ? DesignColors.darkSurfaceElevated : Colors.white,
-              border: Border.all(color: cardBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    AxonAiIcon(
-                      tenantLogoUrl: ref.watch(tenantIdentityProvider).logoUrl,
-                      size: 18,
-                    ),
-                    const SizedBox(width: DesignSpacing.sm),
-                    Text(
-                      'AI BRIEF',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1,
-                            color: isDark
-                                ? DesignColors.darkTextTertiary
-                                : DesignColors.textTertiary,
-                          ),
-                    ),
-                  ],
+    return BorderDraw(
+        radius: 18,
+        color: DesignColors.accent.withValues(alpha: 0.55),
+        delay: const Duration(milliseconds: 300),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(DesignSpacing.lg),
+                decoration: BoxDecoration(
+                  color:
+                      isDark ? DesignColors.darkSurfaceElevated : Colors.white,
+                  border: Border.all(color: cardBorder),
                 ),
-                const SizedBox(height: DesignSpacing.md),
-                briefAsync.when(
-                  data: (brief) {
-                    // A real AI-generated brief was returned — show it as-is
-                    // instead of the templated fallback snippets.
-                    if (brief != null && brief.trim().isNotEmpty) {
-                      // Real markdown rendering (bold, tables, lists) — the AI's
-                      // reply can include a markdown table of restock priorities,
-                      // which a plain Text widget would show as literal
-                      // "**bold**" and "| pipe | text |" instead of formatting.
-                      return AppMarkdown(
-                        brief.trim(),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              height: 1.45,
-                              color: isDark
-                                  ? DesignColors.darkTextSecondary
-                                  : DesignColors.textSecondary,
-                            ),
-                      );
-                    }
-                    return _buildBriefSnippets(
-                        _fallbackBriefSnippets(summary), isDark);
-                  },
-                  loading: () => Row(
-                    children: [
-                      SizedBox(
-                        width: 13,
-                        height: 13,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.8,
-                          color: isDark
-                              ? DesignColors.darkTextTertiary
-                              : DesignColors.textTertiary,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        AxonAiIcon(
+                          tenantLogoUrl:
+                              ref.watch(tenantIdentityProvider).logoUrl,
+                          size: 18,
                         ),
-                      ),
-                      const SizedBox(width: DesignSpacing.sm),
-                      Text(
-                        'Thinking about today\'s numbers...',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontStyle: FontStyle.italic,
+                        const SizedBox(width: DesignSpacing.sm),
+                        Text(
+                          'AI BRIEF',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1,
+                                    color: isDark
+                                        ? DesignColors.darkTextTertiary
+                                        : DesignColors.textTertiary,
+                                  ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: DesignSpacing.md),
+                    briefAsync.when(
+                      data: (brief) {
+                        // A real AI-generated brief was returned — show it as-is
+                        // instead of the templated fallback snippets.
+                        if (brief != null && brief.trim().isNotEmpty) {
+                          // Real markdown rendering (bold, tables, lists) — the AI's
+                          // reply can include a markdown table of restock priorities,
+                          // which a plain Text widget would show as literal
+                          // "**bold**" and "| pipe | text |" instead of formatting.
+                          return AppMarkdown(
+                            brief.trim(),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  height: 1.45,
+                                  color: isDark
+                                      ? DesignColors.darkTextSecondary
+                                      : DesignColors.textSecondary,
+                                ),
+                          );
+                        }
+                        return _buildBriefSnippets(
+                            _fallbackBriefSnippets(summary), isDark);
+                      },
+                      loading: () => Row(
+                        children: [
+                          SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.8,
                               color: isDark
                                   ? DesignColors.darkTextTertiary
                                   : DesignColors.textTertiary,
                             ),
+                          ),
+                          const SizedBox(width: DesignSpacing.sm),
+                          Text(
+                            'Thinking about today\'s numbers...',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontStyle: FontStyle.italic,
+                                      color: isDark
+                                          ? DesignColors.darkTextTertiary
+                                          : DesignColors.textTertiary,
+                                    ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  // Offline / AI unreachable — degrade to the templated snippets
-                  // instead of showing an error where a business insight was
-                  // expected.
-                  error: (_, __) => _buildBriefSnippets(
-                      _fallbackBriefSnippets(summary), isDark),
+                      // Offline / AI unreachable — degrade to the templated snippets
+                      // instead of showing an error where a business insight was
+                      // expected.
+                      error: (_, __) => _buildBriefSnippets(
+                          _fallbackBriefSnippets(summary), isDark),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(width: 3, color: DesignColors.accent),
+              ),
+            ],
           ),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 3, color: DesignColors.accent),
-          ),
-        ],
-      ),
-    ));
+        ));
   }
 
   Widget _buildBriefSnippets(List<String> snippets, bool isDark) {
@@ -1030,7 +1051,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       child: _costMetric(
                         // With no cost entered, "profit" would just repeat
                         // revenue as if every sale were pure margin.
-                        cost <= 0 && !isLoading ? 'Profit (no cost yet)' : 'Profit',
+                        cost <= 0 && !isLoading
+                            ? 'Profit (no cost yet)'
+                            : 'Profit',
                         isLoading ? '—' : formatMoney(profit),
                         cost <= 0 && !isLoading
                             ? (isDark
@@ -1240,16 +1263,16 @@ class _BusinessNewsEntryCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Business News',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            )),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                )),
                     Text('Market, tax and trade updates for your shop',
                         style: TextStyle(color: secondary, fontSize: 12)),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_rounded,
-                  color: DesignColors.info),
+              const Icon(Icons.arrow_forward_rounded, color: DesignColors.info),
             ],
           ),
           if (stories.isNotEmpty) ...[
@@ -1267,8 +1290,8 @@ class _BusinessNewsEntryCard extends ConsumerWidget {
                 children: [
                   const Padding(
                     padding: EdgeInsets.only(top: 5),
-                    child: Icon(Icons.circle,
-                        size: 7, color: DesignColors.error),
+                    child:
+                        Icon(Icons.circle, size: 7, color: DesignColors.error),
                   ),
                   const SizedBox(width: DesignSpacing.sm),
                   Expanded(

@@ -13,32 +13,37 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 
 const _uuid = Uuid();
 
+double _quantityAtSupportedPrecision(num value) =>
+    double.parse(value.toDouble().toStringAsFixed(3));
+
 class CartItem {
   final String id;
   final String productId;
   final String productName;
   final String sku;
-  final int quantity;
+  final double quantity;
   final double unitPrice;
   final double discount;
   final String? notes;
   final String? saleUnit;
   final double? saleQuantity;
   final double? unitConversionFactor;
+  final bool allowFractions;
 
   CartItem({
     required this.id,
     required this.productId,
     required this.productName,
     required this.sku,
-    required this.quantity,
+    required num quantity,
     required this.unitPrice,
     this.discount = 0,
     this.notes,
     this.saleUnit,
     this.saleQuantity,
     this.unitConversionFactor,
-  });
+    this.allowFractions = false,
+  }) : quantity = quantity.toDouble();
 
   double get total => (unitPrice * quantity) - discount;
 
@@ -47,13 +52,14 @@ class CartItem {
     String? productId,
     String? productName,
     String? sku,
-    int? quantity,
+    num? quantity,
     double? unitPrice,
     double? discount,
     String? notes,
     String? saleUnit,
     double? saleQuantity,
     double? unitConversionFactor,
+    bool? allowFractions,
   }) {
     return CartItem(
       id: id ?? this.id,
@@ -67,6 +73,7 @@ class CartItem {
       saleUnit: saleUnit ?? this.saleUnit,
       saleQuantity: saleQuantity ?? this.saleQuantity,
       unitConversionFactor: unitConversionFactor ?? this.unitConversionFactor,
+      allowFractions: allowFractions ?? this.allowFractions,
     );
   }
 
@@ -84,6 +91,7 @@ class CartItem {
       'saleUnit': saleUnit,
       'saleQuantity': saleQuantity,
       'unitConversionFactor': unitConversionFactor,
+      'allowFractions': allowFractions,
     };
   }
 }
@@ -91,7 +99,7 @@ class CartItem {
 class CartMutationResult {
   final bool success;
   final String message;
-  final int currentStock;
+  final double currentStock;
 
   const CartMutationResult({
     required this.success,
@@ -126,7 +134,9 @@ class CartState {
     this.coupon,
   });
 
-  int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
+  // Preserve the existing integer count for whole units and count a partial
+  // measured unit as one item in integer-only badge/summary controls.
+  int get itemCount => items.fold(0, (sum, item) => sum + item.quantity.ceil());
 
   double get subtotal => items.fold(0, (sum, item) => sum + item.total);
 
@@ -263,7 +273,8 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
             if (item is! Map) continue;
             final id = item['id']?.toString() ?? '';
             final productId = item['productId']?.toString() ?? '';
-            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+            final quantity =
+                _quantityAtSupportedPrecision(_amount(item['quantity']) ?? 0);
             final price = _amount(item['unitPrice']);
             final discount = _amount(item['discount']) ?? 0;
             if (id.isEmpty ||
@@ -293,6 +304,7 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
               saleUnit: item['saleUnit']?.toString(),
               saleQuantity: _amount(item['saleQuantity']),
               unitConversionFactor: _amount(item['unitConversionFactor']),
+              allowFractions: item['allowFractions'] == true,
             ));
           }
           if (items.isEmpty) continue;
@@ -427,11 +439,11 @@ class CartNotifier extends StateNotifier<CartState> {
   int _sessionGeneration = 0;
 
   /// Replaces the database-backed stock check; used by tests.
-  final Future<Map<String, dynamic>> Function(String productId, int quantity)?
-      _stockValidator;
+  final Future<Map<String, dynamic>> Function(
+      String productId, double quantity)? _stockValidator;
 
   CartNotifier({
-    Future<Map<String, dynamic>> Function(String productId, int quantity)?
+    Future<Map<String, dynamic>> Function(String productId, double quantity)?
         stockValidator,
   })  : _stockValidator = stockValidator,
         super(const CartState());
@@ -447,12 +459,21 @@ class CartNotifier extends StateNotifier<CartState> {
   // Stock validation method
   Future<Map<String, dynamic>> _validateStockAvailability(
     String productId,
-    int quantity,
+    double quantity,
   ) async {
     final override = _stockValidator;
     if (override != null) return override(productId, quantity);
     try {
       final product = await _database.getProduct(productId);
+      if (quantity % 1 != 0 && product?.allowFractions != true) {
+        return {
+          'available': false,
+          'message': 'This product is sold in whole units.',
+          'currentStock':
+              (await _database.getStockForProduct(productId))?.quantity ?? 0,
+          'required': quantity,
+        };
+      }
       if (product != null && !product.trackInventory) {
         return {
           'available': true,
@@ -513,21 +534,27 @@ class CartNotifier extends StateNotifier<CartState> {
     required String productName,
     required String sku,
     required double unitPrice,
-    int quantity = 1,
+    num quantity = 1,
     double discount = 0,
     String? notes,
     String? saleUnit,
     double? saleQuantity,
     double? unitConversionFactor,
+    bool allowFractions = false,
   }) async {
     final sessionGeneration = _sessionGeneration;
-    if (quantity <= 0 || !unitPrice.isFinite || unitPrice < 0) {
+    final quantityValue = _quantityAtSupportedPrecision(quantity);
+    if (!quantityValue.isFinite ||
+        quantityValue <= 0 ||
+        (!allowFractions && quantityValue % 1 != 0) ||
+        !unitPrice.isFinite ||
+        unitPrice < 0) {
       return const CartMutationResult(
         success: false,
         message: 'Enter a valid price and quantity before adding this item.',
       );
     }
-    final newLineTotal = unitPrice * quantity;
+    final newLineTotal = unitPrice * quantityValue;
     if (!newLineTotal.isFinite) {
       return const CartMutationResult(
         success: false,
@@ -565,9 +592,9 @@ class CartNotifier extends StateNotifier<CartState> {
             'This product is already in the cart at another sale unit. Open it to update the quantity or unit.',
       );
     }
-    final requestedQuantity = existingIndex >= 0
-        ? state.items[existingIndex].quantity + quantity
-        : quantity;
+    final requestedQuantity = _quantityAtSupportedPrecision(existingIndex >= 0
+        ? state.items[existingIndex].quantity + quantityValue
+        : quantityValue);
     final stockCheck = await _validateStockAvailability(
       productId,
       requestedQuantity,
@@ -584,7 +611,7 @@ class CartNotifier extends StateNotifier<CartState> {
       return CartMutationResult(
         success: false,
         message: stockCheck['message'] as String? ?? 'Insufficient stock',
-        currentStock: (stockCheck['currentStock'] as num?)?.floor() ?? 0,
+        currentStock: (stockCheck['currentStock'] as num?)?.toDouble() ?? 0,
       );
     }
 
@@ -607,16 +634,19 @@ class CartNotifier extends StateNotifier<CartState> {
     if (freshIndex >= 0) {
       final updatedItems = [...state.items];
       final existing = updatedItems[freshIndex];
-      final nextQuantity = existing.quantity + quantity;
+      final nextQuantity =
+          _quantityAtSupportedPrecision(existing.quantity + quantityValue);
       updatedItems[freshIndex] = existing.copyWith(
         quantity: nextQuantity,
         discount: _scaledDiscount(existing,
             quantity: nextQuantity, unitPrice: existing.unitPrice),
         // Preserve a manually adjusted/tier price on the existing line.
         // This action adds quantity; it is not a repricing operation.
-        saleQuantity: (existing.saleQuantity ??
-                existing.quantity / (existing.unitConversionFactor ?? 1)) +
-            (saleQuantity ?? quantity / conversion),
+        saleQuantity: _quantityAtSupportedPrecision(
+          (existing.saleQuantity ??
+                  existing.quantity / (existing.unitConversionFactor ?? 1)) +
+              (saleQuantity ?? quantityValue / conversion),
+        ),
       );
       state = state.copyWith(items: updatedItems);
     } else {
@@ -625,13 +655,14 @@ class CartNotifier extends StateNotifier<CartState> {
         productId: productId,
         productName: productName,
         sku: sku,
-        quantity: quantity,
+        quantity: quantityValue,
         unitPrice: unitPrice,
         discount: discount,
         notes: notes,
         saleUnit: saleUnit,
         saleQuantity: saleQuantity,
         unitConversionFactor: unitConversionFactor,
+        allowFractions: allowFractions,
       );
       state = state.copyWith(items: [...state.items, newItem]);
     }
@@ -640,7 +671,7 @@ class CartNotifier extends StateNotifier<CartState> {
 
   Future<CartMutationResult> updateQuantity(
     String productId,
-    int quantity, {
+    num quantity, {
     double? unitPrice,
     String? notes,
     String? saleUnit,
@@ -648,7 +679,14 @@ class CartNotifier extends StateNotifier<CartState> {
     double? unitConversionFactor,
   }) async {
     final sessionGeneration = _sessionGeneration;
-    if (quantity <= 0) {
+    final quantityValue = _quantityAtSupportedPrecision(quantity);
+    if (!quantityValue.isFinite || quantityValue < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Enter a valid quantity.',
+      );
+    }
+    if (quantityValue == 0) {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
     }
@@ -662,16 +700,23 @@ class CartNotifier extends StateNotifier<CartState> {
         state.items.indexWhere((item) => item.productId == productId);
     final currentItem =
         currentItemIndex < 0 ? null : state.items[currentItemIndex];
+    if (quantityValue % 1 != 0 && currentItem?.allowFractions != true) {
+      return const CartMutationResult(
+        success: false,
+        message: 'This product is sold in whole units.',
+      );
+    }
     final resultingUnitPrice = unitPrice ?? currentItem?.unitPrice;
     if (resultingUnitPrice != null &&
-        !(resultingUnitPrice * quantity).isFinite) {
+        !(resultingUnitPrice * quantityValue).isFinite) {
       return const CartMutationResult(
         success: false,
         message: 'The item price is too large for this quantity.',
       );
     }
 
-    final stockCheck = await _validateStockAvailability(productId, quantity);
+    final stockCheck =
+        await _validateStockAvailability(productId, quantityValue);
 
     if (sessionGeneration != _sessionGeneration) {
       return const CartMutationResult(
@@ -684,7 +729,7 @@ class CartNotifier extends StateNotifier<CartState> {
       return CartMutationResult(
         success: false,
         message: stockCheck['message'] as String? ?? 'Insufficient stock',
-        currentStock: (stockCheck['currentStock'] as num?)?.floor() ?? 0,
+        currentStock: (stockCheck['currentStock'] as num?)?.toDouble() ?? 0,
       );
     }
 
@@ -693,15 +738,15 @@ class CartNotifier extends StateNotifier<CartState> {
         final conversion = item.unitConversionFactor;
         final nextUnitPrice = unitPrice ?? item.unitPrice;
         return item.copyWith(
-          quantity: quantity,
+          quantity: quantityValue,
           unitPrice: nextUnitPrice,
           discount: _scaledDiscount(item,
-              quantity: quantity, unitPrice: nextUnitPrice),
+              quantity: quantityValue, unitPrice: nextUnitPrice),
           notes: notes,
           saleUnit: saleUnit,
           saleQuantity: saleQuantity ??
               (conversion != null && conversion > 0
-                  ? quantity / conversion
+                  ? quantityValue / conversion
                   : item.saleQuantity),
           unitConversionFactor: unitConversionFactor,
         );
@@ -713,12 +758,10 @@ class CartNotifier extends StateNotifier<CartState> {
     return const CartMutationResult.success();
   }
 
-  /// Moves a line already in the cart up or down by [delta] BASE units,
-  /// keeping its price and sale unit. Tier lines are snapped to whole sale
-  /// units so old fractional quantities cannot persist through the stepper.
+  /// Moves a line by [delta] base units, keeping its price and sale unit.
   /// Going to zero or below removes the line.
   Future<CartMutationResult> changeQuantityBy(
-      String productId, int delta) async {
+      String productId, num delta) async {
     final sessionGeneration = _sessionGeneration;
     final index = state.items.indexWhere((i) => i.productId == productId);
     if (index < 0) {
@@ -727,27 +770,24 @@ class CartNotifier extends StateNotifier<CartState> {
         message: 'Item is not in the cart',
       );
     }
-    if (delta == 0) return const CartMutationResult.success();
+    final deltaValue = _quantityAtSupportedPrecision(delta);
+    if (!deltaValue.isFinite) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Enter a valid quantity.',
+      );
+    }
+    if (deltaValue == 0) return const CartMutationResult.success();
 
     final current = state.items[index];
-    final conversionValue = current.unitConversionFactor;
-    final conversion = conversionValue != null &&
-            conversionValue.isFinite &&
-            conversionValue > 0
-        ? conversionValue.round().clamp(1, 0x7fffffff).toInt()
-        : 1;
-    // Cart steppers move whole sale units. Round any legacy fractional sale
-    // quantity back to a whole unit before applying the requested step.
-    final currentSaleQuantity = current.saleUnit != null
-        ? (current.saleQuantity ?? current.quantity / conversion).round()
-        : current.quantity;
-    final deltaSaleQuantity =
-        conversion > 1 ? (delta / conversion).round() : delta;
-    final wantedSaleQuantity = currentSaleQuantity + deltaSaleQuantity;
-    final wanted = conversion > 1
-        ? wantedSaleQuantity * conversion
-        : current.quantity + delta;
-    if (delta > 0) {
+    final wanted = _quantityAtSupportedPrecision(current.quantity + deltaValue);
+    if (wanted > 0 && wanted % 1 != 0 && !current.allowFractions) {
+      return const CartMutationResult(
+        success: false,
+        message: 'This product is sold in whole units.',
+      );
+    }
+    if (deltaValue > 0) {
       final stockCheck = await _validateStockAvailability(productId, wanted);
       if (sessionGeneration != _sessionGeneration) {
         return const CartMutationResult(
@@ -759,7 +799,7 @@ class CartNotifier extends StateNotifier<CartState> {
         return CartMutationResult(
           success: false,
           message: stockCheck['message'] as String? ?? 'Insufficient stock',
-          currentStock: (stockCheck['currentStock'] as num?)?.floor() ?? 0,
+          currentStock: (stockCheck['currentStock'] as num?)?.toDouble() ?? 0,
         );
       }
     }
@@ -771,18 +811,10 @@ class CartNotifier extends StateNotifier<CartState> {
     final latestConversion = latestConversionValue != null &&
             latestConversionValue.isFinite &&
             latestConversionValue > 0
-        ? latestConversionValue.round().clamp(1, 0x7fffffff).toInt()
-        : 1;
-    final latestSaleQuantity = latestItem.saleUnit != null
-        ? (latestItem.saleQuantity ?? latestItem.quantity / latestConversion)
-            .round()
-        : latestItem.quantity;
-    final latestDeltaSaleQuantity =
-        latestConversion > 1 ? (delta / latestConversion).round() : delta;
-    final newSaleQuantity = latestSaleQuantity + latestDeltaSaleQuantity;
-    final newQuantity = latestConversion > 1
-        ? newSaleQuantity * latestConversion
-        : latestItem.quantity + delta;
+        ? latestConversionValue
+        : 1.0;
+    final newQuantity =
+        _quantityAtSupportedPrecision(latestItem.quantity + deltaValue);
     if (newQuantity <= 0) {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
@@ -801,7 +833,7 @@ class CartNotifier extends StateNotifier<CartState> {
       discount: _scaledDiscount(item,
           quantity: newQuantity, unitPrice: item.unitPrice),
       saleQuantity: item.saleUnit != null
-          ? newSaleQuantity.toDouble()
+          ? newQuantity / latestConversion
           : item.saleQuantity,
     );
     state = state.copyWith(items: updatedItems);
@@ -823,7 +855,7 @@ class CartNotifier extends StateNotifier<CartState> {
   /// smaller line total; dropping it would silently remove a cashier's price
   /// adjustment.
   double _scaledDiscount(CartItem item,
-      {required int quantity, required double unitPrice}) {
+      {required double quantity, required double unitPrice}) {
     final oldGross = item.unitPrice * item.quantity;
     final newGross = unitPrice * quantity;
     if (!oldGross.isFinite ||

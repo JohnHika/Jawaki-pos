@@ -805,6 +805,7 @@ class ApiClient {
     List<Map<String, dynamic>>? pricingTiers,
     int? minStock,
     double? minPrice,
+    bool allowFractions = false,
   }) async {
     final response = await _dio.post('/catalog/products', data: {
       'name': name,
@@ -817,6 +818,7 @@ class ApiClient {
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
       if (minPrice != null) 'minPrice': minPrice,
+      'allowFractions': allowFractions,
     });
     return response.data as Map<String, dynamic>;
   }
@@ -835,6 +837,7 @@ class ApiClient {
     double? minPrice,
     bool clearMinPrice = false,
     bool clearImage = false,
+    bool? allowFractions,
   }) async {
     final response = await _dio.patch('/catalog/products/$id', data: {
       if (name != null) 'name': name,
@@ -844,6 +847,7 @@ class ApiClient {
       if (unit != null) 'unit': unit,
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
+      if (allowFractions != null) 'allowFractions': allowFractions,
       if (clearMinPrice)
         'minPrice': null
       else if (minPrice != null)

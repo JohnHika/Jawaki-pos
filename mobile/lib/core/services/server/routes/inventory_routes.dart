@@ -169,7 +169,7 @@ class InventoryRoutes {
       '(id, branch_id, product_id, quantity, unit, reason, priority, status, requested_by_id, created_at, updated_at) '
       'VALUES (${Sql.str(id)}, ${Sql.str(body['branchId'] as String? ?? '')}, '
       '${Sql.str(body['productId'] as String? ?? '')}, '
-      '${(body['quantity'] as num?)?.toInt() ?? 1}, '
+      '${(body['quantity'] as num?)?.toDouble() ?? 1}, '
       '${Sql.str(body['unit'] as String? ?? 'piece')}, '
       '${Sql.str(body['reason'] as String? ?? '')}, '
       '${Sql.str(body['priority'] as String? ?? 'normal')}, '
@@ -195,7 +195,7 @@ class InventoryRoutes {
     try {
       await _db.customStatement(
         'UPDATE stock_requests SET '
-        'quantity = ${(body['quantity'] as num?)?.toInt() ?? 1}, '
+        'quantity = ${(body['quantity'] as num?)?.toDouble() ?? 1}, '
         'priority = ${Sql.str(body['priority'] as String? ?? 'normal')}, '
         'reason = ${Sql.str(body['reason'] as String? ?? '')}, '
         'updated_at = ${Sql.str(DateTime.now().toIso8601String())} '
@@ -289,7 +289,7 @@ class InventoryRoutes {
       '  id TEXT PRIMARY KEY NOT NULL, '
       '  branch_id TEXT NOT NULL, '
       '  product_id TEXT NOT NULL, '
-      '  quantity INTEGER NOT NULL DEFAULT 1, '
+      '  quantity REAL NOT NULL DEFAULT 1, '
       '  unit TEXT NOT NULL DEFAULT \'piece\', '
       '  reason TEXT, '
       '  priority TEXT NOT NULL DEFAULT \'normal\', '

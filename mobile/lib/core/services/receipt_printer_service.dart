@@ -39,7 +39,8 @@ class ReceiptPrinterService {
 
   /// Checks only — never prompts (print_bluetooth_thermal has no request
   /// path of its own). Use [requestPermission] to actually prompt.
-  Future<bool> get hasPermission => PrintBluetoothThermal.isPermissionBluetoothGranted;
+  Future<bool> get hasPermission =>
+      PrintBluetoothThermal.isPermissionBluetoothGranted;
 
   /// Prompts for the Bluetooth runtime permissions Android 12+ requires
   /// (BLUETOOTH_CONNECT/BLUETOOTH_SCAN). Returns true once granted.
@@ -97,7 +98,11 @@ class ReceiptPrinterService {
     final branchName = receipt['branchName'] as String? ?? 'POS Store';
     bytes.addAll(generator.text(
       branchName,
-      styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2),
+      styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2),
     ));
 
     final branchAddress = receipt['branchAddress'] as String?;
@@ -115,7 +120,8 @@ class ReceiptPrinterService {
     bytes.addAll(generator.hr());
 
     // VOIDED banner — prominent, bold, centered.
-    final isVoided = (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
+    final isVoided =
+        (receipt['status'] ?? '').toString().toUpperCase() == 'VOIDED';
     if (isVoided) {
       bytes.addAll(generator.text('*** VOIDED SALE ***',
           styles: const PosStyles(align: PosAlign.center, bold: true)));
@@ -145,7 +151,7 @@ class ReceiptPrinterService {
     final items = (receipt['items'] as List?) ?? [];
     for (final item in items) {
       final name = (item['productName'] ?? '').toString();
-      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
       final unit = (item['unit'] ?? '').toString().trim();
       final unitPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0;
       final perUnit = (item['quantityPerUnit'] as num?)?.toDouble() ?? 0;
@@ -154,16 +160,22 @@ class ReceiptPrinterService {
       // Product name on its own line so long names don't crush the amount.
       bytes.addAll(generator.text(name, styles: const PosStyles(bold: true)));
       // "  2 box @ 1,200.00 ............ 2,400.00"
-      final qtyLabel = unit.isNotEmpty ? '$qty $unit' : '$qty';
+      final qtyLabel = unit.isNotEmpty
+          ? '${_formatQuantity(qty)} $unit'
+          : _formatQuantity(qty);
       bytes.addAll(generator.row([
-        PosColumn(text: '  $qtyLabel @ ${unitPrice.toStringAsFixed(2)}', width: 8),
-        PosColumn(text: total, width: 4, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text: '  $qtyLabel @ ${unitPrice.toStringAsFixed(2)}', width: 8),
+        PosColumn(
+            text: total,
+            width: 4,
+            styles: const PosStyles(align: PosAlign.right)),
       ]));
       // Per-base-unit price when a tier bundles units.
       if (unit.isNotEmpty && perUnit > 1) {
         final perPiece = unitPrice / perUnit;
         bytes.addAll(generator.text(
-          '    (${(perUnit * qty).round()} pcs @ ${perPiece.toStringAsFixed(2)} each)',
+          '    (${_formatQuantity(perUnit * qty)} pcs @ ${perPiece.toStringAsFixed(2)} each)',
           styles: const PosStyles(fontType: PosFontType.fontB),
         ));
       }
@@ -176,7 +188,8 @@ class ReceiptPrinterService {
 
     final discount = (receipt['discount'] as num?) ?? 0;
     if (discount > 0) {
-      bytes.addAll(_row(generator, 'Discount', '-${discount.toStringAsFixed(2)}'));
+      bytes.addAll(
+          _row(generator, 'Discount', '-${discount.toStringAsFixed(2)}'));
     }
 
     final tax = (receipt['tax'] as num?) ?? 0;
@@ -200,7 +213,8 @@ class ReceiptPrinterService {
     bytes.addAll(generator.hr());
 
     // Payment detail — split tenders line by line, else the single method.
-    final paymentMethod = (receipt['paymentMethod'] as String? ?? 'CASH').toUpperCase();
+    final paymentMethod =
+        (receipt['paymentMethod'] as String? ?? 'CASH').toUpperCase();
     final tenders = receipt['paymentTenders'] as List?;
     if (paymentMethod == 'SPLIT' && tenders != null && tenders.isNotEmpty) {
       bytes.addAll(generator.text('Paid by (split):'));
@@ -216,7 +230,10 @@ class ReceiptPrinterService {
     final owed = (receipt['outstandingBalance'] as num?)?.toDouble() ?? 0;
     if (owed > 0.01) {
       bytes.addAll(generator.row([
-        PosColumn(text: 'BALANCE OWED', width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(
+            text: 'BALANCE OWED',
+            width: 6,
+            styles: const PosStyles(bold: true)),
         PosColumn(
             text: owed.toStringAsFixed(2),
             width: 6,
@@ -244,9 +261,20 @@ class ReceiptPrinterService {
   List<int> _row(Generator generator, String label, String value) {
     return generator.row([
       PosColumn(text: label, width: 8),
-      PosColumn(text: value, width: 4, styles: const PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: value,
+          width: 4,
+          styles: const PosStyles(align: PosAlign.right)),
     ]);
   }
+
+  String _formatQuantity(double quantity) =>
+      quantity == quantity.roundToDouble()
+          ? quantity.toStringAsFixed(0)
+          : quantity
+              .toStringAsFixed(3)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
 
   String _formatDateTime(dynamic value) {
     DateTime? dt;

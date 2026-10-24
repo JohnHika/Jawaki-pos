@@ -141,6 +141,15 @@ export class SalesService {
       const product = products.find((p) => p.id === item.productId);
       if (!product) continue;
 
+      // Fractional sales are a product-level choice (e.g. 0.5 kg of rice).
+      // Enforce it on the server as well as the POS so API clients cannot
+      // bypass a merchant's whole-unit inventory setting.
+      if (!product.allowFractions && !Number.isInteger(item.quantity)) {
+        throw new BadRequestException(
+          `${product.name} is sold in whole units. Update its product settings before selling a fraction.`,
+        );
+      }
+
       // Determine price
       let unitPrice = item.unitPrice;
       if (unitPrice === undefined) {

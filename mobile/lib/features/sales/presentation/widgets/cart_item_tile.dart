@@ -255,7 +255,10 @@ class CartItemTile extends ConsumerWidget {
   String _formatQty(double qty) {
     return qty.truncateToDouble() == qty
         ? qty.toStringAsFixed(0)
-        : qty.toStringAsFixed(1);
+        : qty
+            .toStringAsFixed(3)
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '');
   }
 }
 
@@ -270,9 +273,10 @@ class _QuantityControls extends ConsumerWidget {
     final rawConversion = item.unitConversionFactor;
     final conversion =
         rawConversion != null && rawConversion.isFinite && rawConversion > 0
-            ? rawConversion.round().clamp(1, 0x7fffffff).toInt()
-            : 1;
-    final step = item.saleUnit == null ? 1 : conversion;
+            ? rawConversion
+            : 1.0;
+    final step = (item.allowFractions ? 0.1 : 1) *
+        (item.saleUnit == null ? 1 : conversion);
     return Container(
       decoration: BoxDecoration(
         color: isDark

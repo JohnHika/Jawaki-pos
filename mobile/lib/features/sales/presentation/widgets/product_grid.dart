@@ -181,12 +181,12 @@ class _ProductCard extends ConsumerWidget {
     final price = (product['price'] as num).toDouble();
     final imageUrl = product['imageUrl'] as String?;
     final unit = product['unit'] as String? ?? 'piece';
-    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+    final stock = (product['stock'] as num?)?.toDouble() ?? 0;
     final trackInventory = product['trackInventory'] as bool? ?? true;
     final isOutOfStock = trackInventory && stock <= 0;
     final quantityInCart = cartState.items
         .where((item) => item.productId == productId)
-        .fold<int>(0, (sum, item) => sum + item.quantity);
+        .fold<double>(0, (sum, item) => sum + item.quantity);
     final lineInCart =
         cartState.items.where((item) => item.productId == productId);
     final quantityLabel = lineInCart.isEmpty
@@ -323,7 +323,7 @@ class _ProductCard extends ConsumerWidget {
                   const SizedBox(height: 3),
                   Text(
                     trackInventory
-                        ? '$stock ${pluralizeUnit(unit, stock)} in stock'
+                        ? '${_ProductCard._formatCount(stock)} ${pluralizeUnit(unit, stock)} in stock'
                         : 'Stock not tracked',
                     style: TextStyle(
                       fontSize: 10,
@@ -350,7 +350,7 @@ class _ProductCard extends ConsumerWidget {
     HapticFeedback.selectionClick();
     final productId = product['id'] as String;
     final productName = product['name'] as String;
-    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+    final stock = (product['stock'] as num?)?.toDouble() ?? 0;
     final trackInventory = product['trackInventory'] as bool? ?? true;
     if (trackInventory && stock <= 0) {
       _showStockBlocked(context, productName, stock);
@@ -367,6 +367,7 @@ class _ProductCard extends ConsumerWidget {
           saleUnit: base.unit,
           saleQuantity: 1,
           unitConversionFactor: 1,
+          allowFractions: product['allowFractions'] == true,
         );
     if (!context.mounted || result.success) return;
     _showStockBlocked(context, productName, result.currentStock);
@@ -382,8 +383,8 @@ class _ProductCard extends ConsumerWidget {
         .items
         .where((item) => item.productId == productId);
     if (line.isEmpty) return;
-    final factor = (line.first.unitConversionFactor ?? 1).round();
-    final step = factor < 1 ? 1 : factor;
+    final conversion = line.first.unitConversionFactor ?? 1;
+    final step = (line.first.allowFractions ? 0.1 : 1) * conversion;
     final result = await ref
         .read(cartProvider.notifier)
         .changeQuantityBy(productId, direction * step);
@@ -393,7 +394,10 @@ class _ProductCard extends ConsumerWidget {
 
   static String _formatCount(double value) => value == value.roundToDouble()
       ? value.toInt().toString()
-      : value.toStringAsFixed(1);
+      : value
+          .toStringAsFixed(3)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
 
   void _addToCart(BuildContext context, WidgetRef ref) {
     final productId = product['id'] as String;
@@ -402,7 +406,7 @@ class _ProductCard extends ConsumerWidget {
     final price = (product['price'] as num).toDouble();
     final imageUrl = product['imageUrl'] as String?;
     final unit = product['unit'] as String? ?? 'piece';
-    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+    final stock = (product['stock'] as num?)?.toDouble() ?? 0;
     final trackInventory = product['trackInventory'] as bool? ?? true;
     final tiers = PricingService.getAllPricingTiers(product);
 
@@ -415,13 +419,12 @@ class _ProductCard extends ConsumerWidget {
     final existing = cartState.items.where((i) => i.productId == productId);
     final existingItem = existing.isEmpty ? null : existing.first;
     final currentQty = existingItem == null
-        ? 0
+        ? 0.0
         : (existingItem.saleQuantity ??
                 existingItem.quantity /
                     (existingItem.unitConversionFactor ?? 1))
-            .round()
-            .clamp(1, 0x7fffffff)
-            .toInt();
+            .clamp(0.001, 99999)
+            .toDouble();
 
     GlassBottomSheet.show(
       context,
@@ -433,12 +436,13 @@ class _ProductCard extends ConsumerWidget {
         basePrice: price,
         baseUnit: unit,
         pricingTiers: tiers,
+        allowFractions: product['allowFractions'] == true,
         availableStock: trackInventory ? stock : null,
         currentQuantity: currentQty,
         existingItem: existingItem,
         onConfirm: (qty, tier, overridePrice) async {
           final conversion = tier.quantityPerUnit ?? 1;
-          final baseQty = (qty * conversion).round();
+          final baseQty = qty * conversion;
           final unitPrice = (overridePrice ?? tier.price) / conversion;
           final result = existingItem != null
               ? await ref.read(cartProvider.notifier).updateQuantity(
@@ -460,6 +464,7 @@ class _ProductCard extends ConsumerWidget {
                     saleUnit: tier.unit,
                     saleQuantity: qty.toDouble(),
                     unitConversionFactor: conversion,
+                    allowFractions: product['allowFractions'] == true,
                   );
 
           if (!context.mounted) return;
@@ -482,12 +487,14 @@ class _ProductCard extends ConsumerWidget {
   void _showStockBlocked(
     BuildContext context,
     String productName,
-    int currentStock,
+    double currentStock,
   ) {
     ScaffoldMessenger.of(context).clearSnackBars();
     showGlassSnackBar(
       context,
-      '$productName is out of stock. Receive inventory before selling.',
+      currentStock <= 0
+          ? '$productName is out of stock. Receive inventory before selling.'
+          : 'Only ${_ProductCard._formatCount(currentStock)} units of $productName are available.',
       icon: Icons.inventory_2_outlined,
       color: DesignColors.error,
     );
@@ -660,14 +667,15 @@ class _QuantitySheet extends StatefulWidget {
   final double basePrice;
   final String baseUnit;
   final List<UnitPriceInfo> pricingTiers;
-  final int? availableStock;
-  final int currentQuantity;
+  final double? availableStock;
+  final double currentQuantity;
+  final bool allowFractions;
   final CartItem? existingItem;
   // overridePrice is null unless the cashier explicitly used the price
   // override control — always the price for one of [tier]'s unit, same
   // basis as UnitPriceInfo.price, never the product's stored catalog price.
   final Future<void> Function(
-    int quantity,
+    double quantity,
     UnitPriceInfo tier,
     double? overridePrice,
   ) onConfirm;
@@ -678,6 +686,7 @@ class _QuantitySheet extends StatefulWidget {
     required this.basePrice,
     required this.baseUnit,
     required this.pricingTiers,
+    required this.allowFractions,
     required this.availableStock,
     required this.currentQuantity,
     required this.existingItem,
@@ -689,7 +698,7 @@ class _QuantitySheet extends StatefulWidget {
 }
 
 class _QuantitySheetState extends State<_QuantitySheet> {
-  late int _quantity;
+  late double _quantity;
   late final TextEditingController _qtyController;
   late UnitPriceInfo _selectedTier;
   late final TextEditingController _priceController;
@@ -720,13 +729,12 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                   orElse: () => null,
                 ) ??
             fallbackTier;
-    _quantity = existing == null
-        ? 1
-        : (existing.saleQuantity ??
-                existing.quantity / (existing.unitConversionFactor ?? 1))
-            .round()
-            .clamp(1, 0x7fffffff)
-            .toInt();
+    _quantity = (existing == null
+            ? 1.0
+            : (existing.saleQuantity ??
+                existing.quantity / (existing.unitConversionFactor ?? 1)))
+        .clamp(0.001, 99999)
+        .toDouble();
     final existingTierPrice = existing == null
         ? null
         : existing.unitPrice * (existing.unitConversionFactor ?? 1);
@@ -734,7 +742,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
         (existingTierPrice - _selectedTier.price).abs() > 0.000001) {
       _overridePrice = existingTierPrice;
     }
-    _qtyController = TextEditingController(text: '$_quantity');
+    _qtyController = TextEditingController(text: _formatQuantity(_quantity));
     _priceController = TextEditingController(
       text: _priceInputValue(_effectivePrice),
     );
@@ -792,12 +800,33 @@ class _QuantitySheetState extends State<_QuantitySheet> {
     _priceFocusNode.unfocus();
   }
 
-  void _updateQty(int newQty) {
-    if (newQty < 1) newQty = 1;
+  String _formatQuantity(double quantity) =>
+      quantity == quantity.roundToDouble()
+          ? quantity.toStringAsFixed(0)
+          : quantity
+              .toStringAsFixed(3)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
+
+  double get _quantityStep => widget.allowFractions ? 0.1 : 1;
+
+  bool get _hasValidQuantityInput {
+    final value = double.tryParse(_qtyController.text);
+    if (value == null || !value.isFinite || value <= 0 || value > 99999) {
+      return false;
+    }
+    if (!widget.allowFractions && value % 1 != 0) return false;
+    return double.parse(value.toStringAsFixed(3)) >= 0.001;
+  }
+
+  void _updateQty(double newQty) {
+    final step = _quantityStep;
+    if (newQty < step) newQty = step;
     if (newQty > 99999) newQty = 99999;
+    newQty = double.parse(newQty.toStringAsFixed(3));
     setState(() {
       _quantity = newQty;
-      _qtyController.text = '$_quantity';
+      _qtyController.text = _formatQuantity(_quantity);
       _qtyController.selection = TextSelection.fromPosition(
         TextPosition(offset: _qtyController.text.length),
       );
@@ -809,9 +838,10 @@ class _QuantitySheetState extends State<_QuantitySheet> {
     final total = _effectivePrice * _quantity;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final conversion = _selectedTier.quantityPerUnit ?? 1;
-    final baseUnits = (_quantity * conversion).round();
+    final baseUnits = _quantity * conversion;
     final availableStock = widget.availableStock;
-    final exceedsStock = availableStock != null && baseUnits > availableStock;
+    final exceedsStock =
+        availableStock != null && baseUnits > availableStock + 0.000001;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -954,7 +984,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Material(
-                  color: _quantity > 1
+                  color: _quantity > _quantityStep
                       ? DesignColors.accent.withValues(alpha: 0.1)
                       : (isDark
                           ? DesignColors.darkSurfaceElevated
@@ -964,14 +994,15 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                   child: InkWell(
                     borderRadius:
                         BorderRadius.circular(DesignSpacing.radiusMd + 2),
-                    onTap:
-                        _quantity > 1 ? () => _updateQty(_quantity - 1) : null,
+                    onTap: _quantity > _quantityStep
+                        ? () => _updateQty(_quantity - _quantityStep)
+                        : null,
                     child: SizedBox(
                       width: 48,
                       height: 48,
                       child: Icon(
                         Icons.remove_rounded,
-                        color: _quantity > 1
+                        color: _quantity > _quantityStep
                             ? DesignColors.accent
                             : (isDark
                                 ? DesignColors.darkTextTertiary
@@ -986,7 +1017,15 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                   child: TextField(
                     controller: _qtyController,
                     textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,
+                    keyboardType: TextInputType.numberWithOptions(
+                        decimal: widget.allowFractions),
+                    inputFormatters: widget.allowFractions
+                        ? [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d*\.?\d{0,3}$'),
+                            ),
+                          ]
+                        : [FilteringTextInputFormatter.digitsOnly],
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -1028,10 +1067,18 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                           : DesignColors.surfaceMuted,
                     ),
                     onChanged: (val) {
-                      final n = int.tryParse(val);
-                      if (n != null && n > 0 && n <= 99999) {
-                        setState(() => _quantity = n);
+                      final n = widget.allowFractions
+                          ? double.tryParse(val)
+                          : int.tryParse(val)?.toDouble();
+                      if (n != null && n > 0 && n <= 99999 && n.isFinite) {
+                        final supportedPrecision =
+                            double.parse(n.toStringAsFixed(3));
+                        if (supportedPrecision >= 0.001) {
+                          setState(() => _quantity = supportedPrecision);
+                          return;
+                        }
                       }
+                      setState(() {});
                     },
                   ),
                 ),
@@ -1043,7 +1090,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                   child: InkWell(
                     borderRadius:
                         BorderRadius.circular(DesignSpacing.radiusMd + 2),
-                    onTap: () => _updateQty(_quantity + 1),
+                    onTap: () => _updateQty(_quantity + _quantityStep),
                     child: Container(
                       width: 48,
                       height: 48,
@@ -1081,8 +1128,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     Expanded(
                       child: Text(
                         exceedsStock
-                            ? 'Only $availableStock ${pluralizeUnit(widget.baseUnit, availableStock)} available'
-                            : '${availableStock - baseUnits} ${pluralizeUnit(widget.baseUnit, availableStock - baseUnits)} left after this sale',
+                            ? 'Only ${_ProductCard._formatCount(availableStock)} ${pluralizeUnit(widget.baseUnit, availableStock)} available'
+                            : '${_ProductCard._formatCount(availableStock - baseUnits)} ${pluralizeUnit(widget.baseUnit, availableStock - baseUnits)} left after this sale',
                         style: TextStyle(
                           fontSize: 12,
                           color: exceedsStock
@@ -1142,7 +1189,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '$_quantity ${_selectedTier.unit}${_quantity != 1 ? 's' : ''}',
+                        '${_formatQuantity(_quantity)} ${_selectedTier.unit}${_quantity != 1 ? 's' : ''}',
                         style: TextStyle(
                           fontSize: 14,
                           color: isDark
@@ -1299,7 +1346,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
                         ? 'Update Cart'
                         : 'Add to Cart',
                     icon: Icons.shopping_cart_checkout_rounded,
-                    onPressed: exceedsStock
+                    onPressed: exceedsStock || !_hasValidQuantityInput
                         ? null
                         : () {
                             Navigator.pop(context);
@@ -1327,7 +1374,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
 /// [PricingService.getAllPricingTiers]); everything after that is a real
 /// bulk tier with a [UnitPriceInfo.quantityPerUnit].
 class _StockBreakdown extends StatelessWidget {
-  final int availableStock;
+  final double availableStock;
   final List<UnitPriceInfo> pricingTiers;
   final String baseUnit;
 
@@ -1346,13 +1393,13 @@ class _StockBreakdown extends StatelessWidget {
 
     final lines = <String>[];
     for (final tier in bulkTiers) {
-      final perUnit = tier.quantityPerUnit!.round();
-      final whole = availableStock ~/ perUnit;
-      final remainder = availableStock % perUnit;
+      final perUnit = tier.quantityPerUnit!;
+      final whole = (availableStock / perUnit).floor();
+      final remainder = availableStock - whole * perUnit;
       final unitLabel = whole == 1 ? tier.unit : _pluralize(tier.unit);
       lines.add(
-        remainder > 0
-            ? '$whole $unitLabel + $remainder $baseUnit left over'
+        remainder > 0.000001
+            ? '$whole $unitLabel + ${_ProductCard._formatCount(remainder)} $baseUnit left over'
             : '$whole $unitLabel left',
       );
     }
@@ -1377,7 +1424,7 @@ class _StockBreakdown extends StatelessWidget {
                       : DesignColors.textTertiary),
               const SizedBox(width: 6),
               Text(
-                '$availableStock $baseUnit${availableStock == 1 ? '' : 's'} in stock',
+                '${_ProductCard._formatCount(availableStock)} $baseUnit${availableStock == 1 ? '' : 's'} in stock',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,

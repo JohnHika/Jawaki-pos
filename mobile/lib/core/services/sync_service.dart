@@ -923,7 +923,7 @@ class SyncService {
                     (item['product'] is Map
                         ? (item['product'] as Map)['sku']?.toString() ?? ''
                         : ''),
-                quantity: _parseNumber(item['quantity'])?.round() ?? 0,
+                quantity: _parseNumber(item['quantity']) ?? 0,
                 unitPrice: _parseNumber(item['unitPrice']) ?? 0,
                 discount: Value(_parseNumber(item['discount']) ?? 0),
                 total: _parseNumber(item['totalAmount']) ?? 0,

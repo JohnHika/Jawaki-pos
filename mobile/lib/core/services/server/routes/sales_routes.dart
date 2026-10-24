@@ -57,7 +57,7 @@ class SalesRoutes {
               productId: Value(i['productId'] as String? ?? ''),
               productName: Value(i['productName'] as String? ?? ''),
               sku: Value(i['sku'] as String? ?? ''),
-              quantity: Value((i['quantity'] as num?)?.toInt() ?? 1),
+              quantity: Value((i['quantity'] as num?)?.toDouble() ?? 1),
               unitPrice: Value((i['unitPrice'] as num?)?.toDouble() ?? 0),
               discount: Value((i['discount'] as num?)?.toDouble() ?? 0),
               total: Value((i['total'] as num?)?.toDouble() ?? 0),

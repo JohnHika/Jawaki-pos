@@ -24,7 +24,7 @@ Map<String, dynamic> summaryFromServer(Object? sales) {
     'transactionCount': _num(m['totalSales']).toInt(),
     'totalRevenue': _num(m['totalRevenue']).toDouble(),
     'avgTicket': _num(m['averageTicket']).toDouble(),
-    'itemsSold': _num(m['itemsSold']).toInt(),
+    'itemsSold': _num(m['itemsSold']).toDouble(),
   };
 }
 
@@ -34,7 +34,8 @@ List<Map<String, dynamic>> hourlyFromServer(Object? trend, DateTime day) {
   final byHour = <int, Map<String, num>>{};
   for (final row in _rows(trend)) {
     final period = row['period']?.toString() ?? '';
-    final hour = int.tryParse(RegExp(r'(\d{1,2}):00$').firstMatch(period)?.group(1) ?? '');
+    final hour = int.tryParse(
+        RegExp(r'(\d{1,2}):00$').firstMatch(period)?.group(1) ?? '');
     if (hour == null || hour < 0 || hour > 23) continue;
     final slot = byHour.putIfAbsent(hour, () => {'count': 0, 'amount': 0});
     slot['count'] = slot['count']! + _num(row['salesCount']);
@@ -68,7 +69,7 @@ List<Map<String, dynamic>> topProductsFromServer(Object? rows) => [
         {
           'productId': r['productId']?.toString() ?? '',
           'productName': r['productName']?.toString() ?? 'Unknown',
-          'totalQty': _num(r['quantitySold']).toInt(),
+          'totalQty': _num(r['quantitySold']).toDouble(),
           'totalRevenue': _num(r['revenue']).toDouble(),
         },
     ];
@@ -87,7 +88,7 @@ List<Map<String, dynamic>> categoriesFromServer(Object? rows) => [
         {
           'categoryId': r['categoryId']?.toString() ?? '',
           'categoryName': r['categoryName']?.toString() ?? 'Uncategorised',
-          'totalQty': _num(r['itemsSold']).toInt(),
+          'totalQty': _num(r['itemsSold']).toDouble(),
           'totalRevenue': _num(r['revenue']).toDouble(),
         },
     ];
@@ -127,8 +128,8 @@ List<Map<String, dynamic>> peakHoursFromHourly(
           'totalAmount': ((r['totalAmount'] as num?) ?? 0).toDouble(),
         },
   ]..sort((a, b) {
-      final byCount =
-          (b['transactionCount'] as int).compareTo(a['transactionCount'] as int);
+      final byCount = (b['transactionCount'] as int)
+          .compareTo(a['transactionCount'] as int);
       return byCount != 0
           ? byCount
           : (b['totalAmount'] as double).compareTo(a['totalAmount'] as double);
@@ -138,14 +139,15 @@ List<Map<String, dynamic>> peakHoursFromHourly(
 
 /// Seven most recent days of units sold, ending [today], one row per day with
 /// zeros for days that have no sales (so the chart always has seven bars).
-List<Map<String, dynamic>> weeklyVelocityFromServer(Object? trend, DateTime today) {
+List<Map<String, dynamic>> weeklyVelocityFromServer(
+    Object? trend, DateTime today) {
   const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  final byDate = <String, int>{};
+  final byDate = <String, double>{};
   for (final r in _rows(trend)) {
     final key = (r['period']?.toString() ?? '');
     if (key.length >= 10) {
       final day = key.substring(0, 10);
-      byDate[day] = (byDate[day] ?? 0) + _num(r['itemsSold']).toInt();
+      byDate[day] = (byDate[day] ?? 0) + _num(r['itemsSold']).toDouble();
     }
   }
   final start = DateTime(today.year, today.month, today.day)
@@ -156,7 +158,11 @@ List<Map<String, dynamic>> weeklyVelocityFromServer(Object? trend, DateTime toda
         final d = start.add(Duration(days: i));
         final key =
             '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-        return {'day': names[d.weekday - 1], 'itemsSold': byDate[key] ?? 0, 'date': key};
+        return {
+          'day': names[d.weekday - 1],
+          'itemsSold': byDate[key] ?? 0,
+          'date': key
+        };
       }(),
   ];
 }
@@ -166,7 +172,7 @@ List<Map<String, dynamic>> slowestFromRanking(
   List<Map<String, dynamic>> ranking, {
   int limit = 10,
 }) =>
-    ([...ranking]..sort((a, b) =>
-            (a['totalQty'] as int).compareTo(b['totalQty'] as int)))
+    ([...ranking]..sort((a, b) => ((a['totalQty'] as num?) ?? 0)
+            .compareTo((b['totalQty'] as num?) ?? 0)))
         .take(limit)
         .toList();

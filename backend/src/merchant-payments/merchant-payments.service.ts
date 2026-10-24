@@ -722,6 +722,11 @@ export class MerchantPaymentsService {
     let tax = 0;
     for (const item of sale.items) {
       const product = products.find((entry) => entry.id === item.productId)!;
+      if (!product.allowFractions && !Number.isInteger(item.quantity)) {
+        throw new BadRequestException(
+          `${product.name} is sold in whole units. Update its product settings before selling a fraction.`,
+        );
+      }
       const unitPrice = item.unitPrice ?? Number(product.priceOverrides[0]?.price ?? product.basePrice);
       const line = unitPrice * item.quantity - (item.discount ?? 0);
       if (line < 0) throw new BadRequestException('Item discount exceeds its price');

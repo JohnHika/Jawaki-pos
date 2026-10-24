@@ -73,14 +73,16 @@ class _InventoryForecastingScreenState
         _forecastData = weeklyVelocityFromServer(results[1], now);
         _isUsingLocalSales = false;
       } catch (e) {
-        if (!kReleaseMode) debugPrint('Forecast server load failed, using local: $e');
+        if (!kReleaseMode) {
+          debugPrint('Forecast server load failed, using local: $e');
+        }
         _isUsingLocalSales = true;
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
         final endOfWeek = startOfWeek.add(const Duration(days: 7));
         _fastMovingItems =
             await database.getTopProducts(startOfWeek, endOfWeek, limit: 10);
-        _slowMovingItems =
-            await database.getSlowMovingProducts(startOfWeek, endOfWeek, limit: 10);
+        _slowMovingItems = await database
+            .getSlowMovingProducts(startOfWeek, endOfWeek, limit: 10);
         _forecastData = await _loadDailySalesVelocity();
       }
 
@@ -111,7 +113,8 @@ class _InventoryForecastingScreenState
     final dailySales =
         await getIt<AppDatabase>().getDailyItemsSold(startOfRange, endOfRange);
     final byDate = {
-      for (final row in dailySales) row['date'] as String: row['itemsSold'] as int,
+      for (final row in dailySales)
+        row['date'] as String: (row['itemsSold'] as num).toDouble(),
     };
 
     return [
@@ -135,14 +138,16 @@ class _InventoryForecastingScreenState
       appBar: BrandedAppBar(
         title: 'Inventory Forecast',
         actions: [
-          IconButton(tooltip: 'Refresh', 
+          IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadInventoryData,
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: DesignColors.brand))
+          ? const Center(
+              child: CircularProgressIndicator(color: DesignColors.brand))
           : RefreshIndicator(
               onRefresh: _loadInventoryData,
               child: PageContainer(
@@ -264,25 +269,31 @@ class _InventoryForecastingScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final tertiaryColor =
         isDark ? DesignColors.darkTextTertiary : DesignColors.textTertiary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.trending_up_rounded, color: DesignColors.brand, size: 20),
+              const Icon(Icons.trending_up_rounded,
+                  color: DesignColors.brand, size: 20),
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Last 7 Days — Units Sold',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -309,109 +320,121 @@ class _InventoryForecastingScreenState
                     ),
                   )
                 : RevealLineChart(
-              LineChartData(
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: [
-                      for (int i = 0; i < _forecastData.length; i++)
-                        FlSpot(
-                            i.toDouble(),
-                            ((_forecastData[i]['itemsSold'] ?? 0) as int)
-                                .toDouble()),
-                    ],
-                    isCurved: true,
-                    preventCurveOverShooting: true,
-                    gradient: const LinearGradient(
-                      colors: [DesignColors.brand, DesignColors.brandLight],
-                    ),
-                    barWidth: 4,
-                    isStrokeCapRound: true,
-                    dotData: const FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          DesignColors.brand.withValues(alpha: 0.3),
-                          DesignColors.brand.withValues(alpha: 0.0),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                minX: 0,
-                maxX: 6.toDouble(),
-                minY: 0,
-                maxY: _forecastData.isEmpty
-                    ? 10.0
-                    : (_forecastData
-                                .map((d) => (d['itemsSold'] ?? 0) as int)
-                                .reduce((a, b) => a > b ? a : b) *
-                            1.25)
-                        .clamp(10, double.infinity)
-                        .toDouble(),
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        final index = value.toInt();
-                        if (index >= 0 && index < _forecastData.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: DesignSpacing.sm),
-                            child: Text(
-                              _forecastData[index]['day'] ?? '',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: tertiaryColor,
-                              ),
-                            ),
-                          );
-                        }
-                        return const Text('');
-                      },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      // Reserve room for the label; without it the top tick
-                      // squeezed to one character wide and wrapped vertically.
-                      reservedSize: 32,
-                      getTitlesWidget: (value, meta) {
-                        // Hide the uneven tick fl_chart adds at the very top.
-                        if (value == meta.max && value % 5 != 0) {
-                          return const SizedBox.shrink();
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(right: DesignSpacing.sm),
-                          child: Text(
-                            '${value.toInt()}',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: tertiaryColor,
+                    LineChartData(
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: [
+                            for (int i = 0; i < _forecastData.length; i++)
+                              FlSpot(
+                                  i.toDouble(),
+                                  ((_forecastData[i]['itemsSold'] ?? 0) as num)
+                                      .toDouble()),
+                          ],
+                          isCurved: true,
+                          preventCurveOverShooting: true,
+                          gradient: const LinearGradient(
+                            colors: [
+                              DesignColors.brand,
+                              DesignColors.brandLight
+                            ],
+                          ),
+                          barWidth: 4,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: true),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                DesignColors.brand.withValues(alpha: 0.3),
+                                DesignColors.brand.withValues(alpha: 0.0),
+                              ],
                             ),
                           ),
-                        );
-                      },
+                        ),
+                      ],
+                      minX: 0,
+                      maxX: 6.toDouble(),
+                      minY: 0,
+                      maxY: _forecastData.isEmpty
+                          ? 10.0
+                          : (_forecastData
+                                      .map((d) => ((d['itemsSold'] ?? 0) as num)
+                                          .toDouble())
+                                      .reduce((a, b) => a > b ? a : b) *
+                                  1.25)
+                              .clamp(10, double.infinity)
+                              .toDouble(),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              final index = value.toInt();
+                              if (index >= 0 && index < _forecastData.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                      top: DesignSpacing.sm),
+                                  child: Text(
+                                    _forecastData[index]['day'] ?? '',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: tertiaryColor,
+                                        ),
+                                  ),
+                                );
+                              }
+                              return const Text('');
+                            },
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            // Reserve room for the label; without it the top tick
+                            // squeezed to one character wide and wrapped vertically.
+                            reservedSize: 32,
+                            getTitlesWidget: (value, meta) {
+                              // Hide the uneven tick fl_chart adds at the very top.
+                              if (value == meta.max && value % 5 != 0) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                    right: DesignSpacing.sm),
+                                child: Text(
+                                  '${value.toInt()}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: tertiaryColor,
+                                      ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                      ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: 50,
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(color: border, strokeWidth: 1);
+                        },
+                      ),
+                      borderData: FlBorderData(show: false),
                     ),
                   ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: 50,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(color: border, strokeWidth: 1);
-                  },
-                ),
-                borderData: FlBorderData(show: false),
-              ),
-            ),
           ),
         ],
       ),
@@ -423,18 +446,24 @@ class _InventoryForecastingScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.warning_amber_rounded, color: DesignColors.warning, size: 20),
+              const Icon(Icons.warning_amber_rounded,
+                  color: DesignColors.warning, size: 20),
               const SizedBox(width: DesignSpacing.sm + 2),
               Expanded(
                 child: Row(
@@ -442,9 +471,9 @@ class _InventoryForecastingScreenState
                     Text(
                       'Low Stock Alerts',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: titleColor,
-                      ),
+                            fontWeight: FontWeight.bold,
+                            color: titleColor,
+                          ),
                     ),
                     const Spacer(),
                     StatusBadge(
@@ -482,7 +511,8 @@ class _InventoryForecastingScreenState
                         color: isOut
                             ? DesignColors.error.withValues(alpha: 0.15)
                             : DesignColors.warning.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
                         border: Border.all(
                           color: (isOut
                                   ? DesignColors.error
@@ -509,28 +539,37 @@ class _InventoryForecastingScreenState
                         children: [
                           Text(
                             name,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
+                                ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(sku,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                              )),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: secondaryColor,
+                                  )),
                         ],
                       ),
                     ),
                     Text(
-                      isOut ? 'Out of Stock' : '${quantity is num ? (quantity == quantity.roundToDouble() ? quantity.toInt() : quantity) : quantity} left',
+                      isOut
+                          ? 'Out of Stock'
+                          : '${quantity is num ? (quantity == quantity.roundToDouble() ? quantity.toInt() : quantity) : quantity} left',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: context.readable(
-                              isOut ? DesignColors.error : DesignColors.warning),
-                      ),
+                            fontWeight: FontWeight.bold,
+                            color: context.readable(isOut
+                                ? DesignColors.error
+                                : DesignColors.warning),
+                          ),
                     ),
                   ],
                 ),
@@ -562,25 +601,31 @@ class _InventoryForecastingScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.trending_up_rounded, color: DesignColors.success, size: 20),
+              const Icon(Icons.trending_up_rounded,
+                  color: DesignColors.success, size: 20),
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Fast Moving Items',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -609,17 +654,19 @@ class _InventoryForecastingScreenState
                             : (isDark
                                 ? DesignColors.darkSurfaceElevated
                                 : DesignColors.surfaceSubtle),
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd - 2),
                       ),
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: index == 0
-                              ? Colors.amber[700]
-                              : secondaryColor,
-                              fontWeight: FontWeight.bold,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: index == 0
+                                        ? Colors.amber[700]
+                                        : secondaryColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                       ),
                     ),
@@ -630,19 +677,23 @@ class _InventoryForecastingScreenState
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
+                                ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${formatMoney(product['totalRevenue'])} sold',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                    ),
                           ),
                         ],
                       ),
@@ -665,25 +716,31 @@ class _InventoryForecastingScreenState
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
     final secondaryColor =
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
-    final border = isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final border =
+        isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
     final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.xl),
-      decoration: BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.trending_down_rounded, color: DesignColors.accent, size: 20),
+              const Icon(Icons.trending_down_rounded,
+                  color: DesignColors.accent, size: 20),
               const SizedBox(width: DesignSpacing.sm + 2),
               Text(
                 'Slow Moving Items',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
               ),
             ],
           ),
@@ -711,15 +768,17 @@ class _InventoryForecastingScreenState
                         color: isDark
                             ? DesignColors.darkSurfaceElevated
                             : DesignColors.surfaceSubtle,
-                        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd - 2),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd - 2),
                       ),
                       child: Center(
                         child: Text(
                           '#${index + 1}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: secondaryColor,
-                              fontWeight: FontWeight.w600,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: secondaryColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                       ),
                     ),
@@ -730,19 +789,23 @@ class _InventoryForecastingScreenState
                         children: [
                           Text(
                             product['productName'] ?? 'Unknown',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: titleColor,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: titleColor,
+                                ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: DesignSpacing.xs),
                           Text(
                             '${formatMoney(product['totalRevenue'])} sold',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: secondaryColor,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: secondaryColor,
+                                    ),
                           ),
                         ],
                       ),

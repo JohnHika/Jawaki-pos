@@ -551,6 +551,16 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("track_inventory" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _allowFractionsMeta =
+      const VerificationMeta('allowFractions');
+  @override
+  late final GeneratedColumn<bool> allowFractions = GeneratedColumn<bool>(
+      'allow_fractions', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("allow_fractions" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _minStockMeta =
       const VerificationMeta('minStock');
   @override
@@ -584,6 +594,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         imageUrl,
         isActive,
         trackInventory,
+        allowFractions,
         minStock,
         createdAt,
         updatedAt
@@ -657,6 +668,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           trackInventory.isAcceptableOrUnknown(
               data['track_inventory']!, _trackInventoryMeta));
     }
+    if (data.containsKey('allow_fractions')) {
+      context.handle(
+          _allowFractionsMeta,
+          allowFractions.isAcceptableOrUnknown(
+              data['allow_fractions']!, _allowFractionsMeta));
+    }
     if (data.containsKey('min_stock')) {
       context.handle(_minStockMeta,
           minStock.isAcceptableOrUnknown(data['min_stock']!, _minStockMeta));
@@ -704,6 +721,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       trackInventory: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}track_inventory'])!,
+      allowFractions: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}allow_fractions'])!,
       minStock: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}min_stock'])!,
       createdAt: attachedDatabase.typeMapping
@@ -731,6 +750,7 @@ class Product extends DataClass implements Insertable<Product> {
   final String? imageUrl;
   final bool isActive;
   final bool trackInventory;
+  final bool allowFractions;
   final int minStock;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -746,6 +766,7 @@ class Product extends DataClass implements Insertable<Product> {
       this.imageUrl,
       required this.isActive,
       required this.trackInventory,
+      required this.allowFractions,
       required this.minStock,
       required this.createdAt,
       required this.updatedAt});
@@ -769,6 +790,7 @@ class Product extends DataClass implements Insertable<Product> {
     }
     map['is_active'] = Variable<bool>(isActive);
     map['track_inventory'] = Variable<bool>(trackInventory);
+    map['allow_fractions'] = Variable<bool>(allowFractions);
     map['min_stock'] = Variable<int>(minStock);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -794,6 +816,7 @@ class Product extends DataClass implements Insertable<Product> {
           : Value(imageUrl),
       isActive: Value(isActive),
       trackInventory: Value(trackInventory),
+      allowFractions: Value(allowFractions),
       minStock: Value(minStock),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -815,6 +838,7 @@ class Product extends DataClass implements Insertable<Product> {
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       trackInventory: serializer.fromJson<bool>(json['trackInventory']),
+      allowFractions: serializer.fromJson<bool>(json['allowFractions']),
       minStock: serializer.fromJson<int>(json['minStock']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -835,6 +859,7 @@ class Product extends DataClass implements Insertable<Product> {
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'isActive': serializer.toJson<bool>(isActive),
       'trackInventory': serializer.toJson<bool>(trackInventory),
+      'allowFractions': serializer.toJson<bool>(allowFractions),
       'minStock': serializer.toJson<int>(minStock),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -853,6 +878,7 @@ class Product extends DataClass implements Insertable<Product> {
           Value<String?> imageUrl = const Value.absent(),
           bool? isActive,
           bool? trackInventory,
+          bool? allowFractions,
           int? minStock,
           DateTime? createdAt,
           DateTime? updatedAt}) =>
@@ -868,6 +894,7 @@ class Product extends DataClass implements Insertable<Product> {
         imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
         isActive: isActive ?? this.isActive,
         trackInventory: trackInventory ?? this.trackInventory,
+        allowFractions: allowFractions ?? this.allowFractions,
         minStock: minStock ?? this.minStock,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -889,6 +916,9 @@ class Product extends DataClass implements Insertable<Product> {
       trackInventory: data.trackInventory.present
           ? data.trackInventory.value
           : this.trackInventory,
+      allowFractions: data.allowFractions.present
+          ? data.allowFractions.value
+          : this.allowFractions,
       minStock: data.minStock.present ? data.minStock.value : this.minStock,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -909,6 +939,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
+          ..write('allowFractions: $allowFractions, ')
           ..write('minStock: $minStock, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -929,6 +960,7 @@ class Product extends DataClass implements Insertable<Product> {
       imageUrl,
       isActive,
       trackInventory,
+      allowFractions,
       minStock,
       createdAt,
       updatedAt);
@@ -947,6 +979,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.imageUrl == this.imageUrl &&
           other.isActive == this.isActive &&
           other.trackInventory == this.trackInventory &&
+          other.allowFractions == this.allowFractions &&
           other.minStock == this.minStock &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -964,6 +997,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<String?> imageUrl;
   final Value<bool> isActive;
   final Value<bool> trackInventory;
+  final Value<bool> allowFractions;
   final Value<int> minStock;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -980,6 +1014,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
+    this.allowFractions = const Value.absent(),
     this.minStock = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -997,6 +1032,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.imageUrl = const Value.absent(),
     this.isActive = const Value.absent(),
     this.trackInventory = const Value.absent(),
+    this.allowFractions = const Value.absent(),
     this.minStock = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -1020,6 +1056,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<String>? imageUrl,
     Expression<bool>? isActive,
     Expression<bool>? trackInventory,
+    Expression<bool>? allowFractions,
     Expression<int>? minStock,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -1037,6 +1074,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (imageUrl != null) 'image_url': imageUrl,
       if (isActive != null) 'is_active': isActive,
       if (trackInventory != null) 'track_inventory': trackInventory,
+      if (allowFractions != null) 'allow_fractions': allowFractions,
       if (minStock != null) 'min_stock': minStock,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1056,6 +1094,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<String?>? imageUrl,
       Value<bool>? isActive,
       Value<bool>? trackInventory,
+      Value<bool>? allowFractions,
       Value<int>? minStock,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
@@ -1072,6 +1111,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       imageUrl: imageUrl ?? this.imageUrl,
       isActive: isActive ?? this.isActive,
       trackInventory: trackInventory ?? this.trackInventory,
+      allowFractions: allowFractions ?? this.allowFractions,
       minStock: minStock ?? this.minStock,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1115,6 +1155,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (trackInventory.present) {
       map['track_inventory'] = Variable<bool>(trackInventory.value);
     }
+    if (allowFractions.present) {
+      map['allow_fractions'] = Variable<bool>(allowFractions.value);
+    }
     if (minStock.present) {
       map['min_stock'] = Variable<int>(minStock.value);
     }
@@ -1144,6 +1187,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('imageUrl: $imageUrl, ')
           ..write('isActive: $isActive, ')
           ..write('trackInventory: $trackInventory, ')
+          ..write('allowFractions: $allowFractions, ')
           ..write('minStock: $minStock, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -2842,9 +2886,9 @@ class $CartItemsTable extends CartItems
   static const VerificationMeta _quantityMeta =
       const VerificationMeta('quantity');
   @override
-  late final GeneratedColumn<int> quantity = GeneratedColumn<int>(
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
       'quantity', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+      type: DriftSqlType.double, requiredDuringInsert: true);
   static const VerificationMeta _unitPriceMeta =
       const VerificationMeta('unitPrice');
   @override
@@ -2971,7 +3015,7 @@ class $CartItemsTable extends CartItems
       sku: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sku'])!,
       quantity: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}quantity'])!,
+          .read(DriftSqlType.double, data['${effectivePrefix}quantity'])!,
       unitPrice: attachedDatabase.typeMapping
           .read(DriftSqlType.double, data['${effectivePrefix}unit_price'])!,
       discount: attachedDatabase.typeMapping
@@ -2996,7 +3040,7 @@ class CartItem extends DataClass implements Insertable<CartItem> {
   final String productId;
   final String productName;
   final String sku;
-  final int quantity;
+  final double quantity;
   final double unitPrice;
   final double discount;
   final double total;
@@ -3020,7 +3064,7 @@ class CartItem extends DataClass implements Insertable<CartItem> {
     map['product_id'] = Variable<String>(productId);
     map['product_name'] = Variable<String>(productName);
     map['sku'] = Variable<String>(sku);
-    map['quantity'] = Variable<int>(quantity);
+    map['quantity'] = Variable<double>(quantity);
     map['unit_price'] = Variable<double>(unitPrice);
     map['discount'] = Variable<double>(discount);
     map['total'] = Variable<double>(total);
@@ -3055,7 +3099,7 @@ class CartItem extends DataClass implements Insertable<CartItem> {
       productId: serializer.fromJson<String>(json['productId']),
       productName: serializer.fromJson<String>(json['productName']),
       sku: serializer.fromJson<String>(json['sku']),
-      quantity: serializer.fromJson<int>(json['quantity']),
+      quantity: serializer.fromJson<double>(json['quantity']),
       unitPrice: serializer.fromJson<double>(json['unitPrice']),
       discount: serializer.fromJson<double>(json['discount']),
       total: serializer.fromJson<double>(json['total']),
@@ -3071,7 +3115,7 @@ class CartItem extends DataClass implements Insertable<CartItem> {
       'productId': serializer.toJson<String>(productId),
       'productName': serializer.toJson<String>(productName),
       'sku': serializer.toJson<String>(sku),
-      'quantity': serializer.toJson<int>(quantity),
+      'quantity': serializer.toJson<double>(quantity),
       'unitPrice': serializer.toJson<double>(unitPrice),
       'discount': serializer.toJson<double>(discount),
       'total': serializer.toJson<double>(total),
@@ -3085,7 +3129,7 @@ class CartItem extends DataClass implements Insertable<CartItem> {
           String? productId,
           String? productName,
           String? sku,
-          int? quantity,
+          double? quantity,
           double? unitPrice,
           double? discount,
           double? total,
@@ -3160,7 +3204,7 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
   final Value<String> productId;
   final Value<String> productName;
   final Value<String> sku;
-  final Value<int> quantity;
+  final Value<double> quantity;
   final Value<double> unitPrice;
   final Value<double> discount;
   final Value<double> total;
@@ -3183,7 +3227,7 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     required String productId,
     required String productName,
     required String sku,
-    required int quantity,
+    required double quantity,
     required double unitPrice,
     this.discount = const Value.absent(),
     required double total,
@@ -3201,7 +3245,7 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     Expression<String>? productId,
     Expression<String>? productName,
     Expression<String>? sku,
-    Expression<int>? quantity,
+    Expression<double>? quantity,
     Expression<double>? unitPrice,
     Expression<double>? discount,
     Expression<double>? total,
@@ -3227,7 +3271,7 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
       Value<String>? productId,
       Value<String>? productName,
       Value<String>? sku,
-      Value<int>? quantity,
+      Value<double>? quantity,
       Value<double>? unitPrice,
       Value<double>? discount,
       Value<double>? total,
@@ -3263,7 +3307,7 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
       map['sku'] = Variable<String>(sku.value);
     }
     if (quantity.present) {
-      map['quantity'] = Variable<int>(quantity.value);
+      map['quantity'] = Variable<double>(quantity.value);
     }
     if (unitPrice.present) {
       map['unit_price'] = Variable<double>(unitPrice.value);
@@ -4226,9 +4270,9 @@ class $PendingSaleItemsTable extends PendingSaleItems
   static const VerificationMeta _quantityMeta =
       const VerificationMeta('quantity');
   @override
-  late final GeneratedColumn<int> quantity = GeneratedColumn<int>(
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
       'quantity', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+      type: DriftSqlType.double, requiredDuringInsert: true);
   static const VerificationMeta _unitPriceMeta =
       const VerificationMeta('unitPrice');
   @override
@@ -4364,7 +4408,7 @@ class $PendingSaleItemsTable extends PendingSaleItems
       sku: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sku'])!,
       quantity: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}quantity'])!,
+          .read(DriftSqlType.double, data['${effectivePrefix}quantity'])!,
       unitPrice: attachedDatabase.typeMapping
           .read(DriftSqlType.double, data['${effectivePrefix}unit_price'])!,
       discount: attachedDatabase.typeMapping
@@ -4390,7 +4434,7 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
   final String productId;
   final String productName;
   final String sku;
-  final int quantity;
+  final double quantity;
   final double unitPrice;
   final double discount;
   final double total;
@@ -4416,7 +4460,7 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
     map['product_id'] = Variable<String>(productId);
     map['product_name'] = Variable<String>(productName);
     map['sku'] = Variable<String>(sku);
-    map['quantity'] = Variable<int>(quantity);
+    map['quantity'] = Variable<double>(quantity);
     map['unit_price'] = Variable<double>(unitPrice);
     map['discount'] = Variable<double>(discount);
     map['total'] = Variable<double>(total);
@@ -4456,7 +4500,7 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       productId: serializer.fromJson<String>(json['productId']),
       productName: serializer.fromJson<String>(json['productName']),
       sku: serializer.fromJson<String>(json['sku']),
-      quantity: serializer.fromJson<int>(json['quantity']),
+      quantity: serializer.fromJson<double>(json['quantity']),
       unitPrice: serializer.fromJson<double>(json['unitPrice']),
       discount: serializer.fromJson<double>(json['discount']),
       total: serializer.fromJson<double>(json['total']),
@@ -4473,7 +4517,7 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
       'productId': serializer.toJson<String>(productId),
       'productName': serializer.toJson<String>(productName),
       'sku': serializer.toJson<String>(sku),
-      'quantity': serializer.toJson<int>(quantity),
+      'quantity': serializer.toJson<double>(quantity),
       'unitPrice': serializer.toJson<double>(unitPrice),
       'discount': serializer.toJson<double>(discount),
       'total': serializer.toJson<double>(total),
@@ -4488,7 +4532,7 @@ class PendingSaleItem extends DataClass implements Insertable<PendingSaleItem> {
           String? productId,
           String? productName,
           String? sku,
-          int? quantity,
+          double? quantity,
           double? unitPrice,
           double? discount,
           double? total,
@@ -4572,7 +4616,7 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
   final Value<String> productId;
   final Value<String> productName;
   final Value<String> sku;
-  final Value<int> quantity;
+  final Value<double> quantity;
   final Value<double> unitPrice;
   final Value<double> discount;
   final Value<double> total;
@@ -4597,7 +4641,7 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
     required String productId,
     required String productName,
     required String sku,
-    required int quantity,
+    required double quantity,
     required double unitPrice,
     this.discount = const Value.absent(),
     required double total,
@@ -4616,7 +4660,7 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
     Expression<String>? productId,
     Expression<String>? productName,
     Expression<String>? sku,
-    Expression<int>? quantity,
+    Expression<double>? quantity,
     Expression<double>? unitPrice,
     Expression<double>? discount,
     Expression<double>? total,
@@ -4644,7 +4688,7 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
       Value<String>? productId,
       Value<String>? productName,
       Value<String>? sku,
-      Value<int>? quantity,
+      Value<double>? quantity,
       Value<double>? unitPrice,
       Value<double>? discount,
       Value<double>? total,
@@ -4684,7 +4728,7 @@ class PendingSaleItemsCompanion extends UpdateCompanion<PendingSaleItem> {
       map['sku'] = Variable<String>(sku.value);
     }
     if (quantity.present) {
-      map['quantity'] = Variable<int>(quantity.value);
+      map['quantity'] = Variable<double>(quantity.value);
     }
     if (unitPrice.present) {
       map['unit_price'] = Variable<double>(unitPrice.value);
@@ -6320,6 +6364,7 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
+  Value<bool> allowFractions,
   Value<int> minStock,
   required DateTime createdAt,
   required DateTime updatedAt,
@@ -6337,6 +6382,7 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<String?> imageUrl,
   Value<bool> isActive,
   Value<bool> trackInventory,
+  Value<bool> allowFractions,
   Value<int> minStock,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -6384,6 +6430,10 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<bool> get trackInventory => $composableBuilder(
       column: $table.trackInventory,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get allowFractions => $composableBuilder(
+      column: $table.allowFractions,
       builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get minStock => $composableBuilder(
@@ -6439,6 +6489,10 @@ class $$ProductsTableOrderingComposer
       column: $table.trackInventory,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get allowFractions => $composableBuilder(
+      column: $table.allowFractions,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get minStock => $composableBuilder(
       column: $table.minStock, builder: (column) => ColumnOrderings(column));
 
@@ -6491,6 +6545,9 @@ class $$ProductsTableAnnotationComposer
   GeneratedColumn<bool> get trackInventory => $composableBuilder(
       column: $table.trackInventory, builder: (column) => column);
 
+  GeneratedColumn<bool> get allowFractions => $composableBuilder(
+      column: $table.allowFractions, builder: (column) => column);
+
   GeneratedColumn<int> get minStock =>
       $composableBuilder(column: $table.minStock, builder: (column) => column);
 
@@ -6535,6 +6592,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
+            Value<bool> allowFractions = const Value.absent(),
             Value<int> minStock = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -6552,6 +6610,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
+            allowFractions: allowFractions,
             minStock: minStock,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -6569,6 +6628,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<String?> imageUrl = const Value.absent(),
             Value<bool> isActive = const Value.absent(),
             Value<bool> trackInventory = const Value.absent(),
+            Value<bool> allowFractions = const Value.absent(),
             Value<int> minStock = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
@@ -6586,6 +6646,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             imageUrl: imageUrl,
             isActive: isActive,
             trackInventory: trackInventory,
+            allowFractions: allowFractions,
             minStock: minStock,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -7456,7 +7517,7 @@ typedef $$CartItemsTableCreateCompanionBuilder = CartItemsCompanion Function({
   required String productId,
   required String productName,
   required String sku,
-  required int quantity,
+  required double quantity,
   required double unitPrice,
   Value<double> discount,
   required double total,
@@ -7468,7 +7529,7 @@ typedef $$CartItemsTableUpdateCompanionBuilder = CartItemsCompanion Function({
   Value<String> productId,
   Value<String> productName,
   Value<String> sku,
-  Value<int> quantity,
+  Value<double> quantity,
   Value<double> unitPrice,
   Value<double> discount,
   Value<double> total,
@@ -7497,7 +7558,7 @@ class $$CartItemsTableFilterComposer
   ColumnFilters<String> get sku => $composableBuilder(
       column: $table.sku, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<int> get quantity => $composableBuilder(
+  ColumnFilters<double> get quantity => $composableBuilder(
       column: $table.quantity, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<double> get unitPrice => $composableBuilder(
@@ -7537,7 +7598,7 @@ class $$CartItemsTableOrderingComposer
   ColumnOrderings<String> get sku => $composableBuilder(
       column: $table.sku, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<int> get quantity => $composableBuilder(
+  ColumnOrderings<double> get quantity => $composableBuilder(
       column: $table.quantity, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<double> get unitPrice => $composableBuilder(
@@ -7577,7 +7638,7 @@ class $$CartItemsTableAnnotationComposer
   GeneratedColumn<String> get sku =>
       $composableBuilder(column: $table.sku, builder: (column) => column);
 
-  GeneratedColumn<int> get quantity =>
+  GeneratedColumn<double> get quantity =>
       $composableBuilder(column: $table.quantity, builder: (column) => column);
 
   GeneratedColumn<double> get unitPrice =>
@@ -7623,7 +7684,7 @@ class $$CartItemsTableTableManager extends RootTableManager<
             Value<String> productId = const Value.absent(),
             Value<String> productName = const Value.absent(),
             Value<String> sku = const Value.absent(),
-            Value<int> quantity = const Value.absent(),
+            Value<double> quantity = const Value.absent(),
             Value<double> unitPrice = const Value.absent(),
             Value<double> discount = const Value.absent(),
             Value<double> total = const Value.absent(),
@@ -7647,7 +7708,7 @@ class $$CartItemsTableTableManager extends RootTableManager<
             required String productId,
             required String productName,
             required String sku,
-            required int quantity,
+            required double quantity,
             required double unitPrice,
             Value<double> discount = const Value.absent(),
             required double total,
@@ -8079,7 +8140,7 @@ typedef $$PendingSaleItemsTableCreateCompanionBuilder
   required String productId,
   required String productName,
   required String sku,
-  required int quantity,
+  required double quantity,
   required double unitPrice,
   Value<double> discount,
   required double total,
@@ -8093,7 +8154,7 @@ typedef $$PendingSaleItemsTableUpdateCompanionBuilder
   Value<String> productId,
   Value<String> productName,
   Value<String> sku,
-  Value<int> quantity,
+  Value<double> quantity,
   Value<double> unitPrice,
   Value<double> discount,
   Value<double> total,
@@ -8125,7 +8186,7 @@ class $$PendingSaleItemsTableFilterComposer
   ColumnFilters<String> get sku => $composableBuilder(
       column: $table.sku, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<int> get quantity => $composableBuilder(
+  ColumnFilters<double> get quantity => $composableBuilder(
       column: $table.quantity, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<double> get unitPrice => $composableBuilder(
@@ -8169,7 +8230,7 @@ class $$PendingSaleItemsTableOrderingComposer
   ColumnOrderings<String> get sku => $composableBuilder(
       column: $table.sku, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<int> get quantity => $composableBuilder(
+  ColumnOrderings<double> get quantity => $composableBuilder(
       column: $table.quantity, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<double> get unitPrice => $composableBuilder(
@@ -8213,7 +8274,7 @@ class $$PendingSaleItemsTableAnnotationComposer
   GeneratedColumn<String> get sku =>
       $composableBuilder(column: $table.sku, builder: (column) => column);
 
-  GeneratedColumn<int> get quantity =>
+  GeneratedColumn<double> get quantity =>
       $composableBuilder(column: $table.quantity, builder: (column) => column);
 
   GeneratedColumn<double> get unitPrice =>
@@ -8264,7 +8325,7 @@ class $$PendingSaleItemsTableTableManager extends RootTableManager<
             Value<String> productId = const Value.absent(),
             Value<String> productName = const Value.absent(),
             Value<String> sku = const Value.absent(),
-            Value<int> quantity = const Value.absent(),
+            Value<double> quantity = const Value.absent(),
             Value<double> unitPrice = const Value.absent(),
             Value<double> discount = const Value.absent(),
             Value<double> total = const Value.absent(),
@@ -8290,7 +8351,7 @@ class $$PendingSaleItemsTableTableManager extends RootTableManager<
             required String productId,
             required String productName,
             required String sku,
-            required int quantity,
+            required double quantity,
             required double unitPrice,
             Value<double> discount = const Value.absent(),
             required double total,
