@@ -382,7 +382,8 @@ class ProductsScreen extends ConsumerWidget {
                             // remote catalog has actually been fetched and
                             // written to Drift. Both product and category
                             // streams update from those writes.
-                            await ref.refresh(
+                            ref.invalidate(_catalogSyncProvider(currentUserId));
+                            await ref.read(
                                 _catalogSyncProvider(currentUserId).future);
                           } catch (_) {
                             if (!context.mounted) return;

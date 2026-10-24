@@ -34,9 +34,12 @@ class _CashReconciliationScreenState
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionsProvider);
-    final historyAsync = ref.watch(_reconciliationHistoryProvider);
+    final canViewHistory = permissions.has('cash_reconciliation.view');
+    final canCreateReconciliation = permissions.canReconcileCash;
+    final historyAsync =
+        canViewHistory ? ref.watch(_reconciliationHistoryProvider) : null;
 
-    if (!permissions.canReconcileCash) {
+    if (!canViewHistory && !canCreateReconciliation) {
       return const Scaffold(
         appBar: BrandedAppBar(title: 'Cash Reconciliation'),
         body: EmptyState(
@@ -50,81 +53,96 @@ class _CashReconciliationScreenState
     return Scaffold(
       appBar: BrandedAppBar(
         title: 'Cash Reconciliation',
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.invalidate(_reconciliationHistoryProvider),
-          ),
-        ],
+        actions: canViewHistory
+            ? [
+                IconButton(
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: () =>
+                      ref.invalidate(_reconciliationHistoryProvider),
+                ),
+              ]
+            : const [],
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
-            DesignSpacing.lg, DesignSpacing.md),
-        child: GradientButton(
-          label: 'Count Cash',
-          icon: Icons.calculate_rounded,
-          onPressed: getIt<AuthService>().branchId?.isNotEmpty == true
-              ? _showCountSheet
-              : null,
-          height: 52,
-          borderRadius: DesignSpacing.radiusMd,
-        ),
-      ),
-      body: historyAsync.when(
-        data: (data) {
-          if (data.isEmpty) {
-            return const EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: 'No branch selected',
-              subtitle: 'Select a branch to reconcile cash.',
-            );
-          }
+      bottomNavigationBar: canCreateReconciliation
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                  DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.md),
+              child: GradientButton(
+                label: 'Count Cash',
+                icon: Icons.calculate_rounded,
+                onPressed: getIt<AuthService>().branchId?.isNotEmpty == true
+                    ? _showCountSheet
+                    : null,
+                height: 52,
+                borderRadius: DesignSpacing.radiusMd,
+              ),
+            )
+          : null,
+      body: canViewHistory
+          ? historyAsync!.when(
+              data: (data) {
+                if (data.isEmpty) {
+                  return const EmptyState(
+                    icon: Icons.error_outline_rounded,
+                    title: 'No branch selected',
+                    subtitle: 'Select a branch to reconcile cash.',
+                  );
+                }
 
-          final items =
-              (data['items'] as List<dynamic>).cast<Map<String, dynamic>>();
+                final items = (data['items'] as List<dynamic>)
+                    .cast<Map<String, dynamic>>();
 
-          if (items.isEmpty) {
-            return const EmptyState(
-              icon: Icons.calculate_outlined,
-              title: 'No reconciliations yet',
-              subtitle: 'Tap "Count Cash" to record your first cash count.',
-            );
-          }
+                if (items.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.calculate_outlined,
+                    title: 'No reconciliations yet',
+                    subtitle: canCreateReconciliation
+                        ? 'Tap "Count Cash" to record your first cash count.'
+                        : 'No cash counts have been recorded for this branch yet.',
+                  );
+                }
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(
-                DesignSpacing.lg,
-                DesignSpacing.md,
-                DesignSpacing.lg,
-                DesignSpacing.huge + DesignSpacing.xl),
-            children: items
-                .asMap()
-                .entries
-                .map((entry) => StaggeredItem(
-                      itemKey: 'recon-${entry.value['id'] ?? entry.key}',
-                      index: entry.key,
-                      child: _ReconciliationCard(item: entry.value),
-                    ))
-                .toList(),
-          );
-        },
-        loading: () => const _ReconciliationSkeletonList(),
-        error: (e, _) => EmptyState(
-          icon: Icons.error_outline_rounded,
-          title: 'Could not load reconciliation history',
-          subtitle: loadErrorSubtitle(e),
-          iconColor: DesignColors.error,
-          actionLabel: isPermissionDenied(e) ? null : 'Retry',
-          onAction: isPermissionDenied(e)
-              ? null
-              : () => ref.invalidate(_reconciliationHistoryProvider),
-        ),
-      ),
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                      DesignSpacing.lg,
+                      DesignSpacing.md,
+                      DesignSpacing.lg,
+                      DesignSpacing.huge + DesignSpacing.xl),
+                  children: items
+                      .asMap()
+                      .entries
+                      .map((entry) => StaggeredItem(
+                            itemKey: 'recon-${entry.value['id'] ?? entry.key}',
+                            index: entry.key,
+                            child: _ReconciliationCard(item: entry.value),
+                          ))
+                      .toList(),
+                );
+              },
+              loading: () => const _ReconciliationSkeletonList(),
+              error: (e, _) => EmptyState(
+                icon: Icons.error_outline_rounded,
+                title: 'Could not load reconciliation history',
+                subtitle: loadErrorSubtitle(e),
+                iconColor: DesignColors.error,
+                actionLabel: isPermissionDenied(e) ? null : 'Retry',
+                onAction: isPermissionDenied(e)
+                    ? null
+                    : () => ref.invalidate(_reconciliationHistoryProvider),
+              ),
+            )
+          : const EmptyState(
+              icon: Icons.lock_outline_rounded,
+              title: 'History access not enabled',
+              subtitle:
+                  'You can record a cash count, but your role cannot view reconciliation history.',
+            ),
     );
   }
 
   Future<void> _showCountSheet() async {
+    if (!ref.read(permissionsProvider).canReconcileCash) return;
     final branchId = getIt<AuthService>().branchId;
     if (branchId == null) return;
 
