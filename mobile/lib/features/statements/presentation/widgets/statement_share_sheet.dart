@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/sync_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
@@ -63,6 +67,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   StatementPreview? _preview;
   List<SentStatementLink> _sent = const [];
   String? _loadError;
+  bool _customerNeedsSync = false;
   bool _loading = true;
   bool _busy = false;
   String? _message;
@@ -108,12 +113,95 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
             .map(SentStatementLink.fromJson)
             .toList();
         _loading = false;
+        _customerNeedsSync = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = apiErrorMessage(e);
+        _customerNeedsSync = _isCustomerSyncValidation(e);
+        _loadError = _customerNeedsSync
+            ? 'This customer or their latest sale has not synced yet.'
+            : apiErrorMessage(e);
+      });
+    }
+  }
+
+  bool _isCustomerSyncValidation(Object error) {
+    if (error is! DioException) return false;
+    final payload = error.response?.data;
+    final raw = payload is Map ? payload['message'] : null;
+    final messages = raw is List ? raw : [raw];
+    return messages.any((value) =>
+        value.toString().toLowerCase().contains('customerid must be a uuid'));
+  }
+
+  Future<void> _syncCustomerAndRetry() async {
+    if (_loading || widget.customerId == null) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final sync = getIt<SyncService>();
+      // Flush any queued customer and debt-sale events before generating the
+      // statement. This prevents local credit from appearing sendable before
+      // the server has the customer and receivable.
+      await sync.syncPendingEvents();
+      if (!mounted) return;
+      final customerId = widget.customerId!;
+      var customerStatus = await _api.getCustomerCredit(customerId);
+      if (!mounted) return;
+
+      if (customerStatus['known'] != true) {
+        final userId = getIt<AuthService>().userId;
+        final deviceId = getIt<StorageService>().getDeviceId();
+        if (userId == null ||
+            userId.isEmpty ||
+            deviceId == null ||
+            deviceId.isEmpty) {
+          throw StateError('Sign in again before syncing this customer.');
+        }
+        await sync.queueSyncItem(
+          tableName: 'customers',
+          recordId: customerId,
+          action: SyncAction.create,
+          eventType: SyncEventType.customerCreated,
+          data: {
+            'id': customerId,
+            'name': widget.name,
+            if (widget.phone?.trim().isNotEmpty == true)
+              'phone': widget.phone!.trim(),
+          },
+          deviceId: deviceId,
+          userId: userId,
+        );
+        if (!mounted) return;
+        // A background sync may already be in progress. Give its queued work
+        // a moment to finish, then retry the customer creation if needed.
+        for (var attempt = 0; attempt < 4; attempt++) {
+          await sync.syncPendingEvents();
+          customerStatus = await _api.getCustomerCredit(customerId);
+          if (!mounted || customerStatus['known'] == true) break;
+          if (attempt < 3) {
+            await Future<void>.delayed(const Duration(milliseconds: 500));
+          }
+        }
+      }
+
+      if (!mounted) return;
+      if (customerStatus['known'] != true) {
+        throw StateError(
+            'The customer is still waiting to sync. Check the connection and try again.');
+      }
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _customerNeedsSync = true;
+        _loadError =
+            e is StateError ? e.message.toString() : apiErrorMessage(e);
       });
     }
   }
@@ -274,7 +362,30 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_loadError != null)
-              InlineRetryNotice(message: _loadError!, onRetry: _load)
+              _customerNeedsSync
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(DesignSpacing.md),
+                      decoration: BoxDecoration(
+                        color: DesignColors.warning.withValues(alpha: 0.12),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_loadError!,
+                              style: Theme.of(context).textTheme.bodyMedium),
+                          const SizedBox(height: DesignSpacing.sm),
+                          FilledButton.icon(
+                            onPressed: _loading ? null : _syncCustomerAndRetry,
+                            icon: const Icon(Icons.sync_rounded),
+                            label: const Text('Sync and try again'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : InlineRetryNotice(message: _loadError!, onRetry: _load)
             else if (preview != null) ...[
               GlassCard(
                 padding: const EdgeInsets.all(DesignSpacing.md),

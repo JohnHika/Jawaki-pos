@@ -37,6 +37,7 @@ describe("PaystackService merchant payment requests", () => {
       reference: "CBSALE-reference",
       subaccountCode: "ACCT_shop",
       tenantId: "tenant-1",
+      businessName: "Levisa Ventures",
     });
 
     const request = fetchSpy.mock.calls[0];
@@ -49,6 +50,13 @@ describe("PaystackService merchant payment requests", () => {
     expect(body.amount).toBe(50000);
     expect(body.currency).toBe("KES");
     expect(body.subaccount).toBe("ACCT_shop");
+    expect(body.bearer).toBe("subaccount");
+    expect(body.metadata.shopName).toBe("Levisa Ventures");
+    expect(body.metadata.custom_fields).toContainEqual({
+      display_name: "Shop",
+      variable_name: "shop_name",
+      value: "Levisa Ventures",
+    });
   });
 
   it("surfaces a useful provider rejection while masking customer contact details", async () => {
