@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.98+2141 (October 24, 2026)
+
+### Recover customer statements and clarify checkout errors
+- Automatically sync a customer and retry when the current API accepts a legacy ID but has not received that customer yet.
+- Show plain-language checkout errors instead of raw exception and server route text.
+
 ## v1.0.97+2140 (October 24, 2026)
 
 ### More reliable checkout, finance, and customer follow-up

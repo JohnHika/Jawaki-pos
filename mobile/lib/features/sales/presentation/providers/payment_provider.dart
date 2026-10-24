@@ -12,6 +12,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/utils/api_message.dart';
 import 'cart_provider.dart';
 
 const _uuid = Uuid();
@@ -160,7 +161,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
+      state = state.copyWith(isProcessing: false, error: _paymentError(e));
       return null;
     }
   }
@@ -376,7 +377,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
+      state = state.copyWith(isProcessing: false, error: _paymentError(e));
       return null;
     }
   }
@@ -476,7 +477,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
+      state = state.copyWith(isProcessing: false, error: _paymentError(e));
       return null;
     }
   }
@@ -735,12 +736,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }
 
   String _paymentError(Object error) {
-    if (error is DioException && error.response?.data is Map) {
-      final message = (error.response!.data as Map)['message'];
-      if (message is List) return message.join(', ');
-      if (message != null) return message.toString();
-    }
-    return 'Could not start payment. Check your connection and payout setup.';
+    return apiErrorMessage(error);
   }
 }
 

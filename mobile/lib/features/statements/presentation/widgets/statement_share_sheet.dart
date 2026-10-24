@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +17,7 @@ import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/statement_models.dart';
+import '../../domain/statement_sync_recovery.dart';
 
 /// Opens the "send a statement" sheet for a customer or a peer shop that owes.
 ///
@@ -108,8 +108,8 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       ]);
       if (!mounted) return;
       setState(() {
-        _preview = StatementPreview.fromJson(
-            results[0] as Map<String, dynamic>);
+        _preview =
+            StatementPreview.fromJson(results[0] as Map<String, dynamic>);
         _sent = (results[1] as List<Map<String, dynamic>>)
             .map(SentStatementLink.fromJson)
             .toList();
@@ -118,7 +118,8 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       });
     } catch (e) {
       if (!mounted) return;
-      final customerNeedsSync = _isCustomerSyncValidation(e);
+      final customerNeedsSync =
+          widget.customerId != null && statementNeedsCustomerSync(e);
       setState(() {
         _loading = false;
         _customerNeedsSync = customerNeedsSync;
@@ -134,15 +135,6 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         await _syncCustomerAndRetry();
       }
     }
-  }
-
-  bool _isCustomerSyncValidation(Object error) {
-    if (error is! DioException) return false;
-    final payload = error.response?.data;
-    final raw = payload is Map ? payload['message'] : payload;
-    final message = raw is List ? raw.join(' ') : raw?.toString() ?? '';
-    return RegExp(r'customerId\s+must\s+be\s+a\s+UUID', caseSensitive: false)
-        .hasMatch(message);
   }
 
   Future<void> _syncCustomerAndRetry() async {
@@ -206,7 +198,8 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      final customerNeedsSync = _isCustomerSyncValidation(e);
+      final customerNeedsSync =
+          widget.customerId != null && statementNeedsCustomerSync(e);
       setState(() {
         _loading = false;
         _customerNeedsSync = true;
@@ -271,9 +264,11 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         final (_, text) = _shareParts(link);
         final number = whatsappNumber(widget.phone);
         if (number != null) {
-          final uri =
-              Uri.parse('https://wa.me/$number?text=${Uri.encodeComponent(text)}');
-          if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+          final uri = Uri.parse(
+              'https://wa.me/$number?text=${Uri.encodeComponent(text)}');
+          if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+            return;
+          }
         }
         // No number on file, or WhatsApp is not installed: use the share sheet.
         await Share.share(text, subject: 'Your statement');
@@ -282,14 +277,16 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   Future<void> _sharePdf() => _run(() async {
         final link = await _ensureLink();
         final (_, text) = _shareParts(link);
-        final bytes = await _api.downloadStatementPdf('${link['path']}', lang: _lang);
+        final bytes =
+            await _api.downloadStatementPdf('${link['path']}', lang: _lang);
         if (bytes.isEmpty) throw StateError('empty pdf');
         final dir = await getTemporaryDirectory();
         final safe = widget.name
             .toLowerCase()
             .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
             .replaceAll(RegExp(r'^-+|-+$'), '');
-        final file = File('${dir.path}/statement-${safe.isEmpty ? 'customer' : safe}.pdf');
+        final file = File(
+            '${dir.path}/statement-${safe.isEmpty ? 'customer' : safe}.pdf');
         await file.writeAsBytes(Uint8List.fromList(bytes));
         await Share.shareXFiles(
           [XFile(file.path, mimeType: 'application/pdf')],
@@ -569,10 +566,8 @@ class _SentRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: DesignSpacing.xs),
       child: Row(
         children: [
-          Icon(
-              link.viewCount > 0 ? Icons.done_all_rounded : Icons.done_rounded,
-              size: 18,
-              color: color),
+          Icon(link.viewCount > 0 ? Icons.done_all_rounded : Icons.done_rounded,
+              size: 18, color: color),
           const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
