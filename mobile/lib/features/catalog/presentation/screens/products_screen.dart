@@ -377,8 +377,23 @@ class ProductsScreen extends ConsumerWidget {
                       };
                       return RefreshIndicator(
                         onRefresh: () async {
-                          ref.invalidate(_catalogSyncProvider(currentUserId));
-                          ref.invalidate(_productsProvider);
+                          try {
+                            // Keep the refresh indicator visible until the
+                            // remote catalog has actually been fetched and
+                            // written to Drift. Both product and category
+                            // streams update from those writes.
+                            await ref.refresh(
+                                _catalogSyncProvider(currentUserId).future);
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Could not refresh the catalog. Your saved products are still available.',
+                                ),
+                              ),
+                            );
+                          }
                         },
                         color: DesignColors.brand,
                         backgroundColor: isDark
