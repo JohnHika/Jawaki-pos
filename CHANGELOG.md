@@ -1,5 +1,12 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.94+2137 (October 24, 2026)
+
+### Clearer phone-server payment and reconciliation behavior
+- Return an actionable online-workspace message for Paystack merchant setup and collections in phone-server mode instead of a missing-route error.
+- Explain when M-Pesa message matching and statement actions need the online workspace; local sales and debt records remain available.
+- Clarify that payment-provider actions cannot run in phone-server mode; cash and credit sales remain available offline.
+
 ## v1.0.93+2136 (October 24, 2026)
 
 ### Clearer offline actions and safer end-of-day close
