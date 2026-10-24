@@ -54,11 +54,19 @@ export class TransactionalEmailService {
       auth: { user, pass },
     });
 
+    const isPasswordReset = message.purpose === 'PASSWORD_RESET';
+    const subject = isPasswordReset
+      ? 'Reset your Counterbase password'
+      : 'Your Counterbase verification code';
+    const text = isPasswordReset
+      ? `Your Counterbase password reset code is ${message.code}. It expires in 10 minutes. If you did not request a reset, ignore this email.`
+      : `Your Counterbase verification code is ${message.code}. It expires in 10 minutes.`;
+
     await transporter.sendMail({
       from,
       to: message.to,
-      subject: 'Your Counterbase verification code',
-      text: `Your Counterbase verification code is ${message.code}. It expires in 10 minutes.`,
+      subject,
+      text,
     });
   }
 
@@ -108,6 +116,13 @@ export class TransactionalEmailService {
     }
 
     const sender = this.parseSender(from);
+    const isPasswordReset = message.purpose === 'PASSWORD_RESET';
+    const subject = isPasswordReset
+      ? 'Reset your Counterbase password'
+      : 'Your Counterbase verification code';
+    const textbody = isPasswordReset
+      ? `Your Counterbase password reset code is ${message.code}. It expires in 10 minutes. If you did not request a reset, ignore this email.`
+      : `Your Counterbase verification code is ${message.code}. It expires in 10 minutes.`;
     try {
       const response = await fetch(parsedEndpoint, {
         method: 'POST',
@@ -119,8 +134,8 @@ export class TransactionalEmailService {
         body: JSON.stringify({
           from: sender,
           to: [{ email_address: { address: message.to } }],
-          subject: 'Your Counterbase verification code',
-          textbody: `Your Counterbase verification code is ${message.code}. It expires in 10 minutes.`,
+          subject,
+          textbody,
         }),
         signal: AbortSignal.timeout(10_000),
       });

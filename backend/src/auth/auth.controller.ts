@@ -32,6 +32,7 @@ import {
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
 import { CreateEmailWorkspaceDto, CreateGoogleWorkspaceDto, RequestWorkspaceOtpDto } from './dto/workspace.dto';
+import { CompletePasswordResetDto, RequestPasswordResetDto } from './dto/password-reset.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { RequirePermissions } from './decorators/require-permissions.decorator';
@@ -79,6 +80,24 @@ export class AuthController {
   @ApiOperation({ summary: 'Request a workspace email ownership code' })
   async requestWorkspaceEmailOtp(@Body() dto: RequestWorkspaceOtpDto) {
     return this.authService.requestWorkspaceEmailOtp(dto);
+  }
+
+  @Post('password-reset/request')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 15 * 60 * 1000, limit: 5 } })
+  @ApiOperation({ summary: 'Request a password reset code without revealing whether an account exists' })
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto);
+  }
+
+  @Post('password-reset/confirm')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60 * 1000, limit: 10 } })
+  @ApiOperation({ summary: 'Set a new password after verifying the email reset code' })
+  async completePasswordReset(@Body() dto: CompletePasswordResetDto): Promise<void> {
+    await this.authService.completePasswordReset(dto);
   }
 
   @Post('workspaces/email')

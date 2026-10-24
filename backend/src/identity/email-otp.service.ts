@@ -9,7 +9,7 @@ export const OTP_RESEND_MS = 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_MAX_REQUESTS_PER_HOUR = 5;
 
-export type EmailOtpPurpose = 'WORKSPACE_CREATION' | 'STAFF_INVITE';
+export type EmailOtpPurpose = 'WORKSPACE_CREATION' | 'STAFF_INVITE' | 'PASSWORD_RESET';
 
 @Injectable()
 export class EmailOtpService {
@@ -19,7 +19,7 @@ export class EmailOtpService {
     private readonly delivery: TransactionalEmailService,
   ) {}
 
-  async request(input: { purpose: EmailOtpPurpose; email: string; tenantId?: string }) {
+  async request(input: { purpose: EmailOtpPurpose; email: string; tenantId?: string; deliver?: boolean }) {
     const pepper = this.requirePepper();
     const email = this.normalizeEmail(input.email);
     const now = new Date();
@@ -61,17 +61,22 @@ export class EmailOtpService {
       },
     });
 
-    try {
-      await this.delivery.sendOtp({ to: email, code, purpose: input.purpose });
-    } catch (error) {
-      // Persist no usable challenge when transport is unavailable. Do not leak
-      // provider details or claim a message was sent.
-      await this.prisma.emailOtpChallenge.updateMany({
-        where: { id: challenge.id, consumedAt: null },
-        data: { consumedAt: new Date() },
-      });
-      if (error instanceof ServiceUnavailableException) throw error;
-      throw new ServiceUnavailableException('Email verification is temporarily unavailable');
+    if (input.deliver === false) {
+      // Keep the random, undelivered challenge open so it enforces the same
+      // resend cooldown without giving an unknown account a usable code.
+    } else {
+      try {
+        await this.delivery.sendOtp({ to: email, code, purpose: input.purpose });
+      } catch (error) {
+        // Persist no usable challenge when transport is unavailable. Do not leak
+        // provider details or claim a message was sent.
+        await this.prisma.emailOtpChallenge.updateMany({
+          where: { id: challenge.id, consumedAt: null },
+          data: { consumedAt: new Date() },
+        });
+        if (error instanceof ServiceUnavailableException) throw error;
+        throw new ServiceUnavailableException('Email verification is temporarily unavailable');
+      }
     }
 
     return { accepted: true, challengeId: challenge.id };
@@ -112,6 +117,24 @@ export class EmailOtpService {
       data: { attempts: { increment: 1 } },
     });
     return { consumed: false };
+  }
+
+  async consumeLatest(input: { purpose: EmailOtpPurpose; email: string; tenantId?: string; code: string }) {
+    const email = this.normalizeEmail(input.email);
+    const challenge = await this.prisma.emailOtpChallenge.findFirst({
+      where: {
+        purpose: input.purpose,
+        email,
+        tenantId: input.tenantId ?? null,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+        attempts: { lt: OTP_MAX_ATTEMPTS },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!challenge) return { consumed: false };
+    return this.consume({ ...input, challengeId: challenge.id });
   }
 
   private requirePepper(): string {

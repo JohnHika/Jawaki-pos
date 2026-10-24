@@ -110,6 +110,30 @@ class ApiClient {
     return response.data;
   }
 
+  Future<void> requestPasswordReset({
+    required String email,
+    required String tenantSlug,
+  }) async {
+    await _dio.post('/auth/password-reset/request', data: {
+      'email': email,
+      'tenantSlug': tenantSlug,
+    });
+  }
+
+  Future<void> completePasswordReset({
+    required String email,
+    required String tenantSlug,
+    required String code,
+    required String newPassword,
+  }) async {
+    await _dio.post('/auth/password-reset/confirm', data: {
+      'email': email,
+      'tenantSlug': tenantSlug,
+      'code': code,
+      'newPassword': newPassword,
+    });
+  }
+
   Future<Map<String, dynamic>> loginWithGoogle({
     required String idToken,
     required String tenantSlug,

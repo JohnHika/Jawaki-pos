@@ -6,6 +6,9 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -31,6 +34,7 @@ import {
   CompanyInfoResponseDto,
 } from './dto/auth.dto';
 import { CreateEmailWorkspaceDto, CreateGoogleWorkspaceDto, RequestWorkspaceOtpDto } from './dto/workspace.dto';
+import { CompletePasswordResetDto, RequestPasswordResetDto } from './dto/password-reset.dto';
 import { GoogleIdentityService } from '../identity/google-identity.service';
 import { EmailOtpService } from '../identity/email-otp.service';
 import { WorkspaceService } from '../workspace/workspace.service';
@@ -68,7 +72,10 @@ export class AuthService {
 
   async validateUser(email: string, password: string, tenantId?: string) {
     const users = await this.prisma.user.findMany({
-      where: tenantId ? { email, tenantId } : { email },
+      where: {
+        email: { equals: email.trim(), mode: 'insensitive' },
+        ...(tenantId ? { tenantId } : {}),
+      },
       include: {
         tenant: true,
         branches: {
@@ -80,8 +87,12 @@ export class AuthService {
       take: 2,
     });
 
-    if (!tenantId && users.length > 1) {
-      throw new BadRequestException('Company is required for this email');
+    if (users.length > 1) {
+      throw new BadRequestException(
+        tenantId
+          ? 'More than one account uses this email in the selected company. Contact your administrator.'
+          : 'Company is required for this email',
+      );
     }
 
     const user = users[0];
@@ -219,6 +230,96 @@ export class AuthService {
 
   async requestWorkspaceEmailOtp(dto: RequestWorkspaceOtpDto) {
     return this.emailOtpService.request({ purpose: 'WORKSPACE_CREATION', email: dto.email });
+  }
+
+  async requestPasswordReset(dto: RequestPasswordResetDto) {
+    let tenantId: string | undefined;
+    try {
+      tenantId = await this.resolveTenantId(undefined, dto.tenantSlug);
+    } catch {
+      // Keep the response identical for unknown workspaces and email addresses.
+      return { accepted: true };
+    }
+    if (!tenantId) return { accepted: true };
+
+    const email = dto.email.trim().toLowerCase();
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        email: { equals: email, mode: 'insensitive' },
+      },
+      select: { isActive: true },
+      take: 2,
+    });
+    try {
+      // Store a decoy challenge for unknown/inactive accounts so the response
+      // and per-email rate limit do not reveal whether a login exists.
+      await this.emailOtpService.request({
+        purpose: 'PASSWORD_RESET',
+        email,
+        tenantId,
+        deliver: users.length === 1 && users[0].isActive,
+      });
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        this.logger.warn('Password reset email could not be delivered');
+        return { accepted: true };
+      }
+      if (
+        error instanceof HttpException &&
+        error.getStatus() === HttpStatus.TOO_MANY_REQUESTS
+      ) {
+        return { accepted: true };
+      }
+      throw error;
+    }
+    return { accepted: true };
+  }
+
+  async completePasswordReset(dto: CompletePasswordResetDto): Promise<void> {
+    const tenantId = await this.resolveTenantId(undefined, dto.tenantSlug);
+    if (!tenantId) throw new UnauthorizedException('Invalid or expired reset code');
+    const email = dto.email.trim().toLowerCase();
+    const proof = await this.emailOtpService.consumeLatest({
+      purpose: 'PASSWORD_RESET',
+      email,
+      tenantId,
+      code: dto.code,
+    });
+    if (!proof.consumed) {
+      throw new UnauthorizedException('Invalid or expired reset code');
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        email: { equals: email, mode: 'insensitive' },
+        isActive: true,
+        tenant: { is: { isActive: true } },
+      },
+      select: { id: true },
+      take: 2,
+    });
+    if (users.length !== 1) {
+      throw new UnauthorizedException('Invalid or expired reset code');
+    }
+
+    const user = users[0];
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      }),
+      this.prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    ]);
+    await this.redisService.del(`user:${user.id}`);
+    await this.auditService.record({
+      userId: user.id,
+      action: 'PASSWORD_RESET',
+      entityType: 'User',
+      entityId: user.id,
+    });
   }
 
   async createWorkspaceWithGoogle(dto: CreateGoogleWorkspaceDto): Promise<AuthResponseDto> {

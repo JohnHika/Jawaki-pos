@@ -12,6 +12,7 @@ import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:axon_pos/core/theme/design_system.dart';
 import 'package:axon_pos/core/widgets/motion.dart';
 import 'package:axon_pos/features/auth/presentation/providers/auth_provider.dart';
+import 'package:axon_pos/features/auth/presentation/widgets/password_reset_sheet.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -222,6 +223,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       if (!mounted) return;
       context.go('/');
     }
+  }
+
+  Future<void> _openPasswordReset() async {
+    final completed = await showPasswordResetSheet(
+      context,
+      email: _emailController.text,
+      companyCode: _normalizeCompanyCode(_tenantSlugController.text),
+    );
+    if (!mounted || completed != true) return;
+    _passwordController.clear();
+    showGlassSnackBar(
+      context,
+      'Password updated. Sign in with your new password.',
+      icon: Icons.check_circle_rounded,
+      color: DesignColors.success,
+    );
   }
 
   Future<void> _handleGoogleLogin() async {
@@ -995,14 +1012,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     const Spacer(),
                     // Forgot password link
                     TextButton(
-                      onPressed: () {
-                        showGlassSnackBar(
-                          context,
-                          'Ask your workspace administrator to reset your password.',
-                          icon: Icons.lock_reset_rounded,
-                          color: DesignColors.info,
-                        );
-                      },
+                      onPressed:
+                          authState.isLoading ? null : _openPasswordReset,
                       style: TextButton.styleFrom(
                         minimumSize: const Size(64, 48),
                         padding: const EdgeInsets.symmetric(
@@ -1010,7 +1021,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         ),
                       ),
                       child: Text(
-                        'Ask admin to reset',
+                        'Forgot password?',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600,
                               color: DesignColors.accent,
