@@ -1289,6 +1289,7 @@ model MpesaTransaction {
   id                 String    @id @default(uuid())
   merchantRequestId  String    @unique
   checkoutRequestId  String    @unique
+  providerReference  String?   @unique
   phoneNumber        String
   amount             Decimal   @db.Decimal(10, 2)
   accountReference   String

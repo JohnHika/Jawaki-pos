@@ -15,6 +15,7 @@ import {
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
 import { RequirePermissions } from "../auth/decorators/require-permissions.decorator";
@@ -47,13 +48,12 @@ export class PaymentsController {
     throw new GoneException('Use the merchant payment reference on the current Counterbase app');
   }
 
-  // Public by design: Jenga cannot present an employee JWT. The body is
-  // treated as a trigger only — no status change is ever taken from it.
-  // The service matches the stored reference/phone/amount, then performs an
-  // authenticated server-to-server status query before marking a payment
-  // completed. TODO(security): verify the callback signature once Jenga
-  // callback credentials are available (see JengaPaymentService.handleCallback).
+  // Public by design: Jenga cannot present an employee JWT. The callback body
+  // is only a trigger; the service confirms status through Jenga's
+  // authenticated status endpoint before changing payment state.
   @Post("mpesa/callback")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 300 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Equity/Jenga payment notification webhook" })
   mpesaCallback(@Body() body: Record<string, unknown>) {

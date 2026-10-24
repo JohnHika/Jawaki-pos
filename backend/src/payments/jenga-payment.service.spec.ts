@@ -133,14 +133,18 @@ describe("JengaPaymentService payment verification", () => {
       prisma,
       { settleByCheckoutId: jest.fn().mockResolvedValue(null) } as any,
     );
+    jest.spyOn(service as any, "sign").mockReturnValue("test-signature");
     (axios.post as jest.Mock).mockResolvedValue({
       data: { accessToken: "token", expiresIn: 3600 },
     });
     (axios.get as jest.Mock).mockResolvedValue({
       data: {
         data: {
-          order: { orderStatus: "Paid", amountPaid: "100.00" },
-          invoice: { externalReference: "QWE123" },
+          state: "Success",
+          stateCode: 2,
+          amount: "100.00",
+          charge: "1.00",
+          transactionReference: "QWE123",
         },
       },
     });

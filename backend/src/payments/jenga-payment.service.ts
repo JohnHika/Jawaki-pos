@@ -54,7 +54,8 @@ export class JengaPaymentService {
     this.assertConfigured();
     const phone = this.normalizePhone(dto.phoneNumber);
     const amount = dto.amount.toFixed(2);
-    const reference = await this.uniqueReference();
+    const checkoutRequestId = await this.uniqueReference();
+    const providerReference = await this.uniqueProviderReference();
     const callbackUrl = this.required("JENGA_CALLBACK_URL");
 
     if (this.isProduction() && !callbackUrl.startsWith("https://")) {
@@ -64,7 +65,7 @@ export class JengaPaymentService {
     }
 
     const payment = {
-      ref: reference,
+      ref: providerReference,
       amount,
       currency: "KES",
       telco: "Safaricom",
@@ -80,7 +81,7 @@ export class JengaPaymentService {
     };
     const signature = this.sign(
       merchant.accountNumber +
-        reference +
+        providerReference +
         phone +
         payment.telco +
         amount +
@@ -89,8 +90,9 @@ export class JengaPaymentService {
 
     await this.prisma.mpesaTransaction.create({
       data: {
-        merchantRequestId: `JENGA:${reference}`,
-        checkoutRequestId: reference,
+        merchantRequestId: `JENGA:${providerReference}`,
+        checkoutRequestId,
+        providerReference,
         phoneNumber: phone,
         amount: new Prisma.Decimal(amount),
         accountReference: dto.reference,
@@ -112,7 +114,7 @@ export class JengaPaymentService {
         },
       );
       await this.prisma.mpesaTransaction.update({
-        where: { checkoutRequestId: reference },
+        where: { checkoutRequestId },
         data: {
           status: "processing",
           resultDesc: String(response.data?.message ?? "Prompt sent"),
@@ -120,8 +122,8 @@ export class JengaPaymentService {
       });
       return {
         message: "Payment prompt sent to customer",
-        merchant_request_id: `JENGA:${reference}`,
-        checkout_request_id: reference,
+        merchant_request_id: `JENGA:${providerReference}`,
+        checkout_request_id: checkoutRequestId,
         response_code: String(response.data?.code ?? "-1"),
         response_description: String(
           response.data?.message ?? "Request accepted",
@@ -130,7 +132,7 @@ export class JengaPaymentService {
       };
     } catch (error) {
       await this.prisma.mpesaTransaction.update({
-        where: { checkoutRequestId: reference },
+        where: { checkoutRequestId },
         data: { status: "failed", resultDesc: this.safeError(error) },
       });
       throw new BadGatewayException(
@@ -140,12 +142,25 @@ export class JengaPaymentService {
   }
 
   async handleCallback(body: JengaCallback) {
-    const reference = body.transactionReference?.trim();
-    if (!reference)
-      throw new BadRequestException("Missing transactionReference");
+    const callback: JengaCallback =
+      body && typeof body === "object" ? body : {};
+    const reference =
+      typeof callback.transactionReference === "string"
+        ? callback.transactionReference.trim()
+        : "";
+    // Jenga's documented account-based API accepts up to six alphanumeric
+    // characters. Also accept existing 32-character internal IDs so callbacks
+    // from any in-flight transactions created before this change still work.
+    const isProviderReference = /^[a-z0-9]{1,6}$/i.test(reference);
+    const isLegacyInternalReference = /^[a-f0-9]{32}$/i.test(reference);
+    if (!isProviderReference && !isLegacyInternalReference) {
+      return { result: "accepted" };
+    }
 
     const transaction = await this.prisma.mpesaTransaction.findUnique({
-      where: { checkoutRequestId: reference },
+      where: isLegacyInternalReference
+        ? { checkoutRequestId: reference }
+        : { providerReference: reference },
     });
     if (!transaction) {
       this.logger.warn(
@@ -154,34 +169,40 @@ export class JengaPaymentService {
       return { result: "accepted" };
     }
 
-    // The callback endpoint is unauthenticated, so the body is treated as a
-    // trigger only — never as a source of state changes. The stored status
-    // (and everything derived from it) is updated exclusively through the
-    // authenticated server-to-server status query below.
-    // TODO(security): verify the callback signature (X-Jenga-Signature /
-    // HMAC over the raw body) once Jenga callback credentials are available;
-    // until then the request is still rate-limited and can only nudge a
-    // status query for a reference that already exists.
-    const amountMatches =
-      body.requestAmount !== undefined &&
-      new Prisma.Decimal(String(body.requestAmount)).equals(transaction.amount);
+    // The callback endpoint is unauthenticated, so its body is only a trigger;
+    // never persist callback-controlled text or JSON. The provider's
+    // authenticated status response is the sole source of payment state.
+    let amountMatches = false;
+    if (
+      (typeof callback.requestAmount === "string" ||
+        typeof callback.requestAmount === "number") &&
+      String(callback.requestAmount).length <= 10 &&
+      /^\d+(?:\.\d{1,2})?$/.test(String(callback.requestAmount))
+    ) {
+      amountMatches = new Prisma.Decimal(String(callback.requestAmount)).equals(
+        transaction.amount,
+      );
+    }
+    let phoneMatches = false;
+    try {
+      phoneMatches =
+        typeof callback.mobileNumber === "string" &&
+        this.normalizePhone(callback.mobileNumber) === transaction.phoneNumber;
+    } catch {
+      phoneMatches = false;
+    }
+    const code = Number(callback.code);
     const identityMatches =
       amountMatches &&
-      body.currency === "KES" &&
-      this.normalizePhone(body.mobileNumber ?? "") === transaction.phoneNumber;
-    const code = Number(body.code);
-
-    await this.prisma.mpesaTransaction.update({
-      where: { checkoutRequestId: reference },
-      data: {
-        resultDesc: body.message,
-        callbackPayload: body as Prisma.InputJsonValue,
-      },
-    });
+      (typeof callback.currency === "string" &&
+        callback.currency.toUpperCase() === "KES") &&
+      phoneMatches;
 
     // A callback alone is not trusted for approval. Confirm Paid and amount
     // against Jenga's authenticated status endpoint before completing.
-    if (identityMatches && code === 3) await this.status(reference, true);
+    if (identityMatches && [1, 3, 5, 6, 7].includes(code)) {
+      await this.status(transaction.checkoutRequestId, true);
+    }
     return { result: "accepted" };
   }
 
@@ -191,76 +212,92 @@ export class JengaPaymentService {
     });
     if (!transaction)
       throw new BadRequestException("Unknown payment reference");
+    // A completed renewal can still need its invoice/entitlement transaction
+    // retried if the database was briefly unavailable after the provider
+    // confirmed payment. Do not re-query Jenga or replace the original paid-at
+    // timestamp for an already-completed transaction.
+    if (transaction.status === "completed") {
+      await this.settleSubscriptionRenewal(transaction, reference);
+      return this.statusResponse(transaction);
+    }
     if (
       !forceQuery &&
-      ["completed", "failed", "cancelled", "canceled", "needs_review"].includes(transaction.status)
+      ["failed", "cancelled", "canceled", "needs_review"].includes(transaction.status)
     ) {
       return this.statusResponse(transaction);
     }
     this.assertConfigured();
     try {
+      const providerReference = transaction.providerReference ?? reference;
       const response = await axios.get(
-        `${this.baseUrl()}/api-checkout/mpesa-stk-push/v3.0/status/order/${encodeURIComponent(reference)}`,
+        `${this.baseUrl()}/v3-apis/transaction-api/v3.0/transactions/details/${encodeURIComponent(providerReference)}`,
         {
-          headers: { Authorization: `Bearer ${await this.token()}` },
+          headers: {
+            Authorization: `Bearer ${await this.token()}`,
+            Signature: this.sign(providerReference),
+          },
           timeout: 10000,
         },
       );
-      const order = response.data?.data?.order;
-      const invoice = response.data?.data?.invoice;
-      const paidAmount = new Prisma.Decimal(String(order?.amountPaid ?? 0));
-      const orderStatus = String(order?.orderStatus ?? "").toLowerCase();
-      const completed =
-        orderStatus === "paid" &&
-        paidAmount.equals(transaction.amount);
-      const failed = ["failed", "cancelled", "canceled", "expired", "rejected"].includes(orderStatus);
-      const paidAmountMismatch = orderStatus === "paid" && !paidAmount.equals(transaction.amount);
+      const providerData = response.data?.data ?? {};
+      const providerState = String(providerData.state ?? "").toLowerCase();
+      const providerStateCode = Number(providerData.stateCode);
+      const stateIsSuccess =
+        providerState === "success" && providerStateCode === 2;
+      const stateIsFailure =
+        providerState === "failed" && providerStateCode === 1;
+      const providerAmountText = String(providerData.amount ?? "");
+      const providerAmountMatches =
+        providerAmountText.length <= 10 &&
+        /^\d+(?:\.\d{1,2})?$/.test(providerAmountText) &&
+        new Prisma.Decimal(providerAmountText).equals(transaction.amount);
+      const completed = stateIsSuccess && providerAmountMatches;
+      const failed = stateIsFailure;
+      const paidAmountMismatch = stateIsSuccess && !providerAmountMatches;
       const updated = await this.prisma.mpesaTransaction.update({
         where: { checkoutRequestId: reference },
         data: completed
           ? {
               status: "completed",
-              transactionDate: new Date(),
+              transactionDate: transaction.transactionDate ?? new Date(),
               mpesaReceiptNumber:
-                invoice?.externalReference ?? transaction.mpesaReceiptNumber,
+                providerData.transactionReference ??
+                transaction.mpesaReceiptNumber,
             }
           : failed
-              ? { status: orderStatus === "canceled" ? "canceled" : orderStatus }
+              ? {
+                  status: "failed",
+                  resultDesc: String(providerData.message ?? "Payment failed"),
+                }
               : paidAmountMismatch
                   ? {
                       status: "needs_review",
-                      resultDesc: `Provider confirmed a different amount than requested (${paidAmount.toString()} KES)`,
+                      resultDesc: "Provider confirmed payment but returned a different transaction amount",
                     }
                   : {},
       });
-      // Subscription renewal auto-charge: the reference the billing cron
-      // pushed always starts with AXONSUB-. Once the authenticated status
-      // query confirms completion, settle the renewal here (invoice PAID +
-      // tenant period activated, atomically via the Prisma-only settler —
-      // this avoids a RecurringBillingService <-> JengaPaymentService
-      // circular dependency). Idempotent: settleByCheckoutId returns null
-      // for an already-PAID invoice, and accountReference is not an AXONSUB
-      // reference for ordinary POS sale payments.
-      if (
-        completed &&
-        (transaction.accountReference ?? "").startsWith("AXONSUB-")
-      ) {
-        try {
-          await this.renewalSettler.settleByCheckoutId(reference);
-        } catch (settleError) {
-          // Never fail the status query because settlement hiccuped; the
-          // next status poll (or callback nudge) retries it idempotently.
-          this.logger.error(
-            `AXONSUB settlement failed for ${reference}: ${this.safeError(settleError)}`,
-          );
-        }
-      }
+      if (completed) await this.settleSubscriptionRenewal(updated, reference);
       return this.statusResponse(updated);
     } catch (error) {
       this.logger.warn(
         `Jenga status query failed for ${reference}: ${this.safeError(error)}`,
       );
       return this.statusResponse(transaction);
+    }
+  }
+
+  private async settleSubscriptionRenewal(
+    transaction: { accountReference?: string | null },
+    reference: string,
+  ) {
+    if (!(transaction.accountReference ?? "").startsWith("AXONSUB-")) return;
+    try {
+      await this.renewalSettler.settleByCheckoutId(reference);
+    } catch (settleError) {
+      // Settlement is idempotent and retried on the next status poll.
+      this.logger.error(
+        `AXONSUB settlement failed for ${reference}: ${this.safeError(settleError)}`,
+      );
     }
   }
 
@@ -325,9 +362,8 @@ export class JengaPaymentService {
   }
 
   private async uniqueReference(): Promise<string> {
-    // 32 hex chars = 128 bits of entropy. The checkout reference gates the
-    // authenticated status-query path (an attacker needs it to poll state),
-    // so it must not be guessable by enumerating a short code space.
+    // Keep Counterbase's internal checkout ID unguessable and separate from
+    // the six-character reference required by Jenga's account-based API.
     for (let attempt = 0; attempt < 10; attempt++) {
       const reference = randomBytes(16).toString("hex");
       if (
@@ -339,6 +375,29 @@ export class JengaPaymentService {
     }
     throw new ServiceUnavailableException(
       "Could not allocate a payment reference",
+    );
+  }
+
+  private async uniqueProviderReference(): Promise<string> {
+    // Jenga currently documents a six-character alphanumeric payment.ref
+    // limit. Keep this short provider-facing token unique while the private
+    // 128-bit checkoutRequestId remains the stable Counterbase transaction ID.
+    const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const reference = Array.from(
+        randomBytes(6),
+        (byte) => alphabet[byte % alphabet.length],
+      ).join("");
+      if (
+        !(await this.prisma.mpesaTransaction.findUnique({
+          where: { providerReference: reference },
+        }))
+      ) {
+        return reference;
+      }
+    }
+    throw new ServiceUnavailableException(
+      "Could not allocate a Jenga payment reference",
     );
   }
 
