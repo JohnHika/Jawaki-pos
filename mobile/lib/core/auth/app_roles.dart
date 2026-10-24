@@ -122,6 +122,7 @@ class RolePermissions {
 
   // ── Admin-only ───────────────────────────────
   bool get canManageUsers             => has('users.view');
+  bool get canInviteStaff             => has('users.create');
   bool get canManageBranches          => has('branches.create');
   bool get canUpdateBranches          => has('branches.update');
   bool get canDeleteBranches          => has('branches.delete');

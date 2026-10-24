@@ -47,11 +47,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               icon: const Icon(Icons.badge_outlined),
               onPressed: () => context.push('/users/roles'),
             ),
-          IconButton(
-            tooltip: 'Invitations',
-            icon: const Icon(Icons.mail_outline_rounded),
-            onPressed: () => context.push('/users/invitations'),
-          ),
+          if (permissions.canInviteStaff)
+            IconButton(
+              tooltip: 'Invitations',
+              icon: const Icon(Icons.mail_outline_rounded),
+              onPressed: () => context.push('/users/invitations'),
+            ),
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh_rounded),

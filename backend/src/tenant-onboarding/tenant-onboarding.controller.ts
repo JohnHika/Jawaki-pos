@@ -32,6 +32,13 @@ export class TenantOnboardingController {
   @ApiBearerAuth('JWT-auth')
   listInvitations(@CurrentUser() user: any) { return this.service.listInvitations(user); }
 
+  @Get('staff-invitation-options')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  getStaffInvitationOptions(@CurrentUser() user: any) {
+    return this.service.getStaffInvitationOptions(user);
+  }
+
   @Post('staff-invitations')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')

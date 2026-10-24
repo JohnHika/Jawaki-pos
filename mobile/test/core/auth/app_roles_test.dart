@@ -19,6 +19,12 @@ void main() {
       expect(RolePermissions(const []).canSeeCustomers, isFalse);
     });
 
+    test('staff invitations require create permission separately from user view', () {
+      expect(RolePermissions(const ['users.view']).canManageUsers, isTrue);
+      expect(RolePermissions(const ['users.view']).canInviteStaff, isFalse);
+      expect(RolePermissions(const ['users.create']).canInviteStaff, isTrue);
+    });
+
     test('users without POS land on a permitted work surface', () {
       expect(
         RolePermissions(const ['products.view']).homePath,

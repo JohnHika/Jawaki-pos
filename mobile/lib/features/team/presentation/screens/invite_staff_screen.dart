@@ -69,7 +69,10 @@ class _InviteStaffScreenState extends State<InviteStaffScreen> {
       _loadError = null;
     });
     try {
-      final data = await Future.wait([_api.getRoles(), _api.getBranches()]);
+      final data = await Future.wait([
+        _api.getStaffInvitationRoles(),
+        _api.getBranches(),
+      ]);
       if (!mounted) return;
       final roles =
           data[0].whereType<Map>().map(Map<String, dynamic>.from).toList();

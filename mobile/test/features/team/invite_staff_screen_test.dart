@@ -13,7 +13,7 @@ import 'package:axon_pos/features/team/presentation/screens/invite_staff_screen.
 class _SpyApiClient extends ApiClient {
   _SpyApiClient() : super(Dio());
 
-  /// If set, getRoles/getBranches return this completer's future instead.
+  /// If set, role and branch loaders return this completer's future instead.
   Completer<List<dynamic>>? loadCompleter;
 
   List<Map<String, dynamic>> roles = [];
@@ -22,6 +22,13 @@ class _SpyApiClient extends ApiClient {
   Object? branchesError;
   Object? createError;
   Map<String, dynamic>? lastInvitationCall;
+
+  @override
+  Future<List<dynamic>> getStaffInvitationRoles() async {
+    if (loadCompleter != null) await loadCompleter!.future;
+    if (rolesError != null) throw rolesError!;
+    return roles;
+  }
 
   @override
   Future<List<dynamic>> getRoles() async {

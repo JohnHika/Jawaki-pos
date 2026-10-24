@@ -294,6 +294,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return '/';
         }
         if ((path == '/users' || path.startsWith('/users/')) &&
+            path != '/users/invitations' &&
             !perms.canManageUsers) {
           return '/';
         }
@@ -337,7 +338,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return '/settings';
         }
         if ((path == '/invite-staff' || path == '/users/invitations') &&
-            !perms.canManageUsers) {
+            !perms.canInviteStaff) {
           return '/';
         }
         if ((path == '/users/roles' ||

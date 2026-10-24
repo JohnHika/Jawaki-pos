@@ -119,13 +119,17 @@ export class TenantOnboardingService {
   }
 
   async createInvitation(actor: Actor, dto: { email: string; firstName: string; lastName: string; roleId: string; branchId: string }) {
-    await this.assertCanInviteStaff(actor);
+    const isOwner = await this.assertCanInviteStaff(actor);
     // Plan limit on staff seats (402 only when the licence is enforced).
     await this.license?.assertWithinLimit(actor.tenantId, 'users');
     const branch = await this.prisma.branch.findFirst({ where: { id: dto.branchId, tenantId: actor.tenantId, isActive: true } });
     if (!branch) throw new ForbiddenException('Branch is not available in this company');
-    const role = await this.prisma.role.findFirst({ where: { id: dto.roleId, tenantId: actor.tenantId } });
+    const role = await this.prisma.role.findFirst({
+      where: { id: dto.roleId, tenantId: actor.tenantId },
+      include: { permissions: { select: { permissionKey: true } } },
+    });
     if (!role) throw new ForbiddenException('Role is not available in this company');
+    this.assertMayAssignRole(actor, role.permissions.map((item) => item.permissionKey), isOwner);
     const email = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findFirst({ where: { tenantId: actor.tenantId, email }, select: { id: true } });
     if (existing) throw new ConflictException('A user with this email already belongs to this company');
@@ -140,6 +144,22 @@ export class TenantOnboardingService {
     const challenge = await this.otp.request({ purpose: 'STAFF_INVITE', email, tenantId: actor.tenantId });
     await this.prisma.tenantStaffInvitation.update({ where: { id: invite.id }, data: { challengeId: challenge.challengeId } });
     return { accepted: true, invitationId: invite.id, challengeId: challenge.challengeId };
+  }
+
+  async getStaffInvitationOptions(actor: Actor) {
+    const isOwner = await this.assertCanInviteStaff(actor);
+    const roles = await this.prisma.role.findMany({
+      where: { tenantId: actor.tenantId },
+      include: { permissions: { select: { permissionKey: true } } },
+      orderBy: { name: 'asc' },
+    });
+    const mayAssignAnyRole = isOwner || actor.permissions?.includes('permissions.assign_role');
+    const actorPermissions = new Set(actor.permissions ?? []);
+
+    return roles
+      .filter((role) => mayAssignAnyRole ||
+        role.permissions.every((item) => actorPermissions.has(item.permissionKey)))
+      .map(({ id, name }) => ({ id, name }));
   }
 
   async listInvitations(actor: Actor) {
@@ -282,7 +302,7 @@ export class TenantOnboardingService {
    * (no TenantOnboarding row): those fall back to the permission check alone
    * instead of failing with a 404 that the client reads as a lost session.
    */
-  private async assertCanInviteStaff(actor: Actor) {
+  private async assertCanInviteStaff(actor: Actor): Promise<boolean> {
     const onboarding = await this.prisma.tenantOnboarding.findUnique({
       where: { tenantId: actor.tenantId },
       select: { ownerUserId: true },
@@ -290,6 +310,15 @@ export class TenantOnboardingService {
     const isOwner = onboarding?.ownerUserId === actor.sub;
     if (!isOwner && !actor.permissions?.includes('users.create')) {
       throw new ForbiddenException('Not authorized to manage onboarding');
+    }
+    return isOwner;
+  }
+
+  private assertMayAssignRole(actor: Actor, rolePermissions: string[], isOwner: boolean) {
+    if (isOwner || actor.permissions?.includes('permissions.assign_role')) return;
+    const actorPermissions = new Set(actor.permissions ?? []);
+    if (rolePermissions.some((permission) => !actorPermissions.has(permission))) {
+      throw new ForbiddenException('You cannot invite staff with permissions beyond your own');
     }
   }
 
