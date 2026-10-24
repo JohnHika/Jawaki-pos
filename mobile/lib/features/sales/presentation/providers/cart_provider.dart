@@ -501,9 +501,23 @@ class CartNotifier extends StateNotifier<CartState> {
     double? saleQuantity,
     double? unitConversionFactor,
   }) async {
-    final existingIndex = state.items.indexWhere(
-      (i) => i.productId == productId,
-    );
+    final conversion = unitConversionFactor ?? 1;
+    final existingIndex = state.items.indexWhere((item) =>
+        item.productId == productId &&
+        _sameSaleTier(item, saleUnit, conversion));
+    final otherTierExists = state.items.any((item) =>
+        item.productId == productId &&
+        !_sameSaleTier(item, saleUnit, conversion));
+    // Keep one line per product. A caller that wants to change the unit or
+    // tier must explicitly update that line; silently merging a piece into a
+    // box line changes the price basis for stock that was already in the cart.
+    if (otherTierExists && existingIndex < 0) {
+      return const CartMutationResult(
+        success: false,
+        message:
+            'This product is already in the cart at another sale unit. Open it to update the quantity or unit.',
+      );
+    }
     final requestedQuantity = existingIndex >= 0
         ? state.items[existingIndex].quantity + quantity
         : quantity;
@@ -523,18 +537,29 @@ class CartNotifier extends StateNotifier<CartState> {
     // The stock check above is asynchronous, so look the line up again: a fast
     // second tap on a product that was not yet in the cart must add to the line
     // the first tap created, not start a duplicate one.
-    final freshIndex = state.items.indexWhere((i) => i.productId == productId);
+    final freshIndex = state.items.indexWhere((item) =>
+        item.productId == productId &&
+        _sameSaleTier(item, saleUnit, conversion));
+    final freshOtherTierExists = state.items.any((item) =>
+        item.productId == productId &&
+        !_sameSaleTier(item, saleUnit, conversion));
+    if (freshIndex < 0 && freshOtherTierExists) {
+      return const CartMutationResult(
+        success: false,
+        message:
+            'This product is already in the cart at another sale unit. Open it to update the quantity or unit.',
+      );
+    }
     if (freshIndex >= 0) {
       final updatedItems = [...state.items];
       final existing = updatedItems[freshIndex];
       updatedItems[freshIndex] = existing.copyWith(
         quantity: existing.quantity + quantity,
-        unitPrice: unitPrice,
-        notes: notes,
-        saleUnit: saleUnit,
-        saleQuantity: (existing.saleQuantity ?? existing.quantity.toDouble()) +
-            (saleQuantity ?? quantity.toDouble()),
-        unitConversionFactor: unitConversionFactor,
+        // Preserve a manually adjusted/tier price on the existing line.
+        // This action adds quantity; it is not a repricing operation.
+        saleQuantity: (existing.saleQuantity ??
+                existing.quantity / (existing.unitConversionFactor ?? 1)) +
+            (saleQuantity ?? quantity / conversion),
       );
       state = state.copyWith(items: updatedItems);
     } else {
@@ -558,8 +583,13 @@ class CartNotifier extends StateNotifier<CartState> {
 
   Future<CartMutationResult> updateQuantity(
     String productId,
-    int quantity,
-  ) async {
+    int quantity, {
+    double? unitPrice,
+    String? notes,
+    String? saleUnit,
+    double? saleQuantity,
+    double? unitConversionFactor,
+  }) async {
     if (quantity <= 0) {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
@@ -580,9 +610,14 @@ class CartNotifier extends StateNotifier<CartState> {
         final conversion = item.unitConversionFactor;
         return item.copyWith(
           quantity: quantity,
-          saleQuantity: conversion != null && conversion > 0
-              ? quantity / conversion
-              : item.saleQuantity,
+          unitPrice: unitPrice,
+          notes: notes,
+          saleUnit: saleUnit,
+          saleQuantity: saleQuantity ??
+              (conversion != null && conversion > 0
+                  ? quantity / conversion
+                  : item.saleQuantity),
+          unitConversionFactor: unitConversionFactor,
         );
       }
       return item;
@@ -593,9 +628,9 @@ class CartNotifier extends StateNotifier<CartState> {
   }
 
   /// Moves a line already in the cart up or down by [delta] BASE units,
-  /// keeping that line's price and unit. The result is worked out from the cart
-  /// as it is AFTER the stock check, so rapid taps accumulate instead of
-  /// overwriting each other. Going to zero or below removes the line.
+  /// keeping its price and sale unit. Tier lines are snapped to whole sale
+  /// units so old fractional quantities cannot persist through the stepper.
+  /// Going to zero or below removes the line.
   Future<CartMutationResult> changeQuantityBy(
       String productId, int delta) async {
     final index = state.items.indexWhere((i) => i.productId == productId);
@@ -607,8 +642,25 @@ class CartNotifier extends StateNotifier<CartState> {
     }
     if (delta == 0) return const CartMutationResult.success();
 
+    final current = state.items[index];
+    final conversionValue = current.unitConversionFactor;
+    final conversion = conversionValue != null &&
+            conversionValue.isFinite &&
+            conversionValue > 0
+        ? conversionValue.round().clamp(1, 0x7fffffff).toInt()
+        : 1;
+    // Cart steppers move whole sale units. Round any legacy fractional sale
+    // quantity back to a whole unit before applying the requested step.
+    final currentSaleQuantity = current.saleUnit != null
+        ? (current.saleQuantity ?? current.quantity / conversion).round()
+        : current.quantity;
+    final deltaSaleQuantity =
+        conversion > 1 ? (delta / conversion).round() : delta;
+    final wantedSaleQuantity = currentSaleQuantity + deltaSaleQuantity;
+    final wanted = conversion > 1
+        ? wantedSaleQuantity * conversion
+        : current.quantity + delta;
     if (delta > 0) {
-      final wanted = state.items[index].quantity + delta;
       final stockCheck = await _validateStockAvailability(productId, wanted);
       if (!stockCheck['available']) {
         return CartMutationResult(
@@ -621,7 +673,23 @@ class CartNotifier extends StateNotifier<CartState> {
 
     final latest = state.items.indexWhere((i) => i.productId == productId);
     if (latest < 0) return const CartMutationResult.success();
-    final newQuantity = state.items[latest].quantity + delta;
+    final latestItem = state.items[latest];
+    final latestConversionValue = latestItem.unitConversionFactor;
+    final latestConversion = latestConversionValue != null &&
+            latestConversionValue.isFinite &&
+            latestConversionValue > 0
+        ? latestConversionValue.round().clamp(1, 0x7fffffff).toInt()
+        : 1;
+    final latestSaleQuantity = latestItem.saleUnit != null
+        ? (latestItem.saleQuantity ?? latestItem.quantity / latestConversion)
+            .round()
+        : latestItem.quantity;
+    final latestDeltaSaleQuantity =
+        latestConversion > 1 ? (delta / latestConversion).round() : delta;
+    final newSaleQuantity = latestSaleQuantity + latestDeltaSaleQuantity;
+    final newQuantity = latestConversion > 1
+        ? newSaleQuantity * latestConversion
+        : latestItem.quantity + delta;
     if (newQuantity <= 0) {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
@@ -629,15 +697,24 @@ class CartNotifier extends StateNotifier<CartState> {
 
     final updatedItems = [...state.items];
     final item = updatedItems[latest];
-    final conversion = item.unitConversionFactor;
     updatedItems[latest] = item.copyWith(
       quantity: newQuantity,
-      saleQuantity: conversion != null && conversion > 0
-          ? newQuantity / conversion
+      saleQuantity: item.saleUnit != null
+          ? newSaleQuantity.toDouble()
           : item.saleQuantity,
     );
     state = state.copyWith(items: updatedItems);
     return const CartMutationResult.success();
+  }
+
+  bool _sameSaleTier(CartItem item, String? saleUnit, double conversion) {
+    final existingConversion = item.unitConversionFactor ?? 1;
+    final sameConversion = (existingConversion - conversion).abs() < 0.000001;
+    final sameUnit = item.saleUnit == saleUnit ||
+        (sameConversion &&
+            conversion == 1 &&
+            (item.saleUnit == null || saleUnit == null));
+    return sameUnit && sameConversion;
   }
 
   void updateItemDiscount(String productId, double discount, {String? reason}) {

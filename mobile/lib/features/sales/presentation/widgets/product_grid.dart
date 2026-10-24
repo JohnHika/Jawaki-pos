@@ -413,7 +413,15 @@ class _ProductCard extends ConsumerWidget {
 
     final cartState = ref.read(cartProvider);
     final existing = cartState.items.where((i) => i.productId == productId);
-    final currentQty = existing.isEmpty ? 0 : existing.first.quantity;
+    final existingItem = existing.isEmpty ? null : existing.first;
+    final currentQty = existingItem == null
+        ? 0
+        : (existingItem.saleQuantity ??
+                existingItem.quantity /
+                    (existingItem.unitConversionFactor ?? 1))
+            .round()
+            .clamp(1, 0x7fffffff)
+            .toInt();
 
     GlassBottomSheet.show(
       context,
@@ -427,14 +435,21 @@ class _ProductCard extends ConsumerWidget {
         pricingTiers: tiers,
         availableStock: trackInventory ? stock : null,
         currentQuantity: currentQty,
+        existingItem: existingItem,
         onConfirm: (qty, tier, overridePrice) async {
           final conversion = tier.quantityPerUnit ?? 1;
           final baseQty = (qty * conversion).round();
           final unitPrice = (overridePrice ?? tier.price) / conversion;
-          final result = currentQty > 0
-              ? await ref
-                  .read(cartProvider.notifier)
-                  .updateQuantity(productId, baseQty)
+          final result = existingItem != null
+              ? await ref.read(cartProvider.notifier).updateQuantity(
+                    productId,
+                    baseQty,
+                    unitPrice: unitPrice,
+                    notes: tier.unitTypeLabel,
+                    saleUnit: tier.unit,
+                    saleQuantity: qty.toDouble(),
+                    unitConversionFactor: conversion,
+                  )
               : await ref.read(cartProvider.notifier).addItem(
                     productId: productId,
                     productName: productName,
@@ -647,6 +662,7 @@ class _QuantitySheet extends StatefulWidget {
   final List<UnitPriceInfo> pricingTiers;
   final int? availableStock;
   final int currentQuantity;
+  final CartItem? existingItem;
   // overridePrice is null unless the cashier explicitly used the price
   // override control — always the price for one of [tier]'s unit, same
   // basis as UnitPriceInfo.price, never the product's stored catalog price.
@@ -664,6 +680,7 @@ class _QuantitySheet extends StatefulWidget {
     required this.pricingTiers,
     required this.availableStock,
     required this.currentQuantity,
+    required this.existingItem,
     required this.onConfirm,
   });
 
@@ -683,17 +700,43 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   @override
   void initState() {
     super.initState();
-    _selectedTier = widget.pricingTiers.isNotEmpty
+    final existing = widget.existingItem;
+    final fallbackTier = widget.pricingTiers.isNotEmpty
         ? widget.pricingTiers.first
         : UnitPriceInfo(
             unit: widget.baseUnit,
             price: widget.basePrice,
             unitTypeLabel: widget.baseUnit,
           );
-    _quantity = 1;
+    _selectedTier = existing == null
+        ? fallbackTier
+        : widget.pricingTiers.cast<UnitPriceInfo?>().firstWhere(
+                  (tier) =>
+                      tier?.unit == existing.saleUnit &&
+                      ((tier?.quantityPerUnit ?? 1) -
+                                  (existing.unitConversionFactor ?? 1))
+                              .abs() <
+                          0.000001,
+                  orElse: () => null,
+                ) ??
+            fallbackTier;
+    _quantity = existing == null
+        ? 1
+        : (existing.saleQuantity ??
+                existing.quantity / (existing.unitConversionFactor ?? 1))
+            .round()
+            .clamp(1, 0x7fffffff)
+            .toInt();
+    final existingTierPrice = existing == null
+        ? null
+        : existing.unitPrice * (existing.unitConversionFactor ?? 1);
+    if (existingTierPrice != null &&
+        (existingTierPrice - _selectedTier.price).abs() > 0.000001) {
+      _overridePrice = existingTierPrice;
+    }
     _qtyController = TextEditingController(text: '$_quantity');
     _priceController = TextEditingController(
-      text: _selectedTier.price.toStringAsFixed(0),
+      text: _priceInputValue(_effectivePrice),
     );
     _priceFocusNode = FocusNode();
     _priceFocusNode.addListener(() {

@@ -259,6 +259,12 @@ class _QuantityControls extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rawConversion = item.unitConversionFactor;
+    final conversion =
+        rawConversion != null && rawConversion.isFinite && rawConversion > 0
+            ? rawConversion.round().clamp(1, 0x7fffffff).toInt()
+            : 1;
+    final step = item.saleUnit == null ? 1 : conversion;
     return Container(
       decoration: BoxDecoration(
         color: isDark
@@ -271,10 +277,10 @@ class _QuantityControls extends ConsumerWidget {
         children: [
           _QuantityButton(
             icon: Icons.remove,
-            onPressed: item.quantity > 1
+            onPressed: item.quantity > step
                 ? () => ref
                     .read(cartProvider.notifier)
-                    .updateQuantity(item.productId, item.quantity - 1)
+                    .changeQuantityBy(item.productId, -step)
                 : null,
           ),
           Container(
@@ -304,7 +310,7 @@ class _QuantityControls extends ConsumerWidget {
             icon: Icons.add,
             onPressed: () => ref
                 .read(cartProvider.notifier)
-                .updateQuantity(item.productId, item.quantity + 1),
+                .changeQuantityBy(item.productId, step),
           ),
         ],
       ),

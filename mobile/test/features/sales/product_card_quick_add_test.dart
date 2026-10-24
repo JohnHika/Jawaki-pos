@@ -10,6 +10,7 @@ Map<String, dynamic> _product(
   String name, {
   int stock = 20,
   double price = 100,
+  List<Map<String, dynamic>> pricingTiers = const [],
 }) =>
     {
       'id': id,
@@ -19,6 +20,7 @@ Map<String, dynamic> _product(
       'unit': 'piece',
       'stock': stock,
       'trackInventory': true,
+      'pricingTiers': pricingTiers,
     };
 
 Future<Map<String, dynamic>> _anyStock(String productId, int quantity) async =>
@@ -46,7 +48,8 @@ Future<void> _pumpGrid(
 }
 
 void main() {
-  testWidgets('every in-stock product has a quick add, an out-of-stock one does not',
+  testWidgets(
+      'every in-stock product has a quick add, an out-of-stock one does not',
       (tester) async {
     await _pumpGrid(tester, [
       _product('1', 'Maize flour'),
@@ -60,7 +63,8 @@ void main() {
     expect(find.text('OUT OF STOCK'), findsOneWidget);
   });
 
-  testWidgets('one tap adds one straight to the cart, no sheet', (tester) async {
+  testWidgets('one tap adds one straight to the cart, no sheet',
+      (tester) async {
     await _pumpGrid(tester, [_product('1', 'Maize flour')]);
 
     await tester.tap(find.byKey(const ValueKey('quick-add')));
@@ -72,7 +76,8 @@ void main() {
     // The "+" has become a stepper showing 1, and no sheet opened.
     expect(find.byKey(const ValueKey('quick-stepper')), findsOneWidget);
     expect(find.byKey(const ValueKey('quick-qty')), findsOneWidget);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '1');
+    expect(
+        tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '1');
     expect(find.text('Add to Cart'), findsNothing);
   });
 
@@ -87,7 +92,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('quick-more')));
     await tester.pumpAndSettle();
     expect(_cart.state.items.single.quantity, 3);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '3');
+    expect(
+        tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '3');
 
     await tester.tap(find.byKey(const ValueKey('quick-less')));
     await tester.pumpAndSettle();
@@ -116,14 +122,72 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '2');
+    expect(
+        tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '2');
     await tester.tap(find.byKey(const ValueKey('quick-more')));
     await tester.pumpAndSettle();
 
     final line = _cart.state.items.single;
     expect(line.quantity, 36);
-    expect(line.unitPrice, 90, reason: 'the box discount must survive a quick add');
-    expect(tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '3');
+    expect(line.unitPrice, 90,
+        reason: 'the box discount must survive a quick add');
+    expect(
+        tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '3');
+  });
+
+  testWidgets(
+      'reopening a product keeps its selected tier, quantity, and price',
+      (tester) async {
+    await _pumpGrid(
+      tester,
+      [
+        _product(
+          '1',
+          'Maize flour',
+          stock: 100,
+          pricingTiers: [
+            {
+              'unit': 'box',
+              'quantityPerUnit': 12,
+              'price': 1200,
+              'sortOrder': 1,
+            },
+          ],
+        ),
+      ],
+    );
+    await _cart.addItem(
+      productId: '1',
+      productName: 'Maize flour',
+      sku: 'SKU-1',
+      unitPrice: 80,
+      quantity: 24,
+      saleUnit: 'box',
+      saleQuantity: 2,
+      unitConversionFactor: 12,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Maize flour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Update Cart'), findsOneWidget);
+    expect(
+        tester.widget<TextField>(find.byType(TextField).first).controller?.text,
+        '2');
+    await tester.enterText(find.byType(TextField).first, '3');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Update Cart'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update Cart'));
+    await tester.pumpAndSettle();
+
+    final line = _cart.state.items.single;
+    expect(line.quantity, 36);
+    expect(line.saleQuantity, 3);
+    expect(line.saleUnit, 'box');
+    expect(line.unitConversionFactor, 12);
+    expect(line.unitPrice, 80,
+        reason: 'the saved price override must survive reopening the sheet');
   });
 
   testWidgets('tapping the card itself still opens the full quantity sheet',
@@ -134,15 +198,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Add to Cart'), findsOneWidget);
-    expect(_cart.state.items, isEmpty, reason: 'opening the sheet adds nothing');
+    expect(_cart.state.items, isEmpty,
+        reason: 'opening the sheet adds nothing');
   });
 
-  testWidgets('hitting the stock limit says so instead of adding', (tester) async {
-    _cart = CartNotifier(stockValidator: (id, qty) async => {
-          'available': qty <= 1,
-          'message': 'Insufficient stock available',
-          'currentStock': 1,
-        });
+  testWidgets('hitting the stock limit says so instead of adding',
+      (tester) async {
+    _cart = CartNotifier(
+        stockValidator: (id, qty) async => {
+              'available': qty <= 1,
+              'message': 'Insufficient stock available',
+              'currentStock': 1,
+            });
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -164,7 +231,8 @@ void main() {
     expect(_cart.state.items.single.quantity, 1);
     expect(find.textContaining('out of stock'), findsOneWidget);
   });
-  testWidgets('the stepper fits a narrow phone with large text', (tester) async {
+  testWidgets('the stepper fits a narrow phone with large text',
+      (tester) async {
     tester.view.physicalSize = const Size(720, 1600); // 360dp wide at 2x
     tester.view.devicePixelRatio = 2;
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;
@@ -185,7 +253,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    expect(tester.takeException(), isNull, reason: 'no overflow at 360dp / 1.3x');
-    expect(tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '9');
+    expect(tester.takeException(), isNull,
+        reason: 'no overflow at 360dp / 1.3x');
+    expect(
+        tester.widget<Text>(find.byKey(const ValueKey('quick-qty'))).data, '9');
   });
 }
