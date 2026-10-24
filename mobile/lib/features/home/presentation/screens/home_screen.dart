@@ -107,8 +107,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         label: 'POS',
         path: '/'));
     // AI is a primary working surface, not an add-on hidden in More.
-    // Customers remains available from More so the main bar stays focused on
-    // the daily workflow: Dashboard, POS, AI, then the user's next tool.
+    // Keep the first four tabs focused on daily work. Customers is available
+    // from More so it never displaces AI in the compact bottom bar.
     items.add(_NavItem(
         icon: Icons.auto_awesome_outlined,
         activeIcon: Icons.auto_awesome_rounded,
@@ -121,12 +121,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Products',
           path: '/products'));
     }
-    // Customers stays one tap away from More after AI takes its visible slot.
-    items.add(_NavItem(
-        icon: Icons.people_outlined,
-        activeIcon: Icons.people_rounded,
-        label: 'Customers',
-        path: '/customers'));
     if (perms.canSeeInventory) {
       items.add(_NavItem(
           icon: Icons.warehouse_outlined,
@@ -167,6 +161,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Finance',
           path: '/finance'));
     }
+    // Customer profiles are an important workflow, but should not displace
+    // Dashboard, POS, AI, or Products from the four primary slots.
+    items.add(_NavItem(
+        icon: Icons.people_outlined,
+        activeIcon: Icons.people_rounded,
+        label: 'Customers',
+        path: '/customers'));
     // Shop control. Each entry follows the backend permission of the same
     // name, so a screen that would only 403 is never offered.
     if (perms.has('accountability.view')) {
