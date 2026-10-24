@@ -76,7 +76,9 @@ export class CashFlowService {
   async getSettings(tenantId: string, branchId: string) {
     await this.getBranchForTenant(tenantId, branchId);
 
-    const settings = await this.prisma.branchCashSettings.findUnique({ where: { branchId } });
+    const settings = await this.prisma.branchCashSettings.findUnique({
+      where: { branchId },
+    });
     return { branchId, mode: settings?.mode ?? CashFlowMode.CASH_ONLY };
   }
 
@@ -105,22 +107,22 @@ export class CashFlowService {
    * - RUNNING_BALANCE: the ledger's latest balanceAfter, carried forward
    *   across days rather than resetting at midnight.
    */
-  async getAvailableCash(branchId: string) {
-    const settings = await this.prisma.branchCashSettings.findUnique({ where: { branchId } });
+  async getAvailableCash(branchId: string, tx?: Prisma.TransactionClient) {
+    const db = tx ?? this.prisma;
+    const settings = await db.branchCashSettings.findUnique({
+      where: { branchId },
+    });
     const mode = settings?.mode ?? CashFlowMode.CASH_ONLY;
 
-    const branch = await this.prisma.branch.findUnique({
+    const branch = await db.branch.findUnique({
       where: { id: branchId },
       select: { timezone: true },
     });
     const timezone = branch?.timezone ?? 'Africa/Nairobi';
-    const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(
-      todayInTimezone(timezone),
-      timezone,
-    );
+    const { start: startOfDay, end: endOfDay } = getDayBoundsInTimezone(todayInTimezone(timezone), timezone);
 
-    const restockOut = await this.sumToday(branchId, CashEntryType.RESTOCK_OUT, startOfDay, endOfDay);
-    const expenseOut = await this.sumToday(branchId, CashEntryType.EXPENSE_OUT, startOfDay, endOfDay);
+    const restockOut = await this.sumToday(branchId, CashEntryType.RESTOCK_OUT, startOfDay, endOfDay, db);
+    const expenseOut = await this.sumToday(branchId, CashEntryType.EXPENSE_OUT, startOfDay, endOfDay, db);
     // Manual adjustments can be positive (top-up) or negative (removal) — only
     // the negative side counts as a payout; positive ones behave like an
     // OPENING_BALANCE-style inflow and are excluded from todaysCashOut.
@@ -129,17 +131,24 @@ export class CashFlowService {
       CashEntryType.MANUAL_ADJUSTMENT,
       startOfDay,
       endOfDay,
+      db,
     );
     const todaysCashOut = restockOut + expenseOut + manualAdjustment;
 
     if (mode === CashFlowMode.RUNNING_BALANCE) {
-      const last = await this.prisma.cashLedgerEntry.findFirst({
+      const last = await db.cashLedgerEntry.findFirst({
         where: { branchId },
         orderBy: { createdAt: 'desc' },
       });
       const runningBalance = last ? Number(last.balanceAfter) : 0;
-      const salesCashIn = await this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay);
-      const receivableCollections = await this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay);
+      const salesCashIn = await this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay, db);
+      const receivableCollections = await this.sumToday(
+        branchId,
+        CashEntryType.RECEIVABLE_COLLECTION_IN,
+        startOfDay,
+        endOfDay,
+        db,
+      );
 
       return {
         mode,
@@ -159,7 +168,7 @@ export class CashFlowService {
     }
 
     if (mode === CashFlowMode.ALL_REVENUE) {
-      const revenue = await this.prisma.sale.aggregate({
+      const revenue = await db.sale.aggregate({
         where: {
           branchId,
           status: 'COMPLETED',
@@ -171,8 +180,8 @@ export class CashFlowService {
       // Keep the restock budget's configured all-revenue behavior, while
       // exposing a separate till-only amount for physical cash reconciliation.
       const [salesCashIn, receivableCollections] = await Promise.all([
-        this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay),
-        this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay),
+        this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay, db),
+        this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay, db),
       ]);
       const expectedPhysicalCash = salesCashIn + receivableCollections - todaysCashOut;
 
@@ -195,15 +204,27 @@ export class CashFlowService {
     }
 
     // CASH_ONLY (default)
-    const salesCashIn = await this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay);
-    const receivableCollections = await this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay);
+    const salesCashIn = await this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay, db);
+    const receivableCollections = await this.sumToday(
+      branchId,
+      CashEntryType.RECEIVABLE_COLLECTION_IN,
+      startOfDay,
+      endOfDay,
+      db,
+    );
     return {
       mode,
       availableCash: salesCashIn + receivableCollections - todaysCashOut,
       expectedPhysicalCash: salesCashIn + receivableCollections - todaysCashOut,
       todaysCashIn: salesCashIn + receivableCollections,
       todaysCashOut,
-      breakdown: { salesCashIn, receivableCollections, restockOut, expenseOut, manualAdjustment },
+      breakdown: {
+        salesCashIn,
+        receivableCollections,
+        restockOut,
+        expenseOut,
+        manualAdjustment,
+      },
     };
   }
 
@@ -255,8 +276,14 @@ export class CashFlowService {
     return branch;
   }
 
-  private async sumToday(branchId: string, type: CashEntryType, start: Date, end: Date): Promise<number> {
-    const result = await this.prisma.cashLedgerEntry.aggregate({
+  private async sumToday(
+    branchId: string,
+    type: CashEntryType,
+    start: Date,
+    end: Date,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<number> {
+    const result = await db.cashLedgerEntry.aggregate({
       where: { branchId, type, createdAt: { gte: start, lt: end } },
       _sum: { amount: true },
     });
@@ -268,9 +295,15 @@ export class CashFlowService {
     type: CashEntryType,
     start: Date,
     end: Date,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<number> {
-    const result = await this.prisma.cashLedgerEntry.aggregate({
-      where: { branchId, type, createdAt: { gte: start, lt: end }, amount: { lt: 0 } },
+    const result = await db.cashLedgerEntry.aggregate({
+      where: {
+        branchId,
+        type,
+        createdAt: { gte: start, lt: end },
+        amount: { lt: 0 },
+      },
       _sum: { amount: true },
     });
     return Math.abs(Number(result._sum.amount) || 0);

@@ -69,4 +69,26 @@ describe('CashFlowService', () => {
     expect(result.availableCash).toBe(321);
     expect(result.expectedPhysicalCash).toBe(321);
   });
+
+  it('reads cash figures from the caller transaction when one is provided', async () => {
+    const tx: any = {
+      branchCashSettings: {
+        findUnique: jest.fn().mockResolvedValue({ mode: CashFlowMode.CASH_ONLY }),
+      },
+      branch: {
+        findUnique: jest.fn().mockResolvedValue({ timezone: 'Africa/Nairobi' }),
+      },
+      cashLedgerEntry: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0 } }),
+      },
+      sale: { aggregate: jest.fn() },
+    };
+
+    const result = await service.getAvailableCash(branchId, tx);
+
+    expect(result.expectedPhysicalCash).toBe(0);
+    expect(tx.cashLedgerEntry.aggregate).toHaveBeenCalled();
+    expect(prisma.cashLedgerEntry.aggregate).not.toHaveBeenCalled();
+    expect(prisma.branchCashSettings.findUnique).not.toHaveBeenCalled();
+  });
 });
