@@ -19,6 +19,7 @@ import 'server/routes/sync_routes.dart';
 import 'server/routes/report_routes.dart';
 import 'server/routes/image_routes.dart';
 import 'server/routes/payment_routes.dart';
+import 'server/routes/statement_routes.dart';
 import 'server/sql_helper.dart';
 import 'storage_service.dart';
 
@@ -128,6 +129,7 @@ class LocalServerService {
       ReportRoutes(dbLocal).addRoutes(appRouter);
       ImageRoutes().addRoutes(appRouter);
       PaymentRoutes().addRoutes(appRouter);
+      StatementRoutes().addRoutes(appRouter);
 
       // Build middleware pipeline
       final handler = const shelf.Pipeline()

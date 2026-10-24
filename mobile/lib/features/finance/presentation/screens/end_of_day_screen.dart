@@ -39,21 +39,32 @@ final _eodProvider =
     _captureEodRequest(api.getDailyClose(branchId, date: date)),
   ]);
   var summary = results[0]['value'] as Map<String, dynamic>?;
-  final summaryError = results[0]['error'];
+  Object? summaryError = results[0]['error'];
   var summaryFromDevice = false;
+  Object? localSummaryError;
   if (summary == null) {
+    summaryError ??= StateError('The cloud sales summary was empty.');
     // Keep the page useful during a cloud outage, while clearly marking the
     // local figures as incomplete and preventing an unsafe close.
-    summary = await getIt<AppDatabase>()
-        .getDailySalesSummary(branchId, DateTime.now());
-    summaryFromDevice = true;
+    try {
+      summary = await getIt<AppDatabase>()
+          .getDailySalesSummary(branchId, DateTime.now());
+      summaryFromDevice = true;
+    } catch (error) {
+      // A local database failure should not replace the whole page with a
+      // generic provider error. Keep totals explicitly unavailable and leave
+      // the close action disabled until a refresh can verify them.
+      localSummaryError = error;
+    }
   }
 
   final cashResult = results[1];
   final closeResult = results[2];
   return {
-    'summary': summary,
-    'summaryError': summaryError,
+    'summary': summary ?? const <String, dynamic>{},
+    'summaryError': summaryError ?? localSummaryError,
+    'summaryUnavailable': summary == null,
+    'localSummaryError': localSummaryError,
     'summaryFromDevice': summaryFromDevice,
     'cash': cashResult['value'] as Map<String, dynamic>?,
     'cashError': cashResult['error'],
@@ -125,6 +136,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
             close,
             summaryError: data['summaryError'],
             summaryFromDevice: data['summaryFromDevice'] == true,
+            summaryUnavailable: data['summaryUnavailable'] == true,
+            localSummaryError: data['localSummaryError'],
             cashError: data['cashError'],
             closeError: data['closeError'],
             localServer: data['localServer'] == true,
@@ -147,6 +160,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       Map<String, dynamic>? close,
       {Object? summaryError,
       bool summaryFromDevice = false,
+      bool summaryUnavailable = false,
+      Object? localSummaryError,
       Object? cashError,
       Object? closeError,
       bool localServer = false}) {
@@ -221,9 +236,11 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                   Expanded(
                     child: Text(
                       summaryError != null
-                          ? summaryFromDevice
-                              ? 'Cloud sales totals are unavailable. Showing sales saved on this device; reconnect and refresh before closing so the report includes every device. ${apiErrorMessage(summaryError)}'
-                              : 'Sales totals could not be verified. ${apiErrorMessage(summaryError)} Reconnect and refresh before closing.'
+                          ? summaryUnavailable
+                              ? 'Sales totals could not be loaded from the cloud or this device. Refresh before closing. ${apiErrorMessage(localSummaryError ?? summaryError)}'
+                              : summaryFromDevice
+                                  ? 'Cloud sales totals are unavailable. Showing sales saved on this device; reconnect and refresh before closing so the report includes every device. ${apiErrorMessage(summaryError)}'
+                                  : 'Sales totals could not be verified. ${apiErrorMessage(summaryError)} Reconnect and refresh before closing.'
                           : closeError != null
                               ? localServer
                                   ? 'Sales are saved on this device, but the local server cannot verify or record an end-of-day close. Reconnect to the cloud workspace and refresh before closing.'
@@ -246,12 +263,33 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           itemKey: 'eod-summary',
           index: 1,
           child: GroupedCard(dividerIndent: 14, children: [
-            _summaryRow('Total sales', _currencyFmt.format(totalSales), isDark,
+            _summaryRow(
+                'Total sales',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(totalSales),
+                isDark,
                 bold: true),
-            _summaryRow('Transactions', '$txns', isDark),
-            _summaryRow('Cash', _currencyFmt.format(cashSales), isDark),
-            _summaryRow('M-Pesa', _currencyFmt.format(mpesaSales), isDark),
-            _summaryRow('Credit', _currencyFmt.format(creditSales), isDark),
+            _summaryRow('Transactions',
+                summaryUnavailable ? 'Unavailable' : '$txns', isDark),
+            _summaryRow(
+                'Cash',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(cashSales),
+                isDark),
+            _summaryRow(
+                'M-Pesa',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(mpesaSales),
+                isDark),
+            _summaryRow(
+                'Credit',
+                summaryUnavailable
+                    ? 'Unavailable'
+                    : _currencyFmt.format(creditSales),
+                isDark),
             if (expectedCash != null)
               _summaryRow('Expected cash in till',
                   _currencyFmt.format(expectedCash), isDark),

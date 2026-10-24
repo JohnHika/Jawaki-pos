@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.93+2136 (October 24, 2026)
+
+### Clearer offline actions and safer end-of-day close
+- Explain in the app that statement links and customer replies need the online workspace when phone-server mode is active, instead of returning a missing-route error.
+- Keep End of Day usable if cloud and local summary loading fail, label unavailable figures clearly, and prevent closing until sales totals can be verified.
+
 ## v1.0.92+2135 (October 24, 2026)
 
 ### POS catalog completeness and speed
