@@ -8,6 +8,11 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/storage_service.dart';
 
+// Products, POS, and Inventory can mount together during navigation or startup.
+// Share one refresh per shop/branch/API so they don't all download and replace
+// the same local catalog at once.
+final Map<String, Future<void>> _catalogSyncsInFlight = {};
+
 // State providers for search/filter
 final selectedCategoryProvider =
     StateProvider.autoDispose<String?>((ref) => null);
@@ -244,16 +249,59 @@ Future<void> syncCatalogCacheFromApi() async {
     final status = await connectivity.checkCurrentStatus();
     if (status != ConnectionStatus.online) {
       debugPrint('[CatalogSync] Skipped: connectivity check reported offline');
-      throw StateError('The product catalog has not been checked while offline.');
+      throw StateError(
+          'The product catalog has not been checked while offline.');
     }
   }
 
-  try {
-    final apiClient = getIt<ApiClient>();
-    final database = getIt<AppDatabase>();
-    final storageService = getIt<StorageService>();
+  final apiClient = getIt<ApiClient>();
+  final database = getIt<AppDatabase>();
+  final storageService = getIt<StorageService>();
+  final tenantId = storageService.getTenantId();
+  final branchId = storageService.getBranchId();
+  final apiBaseUrl = apiClient.baseUrl;
+  // These values are local identifiers, not credentials. NUL separators avoid
+  // accidental key collisions if an identifier contains punctuation.
+  final scopeKey = '${tenantId ?? ''}\u0000${branchId ?? ''}\u0000$apiBaseUrl';
 
-    final branchId = storageService.getBranchId();
+  final existingSync = _catalogSyncsInFlight[scopeKey];
+  if (existingSync != null) {
+    await existingSync;
+    return;
+  }
+
+  final sync = _performCatalogSync(
+    apiClient: apiClient,
+    database: database,
+    storageService: storageService,
+    tenantId: tenantId,
+    branchId: branchId,
+    apiBaseUrl: apiBaseUrl,
+  );
+  _catalogSyncsInFlight[scopeKey] = sync;
+  try {
+    await sync;
+  } finally {
+    if (identical(_catalogSyncsInFlight[scopeKey], sync)) {
+      _catalogSyncsInFlight.remove(scopeKey);
+    }
+  }
+}
+
+Future<void> _performCatalogSync({
+  required ApiClient apiClient,
+  required AppDatabase database,
+  required StorageService storageService,
+  required String? tenantId,
+  required String? branchId,
+  required String apiBaseUrl,
+}) async {
+  bool isSameCatalogScope() =>
+      storageService.getTenantId() == tenantId &&
+      storageService.getBranchId() == branchId &&
+      apiClient.baseUrl == apiBaseUrl;
+
+  try {
     debugPrint('[CatalogSync] Fetching categories and products...');
     final responses = await Future.wait<Object>([
       apiClient.getCategories(),
@@ -265,6 +313,13 @@ Future<void> syncCatalogCacheFromApi() async {
         .map(_categoryToCompanion)
         .whereType<CategoriesCompanion>()
         .toList();
+
+    // Logout or switching shops while the requests were in flight must not
+    // repopulate the shared local tables with the previous shop's catalog.
+    if (!isSameCatalogScope()) {
+      debugPrint('[CatalogSync] Skipped cache write: active shop changed');
+      return;
+    }
     await database.replaceCategories(categoryItems);
     debugPrint('[CatalogSync] Stored ${categoryItems.length} categories');
 
@@ -278,10 +333,20 @@ Future<void> syncCatalogCacheFromApi() async {
         .map(_productToCompanion)
         .whereType<ProductsCompanion>()
         .toList();
+    if (!isSameCatalogScope()) {
+      debugPrint(
+          '[CatalogSync] Skipped remaining cache writes: active shop changed');
+      return;
+    }
     await database.replaceProducts(productItems);
     debugPrint('[CatalogSync] Stored ${productItems.length} products');
 
     final tierItems = productMaps.expand(_pricingTiersToCompanions).toList();
+    if (!isSameCatalogScope()) {
+      debugPrint(
+          '[CatalogSync] Skipped pricing cache write: active shop changed');
+      return;
+    }
     await database.replaceAllPricingTiers(tierItems);
 
     if (branchId != null) {
@@ -289,7 +354,7 @@ Future<void> syncCatalogCacheFromApi() async {
           .map((p) => _stockToCompanion(p, branchId))
           .whereType<LocalStockCompanion>()
           .toList();
-      if (stockItems.isNotEmpty) {
+      if (stockItems.isNotEmpty && isSameCatalogScope()) {
         await database.updateLocalStock(stockItems);
       }
     }

@@ -596,7 +596,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'Paystack controls the name shown in the M-Pesa PIN prompt, which may say “PAYSTACK Account no. Counterbase.” That is Paystack’s prompt label, not the shop bank account number. The app records this sale for $shopName and routes it to the verified shop payout account shown above.',
+                      'The M-Pesa PIN prompt is issued by Paystack and may say “PAYSTACK Account no. Counterbase.” That is the processor’s label, not the shop’s bank account number. This charge uses $shopName’s verified Paystack subaccount, which routes approved proceeds to the payout account shown above.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall
