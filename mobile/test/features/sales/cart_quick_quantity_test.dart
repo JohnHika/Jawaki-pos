@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// A stock check that allows up to [stock] of anything, after a short async
 /// gap like the real database lookup.
-Future<Map<String, dynamic>> Function(String, int) _stock(int stock) {
+Future<Map<String, dynamic>> Function(String, double) _stock(int stock) {
   return (productId, quantity) async {
     await Future<void>.delayed(const Duration(milliseconds: 5));
     final ok = quantity <= stock;

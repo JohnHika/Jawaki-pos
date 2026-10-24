@@ -23,7 +23,7 @@ Map<String, dynamic> _product(
       'pricingTiers': pricingTiers,
     };
 
-Future<Map<String, dynamic>> _anyStock(String productId, int quantity) async =>
+Future<Map<String, dynamic>> _anyStock(String productId, double quantity) async =>
     {'available': true, 'message': 'ok', 'currentStock': 99};
 
 late CartNotifier _cart;

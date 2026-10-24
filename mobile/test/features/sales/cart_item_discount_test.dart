@@ -1,7 +1,7 @@
 import 'package:axon_pos/features/sales/presentation/providers/cart_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<Map<String, dynamic>> _stock(String _, int quantity) async => {
+Future<Map<String, dynamic>> _stock(String _, double quantity) async => {
       'available': true,
       'message': 'ok',
       'currentStock': quantity,
