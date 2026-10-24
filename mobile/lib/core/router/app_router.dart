@@ -188,6 +188,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
 
+        if ((path == '/customers' || path.startsWith('/customers/')) &&
+            !perms.has('customers.view')) {
+          return '/';
+        }
+        if (path == '/receipts' && !perms.has('sales.view')) {
+          return '/';
+        }
+        if (path == '/payments' &&
+            !perms.has('payments.view_status') &&
+            !perms.has('payments.view_methods')) {
+          return '/';
+        }
         // Products and Inventory have separate view permissions. Keep direct
         // links aligned with the distinct bottom-nav entries as well.
         if ((path == '/products' || path.startsWith('/products/')) &&
@@ -195,6 +207,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return '/';
         }
         if (path == '/inventory' && !perms.canSeeInventory) {
+          return '/';
+        }
+        if (path == '/price-list' && !perms.canSeeProducts) {
           return '/';
         }
         if (path == '/inventory/request-stock' &&
@@ -231,6 +246,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             !perms.canSeeReports) {
           return '/';
         }
+        // Each report surface has its own permission in the API. Keep direct
+        // links and restored app state aligned with those permissions so a
+        // user lands somewhere useful instead of seeing a predictable 403.
+        if (path == '/payment-analytics' &&
+            !perms.has('reporting.payment_breakdown')) {
+          return '/payments';
+        }
         // The dashboard calls shop-wide reporting endpoints. Keep it out of
         // reach for cashier roles that cannot read reporting data, including
         // direct links and restored navigation state.
@@ -241,6 +263,52 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // Finance endpoints use finance.view. Reporting permissions do not
         // grant access to receivables or supplier ledgers.
         if (path == '/finance' && !perms.canViewFinance) {
+          return '/';
+        }
+        if (path == '/payments/setup' && !perms.canManageMerchantPayout) {
+          return '/settings';
+        }
+        if (path == '/statements/replies' && !perms.has('statements.share')) {
+          return '/finance';
+        }
+        if (path == '/coupons' && !perms.has('coupons.view')) {
+          return '/';
+        }
+        if (path == '/referrals' && !perms.has('referrals.view')) {
+          return '/';
+        }
+        if ((path == '/users' || path.startsWith('/users/')) &&
+            !perms.canManageUsers) {
+          return '/';
+        }
+        if (path == '/news' && !perms.has('news.view')) {
+          return '/';
+        }
+        if ((path == '/stock-counts' || path.startsWith('/stock-counts/')) &&
+            !perms.has('inventory.stocktake.view')) {
+          return '/';
+        }
+        if ((path == '/containers' || path.startsWith('/containers/')) &&
+            !perms.has('imports.view')) {
+          return '/';
+        }
+        if (path == '/shop-alerts' &&
+            !perms.has('accountability.view')) {
+          return '/';
+        }
+        if (path == '/shop-alerts/rules' &&
+            !perms.has('accountability.manage')) {
+          return '/shop-alerts';
+        }
+        if (path == '/cash-flow' && !perms.canViewCashFlow) {
+          return '/';
+        }
+        if (path == '/cash-flow/reconciliation' &&
+            !perms.has('cash_reconciliation.view') &&
+            !perms.canReconcileCash) {
+          return '/';
+        }
+        if (path == '/cash-flow/end-of-day' && !perms.canCloseEndOfDay) {
           return '/';
         }
         // Operating hours, roles, and per-user permission overrides are

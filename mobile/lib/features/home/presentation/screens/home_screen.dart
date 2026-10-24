@@ -220,13 +220,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Debt Replies',
           path: '/statements/replies'));
     }
-    if (perms.has('mpesa.reconcile')) {
-      items.add(_NavItem(
-          icon: Icons.rule_rounded,
-          activeIcon: Icons.rule_rounded,
-          label: 'M-Pesa verification',
-          path: '/mpesa-match'));
-    }
     if (perms.has('referrals.view')) {
       items.add(_NavItem(
           icon: Icons.redeem_outlined,
