@@ -491,8 +491,12 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                             icon: Icons.phone_android_rounded,
                           ),
                           _PaymentMethodBadge(
-                            method: 'Manual',
-                            icon: Icons.receipt_long_outlined,
+                            method: 'Customer debt',
+                            icon: Icons.credit_score_outlined,
+                          ),
+                          _PaymentMethodBadge(
+                            method: 'Cash + debt split',
+                            icon: Icons.call_split_rounded,
                           ),
                         ],
                       )

@@ -1523,6 +1523,20 @@ class AppDatabase extends _$AppDatabase {
         .getSingleOrNull();
   }
 
+  /// Finds a locally cached, provider-verified M-Pesa sale by its immutable
+  /// payment reference. The server uses `paystack-<reference>` as its
+  /// offline id, while older app builds used a random local sale id.
+  Future<PendingSale?> getMerchantMpesaSaleByReference(String reference) async {
+    final matches = await (select(pendingSales)
+          ..where((s) =>
+              s.paymentMethod.equals('MPESA') &
+              s.paymentReference.equals(reference))
+          ..orderBy([(s) => OrderingTerm.asc(s.createdAt)])
+          ..limit(1))
+        .get();
+    return matches.isEmpty ? null : matches.first;
+  }
+
   /// Soft-voids a local sale: marks it VOIDED with a reason/who/when and
   /// returns its stock to the local cache — instead of the old hard DELETE,
   /// which left no trace. The backend performs the authoritative void +

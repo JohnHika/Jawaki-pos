@@ -13,6 +13,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import 'cart_provider.dart';
 
 const _uuid = Uuid();
@@ -84,6 +85,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   String? _pendingMpesaFingerprint;
   String? _pendingMpesaRequestId;
   String? _pendingLocalSaleId;
+  int _sessionGeneration = 0;
 
   PaymentNotifier({
     required ApiClient apiClient,
@@ -99,6 +101,19 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         super(const PaymentState());
 
   bool get hasUnresolvedMerchantPayment => _pendingMpesaRequestId != null;
+
+  /// Payment UI state belongs to one cashier, shop, and branch. Invalidates
+  /// async completions too, so a late provider response cannot write a sale
+  /// into whichever account signed in next.
+  void resetForSession() {
+    _sessionGeneration++;
+    _pendingMpesaFingerprint = null;
+    _pendingMpesaRequestId = null;
+    _pendingLocalSaleId = null;
+    state = const PaymentState();
+  }
+
+  bool _isCurrentSession(int generation) => generation == _sessionGeneration;
 
   void acknowledgeMerchantPayment(String reference, String status) {
     if (state.currentTransactionId != reference ||
@@ -119,6 +134,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
     if (!amount.isFinite ||
@@ -146,6 +162,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         discountAmount: discountAmount,
         customerId: customerId,
       );
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       await _syncOrQueueSale(
         saleId,
@@ -157,10 +174,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId,
         _SaleExtras(discountAmount, couponCode),
       );
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {
+      if (!_isCurrentSession(sessionGeneration)) return null;
       state = state.copyWith(isProcessing: false, error: _paymentError(e));
       return null;
     }
@@ -178,6 +197,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     String? couponCode,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     final previousReference = state.currentTransactionId;
     state = state.copyWith(isProcessing: true, error: null);
 
@@ -218,7 +238,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // The server prices the cart, charges through the shop's Paystack
       // subaccount, verifies the charge, and creates the receipt. The old
       // host Jenga endpoint settled into Counterbase's own account.
-      final saleId = _pendingLocalSaleId ?? _uuid.v4();
+      var saleId = _pendingLocalSaleId ?? _uuid.v4();
       final requestId = _pendingMpesaRequestId ?? _uuid.v4();
       String? reference = previousReference;
       if (reference == null) {
@@ -250,6 +270,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
             'paidAmount': amount,
           },
         });
+        if (!_isCurrentSession(sessionGeneration)) return null;
         reference = response['reference']?.toString();
       }
       if (reference == null || reference.isEmpty) {
@@ -260,10 +281,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         );
         return null;
       }
+      // The backend stores a verified M-Pesa sale under this same offlineId.
+      // Using it locally lets a server pull reconcile the sale even if the app
+      // closes between Paystack confirmation and the local sync flag update.
+      saleId = 'paystack-$reference';
       _pendingLocalSaleId = saleId;
       _pendingMpesaFingerprint = fingerprint;
       state = state.copyWith(currentTransactionId: reference);
       final verified = await _pollMerchantMpesaStatus(reference);
+      if (!_isCurrentSession(sessionGeneration)) return null;
       if (verified == null || verified['status'] != 'COMPLETED') {
         final status = verified?['status']?.toString() ?? 'PENDING';
         final message = status == 'FAILED'
@@ -283,9 +309,13 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
 
       final receiptNumber = verified['receiptNumber']?.toString() ?? reference;
-      if (await _database.getPendingSaleById(saleId) == null) {
+      var localSale = await _database.getPendingSaleById(saleId);
+      localSale ??= await _database.getMerchantMpesaSaleByReference(reference);
+      if (!_isCurrentSession(sessionGeneration)) return null;
+      final localSaleId = localSale?.id ?? saleId;
+      if (localSale == null) {
         await _createLocalSale(
-          saleId: saleId,
+          saleId: localSaleId,
           receiptNumber: receiptNumber,
           items: items,
           paymentMethod: 'MPESA',
@@ -294,18 +324,25 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           paymentReference: reference,
           customerId: customerId,
         );
+        if (!_isCurrentSession(sessionGeneration)) return null;
+      } else {
+        await _database.updateSaleReceiptNumber(localSaleId, receiptNumber);
+        if (!_isCurrentSession(sessionGeneration)) return null;
       }
-      await _database.markSaleAsSynced(saleId);
+      await _database.markSaleAsSynced(localSaleId);
+      if (!_isCurrentSession(sessionGeneration)) return null;
       try {
         await _syncService.pullChanges();
       } catch (_) {}
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       _pendingLocalSaleId = null;
       _pendingMpesaFingerprint = null;
       _pendingMpesaRequestId = null;
       state = const PaymentState();
-      return saleId;
+      return localSaleId;
     } catch (e) {
+      if (!_isCurrentSession(sessionGeneration)) return null;
       // Validation and authorization errors happen before the provider is
       // prompted. Network and server errors keep the idempotency key so a
       // retry can recover the original reference instead of charging twice.
@@ -334,6 +371,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
     // A credit (debt) sale must be attributable to a customer — otherwise
@@ -362,6 +400,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentReference: customerId,
         customerId: customerId,
       );
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       await _syncOrQueueSale(
         saleId,
@@ -373,10 +412,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId,
         _SaleExtras(discountAmount, couponCode),
       );
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {
+      if (!_isCurrentSession(sessionGeneration)) return null;
       state = state.copyWith(isProcessing: false, error: _paymentError(e));
       return null;
     }
@@ -394,6 +435,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
 
     if (tenders.any((tender) => tender.method == 'MPESA')) {
@@ -470,13 +512,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentReference: tendersJson,
         customerId: customerId,
       );
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
           tenders, customerId, _SaleExtras(discountAmount, couponCode));
+      if (!_isCurrentSession(sessionGeneration)) return null;
 
       state = state.copyWith(isProcessing: false);
       return saleId;
     } catch (e) {
+      if (!_isCurrentSession(sessionGeneration)) return null;
       state = state.copyWith(isProcessing: false, error: _paymentError(e));
       return null;
     }
@@ -549,6 +594,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     _SaleExtras extras = const _SaleExtras(),
   ]) async {
+    final sessionGeneration = _sessionGeneration;
     if (!_connectivity.isOnline) {
       await _tryQueueSaleForSync(
         saleId,
@@ -574,18 +620,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         customerId,
         extras,
       );
+      if (!_isCurrentSession(sessionGeneration)) return;
       await _database.markSaleAsSynced(saleId);
       // The server numbers every sale itself. Adopt that number locally so the
       // receipt, dashboard, Receipts list and Sales Report all show one ID.
       if (serverReceiptNumber != null && serverReceiptNumber.isNotEmpty) {
         await _database.updateSaleReceiptNumber(saleId, serverReceiptNumber);
       }
+      if (!_isCurrentSession(sessionGeneration)) return;
       // Refresh canonical stock after a successful online sale. A failed pull
       // is non-fatal: the queued/periodic sync will retry it later.
       try {
         await _syncService.pullChanges();
       } catch (_) {}
     } catch (_) {
+      if (!_isCurrentSession(sessionGeneration)) return;
       await _tryQueueSaleForSync(
         saleId,
         items,
@@ -743,11 +792,26 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 // Provider
 final paymentProvider =
     StateNotifierProvider<PaymentNotifier, PaymentState>((ref) {
-  return PaymentNotifier(
+  final notifier = PaymentNotifier(
     apiClient: getIt<ApiClient>(),
     database: getIt<AppDatabase>(),
     syncService: getIt<SyncService>(),
     authService: getIt<AuthService>(),
     connectivity: getIt<ConnectivityService>(),
   );
+  ref.listen(
+    authControllerProvider.select((auth) => auth.isAuthenticated
+        ? (
+            auth.user?['tenantId']?.toString(),
+            auth.user?['branchId']?.toString(),
+            auth.user?['id']?.toString(),
+          )
+        : (null, null, null)),
+    (previous, next) {
+      if (previous != null && previous != next) {
+        notifier.resetForSession();
+      }
+    },
+  );
+  return notifier;
 });

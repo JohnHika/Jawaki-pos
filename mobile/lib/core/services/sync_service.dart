@@ -392,6 +392,12 @@ class SyncService {
 
       var reenqueued = 0;
       for (final sale in unsyncedSales) {
+        // Electronic customer payments are committed by the provider-backed
+        // checkout on the server. Replaying them through generic offline sale
+        // sync is both rejected by the API and unsafe: the payment may
+        // already have settled. The SALE_CREATED pull reconciles the local
+        // receipt by its payment reference instead.
+        if (sale.paymentMethod.toUpperCase() == 'MPESA') continue;
         if (liveRecordIds.contains(sale.id)) continue;
 
         final sequenceNumber = await _database.getNextSyncSequenceNumber();
@@ -824,13 +830,47 @@ class SyncService {
     final saleId = data['id']?.toString();
     if (saleId == null) return;
 
-    // Don't duplicate a sale that originated from this device.
     final existing = await _database.getPendingSaleById(saleId);
     final offlineId = data['offlineId']?.toString();
     final originatingSale = offlineId == null
         ? null
         : await _database.getPendingSaleById(offlineId);
-    if (existing != null || originatingSale != null) return;
+    final isMerchantMpesa =
+        data['paymentMethod']?.toString().toUpperCase() == 'MPESA';
+    final paymentReference = data['paymentReference']?.toString() ??
+        (isMerchantMpesa && offlineId?.startsWith('paystack-') == true
+            ? offlineId!.substring('paystack-'.length)
+            : null);
+    final paymentSale = isMerchantMpesa &&
+            paymentReference != null &&
+            paymentReference.isNotEmpty
+        ? await _database.getMerchantMpesaSaleByReference(paymentReference)
+        : null;
+    final localSale = existing ?? originatingSale ?? paymentSale;
+    if (localSale != null) {
+      // A server pull is authoritative for the receipt number and confirms
+      // that an online sale created just before an app restart is durable.
+      await _database.updateSaleReceiptNumber(
+        localSale.id,
+        data['receiptNumber']?.toString() ?? localSale.receiptNumber,
+      );
+      if (!localSale.isSynced) {
+        await _database.markSaleAsSynced(localSale.id);
+      }
+      final queueItems = await (_database.select(_database.syncQueue)
+            ..where((q) =>
+                q.recordId.equals(localSale.id) &
+                q.eventType.equals(SyncEventType.saleCreated.wireName) &
+                q.status.isIn(['pending', 'conflict', 'failed'])))
+          .get();
+      for (final item in queueItems) {
+        await _database.markSyncQueueResolved(
+          item.id,
+          resolution: 'Sale confirmed by the server',
+        );
+      }
+      return;
+    }
 
     final createdAt = _parseTimestamp(data['createdAt']);
     final items = data['items'] as List<dynamic>? ?? [];
