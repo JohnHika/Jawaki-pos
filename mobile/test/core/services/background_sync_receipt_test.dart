@@ -23,6 +23,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final storage = StorageService();
     await storage.initialize();
+    await storage.saveTenantId('tenant-1');
+    await storage.saveBranchId('branch-1');
     final database =
         AppDatabase.forTesting(NativeDatabase.memory(), storage);
     addTearDown(database.close);
@@ -80,6 +82,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final storage = StorageService();
     await storage.initialize();
+    await storage.saveTenantId('tenant-1');
+    await storage.saveBranchId('branch-1');
     final database =
         AppDatabase.forTesting(NativeDatabase.memory(), storage);
     addTearDown(database.close);
