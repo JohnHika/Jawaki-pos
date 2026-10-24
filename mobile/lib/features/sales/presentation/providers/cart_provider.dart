@@ -424,6 +424,8 @@ final parkedSalesProvider =
 class CartNotifier extends StateNotifier<CartState> {
   AppDatabase get _database => getIt<AppDatabase>();
 
+  int _sessionGeneration = 0;
+
   /// Replaces the database-backed stock check; used by tests.
   final Future<Map<String, dynamic>> Function(String productId, int quantity)?
       _stockValidator;
@@ -433,6 +435,14 @@ class CartNotifier extends StateNotifier<CartState> {
         stockValidator,
   })  : _stockValidator = stockValidator,
         super(const CartState());
+
+  /// Drops sale data when the signed-in cashier, tenant, or branch changes.
+  /// The generation also prevents stock checks started by the previous session
+  /// from writing into the new session's cart when they finish late.
+  void resetForSession() {
+    _sessionGeneration++;
+    state = const CartState();
+  }
 
   // Stock validation method
   Future<Map<String, dynamic>> _validateStockAvailability(
@@ -510,6 +520,7 @@ class CartNotifier extends StateNotifier<CartState> {
     double? saleQuantity,
     double? unitConversionFactor,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     if (quantity <= 0 || !unitPrice.isFinite || unitPrice < 0) {
       return const CartMutationResult(
         success: false,
@@ -561,6 +572,13 @@ class CartNotifier extends StateNotifier<CartState> {
       productId,
       requestedQuantity,
     );
+
+    if (sessionGeneration != _sessionGeneration) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Your session changed. Start this sale again.',
+      );
+    }
 
     if (!stockCheck['available']) {
       return CartMutationResult(
@@ -629,6 +647,7 @@ class CartNotifier extends StateNotifier<CartState> {
     double? saleQuantity,
     double? unitConversionFactor,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     if (quantity <= 0) {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
@@ -653,6 +672,13 @@ class CartNotifier extends StateNotifier<CartState> {
     }
 
     final stockCheck = await _validateStockAvailability(productId, quantity);
+
+    if (sessionGeneration != _sessionGeneration) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Your session changed. Start this sale again.',
+      );
+    }
 
     if (!stockCheck['available']) {
       return CartMutationResult(
@@ -693,6 +719,7 @@ class CartNotifier extends StateNotifier<CartState> {
   /// Going to zero or below removes the line.
   Future<CartMutationResult> changeQuantityBy(
       String productId, int delta) async {
+    final sessionGeneration = _sessionGeneration;
     final index = state.items.indexWhere((i) => i.productId == productId);
     if (index < 0) {
       return const CartMutationResult(
@@ -722,6 +749,12 @@ class CartNotifier extends StateNotifier<CartState> {
         : current.quantity + delta;
     if (delta > 0) {
       final stockCheck = await _validateStockAvailability(productId, wanted);
+      if (sessionGeneration != _sessionGeneration) {
+        return const CartMutationResult(
+          success: false,
+          message: 'Your session changed. Start this sale again.',
+        );
+      }
       if (!stockCheck['available']) {
         return CartMutationResult(
           success: false,
@@ -939,15 +972,24 @@ class CartNotifier extends StateNotifier<CartState> {
 
 // Provider
 final cartProvider = StateNotifierProvider<CartNotifier, CartState>((ref) {
-  // A cart belongs to one cashier in one branch. Recreate it when the active
-  // session changes so a logout, staff switch, or branch switch cannot carry
-  // another operator's customer and products into the next sale.
-  ref.watch(authControllerProvider.select((auth) => auth.isAuthenticated
-      ? (
-          auth.user?['tenantId']?.toString(),
-          auth.user?['branchId']?.toString(),
-          auth.user?['id']?.toString(),
-        )
-      : (null, null, null)));
-  return CartNotifier();
+  final notifier = CartNotifier();
+  // A cart belongs to one cashier in one branch. Clear it on logout, staff
+  // switch, or branch switch. Keep the notifier alive so an in-flight stock
+  // check can be discarded by its session generation instead of writing into
+  // a disposed StateNotifier.
+  ref.listen(
+    authControllerProvider.select((auth) => auth.isAuthenticated
+        ? (
+            auth.user?['tenantId']?.toString(),
+            auth.user?['branchId']?.toString(),
+            auth.user?['id']?.toString(),
+          )
+        : (null, null, null)),
+    (previous, next) {
+      if (previous != null && previous != next) {
+        notifier.resetForSession();
+      }
+    },
+  );
+  return notifier;
 });
