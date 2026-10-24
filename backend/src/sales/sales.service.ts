@@ -182,17 +182,35 @@ export class SalesService {
     // tenders are obligations, not money received, so keep them out of
     // Sale.paidAmount while creating their receivable below.
     if (dto.paymentMethod === PaymentMethod.SPLIT) {
-      if (!dto.tenders || dto.tenders.length < 2) {
-        throw new BadRequestException('A split payment needs at least 2 tenders');
+      const splitTenders = dto.tenders ?? [];
+      const cashTenders = splitTenders.filter((tender) => tender.method === PaymentMethod.CASH);
+      const debtTenders = splitTenders.filter((tender) => tender.method === PaymentMethod.CREDIT);
+      if (
+        splitTenders.length !== 2 ||
+        cashTenders.length !== 1 ||
+        debtTenders.length !== 1 ||
+        splitTenders.some((tender) => !Number.isFinite(tender.amount) || tender.amount <= 0)
+      ) {
+        throw new BadRequestException(
+          'A split needs one positive cash amount and one positive debt amount.',
+        );
       }
-      if (dto.tenders.some((t) => t.method === PaymentMethod.SPLIT)) {
-        throw new BadRequestException('A tender cannot itself be SPLIT');
+      if (!dto.customerId) {
+        throw new BadRequestException('Choose a customer before adding the debt portion.');
       }
     } else if (dto.tenders && dto.tenders.length > 0) {
       throw new BadRequestException('tenders is only valid when paymentMethod is SPLIT');
     }
 
     const tenderTotal = dto.tenders?.reduce((sum, t) => sum + t.amount, 0);
+    if (
+      dto.paymentMethod === PaymentMethod.SPLIT &&
+      (!Number.isFinite(tenderTotal) ||
+        tenderTotal! > Number.MAX_SAFE_INTEGER / 100 ||
+        totalAmount > Number.MAX_SAFE_INTEGER / 100)
+    ) {
+      throw new BadRequestException('Split payment amounts exceed the supported limit.');
+    }
     const splitCreditPortion = dto.paymentMethod === PaymentMethod.SPLIT
       ? (dto.tenders ?? [])
           .filter((tender) => tender.method === PaymentMethod.CREDIT)
@@ -201,11 +219,10 @@ export class SalesService {
 
     if (
       dto.paymentMethod === PaymentMethod.SPLIT &&
-      splitCreditPortion > 0 &&
-      Math.round(tenderTotal! * 100) > Math.round(totalAmount * 100)
+      Math.round(tenderTotal! * 100) !== Math.round(totalAmount * 100)
     ) {
       throw new BadRequestException(
-        'A split payment that includes debt must add up exactly to the sale total.',
+        'The cash and debt portions must add up exactly to the sale total.',
       );
     }
 

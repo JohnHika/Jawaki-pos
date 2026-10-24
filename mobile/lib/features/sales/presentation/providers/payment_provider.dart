@@ -447,41 +447,43 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       return null;
     }
 
-    const supportedTenders = {'CASH', 'CREDIT'};
-    if (tenders.length < 2 ||
+    final cashTenders = tenders.where((tender) => tender.method == 'CASH');
+    final debtTenders = tenders.where((tender) => tender.method == 'CREDIT');
+    if (tenders.length != 2 ||
+        cashTenders.length != 1 ||
+        debtTenders.length != 1 ||
         tenders.any((tender) =>
-            !supportedTenders.contains(tender.method) ||
+            !{'CASH', 'CREDIT'}.contains(tender.method) ||
             !tender.amount.isFinite ||
             tender.amount <= 0)) {
       state = state.copyWith(
         isProcessing: false,
-        error: 'Split payments need positive amounts for cash or debt only.',
+        error:
+            'A split needs one positive cash amount and one positive debt amount.',
       );
       return null;
     }
 
     final tenderTotal = tenders.fold<double>(0, (sum, t) => sum + t.amount);
-    if ((tenderTotal * 100).round() < (amount * 100).round()) {
+    const maxSafeCurrencyAmount = 90071992547409.9;
+    if (!tenderTotal.isFinite ||
+        tenderTotal > maxSafeCurrencyAmount ||
+        amount > maxSafeCurrencyAmount) {
       state = state.copyWith(
         isProcessing: false,
-        error: 'Tenders (KES ${tenderTotal.toStringAsFixed(2)}) do not cover '
-            'the total (KES ${amount.toStringAsFixed(2)})',
+        error: 'The split amounts are too large. Check them and try again.',
+      );
+      return null;
+    }
+    if ((tenderTotal * 100).round() != (amount * 100).round()) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: 'Cash and debt must add up exactly to the sale total.',
       );
       return null;
     }
 
-    final debtPortion = tenders
-        .where((t) => t.method == 'CREDIT')
-        .fold<double>(0, (sum, t) => sum + t.amount);
-    if (debtPortion > 0 &&
-        (tenderTotal * 100).round() > (amount * 100).round()) {
-      state = state.copyWith(
-        isProcessing: false,
-        error:
-            'A split that includes debt must add up exactly to the amount due. Adjust the cash or debt amounts.',
-      );
-      return null;
-    }
+    final debtPortion = debtTenders.single.amount;
     if (debtPortion > 0 && customerId == null) {
       state = state.copyWith(
         isProcessing: false,
@@ -514,7 +516,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       );
       if (!_isCurrentSession(sessionGeneration)) return null;
 
-      await _syncOrQueueSale(saleId, items, 'SPLIT', tenderTotal, tendersJson,
+      await _syncOrQueueSale(saleId, items, 'SPLIT', amount, tendersJson,
           tenders, customerId, _SaleExtras(discountAmount, couponCode));
       if (!_isCurrentSession(sessionGeneration)) return null;
 

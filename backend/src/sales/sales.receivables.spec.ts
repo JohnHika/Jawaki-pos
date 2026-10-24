@@ -113,6 +113,7 @@ describe('SalesService receivable creation', () => {
     await service.createSale(userId, tenantId, {
       ...baseSale,
       paymentMethod: PaymentMethod.SPLIT,
+      customerId: '00000000-0000-4000-8000-000000000001',
       tenders: [
         { method: PaymentMethod.CASH, amount: 60 },
         { method: PaymentMethod.CREDIT, amount: 40 },

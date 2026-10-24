@@ -746,6 +746,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           );
       cart = ref.read(cartProvider);
     }
+    // A split always creates a debt balance, so attach its customer before
+    // showing the tender form. This keeps the selected account visible while
+    // the cashier allocates cash and credit.
+    if (_selectedMethod == PaymentMethod.split && cart.customerId == null) {
+      final customer = await _showCustomerPicker();
+      if (customer == null || !mounted) return;
+      ref.read(cartProvider.notifier).setCustomer(
+            customer.id,
+            customerName: customer.name,
+          );
+      cart = ref.read(cartProvider);
+    }
 
     // The shop's price, discount and credit rules. Checked once per sale (the
     // M-Pesa details sheet re-enters this method) and before any money moves.
@@ -822,14 +834,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       case PaymentMethod.split:
         final tenders = await _showSplitPaymentSheet(cart.total);
         if (tenders == null) return; // cancelled
-        // A split with a debt (CREDIT) portion needs a customer to owe it.
-        final hasDebt = tenders.any((t) => t.method == 'CREDIT');
-        final tendered =
-            tenders.fold<double>(0, (sum, tender) => sum + tender.amount);
-        if (!hasDebt) {
-          cashChangeDue = cashChange(total: cart.total, tendered: tendered);
-        }
-        if (hasDebt && cart.customerId == null) {
+        // Keep a defensive recovery for callers which bypass preselection.
+        if (cart.customerId == null) {
           final customer = await _showCustomerPicker();
           if (customer == null || !mounted) return;
           ref.read(cartProvider.notifier).setCustomer(
@@ -956,8 +962,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
-  /// Collects cash and debt tenders.
-  /// that together must cover the sale total. Returns null if cancelled.
+  /// Collects one cash portion and one debt portion that exactly cover the
+  /// sale total. Returns null if cancelled.
   Future<List<PaymentTender>?> _showSplitPaymentSheet(double total) async {
     final rows = <_TenderRow>[
       _TenderRow(method: 'CASH', amountController: TextEditingController()),
@@ -972,34 +978,26 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final isDark = Theme.of(ctx).brightness == Brightness.dark;
-          final entered = rows.fold<double>(
-              0,
-              (sum, r) =>
-                  sum + (double.tryParse(r.amountController.text) ?? 0));
+          double amountOf(_TenderRow row) {
+            final amount = double.tryParse(row.amountController.text);
+            return amount != null && amount.isFinite ? amount : 0;
+          }
+
+          final cashAmount = amountOf(rows[0]);
+          final debtAmount = amountOf(rows[1]);
+          final entered = cashAmount + debtAmount;
           final remaining = total - entered;
           final remainingCents =
               (total * 100).round() - (entered * 100).round();
-          final enteredRows = rows
-              .where((r) => (double.tryParse(r.amountController.text) ?? 0) > 0)
-              .length;
-          final debtAmount = rows
-              .where((r) => r.method == 'CREDIT')
-              .fold<double>(
-                  0,
-                  (sum, r) =>
-                      sum + (double.tryParse(r.amountController.text) ?? 0));
-          final debtOverpaid = debtAmount > 0 && remainingCents < 0;
-          final splitIncomplete = enteredRows < 2;
-          final canConfirm =
-              remainingCents <= 0 && !debtOverpaid && !splitIncomplete;
+          final splitIncomplete = cashAmount <= 0 || debtAmount <= 0;
+          final canConfirm = !splitIncomplete && remainingCents == 0;
           final statusMessage = splitIncomplete
-              ? 'Enter an amount for at least two tenders.'
-              : debtOverpaid
-                  ? 'A split with debt must add up exactly to the amount due.'
-                  : remainingCents > 0
-                      ? 'Remaining: KES ${remaining.toStringAsFixed(2)}'
-                      : 'Fully covered'
-                          '${remainingCents < 0 ? ' (change: KES ${(-remaining).toStringAsFixed(2)})' : ''}';
+              ? 'Enter a positive cash amount and debt amount.'
+              : remainingCents > 0
+                  ? 'Still to allocate: KES ${remaining.toStringAsFixed(2)}'
+                  : remainingCents < 0
+                      ? 'Reduce the split by KES ${(-remaining).toStringAsFixed(2)}. It must match the total exactly.'
+                      : 'Cash and debt add up to the total.';
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -1007,145 +1005,130 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 DesignSpacing.xs,
                 DesignSpacing.xl,
                 DesignSpacing.xl + MediaQuery.of(ctx).viewInsets.bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Split Payment',
-                    style: Theme.of(ctx)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: DesignSpacing.xs),
-                Text('Total due: KES ${total.toStringAsFixed(2)}',
-                    style: TextStyle(
-                        color: isDark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary)),
-                const SizedBox(height: DesignSpacing.lg),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(ctx).size.height * 0.45),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: rows.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final row = entry.value;
-                        return Container(
-                          margin: const EdgeInsets.only(
-                              bottom: DesignSpacing.md - 2),
-                          padding: const EdgeInsets.all(DesignSpacing.md),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? DesignColors.darkSurfaceElevated
-                                : DesignColors.surfaceSubtle,
-                            borderRadius:
-                                BorderRadius.circular(DesignSpacing.radiusMd),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: DropdownButtonFormField<String>(
-                                      initialValue: row.method,
-                                      decoration: const InputDecoration(
-                                          labelText: 'Method',
-                                          border: InputBorder.none),
-                                      items: const [
-                                        DropdownMenuItem(
-                                            value: 'CASH', child: Text('Cash')),
-                                        DropdownMenuItem(
-                                            value: 'CREDIT',
-                                            child: Text('Debt (owed)')),
-                                      ],
-                                      onChanged: (v) => setSheetState(
-                                          () => row.method = v ?? row.method),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Split Payment',
+                      style: Theme.of(ctx)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: DesignSpacing.xs),
+                  Text('Total due: KES ${total.toStringAsFixed(2)}',
+                      style: TextStyle(
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary)),
+                  const SizedBox(height: DesignSpacing.lg),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: rows.asMap().entries.map((entry) {
+                          final row = entry.value;
+                          return Container(
+                            margin: const EdgeInsets.only(
+                                bottom: DesignSpacing.md - 2),
+                            padding: const EdgeInsets.all(DesignSpacing.md),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? DesignColors.darkSurfaceElevated
+                                  : DesignColors.surfaceSubtle,
+                              borderRadius:
+                                  BorderRadius.circular(DesignSpacing.radiusMd),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            row.method == 'CASH'
+                                                ? Icons.payments_outlined
+                                                : Icons
+                                                    .account_balance_wallet_outlined,
+                                            color: DesignColors.accent,
+                                          ),
+                                          const SizedBox(
+                                              width: DesignSpacing.sm),
+                                          Flexible(
+                                            child: Text(
+                                              row.method == 'CASH'
+                                                  ? 'Cash portion'
+                                                  : 'Debt portion',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: DesignSpacing.md - 2),
-                                  Expanded(
-                                    flex: 3,
-                                    child: TextField(
-                                      controller: row.amountController,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                              decimal: true),
-                                      decoration: const InputDecoration(
-                                          labelText: 'Amount (KES)',
-                                          border: InputBorder.none),
-                                      onChanged: (_) => setSheetState(() {}),
+                                    const SizedBox(width: DesignSpacing.md - 2),
+                                    Expanded(
+                                      flex: 3,
+                                      child: TextField(
+                                        controller: row.amountController,
+                                        keyboardType: const TextInputType
+                                            .numberWithOptions(decimal: true),
+                                        decoration: const InputDecoration(
+                                            labelText: 'Amount (KES)',
+                                            border: InputBorder.none),
+                                        onChanged: (_) => setSheetState(() {}),
+                                      ),
                                     ),
-                                  ),
-                                  if (rows.length > 1)
-                                    // 48px min hit target (default IconButton
-                                    // constraints) with a Material ripple —
-                                    // the raw icon was a sub-44 tap target
-                                    // for a destructive action.
-                                    IconButton(
-                                      tooltip: 'Remove',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                          minWidth: 48, minHeight: 48),
-                                      onPressed: () => setSheetState(() {
-                                        rows
-                                            .removeAt(index)
-                                            .amountController
-                                            .dispose();
-                                      }),
-                                      icon: const Icon(
-                                          Icons.remove_circle_outline_rounded,
-                                          color: DesignColors.error),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
-                ),
-                TextButton.icon(
-                  onPressed: () => setSheetState(() => rows.add(_TenderRow(
-                      method: 'CASH',
-                      amountController: TextEditingController()))),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add another tender'),
-                ),
-                const SizedBox(height: DesignSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.all(DesignSpacing.md),
-                  decoration: BoxDecoration(
-                    color: (canConfirm
-                            ? DesignColors.success
-                            : DesignColors.warning)
-                        .withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  Text(
+                    'The selected customer owes the debt portion. Cash and debt must add up exactly to the total.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
                   ),
-                  child: Text(
-                    statusMessage,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: !canConfirm
-                          ? DesignColors.warning
-                          : DesignColors.success,
+                  const SizedBox(height: DesignSpacing.sm),
+                  Container(
+                    padding: const EdgeInsets.all(DesignSpacing.md),
+                    decoration: BoxDecoration(
+                      color: (canConfirm
+                              ? DesignColors.success
+                              : DesignColors.warning)
+                          .withValues(alpha: 0.1),
+                      borderRadius:
+                          BorderRadius.circular(DesignSpacing.radiusMd),
+                    ),
+                    child: Text(
+                      statusMessage,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: !canConfirm
+                            ? DesignColors.warning
+                            : DesignColors.success,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: DesignSpacing.lg),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: canConfirm
-                        ? () => Navigator.pop(sheetContext, true)
-                        : null,
-                    child: const Text('Confirm Split'),
+                  const SizedBox(height: DesignSpacing.lg),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: canConfirm
+                          ? () => Navigator.pop(sheetContext, true)
+                          : null,
+                      child: const Text('Confirm Split'),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },

@@ -8,6 +8,7 @@ import {
   Max,
   ValidateNested,
   IsDateString,
+  IsIn,
   IsUUID,
   MaxLength,
   MinLength,
@@ -62,11 +63,11 @@ export class CreateSaleItemDto {
   quantityPerUnit?: number;
 }
 
-// One payment component of a SPLIT sale. Only CASH and CREDIT are accepted
-// until electronic split tenders have a provider-verified settlement path.
+// The current split flow is exactly one CASH portion plus one CREDIT portion.
+// Electronic tender methods require their own provider-verified flow.
 export class SaleTenderDto {
-  @ApiProperty({ enum: PaymentMethod, description: 'CASH or CREDIT only' })
-  @IsEnum(PaymentMethod, { message: 'Invalid tender payment method' })
+  @ApiProperty({ enum: [PaymentMethod.CASH, PaymentMethod.CREDIT], description: 'CASH or CREDIT only' })
+  @IsIn([PaymentMethod.CASH, PaymentMethod.CREDIT], { message: 'Split tenders support cash and debt only' })
   method: PaymentMethod;
 
   @ApiProperty({ example: 500 })
@@ -140,14 +141,14 @@ export class CreateSaleDto {
 
   @ApiPropertyOptional({
     type: [SaleTenderDto],
-    description: 'Required when paymentMethod is SPLIT — the individual payment components, which must sum to at least the total',
+    description: 'Required when paymentMethod is SPLIT — exactly one cash and one credit portion; together they must equal the total',
   })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => SaleTenderDto)
   @ArrayMinSize(2, { message: 'A split payment needs at least 2 tenders' })
-  @ArrayMaxSize(10, { message: 'A split payment cannot exceed 10 tenders' })
+  @ArrayMaxSize(2, { message: 'A split payment has one cash portion and one debt portion' })
   tenders?: SaleTenderDto[];
 
   @ApiPropertyOptional()
