@@ -108,24 +108,54 @@ export class PesapalPaymentService {
     const response = await this.authedGet(
       `/api/Transactions/GetTransactionStatus?orderTrackingId=${encodeURIComponent(orderTrackingId)}`,
     );
-    const payment = Array.isArray(response)
-      ? response[0]
-      : response?.payment_status_details ?? response;
-    const status = String(
-      response?.payment_status ?? payment?.payment_status ?? "",
-    ).toUpperCase();
-    const subscriptionInfo = response?.subscription_transaction_info ?? null;
+    const root = Array.isArray(response) ? response[0] : response;
+    const payment = root?.payment_status_details ?? root;
+    // API 3.0 documents `payment_status_description`/`status_code`, while
+    // some responses expose the newer `payment_status` fields. Accept both
+    // documented response shapes so completed recurring charges are not
+    // silently treated as unknown.
+    const rawStatusCode =
+      root?.payment_status_code ??
+      root?.status_code ??
+      payment?.payment_status_code ??
+      payment?.status_code;
+    const parsedStatusCode =
+      rawStatusCode == null || rawStatusCode === ""
+        ? null
+        : Number(rawStatusCode);
+    const statusCode = Number.isFinite(parsedStatusCode)
+      ? parsedStatusCode
+      : null;
+    const statusFromCode: Record<number, string> = {
+      0: "INVALID",
+      1: "COMPLETED",
+      2: "FAILED",
+      3: "REVERSED",
+    };
+    const statusValue =
+      root?.payment_status ??
+      payment?.payment_status ??
+      root?.payment_status_description ??
+      payment?.payment_status_description ??
+      root?.status_description ??
+      payment?.status_description ??
+      (statusCode == null ? undefined : statusFromCode[statusCode]);
+    const status = String(statusValue ?? "").toUpperCase();
+    const subscriptionInfo =
+      root?.subscription_transaction_info ??
+      payment?.subscription_transaction_info ??
+      null;
     return {
       raw: response,
-      orderTrackingId: String(response?.order_tracking_id ?? orderTrackingId),
+      orderTrackingId: String(root?.order_tracking_id ?? orderTrackingId),
       paymentStatus: status, // "" | PENDING | COMPLETED | FAILED | ... per Pesapal
-      paymentStatusCode: Number(response?.payment_status_code ?? 0),
-      paymentMethod: response?.payment_method ?? null,
-      amount: response?.amount != null ? Number(response.amount) : null,
-      currency: response?.currency ?? null,
-      confirmationCode: response?.confirmation_code ?? null,
-      merchantReference: response?.merchant_reference ?? null,
-      accountNumberRef: response?.account_number ?? null,
+      paymentStatusCode: statusCode ?? 0,
+      paymentMethod: root?.payment_method ?? null,
+      amount: root?.amount != null ? Number(root.amount) : null,
+      currency: root?.currency ?? null,
+      confirmationCode: root?.confirmation_code ?? null,
+      merchantReference: root?.merchant_reference ?? null,
+      accountNumberRef: root?.account_number ?? null,
       subscriptionTransactionInfo: subscriptionInfo
         ? {
             accountReference: String(subscriptionInfo.account_reference ?? ""),

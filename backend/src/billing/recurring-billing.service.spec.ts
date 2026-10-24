@@ -13,6 +13,7 @@ const buildPrisma = (overrides: Record<string, any> = {}): MockTx => {
     },
     subscriptionInvoice: {
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -20,6 +21,7 @@ const buildPrisma = (overrides: Record<string, any> = {}): MockTx => {
     },
     subscriptionCardToken: {
       findUnique: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn(),
       ...(overrides.subscriptionCardToken ?? {}),
     },
   };
@@ -44,6 +46,45 @@ const buildService = (prismaOverrides: Record<string, any> = {}) => {
 const msPerDay = 24 * 60 * 60 * 1000;
 
 describe('RecurringBillingService', () => {
+  describe('Pesapal card renewal settlement', () => {
+    it('records separate recurring payments under their unique provider correlation ids', async () => {
+      const { service, prisma } = buildService({
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue({ currentPeriodEnd: null }),
+          update: jest.fn(),
+        },
+        subscriptionCardToken: {
+          findUnique: jest.fn().mockResolvedValue({
+            orderTrackingId: 'track-1',
+            billingCycle: 'MONTHLY',
+            plan: 'CORE',
+            status: 'ACTIVE',
+          }),
+          updateMany: jest.fn(),
+        },
+        subscriptionInvoice: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockImplementation(({ data }: any) =>
+            Promise.resolve({ id: `invoice-${data.reference}`, ...data }),
+          ),
+        },
+      });
+
+      await service.settleCardRenewal(
+        'tenant-1', 'pesapal-charge-1', 3200, 'KES',
+      );
+      await service.settleCardRenewal(
+        'tenant-1', 'pesapal-charge-2', 3200, 'KES',
+      );
+
+      const references = prisma.subscriptionInvoice.create.mock.calls.map(
+        ([call]) => call.data.reference,
+      );
+      expect(references).toEqual(['pesapal-charge-1', 'pesapal-charge-2']);
+    });
+  });
+
   describe('entitlement days', () => {
     it('never reports negative days remaining once the period has lapsed', async () => {
       const { service, prisma } = buildService();

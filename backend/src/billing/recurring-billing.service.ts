@@ -431,7 +431,6 @@ export class RecurringBillingService {
    */
   async settleCardRenewal(
     tenantId: string,
-    orderTrackingId: string,
     providerReference: string,
     amount: number | null,
     currency: string | null,
@@ -445,7 +444,7 @@ export class RecurringBillingService {
         status: true,
       },
     });
-    if (!cardToken || cardToken.orderTrackingId !== orderTrackingId || !providerReference) {
+    if (!cardToken || !providerReference) {
       this.logger.warn(`Pesapal recurring payment did not match a saved card mandate for tenant ${tenantId}`);
       return null;
     }
@@ -562,7 +561,11 @@ export class RecurringBillingService {
       });
       if (cardToken.status !== 'CANCELLED') {
         await tx.subscriptionCardToken.updateMany({
-          where: { tenantId, orderTrackingId, status: { not: 'CANCELLED' } },
+          where: {
+            tenantId,
+            orderTrackingId: cardToken.orderTrackingId,
+            status: { not: 'CANCELLED' },
+          },
           data: { status: 'ACTIVE', cancelledAt: null },
         });
       }

@@ -84,7 +84,7 @@ export class PesapalRecurringService implements OnModuleInit {
     const existing = await this.prisma.subscriptionCardToken.findUnique({
       where: { tenantId },
     });
-    if (existing && existing.status !== "CANCELLED") {
+    if (existing && existing.status !== "CANCELLED" && existing.status !== "FAILED") {
       if (existing.status === "ACTIVE" && existing.plan === planId && existing.billingCycle === billingCycle) {
         return {
           alreadyActive: true,
@@ -92,14 +92,31 @@ export class PesapalRecurringService implements OnModuleInit {
           message: "A card subscription for this plan is already active.",
         };
       }
-      const ageHours = (Date.now() - new Date(existing.createdAt).getTime()) / 3_600_000;
-      if (existing.status === "PENDING" && ageHours < CARD_SUBSCRIPTION_PENDING_HOURS) {
-        return {
-          alreadyPending: true,
-          subscriptionId: existing.id,
-          message: "A card subscription setup is already awaiting the customer on the Pesapal page.",
-        };
+      if (existing.status === "ACTIVE") {
+        throw new ConflictException(
+          "An active Pesapal card subscription already exists. Cancel it through the management link in Pesapal’s email before changing plans or billing frequency.",
+        );
       }
+      if (existing.status === "PENDING") {
+        const ageHours = (Date.now() - new Date(existing.createdAt).getTime()) / 3_600_000;
+        if (
+          existing.plan === planId &&
+          existing.billingCycle === billingCycle &&
+          ageHours < CARD_SUBSCRIPTION_PENDING_HOURS
+        ) {
+          return {
+            alreadyPending: true,
+            subscriptionId: existing.id,
+            message: "A card subscription setup is already awaiting the customer on the Pesapal page.",
+          };
+        }
+        throw new ConflictException(
+          "A Pesapal card setup is still pending. Complete or cancel it through Pesapal before starting another subscription.",
+        );
+      }
+      throw new ConflictException(
+        "A card subscription already exists and its provider status is not safe to replace. Contact support before starting another one.",
+      );
     }
 
     const accountNumber = buildAccountNumber(tenantId, now);
@@ -173,8 +190,8 @@ export class PesapalRecurringService implements OnModuleInit {
       return { result: "ignored", reason: `notification type ${type} not handled` };
     }
 
-    const token = await this.prisma.subscriptionCardToken.findUnique({
-      where: { orderTrackingId },
+    const token = await this.prisma.subscriptionCardToken.findFirst({
+      where: { pesapalCorrelationId: merchantReference },
     });
 
     await this.prisma.pesapalTransaction.create({
@@ -196,6 +213,10 @@ export class PesapalRecurringService implements OnModuleInit {
       return { result: "ignored", reason: "unknown subscription" };
     }
 
+    // The recurring IPN's OrderMerchantReference is the stable account_number
+    // submitted when the mandate was created. Reject mismatches before the
+    // provider status lookup; provider-generated transaction references are
+    // checked separately below.
     // IPN carries no payment details → authenticate then settle server-side.
     const status = await this.pesapal.getTransactionStatus(orderTrackingId);
 
@@ -210,14 +231,11 @@ export class PesapalRecurringService implements OnModuleInit {
       };
     }
 
-    if (
-      status.orderTrackingId !== orderTrackingId ||
-      status.merchantReference !== merchantReference
-    ) {
+    if (status.orderTrackingId !== orderTrackingId) {
       this.logger.warn(
-        `Pesapal recurring payment identity mismatch for ${orderTrackingId}`,
+        `Pesapal recurring tracking id mismatch for ${orderTrackingId}`,
       );
-      return { result: "rejected", reason: "provider transaction reference mismatch" };
+      return { result: "rejected", reason: "provider tracking id mismatch" };
     }
 
     const providerAccountReference = status.subscriptionTransactionInfo?.accountReference;
@@ -231,19 +249,22 @@ export class PesapalRecurringService implements OnModuleInit {
       return { result: "rejected", reason: "subscription account reference mismatch" };
     }
 
-    const providerCorrelation = status.subscriptionTransactionInfo?.correlationId;
-    if (providerCorrelation && providerCorrelation !== token.pesapalCorrelationId) {
+    // Pesapal documents correlation_id as the unique ID for each recurring
+    // payment. The account_reference above identifies the mandate; using that
+    // stable account number as an invoice reference would collapse every
+    // renewal into the first paid invoice.
+    const providerCorrelation = status.subscriptionTransactionInfo?.correlationId?.trim();
+    if (!providerCorrelation) {
       this.logger.warn(
-        `Pesapal recurring IPN correlation mismatch for ${orderTrackingId}`,
+        `Pesapal recurring payment has no unique correlation id for ${orderTrackingId}`,
       );
-      return { result: "rejected", reason: "subscription correlation mismatch" };
+      return { result: "rejected", reason: "unique recurring payment reference missing" };
     }
 
     const amount = status.amount ?? status.subscriptionTransactionInfo?.amount ?? null;
     const invoice = await this.recurring.settleCardRenewal(
       token.tenantId,
-      orderTrackingId,
-      merchantReference,
+      providerCorrelation,
       amount,
       status.currency,
     );

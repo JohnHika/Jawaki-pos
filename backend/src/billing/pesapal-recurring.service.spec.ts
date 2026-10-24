@@ -28,6 +28,7 @@ function makePrismaMock() {
     tenant: { findUnique: jest.fn() },
     subscriptionCardToken: {
       findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
       upsert: jest
         .fn()
         .mockImplementation(({ create }: any) => Promise.resolve(create)),
@@ -188,6 +189,39 @@ describe("PesapalRecurringService.startCardSubscription", () => {
     expect(prisma.subscriptionCardToken.upsert).not.toHaveBeenCalled();
   });
 
+  it("does not overwrite a live subscription when the plan or cycle changes", async () => {
+    prisma.subscriptionCardToken.findUnique.mockResolvedValue({
+      id: "tok-1",
+      status: "ACTIVE",
+      plan: "CORE",
+      billingCycle: "MONTHLY",
+    });
+    const service = makeService(prisma, pesapal);
+
+    await expect(
+      service.startCardSubscription("tenant-1", "BUSINESS", "YEARLY"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(pesapal.submitOrderRequest).not.toHaveBeenCalled();
+    expect(prisma.subscriptionCardToken.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a stale pending order that could still enroll the card", async () => {
+    prisma.subscriptionCardToken.findUnique.mockResolvedValue({
+      id: "tok-1",
+      status: "PENDING",
+      plan: "CORE",
+      billingCycle: "MONTHLY",
+      createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+    });
+    const service = makeService(prisma, pesapal);
+
+    await expect(
+      service.startCardSubscription("tenant-1", "CORE", "MONTHLY"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(pesapal.submitOrderRequest).not.toHaveBeenCalled();
+    expect(prisma.subscriptionCardToken.upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects an unpaid TRIAL plan without calling Pesapal", async () => {
     const service = makeService(prisma, pesapal);
     await expect(
@@ -256,7 +290,7 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
   });
 
   it("never settles from the IPN alone: only an authenticated COMPLETED status settles", async () => {
-    prisma.subscriptionCardToken.findUnique.mockResolvedValue({
+    prisma.subscriptionCardToken.findFirst.mockResolvedValue({
       id: "tok-1",
       tenantId: "tenant-1",
       pesapalCorrelationId: "AXONSUBCARD-tenant-1-1",
@@ -279,36 +313,35 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
   });
 
   it("settles via RecurringBillingService on a COMPLETED status and activates the token", async () => {
-    prisma.subscriptionCardToken.findUnique.mockResolvedValue({
+    prisma.subscriptionCardToken.findFirst.mockResolvedValue({
       id: "tok-1",
       tenantId: "tenant-1",
       pesapalCorrelationId: "AXONSUBCARD-tenant-1-1",
-      orderTrackingId: "track-1",
+      orderTrackingId: "mandate-track-1",
       status: "PENDING",
     });
     pesapal.getTransactionStatus.mockResolvedValue({
-      orderTrackingId: "track-1",
+      orderTrackingId: "track-2",
       paymentStatus: "COMPLETED",
       amount: 3200,
       currency: "KES",
-      merchantReference: "AXONSUBCARD-tenant-1-1",
+      merchantReference: "provider-order-ref",
       subscriptionTransactionInfo: {
         accountReference: "AXONSUBCARD-tenant-1-1",
         amount: 3200,
-        correlationId: "AXONSUBCARD-tenant-1-1",
+        correlationId: "unique-recurring-charge-1",
       },
     });
     recurring.settleCardRenewal.mockResolvedValue({ id: "inv-1" });
     const svc = service();
     const result = await svc.handleRecurringIpn({
       OrderNotificationType: "RECURRING",
-      OrderTrackingId: "track-1",
+      OrderTrackingId: "track-2",
       OrderMerchantReference: "AXONSUBCARD-tenant-1-1",
     });
     expect(recurring.settleCardRenewal).toHaveBeenCalledWith(
       "tenant-1",
-      "track-1",
-      "AXONSUBCARD-tenant-1-1",
+      "unique-recurring-charge-1",
       3200,
       "KES",
     );
@@ -322,7 +355,7 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
   });
 
   it("rejects an account_reference mismatch between IPN and GetTransactionStatus", async () => {
-    prisma.subscriptionCardToken.findUnique.mockResolvedValue({
+    prisma.subscriptionCardToken.findFirst.mockResolvedValue({
       id: "tok-1",
       tenantId: "tenant-1",
       pesapalCorrelationId: "AXONSUBCARD-tenant-1-1",
@@ -351,8 +384,53 @@ describe("PesapalRecurringService.handleRecurringIpn", () => {
     expect(recurring.settleCardRenewal).not.toHaveBeenCalled();
   });
 
+  it("ignores recurring IPNs with an unknown mandate reference", async () => {
+    prisma.subscriptionCardToken.findFirst.mockResolvedValue(null);
+    const svc = service();
+    const result = await svc.handleRecurringIpn({
+      OrderNotificationType: "RECURRING",
+      OrderTrackingId: "track-1",
+      OrderMerchantReference: "other-mandate",
+    });
+
+    expect(result.result).toBe("ignored");
+    expect(result.reason).toBe("unknown subscription");
+    expect(pesapal.getTransactionStatus).not.toHaveBeenCalled();
+    expect(recurring.settleCardRenewal).not.toHaveBeenCalled();
+  });
+
+  it("rejects a recurring provider response without its unique payment correlation id", async () => {
+    prisma.subscriptionCardToken.findFirst.mockResolvedValue({
+      id: "tok-1",
+      tenantId: "tenant-1",
+      pesapalCorrelationId: "AXONSUBCARD-tenant-1-1",
+      orderTrackingId: "track-1",
+      status: "ACTIVE",
+    });
+    pesapal.getTransactionStatus.mockResolvedValue({
+      orderTrackingId: "track-1",
+      paymentStatus: "COMPLETED",
+      amount: 3200,
+      currency: "KES",
+      subscriptionTransactionInfo: {
+        accountReference: "AXONSUBCARD-tenant-1-1",
+        amount: 3200,
+        correlationId: "",
+      },
+    });
+    const svc = service();
+    const result = await svc.handleRecurringIpn({
+      OrderNotificationType: "RECURRING",
+      OrderTrackingId: "track-1",
+      OrderMerchantReference: "AXONSUBCARD-tenant-1-1",
+    });
+
+    expect(result.result).toBe("rejected");
+    expect(recurring.settleCardRenewal).not.toHaveBeenCalled();
+  });
+
   it("ignores IPNs for cancelled or unknown subscriptions", async () => {
-    prisma.subscriptionCardToken.findUnique.mockResolvedValue(null);
+    prisma.subscriptionCardToken.findFirst.mockResolvedValue(null);
     const svc = service();
     const result = await svc.handleRecurringIpn({
       OrderNotificationType: "RECURRING",
