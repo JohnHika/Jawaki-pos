@@ -740,7 +740,7 @@ export class SyncService {
           tenders: payload.tenders,
           notes: payload.notes,
           offlineId: payload.offlineId || payload.id || event.eventId,
-        });
+        }, { offlineReconciliation: true });
         return { serverId: sale.id, receiptNumber: sale.receiptNumber };
 
       case SyncEventType.SALE_VOIDED:

@@ -41,7 +41,11 @@ export class SalesService {
     userId: string,
     tenantId: string,
     dto: CreateSaleDto,
-    options: { verifiedMerchantMpesa?: boolean } = {},
+    options: {
+      verifiedMerchantMpesa?: boolean;
+      /** True only when replaying an already completed sale through sync. */
+      offlineReconciliation?: boolean;
+    } = {},
   ) {
     if (
       dto.paymentMethod === PaymentMethod.MANUAL ||
@@ -258,7 +262,7 @@ export class SalesService {
         }
       } else {
         couponProblem = checked.verdict.message;
-        if (!dto.offlineId && !options.verifiedMerchantMpesa) {
+        if (!options.offlineReconciliation && !options.verifiedMerchantMpesa) {
           throw new BadRequestException(checked.verdict.message);
         }
       }
@@ -277,9 +281,11 @@ export class SalesService {
         )
       : null;
 
-    // Price, discount and credit rules. A sale that carries an offlineId was
-    // already rung up at the counter while the phone had no signal, so it is
-    // flagged for the owner but never refused; a live sale can be refused.
+    // offlineId is also the idempotency key for ordinary online sales, so it
+    // cannot prove that a sale was created while disconnected. Only the sync
+    // pipeline marks completed offline sales for flag-and-record handling. A
+    // verified provider charge is recorded even if policy changed after the
+    // customer paid; any violation is still made auditable.
     const assessment = this.accountability
       ? await this.accountability.assessSale({
           userId,
@@ -288,7 +294,7 @@ export class SalesService {
           customerId: dto.customerId,
           overallDiscount: Math.max(discountAmount - (couponUse?.amount ?? 0), 0),
           creditAmount: creditPortion,
-          enforce: !dto.offlineId,
+          enforce: !options.offlineReconciliation && !options.verifiedMerchantMpesa,
           lines: saleItems.map((line, index) => {
             const product = products.find((p) => p.id === line.productId);
             return {

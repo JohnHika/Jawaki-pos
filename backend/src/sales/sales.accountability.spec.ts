@@ -111,9 +111,11 @@ describe('SalesService + accountability', () => {
     expect(data.body).toContain('Faith Atieno');
   });
 
-  it('refuses a live below-cost sale once the owner switches to BLOCK', async () => {
+  it('refuses an online idempotent sale once the owner switches to BLOCK', async () => {
     settings = { priceGuard: { mode: 'BLOCK' } };
-    await expect(service.createSale(userId, tenantId, cheapSale())).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.createSale(userId, tenantId, cheapSale({ offlineId: 'client-sale-id' })),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(alerts.create).not.toHaveBeenCalled();
   });
@@ -121,7 +123,12 @@ describe('SalesService + accountability', () => {
   it('still records an offline-queue sale in BLOCK mode — it already happened at the counter', async () => {
     settings = { priceGuard: { mode: 'BLOCK' } };
     await expect(
-      service.createSale(userId, tenantId, cheapSale({ offlineId: 'dev-sale-1' })),
+      service.createSale(
+        userId,
+        tenantId,
+        cheapSale({ offlineId: 'dev-sale-1' }),
+        { offlineReconciliation: true },
+      ),
     ).resolves.toBeDefined();
     expect(alerts.create).toHaveBeenCalled();
   });

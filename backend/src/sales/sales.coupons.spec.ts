@@ -190,6 +190,7 @@ describe('SalesService + coupons', () => {
       userId,
       tenantId,
       sale({ couponCode: 'SAVE20', offlineId: 'dev-1' }),
+      { offlineReconciliation: true },
     );
     expect(created).toBeDefined();
     expect(redemptionCreate).not.toHaveBeenCalled();
@@ -198,10 +199,14 @@ describe('SalesService + coupons', () => {
     expect(alertTypes()).toContain('DISCOUNT_LIMIT');
   });
 
-  it('refuses a live sale with a coupon that does not exist', async () => {
+  it('refuses an online idempotent sale with a coupon that does not exist', async () => {
     coupon = null;
     await expect(
-      service.createSale(userId, tenantId, sale({ couponCode: 'NOPE' })),
+      service.createSale(
+        userId,
+        tenantId,
+        sale({ couponCode: 'NOPE', offlineId: 'client-sale-id' }),
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
