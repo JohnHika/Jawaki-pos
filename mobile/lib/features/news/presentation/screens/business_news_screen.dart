@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/form_kit.dart';
 import '../../domain/news_models.dart';
 import '../providers/news_provider.dart';
+import 'business_news_article_screen.dart';
 
 /// What is happening in the country that can touch a trader's money: customs
 /// and tax changes, import rules, the dollar, county notices, fuel prices.
@@ -28,8 +28,8 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
     ref.invalidate(officialLinksProvider);
   }
 
-  Future<void> _open(String url) async {
-    final uri = Uri.tryParse(url);
+  Future<void> _open(NewsItem item, {bool showPublishedAt = true}) async {
+    final uri = Uri.tryParse(item.url);
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
       if (mounted) {
         showGlassSnackBar(context, 'This article link is invalid.',
@@ -37,18 +37,14 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
       }
       return;
     }
-    // Keep articles in the app's in-app browser so staff can return directly
-    // to Counterbase without switching to a separate browser application.
-    var opened = false;
-    try {
-      opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-    } catch (_) {
-      // Keep link failures inside the app and present a recoverable message.
-    }
-    if (!opened && mounted) {
-      showGlassSnackBar(context, "Couldn't open that link.",
-          icon: Icons.link_off_rounded, color: DesignColors.warning);
-    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BusinessNewsArticleScreen(
+          item: item,
+          showPublishedAt: showPublishedAt,
+        ),
+      ),
+    );
   }
 
   @override
@@ -85,7 +81,7 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
                       ),
                       const SizedBox(height: DesignSpacing.sm),
                       for (final n in d.urgent)
-                        _NewsTile(item: n, onTap: () => _open(n.url), urgent: true),
+                        _NewsTile(item: n, onTap: () => _open(n), urgent: true),
                       const SizedBox(height: DesignSpacing.lg),
                     ],
               orElse: () => const <Widget>[],
@@ -130,7 +126,7 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
                   : Column(
                       children: [
                         for (final n in items)
-                          _NewsTile(item: n, onTap: () => _open(n.url)),
+                          _NewsTile(item: n, onTap: () => _open(n)),
                       ],
                     ),
             ),
@@ -152,10 +148,21 @@ class _BusinessNewsScreenState extends ConsumerState<BusinessNewsScreen> {
                             padding:
                                 const EdgeInsets.only(bottom: DesignSpacing.sm),
                             child: ListCard(
-                              leading: const Icon(Icons.open_in_new_rounded),
+                              leading: const Icon(Icons.verified_rounded),
                               title: l.name,
                               subtitle: l.about,
-                              onTap: () => _open(l.url),
+                              onTap: () => _open(
+                                  NewsItem(
+                                    id: l.url,
+                                    source: l.name,
+                                    title: l.name,
+                                    url: l.url,
+                                    publishedAt: DateTime.now(),
+                                    category: 'OFFICIAL',
+                                    impact: 'LOW',
+                                    summary: l.about,
+                                  ),
+                                  showPublishedAt: false),
                             ),
                           ),
                         Text(
@@ -246,7 +253,8 @@ class _RatesStrip extends ConsumerWidget {
 }
 
 class _NewsTile extends StatelessWidget {
-  const _NewsTile({required this.item, required this.onTap, this.urgent = false});
+  const _NewsTile(
+      {required this.item, required this.onTap, this.urgent = false});
 
   final NewsItem item;
   final VoidCallback onTap;
@@ -274,7 +282,9 @@ class _NewsTile extends StatelessWidget {
               border: Border.all(
                 color: urgent
                     ? accent.withValues(alpha: 0.5)
-                    : (isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder),
+                    : (isDark
+                        ? DesignColors.darkBorder
+                        : DesignColors.surfaceBorder),
               ),
             ),
             child: Column(
@@ -291,13 +301,15 @@ class _NewsTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Icon(Icons.open_in_new_rounded, size: 16, color: secondary),
+                    Icon(Icons.article_outlined, size: 16, color: secondary),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(item.title,
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15, height: 1.3)),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        height: 1.3)),
                 if ((item.summary ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(item.summary!,
