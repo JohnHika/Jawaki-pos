@@ -14,6 +14,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 final _currencyFmt =
     NumberFormat.currency(locale: 'en_KE', symbol: 'KES ', decimalDigits: 0);
 final _timeFmt = DateFormat('dd MMM, HH:mm');
+const _eodRequestTimeout = Duration(seconds: 8);
 
 String _todayIso() {
   final n = DateTime.now();
@@ -34,9 +35,12 @@ final _eodProvider =
   // Sales figures are essential; cash and close status are secondary. A
   // failure in either secondary request must not blank the whole report.
   final results = await Future.wait([
-    _captureEodRequest(api.getSalesDailySummary(branchId, date)),
-    _captureEodRequest(api.getAvailableCash(branchId)),
-    _captureEodRequest(api.getDailyClose(branchId, date: date)),
+    _captureEodRequest(api.getSalesDailySummary(branchId, date,
+        requestTimeout: _eodRequestTimeout)),
+    _captureEodRequest(
+        api.getAvailableCash(branchId, requestTimeout: _eodRequestTimeout)),
+    _captureEodRequest(api.getDailyClose(branchId,
+        date: date, requestTimeout: _eodRequestTimeout)),
   ]);
   var summary = results[0]['value'] as Map<String, dynamic>?;
   Object? summaryError = results[0]['error'];

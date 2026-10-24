@@ -1486,8 +1486,17 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getAvailableCash(String branchId) async {
-    final response = await _dio.get('/cash-flow/available/$branchId');
+  Future<Map<String, dynamic>> getAvailableCash(String branchId,
+      {Duration? requestTimeout}) async {
+    final response = await _dio.get(
+      '/cash-flow/available/$branchId',
+      options: requestTimeout == null
+          ? null
+          : Options(
+              connectTimeout: requestTimeout,
+              receiveTimeout: requestTimeout,
+            ),
+    );
     return response.data as Map<String, dynamic>;
   }
 
@@ -1538,18 +1547,33 @@ class ApiClient {
   /// The day's sales summary for a branch (total, transactions, payment
   /// split) — shown before closing so the user reviews the figures.
   Future<Map<String, dynamic>> getSalesDailySummary(
-      String branchId, String date) async {
-    final response = await _dio.get('/sales/summary/$branchId/$date');
+      String branchId, String date,
+      {Duration? requestTimeout}) async {
+    final response = await _dio.get(
+      '/sales/summary/$branchId/$date',
+      options: requestTimeout == null
+          ? null
+          : Options(
+              connectTimeout: requestTimeout,
+              receiveTimeout: requestTimeout,
+            ),
+    );
     return response.data as Map<String, dynamic>;
   }
 
   /// The close for a day (or today if [date] omitted); null if not yet closed.
   Future<Map<String, dynamic>?> getDailyClose(String branchId,
-      {String? date}) async {
-    final response =
-        await _dio.get('/sales/daily-close/$branchId', queryParameters: {
-      if (date != null) 'date': date,
-    });
+      {String? date, Duration? requestTimeout}) async {
+    final response = await _dio.get('/sales/daily-close/$branchId',
+        queryParameters: {
+          if (date != null) 'date': date,
+        },
+        options: requestTimeout == null
+            ? null
+            : Options(
+                connectTimeout: requestTimeout,
+                receiveTimeout: requestTimeout,
+              ));
     return response.data == null
         ? null
         : (response.data as Map<String, dynamic>);

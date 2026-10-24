@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -67,10 +68,13 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   StatementPreview? _preview;
   List<SentStatementLink> _sent = const [];
   String? _loadError;
+  String? _historyLoadError;
   bool _customerNeedsSync = false;
   bool _automaticCustomerSyncAttempted = false;
   bool _loading = true;
   bool _busy = false;
+  int _loadGeneration = 0;
+  int _historyGeneration = 0;
   String? _message;
   String _lang = 'en';
   int _days = 14;
@@ -95,29 +99,25 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
+    // Statement history is useful, but it must not hold the balance preview
+    // or the send actions hostage when that secondary request is unavailable.
+    unawaited(_loadSentLinks());
     try {
-      final results = await Future.wait([
-        _api.previewStatement(
-            customerId: widget.customerId, debtorId: widget.debtorId),
-        _api.getStatementLinks(
-            customerId: widget.customerId, debtorId: widget.debtorId),
-      ]);
-      if (!mounted) return;
+      final previewResult = await _api.previewStatement(
+          customerId: widget.customerId, debtorId: widget.debtorId);
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _preview =
-            StatementPreview.fromJson(results[0] as Map<String, dynamic>);
-        _sent = (results[1] as List<Map<String, dynamic>>)
-            .map(SentStatementLink.fromJson)
-            .toList();
+        _preview = StatementPreview.fromJson(previewResult);
         _loading = false;
         _customerNeedsSync = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       final customerNeedsSync =
           widget.customerId != null && statementNeedsCustomerSync(e);
       setState(() {
@@ -134,6 +134,25 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
         _automaticCustomerSyncAttempted = true;
         await _syncCustomerAndRetry();
       }
+    }
+  }
+
+  Future<void> _loadSentLinks() async {
+    final generation = ++_historyGeneration;
+    try {
+      final links = await _api.getStatementLinks(
+          customerId: widget.customerId, debtorId: widget.debtorId);
+      if (!mounted || generation != _historyGeneration) return;
+      setState(() {
+        _sent = links.map(SentStatementLink.fromJson).toList();
+        _historyLoadError = null;
+      });
+    } catch (_) {
+      if (!mounted || generation != _historyGeneration) return;
+      setState(() {
+        _historyLoadError =
+            'Statement history is unavailable. You can still send a statement.';
+      });
     }
   }
 
@@ -198,11 +217,13 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      final customerNeedsSync =
-          widget.customerId != null && statementNeedsCustomerSync(e);
+      final customerNeedsSync = widget.customerId != null &&
+          (statementNeedsCustomerSync(e) ||
+              (e is StateError &&
+                  e.message.toString().contains('still waiting to sync')));
       setState(() {
         _loading = false;
-        _customerNeedsSync = true;
+        _customerNeedsSync = customerNeedsSync;
         _loadError = customerNeedsSync
             ? 'This customer record has not reached the workspace yet. Sync the customer and try again.'
             : e is StateError
@@ -247,11 +268,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
     try {
       await action();
       // Refresh "sent before" so the new link shows up.
-      final links = await _api.getStatementLinks(
-          customerId: widget.customerId, debtorId: widget.debtorId);
-      if (mounted) {
-        setState(() => _sent = links.map(SentStatementLink.fromJson).toList());
-      }
+      await _loadSentLinks();
     } catch (e) {
       if (mounted) setState(() => _message = apiErrorMessage(e));
     } finally {
@@ -527,6 +544,13 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
                           ? DesignColors.success
                           : DesignColors.error,
                       fontWeight: FontWeight.w600)),
+            ],
+            if (_historyLoadError != null) ...[
+              const SizedBox(height: DesignSpacing.md),
+              InlineRetryNotice(
+                message: _historyLoadError!,
+                onRetry: _loadSentLinks,
+              ),
             ],
             if (_sent.isNotEmpty) ...[
               const SizedBox(height: DesignSpacing.lg),
