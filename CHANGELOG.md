@@ -1,5 +1,10 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.95+2138 (October 24, 2026)
+
+### Recover customer statements automatically
+- Automatically sync a customer and retry the statement once when an older API rejects the customer ID as a UUID, while keeping a clear manual retry if recovery cannot complete.
+
 ## v1.0.94+2137 (October 24, 2026)
 
 ### Clearer phone-server payment and reconciliation behavior

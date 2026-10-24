@@ -68,6 +68,7 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
   List<SentStatementLink> _sent = const [];
   String? _loadError;
   bool _customerNeedsSync = false;
+  bool _automaticCustomerSyncAttempted = false;
   bool _loading = true;
   bool _busy = false;
   String? _message;
@@ -117,23 +118,31 @@ class _StatementSheetState extends ConsumerState<_StatementSheet> {
       });
     } catch (e) {
       if (!mounted) return;
+      final customerNeedsSync = _isCustomerSyncValidation(e);
       setState(() {
         _loading = false;
-        _customerNeedsSync = _isCustomerSyncValidation(e);
-        _loadError = _customerNeedsSync
+        _customerNeedsSync = customerNeedsSync;
+        _loadError = customerNeedsSync
             ? 'This customer or their latest sale has not synced yet.'
             : apiErrorMessage(e);
       });
+      // Older API deployments rejected legacy customer IDs before the sync
+      // endpoint could create the customer. Repair that once automatically so
+      // staff do not have to discover and press a secondary retry action.
+      if (customerNeedsSync && !_automaticCustomerSyncAttempted) {
+        _automaticCustomerSyncAttempted = true;
+        await _syncCustomerAndRetry();
+      }
     }
   }
 
   bool _isCustomerSyncValidation(Object error) {
     if (error is! DioException) return false;
     final payload = error.response?.data;
-    final raw = payload is Map ? payload['message'] : null;
-    final messages = raw is List ? raw : [raw];
-    return messages.any((value) =>
-        value.toString().toLowerCase().contains('customerid must be a uuid'));
+    final raw = payload is Map ? payload['message'] : payload;
+    final message = raw is List ? raw.join(' ') : raw?.toString() ?? '';
+    return RegExp(r'customerId\s+must\s+be\s+a\s+UUID', caseSensitive: false)
+        .hasMatch(message);
   }
 
   Future<void> _syncCustomerAndRetry() async {
