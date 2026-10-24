@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/auth/app_roles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 
@@ -144,8 +145,25 @@ final receiptProvider =
   final sale = await database.getPendingSaleById(saleId);
 
   if (sale != null) {
-    final items = await database.getSaleItems(saleId);
     final auth = getIt<AuthService>();
+    final permissions = RolePermissions(
+      auth.currentUser?['permissions'] as List<dynamic>?,
+    );
+    final isOwnSale = sale.cashierId == auth.userId;
+
+    if (!permissions.canMakeSales && !permissions.has('sales.view')) {
+      throw StateError('Your account cannot view sales receipts.');
+    }
+
+    if (!permissions.has('sales.view_all') && !isOwnSale) {
+      if (sale.isSynced && permissions.has('sales.view')) {
+        return _normalizeRemoteReceipt(
+            await getIt<ApiClient>().getSale(saleId));
+      }
+      throw StateError('You can only view receipts for sales you recorded.');
+    }
+
+    final items = await database.getSaleItems(saleId);
 
     Map<String, dynamic>? customer;
     if (sale.customerId != null) {

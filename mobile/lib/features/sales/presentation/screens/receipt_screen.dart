@@ -15,6 +15,8 @@ import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/share_format_sheet.dart';
 import '../../../../core/widgets/receipt_printer.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/utils/load_error.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/sales_provider.dart';
 
 class ReceiptScreen extends ConsumerWidget {
@@ -30,6 +32,8 @@ class ReceiptScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final receiptAsync = ref.watch(receiptProvider(saleId));
+    final permissions = ref.watch(permissionsProvider);
+    final canMakeSales = permissions.canMakeSales;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Auto-print fires once, the moment the receipt data first loads —
@@ -59,7 +63,7 @@ class ReceiptScreen extends ConsumerWidget {
               ),
               child: const Icon(Icons.close_rounded, size: 20),
             ),
-            onPressed: () => context.go('/'),
+            onPressed: () => context.go(canMakeSales ? '/' : '/receipts'),
           ),
         ),
         title: Text(
@@ -132,19 +136,20 @@ class ReceiptScreen extends ConsumerWidget {
             tooltip: 'Print receipt',
             onPressed: () => _printReceipt(context, receiptAsync.valueOrNull),
           ),
-          IconButton(
-            tooltip: 'Void sale',
-            icon: Container(
-              padding: const EdgeInsets.all(DesignSpacing.sm),
-              decoration: BoxDecoration(
-                color: DesignColors.error.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
+          if (permissions.canVoidSales)
+            IconButton(
+              tooltip: 'Void sale',
+              icon: Container(
+                padding: const EdgeInsets.all(DesignSpacing.sm),
+                decoration: BoxDecoration(
+                  color: DesignColors.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(DesignSpacing.md - 2),
+                ),
+                child: const Icon(Icons.block_rounded,
+                    size: 20, color: DesignColors.error),
               ),
-              child: const Icon(Icons.block_rounded,
-                  size: 20, color: DesignColors.error),
+              onPressed: () => _voidSale(context, ref),
             ),
-            onPressed: () => _voidSale(context, ref),
-          ),
           const SizedBox(width: DesignSpacing.xs),
         ],
       ),
@@ -202,25 +207,31 @@ class ReceiptScreen extends ConsumerWidget {
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
           title: 'Failed to load receipt',
-          subtitle: 'Check your connection and try again.',
-          actionLabel: 'Retry',
+          subtitle:
+              e is StateError ? e.message.toString() : loadErrorSubtitle(e),
+          actionLabel:
+              isPermissionDenied(e) || e is StateError ? null : 'Retry',
           iconColor: DesignColors.error,
-          onAction: () => ref.refresh(receiptProvider(saleId)),
+          onAction: isPermissionDenied(e) || e is StateError
+              ? null
+              : () => ref.refresh(receiptProvider(saleId)),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.sm,
-              DesignSpacing.lg, DesignSpacing.lg),
-          child: GradientButton(
-            label: 'New Sale',
-            icon: Icons.add_shopping_cart_rounded,
-            onPressed: () => context.go('/'),
-            height: 56,
-            borderRadius: DesignSpacing.radiusLg,
-          ),
-        ),
-      ),
+      bottomNavigationBar: canMakeSales
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                    DesignSpacing.sm, DesignSpacing.lg, DesignSpacing.lg),
+                child: GradientButton(
+                  label: 'New Sale',
+                  icon: Icons.add_shopping_cart_rounded,
+                  onPressed: () => context.go('/'),
+                  height: 56,
+                  borderRadius: DesignSpacing.radiusLg,
+                ),
+              ),
+            )
+          : null,
     );
   }
 

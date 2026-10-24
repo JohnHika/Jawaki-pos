@@ -89,14 +89,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     if (authService.requiresTenantActivation) {
       initialLocation = '/activation';
     } else {
-      // Returning owner/manager accounts should land on the business overview;
-      // staff without that capability continue to land on POS.
-      final canSeeDashboard = RolePermissions(
+      // Open the first work surface available to this account. Staff tour is
+      // still shown once before that surface when the device has not seen it.
+      final permissions = RolePermissions(
         authService.currentUser?['permissions'] as List<dynamic>?,
-      ).canSeeDashboard;
-      initialLocation = canSeeDashboard
-          ? '/dashboard'
-          : (storageService.hasSeenStaffTour() ? '/' : '/staff-tour');
+      );
+      initialLocation = permissions.canSeeDashboard
+          ? permissions.homePath
+          : (storageService.hasSeenStaffTour()
+              ? permissions.homePath
+              : '/staff-tour');
     }
   } else if (authService.isLocked) {
     // Session exists but is soft-locked (backgrounded past the auto-lock
@@ -164,7 +166,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (!authService.requiresTenantActivation && isActivationRoute) {
-        return '/dashboard';
+        return RolePermissions(
+          authService.currentUser?['permissions'] as List<dynamic>?,
+        ).homePath;
       }
 
       // If logged in and on setup/login page, go to main app — unless this
@@ -174,12 +178,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // it finishes/is skipped, so this only ever fires once per device.
       // Plan selection is deliberately excluded (see isSetupRoute above).
       if (isLoggedIn && (isSetupRoute || isLoginRoute)) {
-        final canSeeDashboard = RolePermissions(
+        final permissions = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
-        ).canSeeDashboard;
-        return canSeeDashboard
-            ? '/dashboard'
-            : (storageService.hasSeenStaffTour() ? '/' : '/staff-tour');
+        );
+        return permissions.canSeeDashboard
+            ? permissions.homePath
+            : (storageService.hasSeenStaffTour()
+                ? permissions.homePath
+                : '/staff-tour');
       }
 
       // Role-based route guards
@@ -187,6 +193,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final perms = RolePermissions(
           authService.currentUser?['permissions'] as List<dynamic>?,
         );
+
+        if ((path == '/' || path == '/cart' || path == '/payment') &&
+            !perms.canMakeSales) {
+          return perms.homePath;
+        }
+        if (path.startsWith('/receipt/') &&
+            !perms.canMakeSales &&
+            !perms.has('sales.view')) {
+          return perms.homePath;
+        }
 
         if ((path == '/customers' || path.startsWith('/customers/')) &&
             !perms.has('customers.view')) {

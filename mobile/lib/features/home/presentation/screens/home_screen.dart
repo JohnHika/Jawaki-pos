@@ -101,11 +101,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Dashboard',
           path: '/dashboard'));
     }
-    items.add(_NavItem(
-        icon: Icons.point_of_sale_outlined,
-        activeIcon: Icons.point_of_sale_rounded,
-        label: 'POS',
-        path: '/'));
+    if (perms.canSeePOS) {
+      items.add(_NavItem(
+          icon: Icons.point_of_sale_outlined,
+          activeIcon: Icons.point_of_sale_rounded,
+          label: 'POS',
+          path: '/'));
+    }
     // AI is a primary working surface, not an add-on hidden in More.
     // Keep the first four tabs focused on daily work. Customers is available
     // from More so it never displaces AI in the compact bottom bar.
@@ -143,11 +145,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Reports',
           path: '/reports'));
     }
-    items.add(_NavItem(
-        icon: Icons.payments_outlined,
-        activeIcon: Icons.payments_rounded,
-        label: 'Payments',
-        path: '/payments'));
+    if (perms.canSeePayments) {
+      items.add(_NavItem(
+          icon: Icons.payments_outlined,
+          activeIcon: Icons.payments_rounded,
+          label: 'Payments',
+          path: '/payments'));
+    }
+    if (perms.canSeeReceipts) {
+      items.add(_NavItem(
+          icon: Icons.receipt_long_outlined,
+          activeIcon: Icons.receipt_long_rounded,
+          label: 'Receipts',
+          path: '/receipts'));
+    }
     items.add(_NavItem(
         icon: Icons.settings_outlined,
         activeIcon: Icons.settings_rounded,
@@ -163,11 +174,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     // Customer profiles are an important workflow, but should not displace
     // Dashboard, POS, AI, or Products from the four primary slots.
-    items.add(_NavItem(
-        icon: Icons.people_outlined,
-        activeIcon: Icons.people_rounded,
-        label: 'Customers',
-        path: '/customers'));
+    if (perms.canSeeCustomers) {
+      items.add(_NavItem(
+          icon: Icons.people_outlined,
+          activeIcon: Icons.people_rounded,
+          label: 'Customers',
+          path: '/customers'));
+    }
     // Shop control. Each entry follows the backend permission of the same
     // name, so a screen that would only 403 is never offered.
     if (perms.has('accountability.view')) {
@@ -427,7 +440,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
-    final homePath = perms.canSeeDashboard ? '/dashboard' : '/';
+    final homePath = perms.homePath;
     final atHome = GoRouterState.of(context).uri.path == homePath;
 
     // Tabs are reached with context.go, so the stack holds a single page and

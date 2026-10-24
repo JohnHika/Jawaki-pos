@@ -72,12 +72,30 @@ class RolePermissions {
   bool _any(List<String> keys) => keys.any(_permissions.contains);
 
   // ── Bottom-nav tabs ──────────────────────────
-  bool get canSeePOS        => true; // everyone
+  bool get canSeePOS        => canMakeSales;
   bool get canSeeDashboard  => has('reporting.dashboard');
   bool get canSeeProducts   => has('products.view');
   bool get canSeeInventory  => has('inventory.stock.view');
   bool get canSeeReports    => _any(['reporting.sales_summary', 'reporting.dashboard']);
   bool get canSeeSettings   => true; // everyone, but content differs
+  bool get canSeePayments =>
+      _any(['payments.view_status', 'payments.view_methods']);
+  bool get canSeeCustomers => has('customers.view');
+  bool get canSeeReceipts  => has('sales.view');
+
+  /// First useful surface the current role is allowed to open.
+  String get homePath {
+    if (canSeeDashboard) return '/dashboard';
+    if (canSeePOS) return '/';
+    if (canSeeReceipts) return '/receipts';
+    if (canSeeProducts) return '/products';
+    if (canSeeInventory) return '/inventory';
+    if (canSeeReports) return '/reports';
+    if (canSeePayments) return '/payments';
+    if (canSeeCustomers) return '/customers';
+    if (canViewFinance) return '/finance';
+    return '/settings';
+  }
 
   // ── Product capabilities ─────────────────────
   bool get canViewProducts  => has('products.view');
