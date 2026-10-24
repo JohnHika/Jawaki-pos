@@ -552,8 +552,8 @@ jobs:
           {
             echo "## Android update published (Dual Source)"
             echo
-            echo "- Release: \\`$RELEASE_NAME\\`"
-            echo "- Internal build: \\`$BUILD_NUMBER\\`"
+            echo "- Release: \`$RELEASE_NAME\`"
+            echo "- Internal build: \`$BUILD_NUMBER\`"
             echo "- APK: $R2_PUBLIC_BASE_URL/$RELEASE_PATH/app-release.apk"
             echo "- Manifest: $R2_PUBLIC_BASE_URL/android/latest.json"
             echo "- GitHub Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v$GIT_TAG_VERSION"
