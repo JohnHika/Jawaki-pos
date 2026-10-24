@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
@@ -7,6 +6,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 
 /// Owner setup for routing customer M-Pesa payments to the shop's bank.
 /// The app never asks for online-banking passwords, PINs, or OTPs.
@@ -126,14 +126,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
   }
 
   String _message(Object error) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map && data['message'] != null) {
-        final message = data['message'];
-        return message is List ? message.join(', ') : message.toString();
-      }
-    }
-    return 'Could not reach payment setup. Check your connection and try again.';
+    return apiErrorMessage(error);
   }
 
   Future<void> _save() async {

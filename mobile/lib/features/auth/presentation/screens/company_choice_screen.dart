@@ -327,7 +327,7 @@ class _CompanyChoiceScreenState extends State<CompanyChoiceScreen>
           ],
         ),
         Text(
-          'DEVICE 01',
+          'OWNER & TEAM',
           style: DesignType.numeric(
             fontSize: 10,
             fontWeight: FontWeight.w600,

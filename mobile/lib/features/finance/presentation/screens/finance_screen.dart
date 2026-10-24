@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +15,7 @@ import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion_kit.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/bulk_allocation.dart';
 import '../../domain/collections_ledger.dart';
@@ -1556,13 +1556,7 @@ bool _isKenyanPhone(String value) {
 }
 
 String _financeRequestError(Object error) {
-  if (error is DioException) {
-    final data = error.response?.data;
-    final message = data is Map ? data['message'] : null;
-    if (message is List && message.isNotEmpty) return message.join(', ');
-    if (message != null) return message.toString();
-  }
-  return 'Could not complete this finance action. Check your connection and try again.';
+  return apiErrorMessage(error);
 }
 
 class _SupplierTab extends StatelessWidget {

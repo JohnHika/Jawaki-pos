@@ -62,6 +62,7 @@ class CompanySetupScreen extends ConsumerStatefulWidget {
 
 class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _setupScrollController = ScrollController();
   final _companyNameController = TextEditingController();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -96,6 +97,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
     ]) {
       controller.dispose();
     }
+    _setupScrollController.dispose();
     super.dispose();
   }
 
@@ -264,11 +266,29 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   void _nextStep() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_currentStep < 3) {
-      setState(() {
-        _currentStep += 1;
-        _errorMessage = null;
-      });
+      _changeStep(_currentStep + 1);
     }
+  }
+
+  void _changeStep(int step) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _currentStep = step;
+      _errorMessage = null;
+    });
+    // Each onboarding step starts at its heading. Keeping the prior scroll
+    // offset can make a short next step appear blank or hide its title, and
+    // leaving a text field focused can keep the keyboard over the new step.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_setupScrollController.hasClients) return;
+      _setupScrollController.animateTo(
+        0,
+        duration: reducedMotion(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   void _goBack() {
@@ -277,10 +297,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
       context.go('/company-choice');
       return;
     }
-    setState(() {
-      _currentStep -= 1;
-      _errorMessage = null;
-    });
+    _changeStep(_currentStep - 1);
   }
 
   @override
@@ -309,6 +326,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _setupScrollController,
                     padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

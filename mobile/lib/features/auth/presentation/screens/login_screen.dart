@@ -998,7 +998,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       onPressed: () {
                         showGlassSnackBar(
                           context,
-                          'Contact administrator to reset password',
+                          'Ask your workspace administrator to reset your password.',
                           icon: Icons.lock_reset_rounded,
                           color: DesignColors.info,
                         );
@@ -1010,7 +1010,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         ),
                       ),
                       child: Text(
-                        'Forgot Password?',
+                        'Ask admin to reset',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600,
                               color: DesignColors.accent,
