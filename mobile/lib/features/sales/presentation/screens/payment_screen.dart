@@ -415,8 +415,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'M-Pesa request sent. Ask the customer to approve it, then check the payment status. Paystack may show Counterbase on the phone prompt; confirmed funds settle to this shop’s verified payout account.',
+                        Text(
+                          'M-Pesa request sent. Ask the customer to approve it, then check the payment status. Their prompt may show “PAYSTACK Account no. Counterbase”; that is Paystack’s integration label. Once verified, the funds route to $shopName’s payout account shown at checkout.',
                         ),
                       ],
                     ),
@@ -596,7 +596,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'The M-Pesa PIN prompt is issued by Paystack and may say “PAYSTACK Account no. Counterbase.” That is the processor’s label, not the shop’s bank account number. This charge uses $shopName’s verified Paystack subaccount, which routes approved proceeds to the payout account shown above.',
+                      'What the customer may see: “PAYSTACK Account no. Counterbase.” Paystack controls that integration label; its charge API does not provide a per-shop prompt name, so it cannot show a different shop name on each phone prompt. This is not the payout account number. After Paystack verifies the payment, the charge is assigned to $shopName’s verified subaccount and routed to the payout account shown above.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall

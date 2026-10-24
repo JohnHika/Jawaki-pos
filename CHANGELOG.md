@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.102+2145 (October 24, 2026)
+
+### Clarify merchant payout identity during M-Pesa checkout
+- Distinguish Paystack's shared prompt label from the shop's verified payout destination before staff send an M-Pesa request and after the request is created.
+- Explain that the current Paystack charge API does not support a different prompt name per shop.
+
 ## v1.0.100+2143 (October 24, 2026)
 
 ### Require verified M-Pesa debt payments
