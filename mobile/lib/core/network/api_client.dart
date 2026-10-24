@@ -1495,6 +1495,7 @@ class ApiClient {
           : Options(
               connectTimeout: requestTimeout,
               receiveTimeout: requestTimeout,
+              extra: const {'networkRetryMaxRetries': 0},
             ),
     );
     return response.data as Map<String, dynamic>;
@@ -1556,6 +1557,7 @@ class ApiClient {
           : Options(
               connectTimeout: requestTimeout,
               receiveTimeout: requestTimeout,
+              extra: const {'networkRetryMaxRetries': 0},
             ),
     );
     return response.data as Map<String, dynamic>;
@@ -1573,6 +1575,7 @@ class ApiClient {
             : Options(
                 connectTimeout: requestTimeout,
                 receiveTimeout: requestTimeout,
+                extra: const {'networkRetryMaxRetries': 0},
               ));
     return response.data == null
         ? null

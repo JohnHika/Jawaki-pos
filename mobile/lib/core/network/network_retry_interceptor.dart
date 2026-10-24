@@ -21,8 +21,12 @@ class NetworkRetryInterceptor extends Interceptor {
       DioException err, ErrorInterceptorHandler handler) async {
     final options = err.requestOptions;
     final attempt = (options.extra['networkRetryAttempt'] as int?) ?? 0;
+    final configuredRetryLimit = options.extra['networkRetryMaxRetries'];
+    final retryLimit = configuredRetryLimit is int && configuredRetryLimit >= 0
+        ? configuredRetryLimit
+        : _maxRetries;
 
-    if (!_isRetryable(err) || attempt >= _maxRetries) {
+    if (!_isRetryable(err) || attempt >= retryLimit) {
       return handler.next(err);
     }
 
@@ -53,7 +57,8 @@ class NetworkRetryInterceptor extends Interceptor {
     // Read-only methods: retry any retryable error.
     const safeMethods = {'GET', 'HEAD', 'OPTIONS'};
     if (safeMethods.contains(method)) {
-      return neverReachedServer || (status != null && status >= 500 && status < 600);
+      return neverReachedServer ||
+          (status != null && status >= 500 && status < 600);
     }
 
     // Mutating methods: only retry when we can be confident the server did
