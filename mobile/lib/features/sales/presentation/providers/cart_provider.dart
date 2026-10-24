@@ -939,5 +939,15 @@ class CartNotifier extends StateNotifier<CartState> {
 
 // Provider
 final cartProvider = StateNotifierProvider<CartNotifier, CartState>((ref) {
+  // A cart belongs to one cashier in one branch. Recreate it when the active
+  // session changes so a logout, staff switch, or branch switch cannot carry
+  // another operator's customer and products into the next sale.
+  ref.watch(authControllerProvider.select((auth) => auth.isAuthenticated
+      ? (
+          auth.user?['tenantId']?.toString(),
+          auth.user?['branchId']?.toString(),
+          auth.user?['id']?.toString(),
+        )
+      : (null, null, null)));
   return CartNotifier();
 });
