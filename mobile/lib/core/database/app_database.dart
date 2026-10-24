@@ -585,6 +585,23 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// Live, bounded suggestions for the POS search field. This keeps typing
+  /// responsive and avoids starting another full catalog download just to
+  /// show a handful of matching names.
+  Stream<List<Product>> watchProductSuggestions(String query, {int limit = 5}) {
+    final normalized = query.trim();
+    if (normalized.isEmpty) return Stream.value(const <Product>[]);
+    final safeLimit = limit.clamp(1, 20).toInt();
+    return (select(products)
+          ..where((product) =>
+              product.isActive.equals(true) &
+              (product.name.like('%$normalized%') |
+                  product.sku.like('%$normalized%')))
+          ..orderBy([(product) => OrderingTerm.asc(product.name)])
+          ..limit(safeLimit))
+        .watch();
+  }
+
   Stream<List<Product>> watchAllProducts() => select(products).watch();
 
   Future<void> insertProducts(List<ProductsCompanion> items) async {

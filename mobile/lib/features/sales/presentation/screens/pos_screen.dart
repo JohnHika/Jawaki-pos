@@ -53,6 +53,9 @@ class _POSScreenState extends ConsumerState<POSScreen> {
   }
 
   bool _showFavorites = false;
+  bool _catalogRefreshing = true;
+  bool _catalogSyncStarted = false;
+  bool _catalogSyncFailed = false;
 
   @override
   void initState() {
@@ -73,16 +76,32 @@ class _POSScreenState extends ConsumerState<POSScreen> {
     // off a background refresh so stock changes made elsewhere (other
     // devices, admin corrections) show up without requiring a detour
     // through Products first.
-    Future.microtask(() async {
-      try {
-        await syncCatalogCacheFromApi();
-      } catch (_) {
-        return;
-      }
-      if (!mounted) return;
-      ref.invalidate(categoriesProvider);
-      ref.invalidate(filteredProductsProvider);
-      ref.invalidate(favoriteProductsProvider);
+    Future.microtask(_refreshCatalog);
+  }
+
+  Future<void> _refreshCatalog() async {
+    if (!mounted || _catalogSyncStarted) return;
+    setState(() {
+      _catalogSyncStarted = true;
+      _catalogRefreshing = true;
+      _catalogSyncFailed = false;
+    });
+
+    var failed = false;
+    try {
+      await syncCatalogCacheFromApi();
+    } catch (_) {
+      failed = true;
+    }
+
+    if (!mounted) return;
+    ref.invalidate(categoriesProvider);
+    ref.invalidate(filteredProductsProvider);
+    ref.invalidate(favoriteProductsProvider);
+    setState(() {
+      _catalogSyncStarted = false;
+      _catalogRefreshing = false;
+      _catalogSyncFailed = failed;
     });
   }
 
@@ -348,7 +367,13 @@ class _POSScreenState extends ConsumerState<POSScreen> {
                       );
                     },
                   )
-                : const ProductGrid(),
+                : ProductGrid(
+                    catalogRefreshing: _catalogRefreshing,
+                    catalogSyncFailed: _catalogSyncFailed,
+                    isOffline:
+                        connectivity.currentStatus == ConnectionStatus.offline,
+                    onRetryCatalog: _refreshCatalog,
+                  ),
           ),
           if (cart.itemCount > 0) const CartSummaryBar(),
         ],

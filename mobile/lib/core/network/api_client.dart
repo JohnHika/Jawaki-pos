@@ -664,6 +664,99 @@ class ApiClient {
     int? limit,
     String? branchId,
   }) async {
+    final response = await _getProductsPage(
+      categoryId: categoryId,
+      search: search,
+      page: page,
+      limit: limit,
+      branchId: branchId,
+    );
+    final items = response['items'];
+    if (items is! List) {
+      throw const FormatException('The product list response was invalid.');
+    }
+    return items;
+  }
+
+  /// Loads every catalog page before a caller replaces the offline cache.
+  /// The POS needs the full catalog locally so products beyond the first API
+  /// page remain searchable and sellable while offline.
+  Future<List<dynamic>> getAllProducts({
+    String? branchId,
+    int limit = 500,
+  }) async {
+    if (limit < 1 || limit > 500) {
+      throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 500.');
+    }
+
+    const maxPages = 10000;
+    final firstPage = await _getProductsPage(
+      page: 1,
+      limit: limit,
+      branchId: branchId,
+    );
+    final firstItems = firstPage['items'];
+    if (firstItems is! List) {
+      throw const FormatException('The product list response was invalid.');
+    }
+
+    final allItems = <dynamic>[...firstItems];
+    final reportedPages = firstPage['totalPages'];
+    final totalPages = reportedPages is num ? reportedPages.toInt() : null;
+    if (totalPages != null) {
+      if (totalPages < 0 || totalPages > maxPages) {
+        throw const FormatException('The product page count was invalid.');
+      }
+      for (var firstPageNumber = 2;
+          firstPageNumber <= totalPages;
+          firstPageNumber += 4) {
+        final lastPageNumber =
+            (firstPageNumber + 3).clamp(2, totalPages).toInt();
+        final pages = await Future.wait([
+          for (var page = firstPageNumber; page <= lastPageNumber; page++)
+            _getProductsPage(page: page, limit: limit, branchId: branchId),
+        ]);
+        for (final pageData in pages) {
+          final pageItems = pageData['items'];
+          if (pageItems is! List) {
+            throw const FormatException(
+              'A product catalog page was invalid.',
+            );
+          }
+          allItems.addAll(pageItems);
+        }
+      }
+      return allItems;
+    }
+
+    if (firstItems.length < limit) return allItems;
+
+    // Older API deployments may not return totalPages. Continue until a
+    // short page arrives; fail closed rather than replacing a full local
+    // catalog with a silently truncated response.
+    for (var page = 2; page <= maxPages; page++) {
+      final pageData = await _getProductsPage(
+        page: page,
+        limit: limit,
+        branchId: branchId,
+      );
+      final pageItems = pageData['items'];
+      if (pageItems is! List) {
+        throw const FormatException('A product catalog page was invalid.');
+      }
+      allItems.addAll(pageItems);
+      if (pageItems.length < limit) return allItems;
+    }
+    throw const FormatException('The product catalog exceeded the page limit.');
+  }
+
+  Future<Map<String, dynamic>> _getProductsPage({
+    String? categoryId,
+    String? search,
+    int? page,
+    int? limit,
+    String? branchId,
+  }) async {
     final response = await _dio.get('/catalog/products', queryParameters: {
       if (categoryId != null) 'categoryId': categoryId,
       if (search != null) 'search': search,
@@ -671,7 +764,10 @@ class ApiClient {
       if (limit != null) 'limit': limit,
       if (branchId != null) 'branchId': branchId,
     });
-    return response.data['items'];
+    final data = response.data;
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw const FormatException('The product list response was invalid.');
   }
 
   Future<Map<String, dynamic>> createProduct({
@@ -724,7 +820,10 @@ class ApiClient {
       if (unit != null) 'unit': unit,
       if (pricingTiers != null) 'pricingTiers': pricingTiers,
       if (minStock != null) 'minStock': minStock,
-      if (clearMinPrice) 'minPrice': null else if (minPrice != null) 'minPrice': minPrice,
+      if (clearMinPrice)
+        'minPrice': null
+      else if (minPrice != null)
+        'minPrice': minPrice,
       if (clearImage) 'image': null,
       if (clearImage) 'imagePublicId': null,
       if (!clearImage && image != null) 'image': image,
@@ -2113,7 +2212,8 @@ class ApiClient {
       _payloadList(await _dio.get('/coupons'));
 
   Future<Map<String, dynamic>> getCouponReport({int days = 30}) async =>
-      _payload(await _dio.get('/coupons/report', queryParameters: {'days': days}));
+      _payload(
+          await _dio.get('/coupons/report', queryParameters: {'days': days}));
 
   Future<Map<String, dynamic>> createCoupon(Map<String, dynamic> body) async =>
       _payload(await _dio.post('/coupons', data: body));
@@ -2154,7 +2254,8 @@ class ApiClient {
       _payload(await _dio.post('/statements/links', data: {
         if (customerId != null) 'customerId': customerId,
         if (debtorId != null) 'debtorId': debtorId,
-        if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+        if (message != null && message.trim().isNotEmpty)
+          'message': message.trim(),
         if (days != null) 'days': days,
       }));
 
@@ -2169,7 +2270,8 @@ class ApiClient {
     await _dio.post('/statements/links/$id/revoke');
   }
 
-  Future<List<Map<String, dynamic>>> getStatementClaims({String? status}) async =>
+  Future<List<Map<String, dynamic>>> getStatementClaims(
+          {String? status}) async =>
       _payloadList(await _dio.get('/statements/claims', queryParameters: {
         if (status != null) 'status': status,
       }));
@@ -2192,7 +2294,8 @@ class ApiClient {
   }
 
   /// Downloads a statement PDF from its public link. No sign-in needed.
-  Future<List<int>> downloadStatementPdf(String path, {String lang = 'en'}) async {
+  Future<List<int>> downloadStatementPdf(String path,
+      {String lang = 'en'}) async {
     final response = await _dio.get<List<int>>(
       absoluteUrl('$path/pdf'),
       queryParameters: {'lang': lang},

@@ -1,5 +1,13 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.92+2135 (October 24, 2026)
+
+### POS catalog completeness and speed
+- Load every product page into the offline catalog so shops with more than 500 products can find and sell the full catalog.
+- Show cached products while refreshing, provide an accurate retry path when the catalog cannot load, and avoid an extra full catalog request for search suggestions.
+- Retry the actual product-grid query after a local loading error.
+- Show the merchant shop name and masked verified payout destination before an M-Pesa request; explain that the Paystack prompt label is provider controlled.
+
 ## v1.0.49+2074 (August 5, 2026)
 
 ### 1. Change Plan button not responding

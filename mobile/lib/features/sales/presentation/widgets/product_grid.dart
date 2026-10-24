@@ -35,24 +35,58 @@ class ProductGrid extends ConsumerWidget {
     return 'Unable to load products. Please try again.';
   }
 
-  const ProductGrid({super.key});
+  const ProductGrid({
+    super.key,
+    this.catalogRefreshing = false,
+    this.catalogSyncFailed = false,
+    this.isOffline = false,
+    this.onRetryCatalog,
+  });
+
+  final bool catalogRefreshing;
+  final bool catalogSyncFailed;
+  final bool isOffline;
+  final VoidCallback? onRetryCatalog;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categoryId = ref.watch(selectedCategoryProvider);
     final searchQuery = ref.watch(searchQueryProvider);
+    final normalizedSearchQuery = searchQuery.trim();
     final productsAsync = ref.watch(
       filteredProductsProvider(
         FilterParams(
           categoryId: categoryId,
-          searchQuery: searchQuery.isEmpty ? null : searchQuery,
+          searchQuery:
+              normalizedSearchQuery.isEmpty ? null : normalizedSearchQuery,
         ),
       ),
     );
 
     return productsAsync.when(
       data: (products) {
-        if (products.isEmpty) return const _EmptyState();
+        if (products.isEmpty) {
+          if (catalogRefreshing) return _loadingGrid(context);
+          final hasActiveFilter =
+              categoryId != null || normalizedSearchQuery.isNotEmpty;
+          if (!hasActiveFilter && (catalogSyncFailed || isOffline)) {
+            return EmptyState(
+              icon: isOffline
+                  ? Icons.cloud_off_rounded
+                  : Icons.inventory_2_outlined,
+              title: isOffline
+                  ? 'No products saved on this device'
+                  : 'Couldn’t load your products',
+              subtitle: isOffline
+                  ? 'Reconnect to load your shop catalog, then try again.'
+                  : 'Check your connection and retry the catalog refresh.',
+              actionLabel: 'Retry',
+              iconColor: isOffline ? DesignColors.warning : DesignColors.error,
+              onAction: onRetryCatalog,
+            );
+          }
+          return const _EmptyState();
+        }
         // Photos make tall cards worthwhile; without them the empty image block
         // just wastes space, so use shorter cards and fit ~50% more per screen.
         final hasPhotos = products.any((p) => p['imageUrl'] != null);
@@ -83,7 +117,28 @@ class ProductGrid extends ConsumerWidget {
           ),
         );
       },
-      loading: () => GridView.builder(
+      loading: () => _loadingGrid(context),
+      error: (error, _) => EmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Failed to load products',
+        subtitle: _getUserFriendlyErrorMessage(error),
+        actionLabel: 'Retry',
+        iconColor: DesignColors.error,
+        onAction: () {
+          ref.invalidate(filteredProductsProvider(
+            FilterParams(
+              categoryId: categoryId,
+              searchQuery:
+                  normalizedSearchQuery.isEmpty ? null : normalizedSearchQuery,
+            ),
+          ));
+          if (catalogSyncFailed || isOffline) onRetryCatalog?.call();
+        },
+      ),
+    );
+  }
+
+  Widget _loadingGrid(BuildContext context) => GridView.builder(
         padding: const EdgeInsets.all(12),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: productGridColumns(MediaQuery.sizeOf(context).width),
@@ -93,17 +148,7 @@ class ProductGrid extends ConsumerWidget {
         ),
         itemCount: 6,
         itemBuilder: (context, index) => const ProductCardShimmer(),
-      ),
-      error: (error, _) => EmptyState(
-        icon: Icons.error_outline_rounded,
-        title: 'Failed to load products',
-        subtitle: _getUserFriendlyErrorMessage(error),
-        actionLabel: 'Retry',
-        iconColor: DesignColors.error,
-        onAction: () => ref.refresh(productsProvider),
-      ),
-    );
-  }
+      );
 }
 
 class _EmptyState extends StatelessWidget {

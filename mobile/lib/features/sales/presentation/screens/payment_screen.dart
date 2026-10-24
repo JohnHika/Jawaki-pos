@@ -36,6 +36,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod? _selectedMethod;
   final _phoneController = TextEditingController();
   String? _payoutStatus;
+  Map<String, dynamic>? _payoutAccount;
   bool _paystackPayoutVerified = false;
   bool _checkingPayoutStatus = true;
 
@@ -60,6 +61,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       final account = await getIt<ApiClient>().getMerchantPayoutAccount();
       if (!mounted) return;
       setState(() {
+        _payoutAccount = account;
         _payoutStatus = account['status']?.toString().toUpperCase();
         _paystackPayoutVerified = account['paystackVerified'] == true;
         _checkingPayoutStatus = false;
@@ -67,6 +69,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _payoutAccount = null;
         _payoutStatus = 'UNKNOWN';
         _paystackPayoutVerified = false;
         _checkingPayoutStatus = false;
@@ -508,6 +511,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Future<bool> _showMpesaDetailsSheet(double total) async {
     final formKey = GlobalKey<FormState>();
     final shopName = ref.read(tenantIdentityProvider).companyName;
+    final payoutAccount = _payoutAccount ?? const <String, dynamic>{};
+    final bankName = payoutAccount['bankName']?.toString().trim() ?? '';
+    final accountName = payoutAccount['accountName']?.toString().trim() ?? '';
+    final accountLast4 = payoutAccount['accountLast4']?.toString().trim() ?? '';
     return await showModalBottomSheet<bool>(
           useRootNavigator: true,
           context: context,
@@ -530,8 +537,66 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     Text('Payment to $shopName',
                         style: Theme.of(sheetContext).textTheme.titleLarge),
                     const SizedBox(height: DesignSpacing.xs),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(DesignSpacing.md),
+                      decoration: BoxDecoration(
+                        color: DesignColors.accent.withValues(alpha: 0.08),
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        border: Border.all(
+                          color: DesignColors.accent.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.storefront_rounded,
+                              color: DesignColors.accent),
+                          const SizedBox(width: DesignSpacing.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(shopName,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                                if (accountName.isNotEmpty &&
+                                    accountName.toLowerCase() !=
+                                        shopName.toLowerCase()) ...[
+                                  const SizedBox(height: 2),
+                                  Text('Account holder: $accountName'),
+                                ],
+                                if (bankName.isNotEmpty ||
+                                    accountLast4.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text([
+                                    if (bankName.isNotEmpty) bankName,
+                                    if (accountLast4.isNotEmpty)
+                                      'account ending $accountLast4',
+                                  ].join(' · ')),
+                                ],
+                                const SizedBox(height: DesignSpacing.xs),
+                                Text(
+                                  'Verified shop payout destination',
+                                  style: Theme.of(sheetContext)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                          color: DesignColors.success,
+                                          fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.verified_rounded,
+                              color: DesignColors.success, size: 20),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'This request is for $shopName. The M-Pesa prompt may show “PAYSTACK Account no. Counterbase”; Paystack controls that label. Confirmed payments settle to this shop’s verified payout account.',
+                      'Paystack controls the name shown in the M-Pesa PIN prompt, which may say “PAYSTACK Account no. Counterbase.” That is Paystack’s prompt label, not the shop bank account number. The app records this sale for $shopName and routes it to the verified shop payout account shown above.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall
@@ -833,7 +898,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ref.read(cartProvider.notifier).clear();
       // These FutureProviders retain their last result. Invalidate them so
       // the POS grid reflects the local stock decrement immediately.
-      ref.invalidate(productsProvider);
       ref.invalidate(filteredProductsProvider);
       ref.invalidate(favoriteProductsProvider);
       context.go('/receipt/$result?fresh=1');

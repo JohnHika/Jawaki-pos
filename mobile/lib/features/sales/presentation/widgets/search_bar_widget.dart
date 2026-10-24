@@ -98,7 +98,8 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
               ),
             ),
             suffixIcon: _showClear
-                ? IconButton(tooltip: 'Clear search', 
+                ? IconButton(
+                    tooltip: 'Clear search',
                     icon: const Icon(Icons.close_rounded, size: 20),
                     style: IconButton.styleFrom(
                       backgroundColor:
@@ -138,24 +139,15 @@ class SearchSuggestions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(searchQueryProvider);
 
-    if (query.isEmpty) {
+    if (query.trim().length < 2) {
       return const SizedBox.shrink();
     }
 
-    final productsAsync = ref.watch(productsProvider);
+    final productsAsync = ref.watch(productSuggestionsProvider(query));
 
     return productsAsync.when(
       data: (products) {
-        final suggestions = products
-            .where((p) => (p['name'] as String)
-                .toLowerCase()
-                .contains(query.toLowerCase()))
-            .take(5)
-            .toList();
-
-        if (suggestions.isEmpty) {
-          return const SizedBox.shrink();
-        }
+        if (products.isEmpty) return const SizedBox.shrink();
 
         final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -174,7 +166,7 @@ class SearchSuggestions extends ConsumerWidget {
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: suggestions
+            children: products
                 .map((product) => ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(6),
@@ -186,13 +178,13 @@ class SearchSuggestions extends ConsumerWidget {
                             size: 18, color: DesignColors.accent),
                       ),
                       title: Text(
-                        product['name'] as String,
+                        product.name,
                         style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                       dense: true,
                       onTap: () {
                         ref.read(searchQueryProvider.notifier).state =
-                            product['name'] as String;
+                            product.name;
                       },
                     ))
                 .toList(),

@@ -257,7 +257,7 @@ Future<void> syncCatalogCacheFromApi() async {
     debugPrint('[CatalogSync] Fetching categories and products...');
     final responses = await Future.wait<Object>([
       apiClient.getCategories(),
-      apiClient.getProducts(limit: 500, branchId: branchId),
+      apiClient.getAllProducts(branchId: branchId),
     ]);
     final categoriesResponse = responses[0] as List<dynamic>;
     final flatCategories = _flattenCategories(categoriesResponse);
@@ -392,62 +392,9 @@ final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
       .toList();
 });
 
-// Emit cached products first so search suggestions don't wait on the network.
-// A second emission replaces the cache with the latest catalog once it arrives.
-final productsProvider =
-    StreamProvider<List<Map<String, dynamic>>>((ref) async* {
-  final database = getIt<AppDatabase>();
-  final apiClient = getIt<ApiClient>();
-  final connectivity = getIt<ConnectivityService>();
-  final localProducts = await database.getAllProducts();
-  final cached = await _productsToPosMaps(database, localProducts);
-  if (cached.isNotEmpty) yield cached;
-
-  if (!connectivity.isOnline) {
-    if (cached.isEmpty) yield const <Map<String, dynamic>>[];
-    return;
-  }
-
-  try {
-    final storageService = getIt<StorageService>();
-    final branchId = storageService.getBranchId();
-    final products = await apiClient.getProducts(
-      limit: 500,
-      branchId: branchId,
-    );
-    final productMaps = products
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
-    await database.replaceProducts(
-      productMaps
-          .map(_productToCompanion)
-          .whereType<ProductsCompanion>()
-          .toList(),
-    );
-    await database.replaceAllPricingTiers(
-      productMaps.expand(_pricingTiersToCompanions).toList(),
-    );
-    if (branchId != null) {
-      final stockItems = productMaps
-          .map((p) => _stockToCompanion(p, branchId))
-          .whereType<LocalStockCompanion>()
-          .toList();
-      if (stockItems.isNotEmpty) {
-        await database.updateLocalStock(stockItems);
-      }
-    }
-    final refreshedProducts = await database.getAllProducts();
-    final mapped = await _productsToPosMaps(database, refreshedProducts);
-    if (mapped.isNotEmpty) {
-      yield mapped;
-    } else {
-      yield productMaps;
-    }
-  } catch (_) {
-    // Keep the local catalog visible if the refresh failed.
-    if (cached.isEmpty) yield const <Map<String, dynamic>>[];
-  }
+final productSuggestionsProvider =
+    StreamProvider.autoDispose.family<List<Product>, String>((ref, query) {
+  return getIt<AppDatabase>().watchProductSuggestions(query);
 });
 
 // Filtered products provider
@@ -457,11 +404,12 @@ final filteredProductsProvider =
   params,
 ) async {
   final database = getIt<AppDatabase>();
+  final searchQuery = params.searchQuery?.trim();
 
   List<Product> products;
 
-  if (params.searchQuery != null && params.searchQuery!.isNotEmpty) {
-    products = await database.searchProducts(params.searchQuery!);
+  if (searchQuery != null && searchQuery.isNotEmpty) {
+    products = await database.searchProducts(searchQuery);
   } else if (params.categoryId != null) {
     products = await database.getProductsByCategory(params.categoryId!);
   } else {

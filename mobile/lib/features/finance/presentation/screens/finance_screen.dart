@@ -642,7 +642,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               ),
               const SizedBox(height: DesignSpacing.sm),
               Text(
-                'This request is for $shopName. The M-Pesa prompt may show “PAYSTACK Account no. Counterbase”; Paystack controls that label. The debt changes only after Paystack verifies payment.',
+                'This request is for $shopName. The Paystack M-Pesa prompt may show “PAYSTACK Account no. Counterbase.” That is Paystack’s prompt label, not the shop bank account number. The debt changes only after Paystack verifies the payment.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
