@@ -223,61 +223,9 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                           .headlineSmall),
                                   const SizedBox(height: 8),
                                   const Text(
-                                    'Connect your business bank account to accept customer M-Pesa and debt payments. Paystack sends those payments to this account. Cash sales work without payout setup. Your Counterbase plan is billed separately.',
+                                    'Add a business bank account for Paystack to route customer M-Pesa and debt payments after verification. Cash sales remain available without payout setup. Your Counterbase plan is billed separately.',
                                   ),
                                 ],
-                              )),
-                          const SizedBox(height: 14),
-                          _enter(
-                              1,
-                              Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Row(
-                                        children: [
-                                          Icon(Icons.phone_android_rounded,
-                                              color: DesignColors.accent),
-                                          SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              'M-PESA phone, Till and Paybill',
-                                              style: TextStyle(
-                                                  fontWeight: FontWeight.w700),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'Paystack supports these through its Transfers service. Counterbase’s current direct split-settlement route verifies bank subaccounts. Wallet payouts need Paystack balance settlement and separate transfer-fee handling before they can be enabled safely.',
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          for (final destination in const [
-                                            'M-PESA number',
-                                            'M-PESA Till',
-                                            'M-PESA Paybill',
-                                          ])
-                                            Chip(
-                                              avatar: const Icon(
-                                                  Icons.lock_outline_rounded,
-                                                  size: 15),
-                                              label: Text(destination),
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               )),
                           const SizedBox(height: 20),
                           if ((ready || needsVerification) &&
@@ -346,16 +294,15 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                               const Duration(milliseconds: 320),
                                           curve: Curves.easeOutCubic,
                                           child: ready
-                                              ? Padding(
+                                              ? const Padding(
                                                   padding:
-                                                      const EdgeInsets.only(
-                                                          top: 8),
+                                                      EdgeInsets.only(top: 8),
                                                   child: Column(
                                                     crossAxisAlignment:
                                                         CrossAxisAlignment
                                                             .start,
                                                     children: [
-                                                      const Row(
+                                                      Row(
                                                         children: [
                                                           Icon(
                                                               Icons
@@ -371,8 +318,8 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                           ),
                                                         ],
                                                       ),
-                                                      const SizedBox(height: 8),
-                                                      const Text(
+                                                      SizedBox(height: 8),
+                                                      Text(
                                                           'New customer payments will use this account. Payments already started keep their original payout route.'),
                                                     ],
                                                   ),
