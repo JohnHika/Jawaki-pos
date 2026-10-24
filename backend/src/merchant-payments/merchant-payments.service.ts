@@ -94,12 +94,38 @@ export class MerchantPaymentsService {
       accountNumber: dto.accountNumber,
       contactEmail: owner.email,
     };
-    // Reuse an existing Paystack subaccount when a merchant changes banks so
-    // an old settlement route is not left active as an orphan.
-    const subaccount = existing && this.paystack.updateMerchantSubaccount
-      ? await this.paystack.updateMerchantSubaccount(existing.subaccountCode, payoutDetails)
-      : await this.paystack.createMerchantSubaccount(payoutDetails);
-    const subaccountCode = subaccount.subaccount_code || existing?.subaccountCode;
+    // Keep the Paystack route attached to each already-started charge. Updating
+    // an existing subaccount changes its bank destination in place, so create
+    // a new route when the destination changes. Reuse the existing route only
+    // after Paystack confirms the exact same account is still attached to it.
+    let unchangedSubaccount: Awaited<ReturnType<PaystackService['getMerchantSubaccount']>> | null = null;
+    if (existing && typeof this.paystack.getMerchantSubaccount === 'function' &&
+        existing.bankCode === bank.code &&
+        existing.accountLast4 === dto.accountNumber.slice(-4)) {
+      try {
+        const providerAccount = await this.paystack.getMerchantSubaccount(existing.subaccountCode);
+        const normalizeBankName = (value: string) => value
+          .toLowerCase()
+          .replace(/\blimited\b/g, 'ltd')
+          .replace(/[^a-z0-9]/g, '');
+        const providerBank = providerAccount.settlement_bank?.trim();
+        const sameProviderBank = !providerBank ||
+          normalizeBankName(providerBank) === normalizeBankName(bank.name);
+        if (providerAccount.subaccount_code === existing.subaccountCode &&
+            providerAccount.account_number === dto.accountNumber &&
+            sameProviderBank && providerAccount.active !== false &&
+            (!providerAccount.currency || providerAccount.currency === 'KES')) {
+          unchangedSubaccount = providerAccount;
+        }
+      } catch {
+        // If Paystack cannot confirm the current destination, create a fresh
+        // subaccount below. Never mutate a route used by earlier charges.
+      }
+    }
+    const subaccount = unchangedSubaccount ??
+      await this.paystack.createMerchantSubaccount(payoutDetails);
+    const subaccountCode = subaccount.subaccount_code ||
+      (unchangedSubaccount ? existing?.subaccountCode : undefined);
     if (!subaccountCode || subaccount.active === false ||
         (subaccount.currency && subaccount.currency !== 'KES')) {
       throw new ServiceUnavailableException(

@@ -27,58 +27,121 @@ import '../../../../core/widgets/motion_kit_extras.dart';
 import '../../../notifications/presentation/widgets/notification_bell.dart';
 import '../../../news/presentation/providers/news_provider.dart';
 
-final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((
-  ref,
-) async* {
+final _dashboardSummaryProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final db = getIt<AppDatabase>();
-  // Recompute when a local sale changes AND on a timer: a first server fetch
-  // that failed (offline, or a token still refreshing at startup) used to stick
-  // until the next local sale, leaving this device's partial figures on screen.
-  final ticks = StreamController<void>();
-  final salesSub = db.watchTodaysSales().listen((_) => ticks.add(null));
-  final timer = Timer.periodic(
-    const Duration(seconds: 45),
-    (_) => ticks.add(null),
-  );
-  ref.onDispose(() {
-    timer.cancel();
-    salesSub.cancel();
-    ticks.close();
-  });
-  await for (final _ in ticks.stream) {
-    final local = await db.getDashboardSummary();
-    // The local database only knows this device's sales, so a freshly installed
-    // or second phone showed "KES 0" while the shop had real takings. Ask the
-    // server too and show whichever figure is higher per tile: the server covers
-    // every device, the local one covers a sale made offline that hasn't synced.
-    // Offline or on error the local figures are used unchanged.
+  // Publish local figures as soon as they are read. Cloud totals refresh
+  // independently so a slow connection cannot hold the dashboard's first
+  // useful paint or subsequent local sale updates hostage.
+  final updates = StreamController<Map<String, dynamic>>();
+  Map<String, dynamic>? localSnapshot;
+  Map<String, dynamic>? serverSalesSnapshot;
+  var localRevision = 0;
+  var serverRefreshInFlight = false;
+  var disposed = false;
+
+  Future<void> refreshLocal() async {
+    final revision = ++localRevision;
     try {
-      final data = await getIt<ApiClient>().getDashboard();
-      final sales = (data['sales'] as Map<String, dynamic>?) ?? const {};
-      yield mergeDashboardSummary(local, sales);
-    } catch (_) {
-      yield local;
+      final local = await db.getDashboardSummary();
+      if (disposed || revision != localRevision) return;
+      localSnapshot = local;
+      updates.add(serverSalesSnapshot == null
+          ? local
+          : mergeDashboardSummary(local, serverSalesSnapshot!));
+    } catch (error, stackTrace) {
+      if (!disposed) updates.addError(error, stackTrace);
     }
   }
+
+  Future<void> refreshServer() async {
+    if (disposed || serverRefreshInFlight) return;
+    serverRefreshInFlight = true;
+    try {
+      final data = await getIt<ApiClient>().getDashboard();
+      if (disposed) return;
+      serverSalesSnapshot =
+          (data['sales'] as Map<String, dynamic>?) ?? const {};
+      final local = localSnapshot;
+      if (local != null) {
+        updates.add(mergeDashboardSummary(local, serverSalesSnapshot!));
+      }
+    } catch (_) {
+      // Keep the local snapshot visible when the workspace cannot be reached.
+    } finally {
+      serverRefreshInFlight = false;
+    }
+  }
+
+  final salesSub = db.watchTodaysSales().listen((_) {
+    unawaited(refreshLocal());
+    unawaited(refreshServer());
+  }, onError: (Object error, StackTrace stackTrace) {
+    if (!disposed) updates.addError(error, stackTrace);
+  });
+  final timer = Timer.periodic(
+    const Duration(seconds: 45),
+    (_) => unawaited(refreshServer()),
+  );
+  ref.onDispose(() {
+    disposed = true;
+    timer.cancel();
+    salesSub.cancel();
+    updates.close();
+  });
+  // Start both paths independently. Local data is emitted without waiting for
+  // the API, while a successful cloud response replaces it with the merged view.
+  unawaited(refreshLocal());
+  unawaited(refreshServer());
+  return updates.stream;
 });
 
-/// Per-tile maximum of the device's own figures and the server's `sales` block.
+/// Combines all-device cloud totals with sales still waiting to sync from this
+/// device. Legacy callers without unsynced counters retain the previous max
+/// behavior because their local figures may already overlap the cloud totals.
 @visibleForTesting
 Map<String, dynamic> mergeDashboardSummary(
   Map<String, dynamic> local,
   Map<String, dynamic> serverSales,
 ) {
-  num pick(String localKey, String serverKey) {
-    final a = (local[localKey] as num?) ?? 0;
-    final b = (serverSales[serverKey] as num?) ?? 0;
-    return a >= b ? a : b;
+  final hasUnsyncedCounters =
+      local.containsKey('unsyncedTransactionCount') &&
+          local.containsKey('unsyncedRevenue') &&
+          local.containsKey('unsyncedItemsSold');
+
+  num pick(String localKey, String serverKey, num unsynced) {
+    final localValue = (local[localKey] as num?) ?? 0;
+    final serverValue = serverSales[serverKey];
+    if (serverValue is! num) return localValue;
+    if (hasUnsyncedCounters) return serverValue + unsynced;
+    return localValue >= serverValue ? localValue : serverValue;
   }
 
+  final transactionCount = pick(
+    'transactionCount',
+    'totalSales',
+    (local['unsyncedTransactionCount'] as num?) ?? 0,
+  );
+  final totalRevenue = pick(
+    'totalRevenue',
+    'totalRevenue',
+    (local['unsyncedRevenue'] as num?) ?? 0,
+  );
+  final serverAverage = serverSales['averageTicket'];
+  final avgTicket = hasUnsyncedCounters &&
+          serverAverage is num &&
+          transactionCount > 0
+      ? totalRevenue / transactionCount
+      : pick('avgTicket', 'averageTicket', 0);
+
   return {
-    'transactionCount': pick('transactionCount', 'totalSales'),
-    'totalRevenue': pick('totalRevenue', 'totalRevenue'),
-    'avgTicket': pick('avgTicket', 'averageTicket'),
-    'itemsSold': pick('itemsSold', 'itemsSold'),
+    'transactionCount': transactionCount,
+    'totalRevenue': totalRevenue,
+    'avgTicket': avgTicket,
+    'itemsSold': pick(
+      'itemsSold',
+      'itemsSold',
+      (local['unsyncedItemsSold'] as num?) ?? 0,
+    ),
   };
 }
 

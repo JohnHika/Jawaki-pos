@@ -1928,10 +1928,11 @@ class AppDatabase extends _$AppDatabase {
     final endOfDay = startOfDay.add(const Duration(days: 1));
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
-      'COALESCE(AVG(total), 0) as avg_ticket '
+      'COALESCE(AVG(total), 0) as avg_ticket, '
+      'COALESCE(SUM(CASE WHEN is_synced = 0 AND UPPER(payment_method) <> \'MPESA\' THEN 1 ELSE 0 END), 0) as unsynced_count, '
+      'COALESCE(SUM(CASE WHEN is_synced = 0 AND UPPER(payment_method) <> \'MPESA\' THEN total ELSE 0 END), 0) as unsynced_revenue '
       'FROM pending_sales WHERE created_at >= ? AND created_at < ?${scope.clause} '
-      "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
-      "AND UPPER(payment_method) <> 'MPESA'",
+      "AND UPPER(status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(startOfDay),
         Variable.withDateTime(endOfDay),
@@ -1940,12 +1941,12 @@ class AppDatabase extends _$AppDatabase {
     ).getSingle();
     // Items sold today
     final itemsResult = await customSelect(
-      'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
+      'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold, '
+      'COALESCE(SUM(CASE WHEN ps.is_synced = 0 AND UPPER(ps.payment_method) <> \'MPESA\' THEN psi.quantity ELSE 0 END), 0) as unsynced_items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
       'WHERE ps.created_at >= ? AND ps.created_at < ?${itemScope.clause} '
-      "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
-      "AND UPPER(ps.payment_method) <> 'MPESA'",
+      "AND UPPER(ps.status) = 'COMPLETED'",
       variables: [
         Variable.withDateTime(startOfDay),
         Variable.withDateTime(endOfDay),
@@ -1957,6 +1958,10 @@ class AppDatabase extends _$AppDatabase {
       'totalRevenue': result.read<double>('revenue'),
       'avgTicket': result.read<double>('avg_ticket'),
       'itemsSold': (itemsResult.data['items_sold'] as num? ?? 0).toDouble(),
+      'unsyncedTransactionCount': result.read<int>('unsynced_count'),
+      'unsyncedRevenue': result.read<double>('unsynced_revenue'),
+      'unsyncedItemsSold':
+          (itemsResult.data['unsynced_items_sold'] as num? ?? 0).toDouble(),
     };
   }
 

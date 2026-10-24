@@ -224,7 +224,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       items.add(_NavItem(
           icon: Icons.rule_rounded,
           activeIcon: Icons.rule_rounded,
-          label: 'Match M-Pesa',
+          label: 'M-Pesa verification',
           path: '/mpesa-match'));
     }
     if (perms.has('referrals.view')) {

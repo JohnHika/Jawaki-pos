@@ -416,7 +416,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'M-Pesa request sent. Ask the customer to approve it, then check the payment status. Their prompt may show “PAYSTACK Account no. Counterbase”; that is Paystack’s integration label. Once verified, the funds route to $shopName’s payout account shown at checkout.',
+                          'M-Pesa request for $shopName sent. Ask the customer to check the amount and approve it, then verify the result here. The phone prompt may show Paystack’s shared “Counterbase” label; Paystack does not let this integration display a different shop name on each prompt. After Paystack confirms the payment, it is allocated to $shopName’s verified payout route under Paystack’s settlement schedule.',
                         ),
                       ],
                     ),
@@ -596,7 +596,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     ),
                     const SizedBox(height: DesignSpacing.sm),
                     Text(
-                      'What the customer may see: “PAYSTACK Account no. Counterbase.” Paystack controls that integration label; its charge API does not provide a per-shop prompt name, so it cannot show a different shop name on each phone prompt. This is not the payout account number. After Paystack verifies the payment, the charge is assigned to $shopName’s verified subaccount and routed to the payout account shown above.',
+                      'The phone prompt may show Paystack’s shared “Counterbase” label, not this shop’s name or bank account number. Paystack does not offer a per-shop label for these prompts. Confirm the shop and amount above before sending. Once Paystack verifies the payment, proceeds are allocated to $shopName’s payout route and paid out on Paystack’s settlement schedule.',
                       style: Theme.of(sheetContext)
                           .textTheme
                           .bodySmall

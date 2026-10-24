@@ -34,6 +34,8 @@ export interface PaystackBank { name: string; code: string; type?: string; curre
 interface PaystackSubaccount {
   subaccount_code: string;
   account_name?: string;
+  account_number?: string;
+  settlement_bank?: string;
   currency?: string;
   active?: boolean;
   is_verified?: boolean;

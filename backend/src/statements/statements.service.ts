@@ -522,41 +522,62 @@ export class StatementsService {
     });
     const customerIds = [...new Set(claims.map((c) => c.link.customerId).filter(Boolean))] as string[];
     const debtorIds = [...new Set(claims.map((c) => c.link.debtorId).filter(Boolean))] as string[];
-    const [customers, debtors] = await Promise.all([
+    const [customers, debtors, retailBalances, peerBalances] = await Promise.all([
       this.prisma.customer.findMany({ where: { id: { in: customerIds }, tenantId }, select: { id: true, name: true, phone: true } }),
       this.prisma.peerDebtor.findMany({ where: { id: { in: debtorIds }, tenantId }, select: { id: true, name: true, phone: true } }),
+      customerIds.length
+        ? this.prisma.retailReceivable.groupBy({
+            by: ['customerId'],
+            where: { tenantId, customerId: { in: customerIds }, status: { in: ['OPEN', 'PARTIAL'] } },
+            _sum: { outstandingAmount: true },
+          })
+        : Promise.resolve([]),
+      debtorIds.length
+        ? this.prisma.peerReceivable.groupBy({
+            by: ['debtorId'],
+            where: { tenantId, debtorId: { in: debtorIds }, status: { in: ['OPEN', 'PARTIAL'] } },
+            _sum: { outstandingAmount: true },
+          })
+        : Promise.resolve([]),
     ]);
     const customerOf = new Map(customers.map((c) => [c.id, c]));
     const debtorOf = new Map(debtors.map((d) => [d.id, d]));
-
-    return Promise.all(
-      claims.map(async (claim) => {
-        const customer = claim.link.customerId ? customerOf.get(claim.link.customerId) : undefined;
-        const debtor = claim.link.debtorId ? debtorOf.get(claim.link.debtorId) : undefined;
-        const outstanding = await this.collections.outstandingFor(tenantId, {
-          customerId: claim.link.customerId,
-          debtorId: claim.link.debtorId,
-        });
-        return {
-          id: claim.id,
-          kind: claim.kind,
-          status: claim.status,
-          amount: claim.amount != null ? Number(claim.amount) : null,
-          mpesaCode: claim.mpesaCode,
-          promisedFor: claim.promisedFor,
-          payerName: claim.payerName,
-          note: claim.note,
-          createdAt: claim.createdAt,
-          decidedAt: claim.decidedAt,
-          debtorKind: claim.link.kind,
-          debtorName: customer?.name ?? debtor?.name ?? 'Unknown',
-          debtorPhone: customer?.phone ?? debtor?.phone ?? null,
-          customerId: claim.link.customerId,
-          debtorId: claim.link.debtorId,
-          outstanding,
-        };
-      }),
+    const retailOutstanding = new Map(
+      retailBalances.map((row) => [row.customerId, Number(row._sum.outstandingAmount ?? 0)]),
     );
+    const peerOutstanding = new Map(
+      peerBalances.map((row) => [row.debtorId, Number(row._sum.outstandingAmount ?? 0)]),
+    );
+
+    return claims.map((claim) => {
+      const customer = claim.link.customerId
+        ? customerOf.get(claim.link.customerId)
+        : undefined;
+      const debtor = claim.link.debtorId
+        ? debtorOf.get(claim.link.debtorId)
+        : undefined;
+      const rawOutstanding = claim.link.customerId
+        ? retailOutstanding.get(claim.link.customerId) ?? 0
+        : peerOutstanding.get(claim.link.debtorId ?? '') ?? 0;
+      return {
+        id: claim.id,
+        kind: claim.kind,
+        status: claim.status,
+        amount: claim.amount != null ? Number(claim.amount) : null,
+        mpesaCode: claim.mpesaCode,
+        promisedFor: claim.promisedFor,
+        payerName: claim.payerName,
+        note: claim.note,
+        createdAt: claim.createdAt,
+        decidedAt: claim.decidedAt,
+        debtorKind: claim.link.kind,
+        debtorName: customer?.name ?? debtor?.name ?? 'Unknown',
+        debtorPhone: customer?.phone ?? debtor?.phone ?? null,
+        customerId: claim.link.customerId,
+        debtorId: claim.link.debtorId,
+        outstanding: Math.round(rawOutstanding * 100) / 100,
+      };
+    });
   }
 
   async decideClaim(userId: string, tenantId: string, claimId: string, dto: DecideClaimDto) {

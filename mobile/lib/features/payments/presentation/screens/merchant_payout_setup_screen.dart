@@ -313,7 +313,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                       ),
                                                       SizedBox(height: 8),
                                                       Text(
-                                                          'New customer payments will use this account. Payments already started keep their original payout route.'),
+                                                          'New customer payments will use this account after Paystack verifies it. Payments already started keep their original payout route.'),
                                                     ],
                                                   ),
                                                 )

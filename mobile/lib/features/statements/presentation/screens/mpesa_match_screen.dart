@@ -12,7 +12,7 @@ class MpesaMatchScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Match M-Pesa',
+        title: 'M-Pesa verification',
         showBackButton: GoRouter.of(context).canPop(),
       ),
       body: SafeArea(
