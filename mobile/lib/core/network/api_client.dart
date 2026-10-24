@@ -768,6 +768,21 @@ class ApiClient {
     return response.data['items'];
   }
 
+  Future<Set<String>> getSyncedOfflineSaleIds({
+    required String branchId,
+    required List<String> offlineIds,
+  }) async {
+    if (offlineIds.isEmpty) return const {};
+    final response = await _dio.post('/sales/offline-reconciliation', data: {
+      'branchId': branchId,
+      'offlineIds': offlineIds,
+    });
+    final result = response.data as Map<String, dynamic>;
+    return ((result['offlineIds'] as List<dynamic>?) ?? const [])
+        .map((id) => id.toString())
+        .toSet();
+  }
+
   Future<Map<String, dynamic>> getSale(String id) async {
     final response = await _dio.get('/sales/$id');
     return response.data;

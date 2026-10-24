@@ -26,10 +26,14 @@ class PaymentsHubScreen extends ConsumerStatefulWidget {
 class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   late final AppDatabase _db;
   List<PendingSale> _todaysSales = [];
-  // The shop-wide figures from the server (every device). The local table only
-  // knows this device's sales, so the larger of the two is shown.
+  // The server figures cover every device in this branch. Only local offline
+  // sales that are not yet present on the server are added to those totals.
   double _serverTotal = 0;
   int _serverCount = 0;
+  bool _cloudTotalsAvailable = false;
+  bool _canReconcileLocalSales = false;
+  Set<String> _serverOfflineSaleIds = const {};
+  int _serverRefreshGeneration = 0;
   bool _isLoading = true;
   String? _error;
   List<Map<String, dynamic>> _merchantCharges = const [];
@@ -54,11 +58,23 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   Future<void> _loadData() async {
     unawaited(_refreshMerchantCharges());
     await _salesSub?.cancel();
+    _serverRefreshGeneration++;
     setState(() {
       _isLoading = true;
       _error = null;
+      _cloudTotalsAvailable = false;
+      _canReconcileLocalSales = false;
+      _serverOfflineSaleIds = const {};
+      _serverTotal = 0;
+      _serverCount = 0;
     });
-    _salesSub = _db.watchTodaysSales().listen(
+    final branchId = getIt<AuthService>().branchId;
+    final salesStream = branchId == null
+        ? _db.watchTodaysSales().map((sales) => sales
+            .where((sale) => sale.status.toUpperCase() == 'COMPLETED')
+            .toList())
+        : _db.watchCompletedSalesForBranchToday(branchId);
+    _salesSub = salesStream.listen(
       (sales) {
         if (!mounted) return;
         setState(() {
@@ -111,33 +127,89 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   }
 
   Future<void> _refreshServerTotals() async {
+    final generation = ++_serverRefreshGeneration;
     final branchId = getIt<AuthService>().branchId;
-    if (branchId == null) return;
+    if (branchId == null) {
+      if (mounted) {
+        setState(() {
+          _cloudTotalsAvailable = false;
+          _canReconcileLocalSales = false;
+        });
+      }
+      return;
+    }
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final api = getIt<ApiClient>();
+    Map<String, dynamic> summary;
     try {
-      final summary = await getIt<ApiClient>()
+      summary = await api
           .getSalesDailySummary(branchId, today)
           .timeout(const Duration(seconds: 6));
-      if (!mounted) return;
+    } catch (_) {
+      if (!mounted || generation != _serverRefreshGeneration) return;
       setState(() {
-        _serverTotal = (summary['totalSales'] as num?)?.toDouble() ?? 0;
-        _serverCount = (summary['totalTransactions'] as num?)?.toInt() ?? 0;
+        _cloudTotalsAvailable = false;
+        _canReconcileLocalSales = false;
+      });
+      return;
+    }
+
+    if (!mounted || generation != _serverRefreshGeneration) return;
+    setState(() {
+      _serverTotal = (summary['totalSales'] as num?)?.toDouble() ?? 0;
+      _serverCount = (summary['totalTransactions'] as num?)?.toInt() ?? 0;
+      _cloudTotalsAvailable = true;
+      _canReconcileLocalSales = false;
+    });
+
+    try {
+      final offlineIds = _todaysSales
+          .where((sale) => !sale.isSynced)
+          .map((sale) => sale.id)
+          .toList();
+      final presentOnServer = <String>{};
+      for (var offset = 0; offset < offlineIds.length; offset += 500) {
+        final batch = offlineIds.skip(offset).take(500).toList();
+        presentOnServer.addAll(await api.getSyncedOfflineSaleIds(
+          branchId: branchId,
+          offlineIds: batch,
+        ));
+      }
+      if (!mounted || generation != _serverRefreshGeneration) return;
+      setState(() {
+        _serverOfflineSaleIds = presentOnServer;
+        _canReconcileLocalSales = true;
       });
     } catch (_) {
-      // Offline or signed out: keep this device's own figures.
+      // Keep authoritative shop-wide figures, and visibly indicate when local
+      // offline sales could not be reconciled instead of double-counting them.
+      if (mounted && generation == _serverRefreshGeneration) {
+        setState(() => _canReconcileLocalSales = false);
+      }
     }
   }
 
-  double get _todaysTotal {
-    final local = _todaysSales.fold<double>(0.0, (sum, s) => sum + s.total);
-    return local >= _serverTotal ? local : _serverTotal;
+  List<PendingSale> get _localSalesMissingFromServer {
+    if (!_canReconcileLocalSales) return const [];
+    return _todaysSales
+        .where((sale) =>
+            !sale.isSynced && !_serverOfflineSaleIds.contains(sale.id))
+        .toList();
   }
 
-  int get _todaysTransactionCount => _todaysSales.length >= _serverCount
-      ? _todaysSales.length
-      : _serverCount;
+  double get _todaysTotal {
+    if (!_cloudTotalsAvailable) {
+      return _todaysSales.fold<double>(0.0, (sum, sale) => sum + sale.total);
+    }
+    return _serverTotal + _localSalesMissingFromServer.fold<double>(
+        0, (sum, sale) => sum + sale.total);
+  }
+
+  int get _todaysTransactionCount => _cloudTotalsAvailable
+      ? _serverCount + _localSalesMissingFromServer.length
+      : _todaysSales.length;
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +288,21 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                                 ),
                               ],
                             ),
+                            if (_cloudTotalsAvailable &&
+                                !_canReconcileLocalSales &&
+                                _todaysSales.any((sale) => !sale.isSynced)) ...[
+                              const SizedBox(height: DesignSpacing.sm),
+                              Text(
+                                'Offline sales are waiting to sync.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: DesignColors.textOnBrand
+                                          .withValues(alpha: 0.8),
+                                    ),
+                              ),
+                            ],
                             const SizedBox(height: DesignSpacing.xl),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,

@@ -18,6 +18,7 @@ import { FinanceService } from '../finance/finance.service';
 import {
   CreateSaleDto,
   CreateRefundDto,
+  ReconcileOfflineSalesDto,
   SalesQueryDto,
 } from './dto/sales.dto';
 import { PaymentMethod, PaymentStatus, Prisma, SaleStatus, StockMovementType } from '@prisma/client';
@@ -731,6 +732,25 @@ export class SalesService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async reconcileOfflineSales(tenantId: string, dto: ReconcileOfflineSalesDto) {
+    if (dto.offlineIds.length === 0) return { offlineIds: [] };
+
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        branchId: dto.branchId,
+        branch: { tenantId },
+        offlineId: { in: dto.offlineIds },
+      },
+      select: { offlineId: true },
+    });
+
+    return {
+      offlineIds: sales
+        .map((sale) => sale.offlineId)
+        .filter((offlineId): offlineId is string => offlineId !== null),
     };
   }
 

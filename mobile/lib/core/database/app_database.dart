@@ -1471,6 +1471,28 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  /// Stream of completed sales for one branch today. Payment summaries use
+  /// this view so pending prompts, failed attempts, and sales from another
+  /// branch cannot inflate the local total.
+  Stream<List<PendingSale>> watchCompletedSalesForBranchToday(
+    String branchId, {
+    DateTime? now,
+  }) {
+    final current = now ?? DateTime.now();
+    final startOfDay = DateTime(current.year, current.month, current.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    return (select(pendingSales)
+          ..where(
+            (sale) =>
+                sale.branchId.equals(branchId) &
+                sale.status.equals('COMPLETED') &
+                sale.createdAt.isBiggerOrEqualValue(startOfDay) &
+                sale.createdAt.isSmallerThanValue(endOfDay),
+          )
+          ..orderBy([(sale) => OrderingTerm.desc(sale.createdAt)]))
+        .watch();
+  }
+
   /// Get sales items for a specific sale.
   Future<List<PendingSaleItem>> getSaleItems(String saleId) {
     return (select(

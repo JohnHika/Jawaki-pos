@@ -255,6 +255,20 @@ export class SalesQueryDto {
   limit?: number;
 }
 
+/** Device sale IDs that have already reached the server. */
+export class ReconcileOfflineSalesDto {
+  @ApiProperty({ description: 'Branch that owns the offline sales' })
+  @IsUUID('4', { message: 'Branch ID must be a valid UUID' })
+  branchId: string;
+
+  @ApiProperty({ type: [String], maxItems: 500 })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  offlineIds: string[];
+}
+
 // Response DTOs (no validation needed for responses, keeping as-is)
 export class SaleItemResponseDto {
   @ApiProperty()

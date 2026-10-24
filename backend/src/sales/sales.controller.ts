@@ -25,6 +25,7 @@ import {
   SaleResponseDto,
   PaginatedSalesDto,
   DailySummaryDto,
+  ReconcileOfflineSalesDto,
 } from './dto/sales.dto';
 import {
   BulkCreateSalesDto,
@@ -55,6 +56,15 @@ export class SalesController {
   @ApiResponse({ status: 200, description: 'Paginated sales', type: PaginatedSalesDto })
   async getSales(@Request() req: any, @Query() query: SalesQueryDto) {
     return this.salesService.getSales(req.user.tenantId, query);
+  }
+
+  @Post('offline-reconciliation')
+  @ApiOperation({ summary: 'Check which device sales are already on the server' })
+  async reconcileOfflineSales(
+    @Request() req: any,
+    @Body() dto: ReconcileOfflineSalesDto,
+  ) {
+    return this.salesService.reconcileOfflineSales(req.user.tenantId, dto);
   }
 
   @Get('summary/:branchId/:date')
