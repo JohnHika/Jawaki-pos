@@ -1,5 +1,12 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.99+2142 (October 24, 2026)
+
+### Safer checkout price adjustments
+- Show price adjustments as a line total, reopen at the current adjusted total, and display the line quantity.
+- Reject negative, non-finite, and over-value line discounts before they can make checkout totals invalid.
+- Preserve the discount rate when quantities or sale tiers change, cap restored held-cart discounts, and bound cart-wide discounts to the sale total.
+
 ## v1.0.98+2141 (October 24, 2026)
 
 ### Recover customer statements and clarify checkout errors

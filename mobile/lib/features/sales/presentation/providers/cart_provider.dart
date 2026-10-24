@@ -132,10 +132,12 @@ class CartState {
 
   /// The cashier's own discount, which the shop's discount limit applies to.
   double get manualDiscount {
-    if (discountPercent > 0) {
-      return subtotal * (discountPercent / 100);
-    }
-    return discountAmount;
+    final gross = subtotal;
+    if (!gross.isFinite || gross <= 0) return 0;
+    final requested =
+        discountPercent > 0 ? gross * (discountPercent / 100) : discountAmount;
+    if (!requested.isFinite || requested <= 0) return 0;
+    return requested.clamp(0, gross).toDouble();
   }
 
   List<CouponLine> get couponLines => [
@@ -272,6 +274,10 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
                 discount < 0) {
               continue;
             }
+            final gross = price * quantity;
+            if (!gross.isFinite) continue;
+            final grossCents = (gross * 100).round();
+            final safeDiscountCents = (discount * 100).round();
             items.add(CartItem(
               id: id,
               productId: productId,
@@ -279,7 +285,10 @@ class ParkedSalesNotifier extends StateNotifier<List<ParkedSale>> {
               sku: item['sku']?.toString() ?? '',
               quantity: quantity,
               unitPrice: price,
-              discount: discount,
+              // Older held carts can contain an out-of-range line discount.
+              // Keep the sale resumable while ensuring its line total cannot
+              // become negative.
+              discount: safeDiscountCents.clamp(0, grossCents) / 100,
               notes: item['notes']?.toString(),
               saleUnit: item['saleUnit']?.toString(),
               saleQuantity: _amount(item['saleQuantity']),
@@ -501,6 +510,33 @@ class CartNotifier extends StateNotifier<CartState> {
     double? saleQuantity,
     double? unitConversionFactor,
   }) async {
+    if (quantity <= 0 || !unitPrice.isFinite || unitPrice < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Enter a valid price and quantity before adding this item.',
+      );
+    }
+    final newLineTotal = unitPrice * quantity;
+    if (!newLineTotal.isFinite) {
+      return const CartMutationResult(
+        success: false,
+        message: 'The item price is too large to add to this sale.',
+      );
+    }
+    if (!discount.isFinite || discount < 0 || discount > newLineTotal) {
+      return const CartMutationResult(
+        success: false,
+        message: 'The item discount must be between KES 0 and its line total.',
+      );
+    }
+    final newLineCents = (newLineTotal * 100).round();
+    final discountCents = (discount * 100).round();
+    if (discountCents > newLineCents) {
+      return const CartMutationResult(
+        success: false,
+        message: 'The item discount must be between KES 0 and its line total.',
+      );
+    }
     final conversion = unitConversionFactor ?? 1;
     final existingIndex = state.items.indexWhere((item) =>
         item.productId == productId &&
@@ -553,8 +589,11 @@ class CartNotifier extends StateNotifier<CartState> {
     if (freshIndex >= 0) {
       final updatedItems = [...state.items];
       final existing = updatedItems[freshIndex];
+      final nextQuantity = existing.quantity + quantity;
       updatedItems[freshIndex] = existing.copyWith(
-        quantity: existing.quantity + quantity,
+        quantity: nextQuantity,
+        discount: _scaledDiscount(existing,
+            quantity: nextQuantity, unitPrice: existing.unitPrice),
         // Preserve a manually adjusted/tier price on the existing line.
         // This action adds quantity; it is not a repricing operation.
         saleQuantity: (existing.saleQuantity ??
@@ -594,6 +633,24 @@ class CartNotifier extends StateNotifier<CartState> {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
     }
+    if (unitPrice != null && (!unitPrice.isFinite || unitPrice < 0)) {
+      return const CartMutationResult(
+        success: false,
+        message: 'Enter a valid item price.',
+      );
+    }
+    final currentItemIndex =
+        state.items.indexWhere((item) => item.productId == productId);
+    final currentItem =
+        currentItemIndex < 0 ? null : state.items[currentItemIndex];
+    final resultingUnitPrice = unitPrice ?? currentItem?.unitPrice;
+    if (resultingUnitPrice != null &&
+        !(resultingUnitPrice * quantity).isFinite) {
+      return const CartMutationResult(
+        success: false,
+        message: 'The item price is too large for this quantity.',
+      );
+    }
 
     final stockCheck = await _validateStockAvailability(productId, quantity);
 
@@ -608,9 +665,12 @@ class CartNotifier extends StateNotifier<CartState> {
     final updatedItems = state.items.map((item) {
       if (item.productId == productId) {
         final conversion = item.unitConversionFactor;
+        final nextUnitPrice = unitPrice ?? item.unitPrice;
         return item.copyWith(
           quantity: quantity,
-          unitPrice: unitPrice,
+          unitPrice: nextUnitPrice,
+          discount: _scaledDiscount(item,
+              quantity: quantity, unitPrice: nextUnitPrice),
           notes: notes,
           saleUnit: saleUnit,
           saleQuantity: saleQuantity ??
@@ -694,11 +754,19 @@ class CartNotifier extends StateNotifier<CartState> {
       removeItem(productId);
       return const CartMutationResult.success('Removed item');
     }
+    if (!(latestItem.unitPrice * newQuantity).isFinite) {
+      return const CartMutationResult(
+        success: false,
+        message: 'The item price is too large for this quantity.',
+      );
+    }
 
     final updatedItems = [...state.items];
     final item = updatedItems[latest];
     updatedItems[latest] = item.copyWith(
       quantity: newQuantity,
+      discount: _scaledDiscount(item,
+          quantity: newQuantity, unitPrice: item.unitPrice),
       saleQuantity: item.saleUnit != null
           ? newSaleQuantity.toDouble()
           : item.saleQuantity,
@@ -717,18 +785,77 @@ class CartNotifier extends StateNotifier<CartState> {
     return sameUnit && sameConversion;
   }
 
-  void updateItemDiscount(String productId, double discount, {String? reason}) {
-    final updatedItems = state.items.map((item) {
-      if (item.productId == productId) {
-        return item.copyWith(
-          discount: discount,
-          notes: reason?.isNotEmpty == true ? reason : item.notes,
-        );
-      }
-      return item;
-    }).toList();
+  /// Preserve the line's effective discount rate when quantity or sale tier
+  /// changes. Keeping the old absolute discount could make it exceed a new,
+  /// smaller line total; dropping it would silently remove a cashier's price
+  /// adjustment.
+  double _scaledDiscount(CartItem item,
+      {required int quantity, required double unitPrice}) {
+    final oldGross = item.unitPrice * item.quantity;
+    final newGross = unitPrice * quantity;
+    if (!oldGross.isFinite ||
+        !newGross.isFinite ||
+        oldGross <= 0 ||
+        newGross <= 0) {
+      return 0;
+    }
+    final oldGrossSubunits = oldGross * 100;
+    final newGrossSubunits = newGross * 100;
+    if (!oldGrossSubunits.isFinite || !newGrossSubunits.isFinite) return 0;
+    final oldGrossCents = oldGrossSubunits.round();
+    final newGrossCents = newGrossSubunits.round();
+    if (oldGrossCents <= 0 || newGrossCents <= 0) return 0;
+    final rawDiscountCents = item.discount.isFinite ? item.discount * 100 : 0;
+    final oldDiscountCents =
+        rawDiscountCents.isFinite ? rawDiscountCents.round() : oldGrossCents;
+    final boundedOldDiscount = oldDiscountCents.clamp(0, oldGrossCents);
+    final nextDiscountCents =
+        (boundedOldDiscount * newGrossCents / oldGrossCents).round();
+    return nextDiscountCents.clamp(0, newGrossCents) / 100;
+  }
 
+  CartMutationResult updateItemDiscount(String productId, double discount,
+      {String? reason}) {
+    final index = state.items.indexWhere((item) => item.productId == productId);
+    if (index < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'This item is no longer in the cart. Reopen it and try again.',
+      );
+    }
+    if (!discount.isFinite || discount < 0) {
+      return const CartMutationResult(
+        success: false,
+        message: 'The discount must be a valid amount of KES 0 or more.',
+      );
+    }
+
+    final item = state.items[index];
+    final lineTotal = item.unitPrice * item.quantity;
+    if (!lineTotal.isFinite || lineTotal < 0 || discount > lineTotal) {
+      return const CartMutationResult(
+        success: false,
+        message:
+            'The adjusted price cannot be higher than the original line total.',
+      );
+    }
+    final lineTotalCents = (lineTotal * 100).round();
+    final discountCents = (discount * 100).round();
+    if (discountCents > lineTotalCents) {
+      return const CartMutationResult(
+        success: false,
+        message:
+            'The adjusted price cannot be higher than the original line total.',
+      );
+    }
+
+    final updatedItems = [...state.items];
+    updatedItems[index] = item.copyWith(
+      discount: discountCents / 100,
+      notes: reason?.isNotEmpty == true ? reason : item.notes,
+    );
     state = state.copyWith(items: updatedItems);
+    return const CartMutationResult.success('Price updated');
   }
 
   void removeItem(String productId) {

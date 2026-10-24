@@ -13,6 +13,8 @@ import '../../../../core/utils/format.dart';
 class PriceAdjustmentWidget extends ConsumerStatefulWidget {
   final String productId;
   final double originalPrice;
+  final double currentPrice;
+  final String quantityLabel;
   final VoidCallback? onSave;
   final VoidCallback? onCancel;
 
@@ -20,6 +22,8 @@ class PriceAdjustmentWidget extends ConsumerStatefulWidget {
     super.key,
     required this.productId,
     required this.originalPrice,
+    required this.currentPrice,
+    required this.quantityLabel,
     this.onSave,
     this.onCancel,
   });
@@ -38,7 +42,7 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
   void initState() {
     super.initState();
     _priceController = TextEditingController(
-      text: widget.originalPrice.toStringAsFixed(0),
+      text: widget.currentPrice.toStringAsFixed(2),
     );
     _reasonController = TextEditingController();
   }
@@ -53,13 +57,27 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
   @override
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
-    final cartItem = cartState.items.firstWhere(
-      (item) => item.productId == widget.productId,
-      orElse: () => throw Exception('Item not found'),
-    );
+    final cartIndex = cartState.items
+        .indexWhere((item) => item.productId == widget.productId);
+    if (cartIndex < 0) {
+      return AlertDialog(
+        title: const Text('Item removed'),
+        content: const Text(
+          'This item is no longer in the cart. Close this window and try again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: widget.onCancel ?? () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    }
+    final cartItem = cartState.items[cartIndex];
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignSpacing.radiusLg)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: SingleChildScrollView(
@@ -74,7 +92,8 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                     'Price Adjustment',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
-                  IconButton(tooltip: 'Cancel price change', 
+                  IconButton(
+                    tooltip: 'Cancel price change',
                     icon: const Icon(Icons.close),
                     onPressed: widget.onCancel ?? () => Navigator.pop(context),
                   ),
@@ -89,13 +108,22 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                   color: DesignColors.textTertiary,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Line quantity: ${widget.quantityLabel}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: DesignColors.textSecondary,
+                ),
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.attach_money, size: 16, color: DesignColors.textTertiary),
+                  const Icon(Icons.attach_money,
+                      size: 16, color: DesignColors.textTertiary),
                   const SizedBox(width: 8),
                   Text(
-                    'Original: ${formatMoney(widget.originalPrice)}',
+                    'Original line total: ${formatMoney(widget.originalPrice)}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: DesignColors.textSecondary,
@@ -107,10 +135,12 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
               const SizedBox(height: 16),
               TextField(
                 controller: _priceController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: 'New Price (KES)',
+                  labelText: 'New line total (KES)',
                   prefixIcon: const Icon(Icons.currency_exchange),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
@@ -146,7 +176,8 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
                       ),
                       child: const Text('Cancel'),
@@ -158,27 +189,47 @@ class _PriceAdjustmentWidgetState extends ConsumerState<PriceAdjustmentWidget> {
                     child: ElevatedButton(
                       onPressed: () {
                         final newPrice = double.tryParse(_priceController.text);
-                        if (newPrice != null && newPrice >= 0) {
-                          ref
-                              .read(cartProvider.notifier)
-                              .updateItemDiscount(
-                                widget.productId,
-                                widget.originalPrice - newPrice,
-                                reason: _reasonController.text.trim(),
-                              );
-
-                          widget.onSave?.call();
-                          Navigator.pop(context);
-                        } else {
-                          setState(
-                            () => _errorMessage = 'Please enter a valid price',
-                          );
+                        if (newPrice == null ||
+                            !newPrice.isFinite ||
+                            newPrice < 0) {
+                          setState(() => _errorMessage =
+                              'Enter a valid line total of KES 0 or more.');
+                          return;
                         }
+                        if (newPrice > widget.originalPrice) {
+                          setState(() => _errorMessage =
+                              'The adjusted total cannot exceed ${formatMoney(widget.originalPrice)}.');
+                          return;
+                        }
+
+                        final originalCents =
+                            (widget.originalPrice * 100).round();
+                        final newPriceCents = (newPrice * 100).round();
+                        if (newPriceCents > originalCents) {
+                          setState(() => _errorMessage =
+                              'The adjusted total cannot exceed ${formatMoney(widget.originalPrice)}.');
+                          return;
+                        }
+
+                        final result =
+                            ref.read(cartProvider.notifier).updateItemDiscount(
+                                  widget.productId,
+                                  (originalCents - newPriceCents) / 100,
+                                  reason: _reasonController.text.trim(),
+                                );
+                        if (!result.success) {
+                          setState(() => _errorMessage = result.message);
+                          return;
+                        }
+
+                        widget.onSave?.call();
+                        Navigator.pop(context);
                       },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
                         ),
                         backgroundColor: Theme.of(context).colorScheme.primary,
                       ),

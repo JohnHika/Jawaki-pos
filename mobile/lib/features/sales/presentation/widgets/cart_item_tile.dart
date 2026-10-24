@@ -155,9 +155,17 @@ class CartItemTile extends ConsumerWidget {
       builder: (dialogContext) => PriceAdjustmentWidget(
         productId: item.productId,
         originalPrice: item.unitPrice * item.quantity,
+        currentPrice: item.total,
+        quantityLabel: item.saleUnit != null && item.saleQuantity != null
+            ? '${_quantityText(item.saleQuantity!)} ${item.saleUnit}'
+            : '${item.quantity} ${item.quantity == 1 ? 'unit' : 'units'}',
       ),
     );
   }
+
+  String _quantityText(double quantity) => quantity == quantity.roundToDouble()
+      ? quantity.toStringAsFixed(0)
+      : quantity.toString();
 
   Future<void> _confirmRemove(
       BuildContext context, WidgetRef ref, CartItem item) async {
