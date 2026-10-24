@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -409,7 +410,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final isDark = Theme.of(ctx).brightness == Brightness.dark;
-          final counted = double.tryParse(countController.text);
+          final counted = _parseCashCount(countController.text);
           final discrepancy = (counted != null && expectedCash != null)
               ? counted - expectedCash
               : null;
@@ -421,91 +422,103 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
                 DesignSpacing.xl + MediaQuery.of(ctx).viewInsets.bottom),
             child: SafeArea(
               top: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Close end of day',
-                      style: Theme.of(ctx)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: DesignSpacing.xs),
-                  Text(
-                    expectedCash != null
-                        ? 'System expects ${_currencyFmt.format(expectedCash)} in the till. Count it to finalize the day.'
-                        : 'Count the cash in the till to finalize the day.',
-                    style: TextStyle(
-                        color: isDark
-                            ? DesignColors.darkTextSecondary
-                            : DesignColors.textSecondary),
-                  ),
-                  const SizedBox(height: DesignSpacing.lg),
-                  TextField(
-                    controller: countController,
-                    autofocus: true,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Counted cash in till (KES)',
-                      prefixIcon: Icon(Icons.payments_outlined),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Close end of day',
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: DesignSpacing.xs),
+                    Text(
+                      expectedCash != null
+                          ? 'System expects ${_currencyFmt.format(expectedCash)} in the till. Count it to finalize the day.'
+                          : 'Count the cash in the till to finalize the day.',
+                      style: TextStyle(
+                          color: isDark
+                              ? DesignColors.darkTextSecondary
+                              : DesignColors.textSecondary),
                     ),
-                    onChanged: (_) => setSheetState(() {}),
-                  ),
-                  const SizedBox(height: DesignSpacing.md),
-                  TextField(
-                    controller: notesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                      prefixIcon: Icon(Icons.notes_rounded),
+                    const SizedBox(height: DesignSpacing.lg),
+                    TextField(
+                      controller: countController,
+                      autofocus: true,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        TextInputFormatter.withFunction((oldValue, newValue) {
+                          final text = newValue.text;
+                          return text.isEmpty ||
+                                  RegExp(r'^(?:\d{0,12}(?:\.\d{0,2})?|\.\d{0,2})$')
+                                      .hasMatch(text)
+                              ? newValue
+                              : oldValue;
+                        }),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'Counted cash in till (KES)',
+                        prefixIcon: Icon(Icons.payments_outlined),
+                      ),
+                      onChanged: (_) => setSheetState(() {}),
                     ),
-                    maxLines: 2,
-                  ),
-                  if (discrepancy != null) ...[
                     const SizedBox(height: DesignSpacing.md),
-                    Container(
-                      padding: const EdgeInsets.all(DesignSpacing.md),
-                      decoration: BoxDecoration(
-                        color: (discrepancy.abs() < 0.01
+                    TextField(
+                      controller: notesController,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (optional)',
+                        prefixIcon: Icon(Icons.notes_rounded),
+                      ),
+                      maxLines: 2,
+                    ),
+                    if (discrepancy != null) ...[
+                      const SizedBox(height: DesignSpacing.md),
+                      Container(
+                        padding: const EdgeInsets.all(DesignSpacing.md),
+                        decoration: BoxDecoration(
+                          color: (discrepancy.abs() < 0.01
+                                  ? DesignColors.success
+                                  : discrepancy < 0
+                                      ? DesignColors.error
+                                      : DesignColors.warning)
+                              .withValues(alpha: 0.1),
+                          borderRadius:
+                              BorderRadius.circular(DesignSpacing.radiusMd),
+                        ),
+                        child: Text(
+                          discrepancy.abs() < 0.01
+                              ? 'Matches expected cash'
+                              : discrepancy < 0
+                                  ? 'Shortfall: ${_currencyFmt.format(discrepancy.abs())}'
+                                  : 'Overage: ${_currencyFmt.format(discrepancy)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: discrepancy.abs() < 0.01
                                 ? DesignColors.success
                                 : discrepancy < 0
                                     ? DesignColors.error
-                                    : DesignColors.warning)
-                            .withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(DesignSpacing.radiusMd),
-                      ),
-                      child: Text(
-                        discrepancy.abs() < 0.01
-                            ? 'Matches expected cash'
-                            : discrepancy < 0
-                                ? 'Shortfall: ${_currencyFmt.format(discrepancy.abs())}'
-                                : 'Overage: ${_currencyFmt.format(discrepancy)}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: discrepancy.abs() < 0.01
-                              ? DesignColors.success
-                              : discrepancy < 0
-                                  ? DesignColors.error
-                                  : DesignColors.warning,
+                                    : DesignColors.warning,
+                          ),
                         ),
+                      ),
+                    ],
+                    const SizedBox(height: DesignSpacing.lg),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(64, DesignSpacing.huge),
+                        ),
+                        onPressed: counted == null
+                            ? null
+                            : () => Navigator.pop(sheetContext, true),
+                        child: const Text('Confirm & close day'),
                       ),
                     ),
                   ],
-                  const SizedBox(height: DesignSpacing.lg),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(64, DesignSpacing.huge),
-                      ),
-                      onPressed: counted == null || counted < 0
-                          ? null
-                          : () => Navigator.pop(sheetContext, true),
-                      child: const Text('Confirm & close day'),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           );
@@ -514,7 +527,7 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
     );
 
     if (confirmed != true || !mounted) return;
-    final counted = double.tryParse(countController.text);
+    final counted = _parseCashCount(countController.text);
     if (counted == null) return;
 
     try {
@@ -541,6 +554,12 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       }
     }
   }
+}
+
+double? _parseCashCount(String value) {
+  final amount = double.tryParse(value.trim());
+  if (amount == null || !amount.isFinite || amount < 0) return null;
+  return amount;
 }
 
 /// Loading placeholder for the EOD body: three blocks in the same card
