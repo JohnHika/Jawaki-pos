@@ -2304,17 +2304,6 @@ class ApiClient {
     return response.data ?? const [];
   }
 
-  Future<Map<String, dynamic>> parseMpesaMessages(String text) async =>
-      _payload(await _dio.post('/mpesa/parse', data: {'text': text}));
-
-  Future<Map<String, dynamic>> applyMpesaPayments(
-          List<Map<String, dynamic>> items) async =>
-      _payload(await _dio.post('/mpesa/apply', data: {'items': items}));
-
-  Future<Map<String, dynamic>> ignoreMpesaPayments(
-          List<Map<String, dynamic>> items) async =>
-      _payload(await _dio.post('/mpesa/ignore', data: {'items': items}));
-
   Future<List<Map<String, dynamic>>> getMpesaHistory() async =>
       _payloadList(await _dio.get('/mpesa/history'));
 

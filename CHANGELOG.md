@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.100+2143 (October 24, 2026)
+
+### Require verified M-Pesa debt payments
+- Retire pasted-message M-Pesa matching that could reduce a debt without provider verification; legacy API calls now return an in-app recovery message.
+- Keep the Paystack request flow as the electronic M-Pesa path for sales and debt collection.
+
 ## v1.0.99+2142 (October 24, 2026)
 
 ### Safer checkout price adjustments

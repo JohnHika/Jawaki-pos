@@ -1,11 +1,10 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, GoneException, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { MpesaService } from './mpesa.service';
-import { ApplyMpesaDto, IgnoreMpesaDto, ParseMpesaDto } from './dto/mpesa.dto';
 
 @ApiTags('mpesa')
 @Controller({ path: 'mpesa', version: '1' })
@@ -16,31 +15,23 @@ export class MpesaController {
 
   @Post('parse')
   @RequirePermissions('mpesa.reconcile')
-  @ApiOperation({ summary: 'Read pasted M-Pesa messages and suggest which debt each payment settles' })
-  parse(@CurrentUser('tenantId') tenantId: string, @Body() dto: ParseMpesaDto) {
-    return this.mpesa.preview(tenantId, dto.text);
+  @ApiOperation({ summary: 'Retired: M-Pesa text messages are not proof of payment' })
+  parse(): never {
+    throw this.manualMatchingUnavailable();
   }
 
   @Post('apply')
-  @RequirePermissions('mpesa.reconcile', 'finance.manage_receivables')
-  @ApiOperation({ summary: 'Record the payments you confirmed against the matching debts' })
-  apply(
-    @CurrentUser('id') userId: string,
-    @CurrentUser('tenantId') tenantId: string,
-    @Body() dto: ApplyMpesaDto,
-  ) {
-    return this.mpesa.apply(userId, tenantId, dto);
+  @RequirePermissions('mpesa.reconcile')
+  @ApiOperation({ summary: 'Retired: payment balances are changed only after provider verification' })
+  apply(): never {
+    throw this.manualMatchingUnavailable();
   }
 
   @Post('ignore')
   @RequirePermissions('mpesa.reconcile')
-  @ApiOperation({ summary: 'Mark payments that are not debt payments so they stop showing up' })
-  ignore(
-    @CurrentUser('id') userId: string,
-    @CurrentUser('tenantId') tenantId: string,
-    @Body() dto: IgnoreMpesaDto,
-  ) {
-    return this.mpesa.ignore(userId, tenantId, dto);
+  @ApiOperation({ summary: 'Retired: M-Pesa text matching is no longer available' })
+  ignore(): never {
+    throw this.manualMatchingUnavailable();
   }
 
   @Get('history')
@@ -48,5 +39,11 @@ export class MpesaController {
   @ApiOperation({ summary: 'Payments already matched from M-Pesa messages' })
   history(@CurrentUser('tenantId') tenantId: string) {
     return this.mpesa.history(tenantId);
+  }
+
+  private manualMatchingUnavailable() {
+    return new GoneException(
+      'Manual M-Pesa message matching is retired. A copied message cannot verify payment. Send a Paystack M-Pesa request in Finance; the balance updates after Paystack confirms it.',
+    );
   }
 }
