@@ -107,10 +107,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       }
 
       final values = await Future.wait<dynamic>([
-        capture(db.customSelect(
-          'SELECT * FROM pending_sales WHERE customer_id = ? ORDER BY created_at DESC',
-          variables: [Variable.withString(customerId)],
-        ).get()),
+        capture(db.getSalesForCustomer(customerId)),
         capture(db.getCustomerTopProducts(customerId)),
         capture(db.getCustomerInstallments(customerId)),
       ]);

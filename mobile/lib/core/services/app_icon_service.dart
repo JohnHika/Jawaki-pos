@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show ComparableExpr;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -223,9 +222,7 @@ class AppIconService {
     if (db == null) return AppIconSignals(now: now);
     final since = DateTime(now.year, now.month, now.day)
         .subtract(const Duration(days: 60));
-    final sales = await (db.select(db.pendingSales)
-          ..where((s) => s.createdAt.isBiggerOrEqualValue(since)))
-        .get();
+    final sales = await db.getSalesByDateRange(since, now);
     final totals = <String, double>{};
     final counts = <String, int>{};
     for (final s in sales) {

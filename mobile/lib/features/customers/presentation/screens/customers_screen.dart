@@ -50,10 +50,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   /// sales. Best effort: offline, the local figure stands.
   Future<List<Map<String, dynamic>>> _withServerBalances(
     List<Map<String, dynamic>> customers,
+    String? query,
   ) async {
     try {
-      final branchId = getIt<AuthService>().branchId;
-      if (branchId == null) return customers;
+      final authService = getIt<AuthService>();
+      final tenantId = authService.tenantId;
+      final branchId = authService.branchId;
+      if (tenantId == null || branchId == null) return customers;
       final api = getIt<ApiClient>();
       final results = await Future.wait<dynamic>([
         api.getRetailReceivables(branchId),
@@ -66,6 +69,22 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           .map((value) => Map<String, dynamic>.from(value))
           .toList();
       final unsyncedSales = results[2] as List<Map<String, dynamic>>;
+      final db = getIt<AppDatabase>();
+      if (authService.tenantId != tenantId ||
+          authService.branchId != branchId) {
+        return customers;
+      }
+      await db.upsertCustomersById(
+        remoteCustomers,
+        expectedTenantId: tenantId,
+      );
+      if (authService.tenantId != tenantId ||
+          authService.branchId != branchId) {
+        return customers;
+      }
+      final currentTenantCustomers = query != null && query.isNotEmpty
+          ? await db.searchCustomers(query)
+          : await db.getAllCustomers();
       final knownCustomerIds = remoteCustomers
           .map((customer) => customer['id']?.toString())
           .whereType<String>()
@@ -95,7 +114,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         pendingDebt[id] = (pendingDebt[id] ?? 0) +
             ((sale['amount'] as num?)?.toDouble() ?? 0);
       }
-      return customers.map((c) {
+      return currentTenantCustomers.map((c) {
         final id = c['id']?.toString();
         if (id == null || !knownCustomerIds.contains(id)) return c;
         return <String, dynamic>{
@@ -158,7 +177,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     List<Map<String, dynamic>> local,
     String? query,
   ) async {
-    final merged = await _withServerBalances(local)
+    final merged = await _withServerBalances(local, query)
         .timeout(const Duration(seconds: 6), onTimeout: () => local);
     // Ignore a late answer if the user has searched again meanwhile.
     if (!mounted || identical(merged, local) || _lastQuery != query) return;

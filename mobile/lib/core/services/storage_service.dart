@@ -547,15 +547,18 @@ class StorageService implements LifecycleLockStorage {
 
   /// Whether this device's pre-existing local supplier invoices/payments
   /// (from the old device-local Finance screen) have already been pushed
-  /// to the backend. Guards the one-time migration so it only runs once
-  /// per device, not on every login.
-  bool isSupplierDataMigrated() {
-    return _prefs?.getBool(keySupplierDataMigrated) ?? false;
+  /// to the backend. Migration completion is per shop: another shop signed
+  /// into the same device must not inherit the first shop's migration state.
+  bool isSupplierDataMigrated(String tenantId) {
+    return _prefs?.getBool('$keySupplierDataMigrated:$tenantId') ?? false;
   }
 
-  Future<void> setSupplierDataMigrated(bool migrated) async {
+  Future<void> setSupplierDataMigrated(
+    String tenantId,
+    bool migrated,
+  ) async {
     _checkInitialized();
-    await _prefs!.setBool(keySupplierDataMigrated, migrated);
+    await _prefs!.setBool('$keySupplierDataMigrated:$tenantId', migrated);
   }
 
   // Server mode keys

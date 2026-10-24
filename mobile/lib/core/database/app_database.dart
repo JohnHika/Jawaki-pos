@@ -269,6 +269,91 @@ class SupplierPayments extends Table {
 class AppDatabase extends _$AppDatabase {
   final StorageService _storage;
 
+  String? get _customerTenantId {
+    final tenantId = _storage.getTenantId()?.trim();
+    return tenantId == null || tenantId.isEmpty ? null : tenantId;
+  }
+
+  String _requireCustomerTenantId() {
+    final tenantId = _customerTenantId;
+    if (tenantId == null) {
+      throw StateError('Sign in to a shop before accessing its customers');
+    }
+    return tenantId;
+  }
+
+  Set<String> _activeBranchIds() {
+    final branchIds = <String>{};
+    final activeBranchId = _storage.getBranchId()?.trim();
+    if (activeBranchId != null && activeBranchId.isNotEmpty) {
+      branchIds.add(activeBranchId);
+    }
+    try {
+      final branches = _storage.getUser()?['branches'];
+      if (branches is List) {
+        for (final branch in branches.whereType<Map>()) {
+          final id = branch['id']?.toString().trim() ?? '';
+          if (id.isNotEmpty) branchIds.add(id);
+        }
+      }
+    } catch (_) {
+      // Keep the active branch fallback if the saved profile is malformed.
+    }
+    return branchIds;
+  }
+
+  ({String clause, List<Variable> variables}) _salesBranchScope(String alias) {
+    final branchIds = _activeBranchIds().toList()..sort();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return (clause: ' AND 1 = 0', variables: const <Variable>[]);
+    }
+    final placeholders = List.filled(branchIds.length, '?').join(', ');
+    return (
+      clause: ' AND $alias.branch_id IN ($placeholders)',
+      variables: branchIds.map(Variable.withString).toList(),
+    );
+  }
+
+  bool _syncItemBelongsToActiveTenant(SyncQueueData item) {
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return false;
+
+    Map<String, dynamic> payload;
+    try {
+      payload = Map<String, dynamic>.from(jsonDecode(item.payload) as Map);
+    } catch (_) {
+      return false;
+    }
+
+    final taggedTenantId = payload['_localTenantId']?.toString();
+    if (taggedTenantId != null && taggedTenantId.isNotEmpty) {
+      return taggedTenantId == tenantId;
+    }
+
+    // Older queue rows predate local tenant tags. They may be resumed only
+    // when their creator or branch is verifiably part of this signed-in
+    // workspace; ambiguous rows remain queued for their original workspace.
+    final currentUserId = _storage.getUser()?['id']?.toString();
+    if (currentUserId != null &&
+        currentUserId.isNotEmpty &&
+        item.userId == currentUserId) {
+      return true;
+    }
+
+    final branchIds = _activeBranchIds();
+    final candidateBranchIds = <String>{
+      for (final key in [
+        'branchId',
+        'fromBranchId',
+        'toBranchId',
+        'sourceBranchId',
+        'destinationBranchId',
+      ])
+        if (payload[key] != null) payload[key].toString(),
+    };
+    return candidateBranchIds.any(branchIds.contains);
+  }
+
   // Use encrypted database connection
   AppDatabase(this._storage)
       : super(SecureDatabaseConnection.openSecureConnection());
@@ -470,6 +555,7 @@ class AppDatabase extends _$AppDatabase {
     await customStatement('''
       CREATE TABLE IF NOT EXISTS suppliers (
         id TEXT NOT NULL PRIMARY KEY,
+        tenant_id TEXT,
         name TEXT NOT NULL,
         contact_name TEXT,
         email TEXT,
@@ -480,6 +566,14 @@ class AppDatabase extends _$AppDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+    try {
+      await customStatement('ALTER TABLE suppliers ADD COLUMN tenant_id TEXT');
+    } catch (_) {
+      // The tenant column already exists on upgraded installations.
+    }
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_suppliers_tenant_active ON suppliers (tenant_id, is_active)',
+    );
     await customStatement('''
       CREATE TABLE IF NOT EXISTS supplier_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -737,11 +831,13 @@ class AppDatabase extends _$AppDatabase {
           throw StateError('A customer is required for a debt sale');
         }
         await createCustomersTable();
+        final tenantId = _requireCustomerTenantId();
         final updatedCustomers = await customUpdate(
-          'UPDATE customers SET balance = balance + ? WHERE id = ?',
+          'UPDATE customers SET balance = balance + ? WHERE id = ? AND tenant_id = ?',
           variables: [
             Variable.withReal(customerBalanceDelta),
             Variable.withString(customerId),
+            Variable.withString(tenantId),
           ],
         );
         if (updatedCustomers != 1) {
@@ -767,17 +863,31 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<PendingSale>> getUnsyncedSales() {
-    return (select(pendingSales)..where((s) => s.isSynced.equals(false))).get();
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Future.value(const <PendingSale>[]);
+    }
+    return (select(pendingSales)
+          ..where((s) => s.isSynced.equals(false) & s.branchId.isIn(branchIds)))
+        .get();
   }
 
   Future<void> updateSaleReceiptNumber(String id, String receiptNumber) {
-    return (update(pendingSales)..where((s) => s.id.equals(id))).write(
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) return Future.value();
+    return (update(pendingSales)
+          ..where((s) => s.id.equals(id) & s.branchId.isIn(branchIds)))
+        .write(
       PendingSalesCompanion(receiptNumber: Value(receiptNumber)),
     );
   }
 
   Future<void> markSaleAsSynced(String id) {
-    return (update(pendingSales)..where((s) => s.id.equals(id))).write(
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) return Future.value();
+    return (update(pendingSales)
+          ..where((s) => s.id.equals(id) & s.branchId.isIn(branchIds)))
+        .write(
       PendingSalesCompanion(
         isSynced: const Value(true),
         syncedAt: Value(DateTime.now()),
@@ -787,14 +897,15 @@ class AppDatabase extends _$AppDatabase {
 
   // Sync Events (Backwards compatibility - uses SyncQueue table)
   Future<void> addSyncEvent(SyncQueueCompanion event) {
-    return into(syncQueue).insert(event);
+    return addToSyncQueue(event);
   }
 
-  Future<List<SyncQueueData>> getPendingSyncEvents() {
-    return (select(syncQueue)
+  Future<List<SyncQueueData>> getPendingSyncEvents() async {
+    final items = await (select(syncQueue)
           ..where((e) => e.status.equals('pending'))
           ..orderBy([(e) => OrderingTerm.asc(e.sequenceNumber)]))
         .get();
+    return items.where(_syncItemBelongsToActiveTenant).toList();
   }
 
   Future<void> markSyncEventProcessed(String id) {
@@ -826,18 +937,33 @@ class AppDatabase extends _$AppDatabase {
   // ════════ SYNC QUEUE (Enhanced) ════════
 
   /// Add item to sync queue
-  Future<void> addToSyncQueue(SyncQueueCompanion item) {
-    return into(syncQueue).insert(item, mode: InsertMode.insertOrIgnore);
+  Future<void> addToSyncQueue(SyncQueueCompanion item) async {
+    final tenantId = _customerTenantId;
+    if (tenantId != null && item.payload.present) {
+      try {
+        final payload = Map<String, dynamic>.from(
+          jsonDecode(item.payload.value) as Map,
+        );
+        payload.putIfAbsent('_localTenantId', () => tenantId);
+        item = item.copyWith(payload: Value(jsonEncode(payload)));
+      } catch (_) {
+        // Malformed items will not be sent by the tenant-scoped queue reader.
+      }
+    }
+    await into(syncQueue).insert(item, mode: InsertMode.insertOrIgnore);
   }
 
-  Future<SyncQueueData?> getSyncQueueItem(String id) {
-    return (select(syncQueue)..where((q) => q.id.equals(id))).getSingleOrNull();
+  Future<SyncQueueData?> getSyncQueueItem(String id) async {
+    final item = await (select(syncQueue)..where((q) => q.id.equals(id)))
+        .getSingleOrNull();
+    if (item == null || !_syncItemBelongsToActiveTenant(item)) return null;
+    return item;
   }
 
   /// Get all pending sync items (not synced, not exceeding max retries)
-  Future<List<SyncQueueData>> getPendingSyncQueue() {
+  Future<List<SyncQueueData>> getPendingSyncQueue() async {
     final now = DateTime.now();
-    return (select(syncQueue)
+    final items = await (select(syncQueue)
           ..where(
             (q) =>
                 q.status.equals('pending') &
@@ -847,15 +973,22 @@ class AppDatabase extends _$AppDatabase {
           )
           ..orderBy([(q) => OrderingTerm.asc(q.sequenceNumber)]))
         .get();
+    return items.where(_syncItemBelongsToActiveTenant).toList();
   }
 
   /// Get failed sync items that have exceeded max retries
-  Future<List<SyncQueueData>> getFailedSyncQueue() {
-    return (select(syncQueue)..where((q) => q.status.equals('failed'))).get();
+  Future<List<SyncQueueData>> getFailedSyncQueue() async {
+    final items = await (select(syncQueue)
+          ..where((q) => q.status.equals('failed')))
+        .get();
+    return items.where(_syncItemBelongsToActiveTenant).toList();
   }
 
-  Future<List<SyncQueueData>> getConflictSyncQueue() {
-    return (select(syncQueue)..where((q) => q.status.equals('conflict'))).get();
+  Future<List<SyncQueueData>> getConflictSyncQueue() async {
+    final items = await (select(syncQueue)
+          ..where((q) => q.status.equals('conflict')))
+        .get();
+    return items.where(_syncItemBelongsToActiveTenant).toList();
   }
 
   /// Mark sync item as synced
@@ -961,42 +1094,24 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get sync queue count by status
   Future<Map<String, int>> getSyncQueueStats() async {
-    final pending = await (select(
-      syncQueue,
-    )..where((q) => q.status.equals('pending')))
-        .get();
-
-    final synced = await (select(
-      syncQueue,
-    )..where((q) => q.status.equals('synced')))
-        .get();
-
-    final failed = await (select(
-      syncQueue,
-    )..where((q) => q.status.equals('failed')))
-        .get();
-
-    final conflicts = await (select(
-      syncQueue,
-    )..where((q) => q.status.equals('conflict')))
-        .get();
-
-    final resolved = await (select(
-      syncQueue,
-    )..where((q) => q.status.equals('resolved')))
-        .get();
+    final scopedItems = (await select(syncQueue).get())
+        .where(_syncItemBelongsToActiveTenant)
+        .toList();
+    int count(String status) =>
+        scopedItems.where((item) => item.status == status).length;
+    final pending = count('pending');
+    final synced = count('synced');
+    final failed = count('failed');
+    final conflicts = count('conflict');
+    final resolved = count('resolved');
 
     return {
-      'pending': pending.length,
-      'synced': synced.length,
-      'failed': failed.length,
-      'conflict': conflicts.length,
-      'resolved': resolved.length,
-      'total': pending.length +
-          synced.length +
-          failed.length +
-          conflicts.length +
-          resolved.length,
+      'pending': pending,
+      'synced': synced,
+      'failed': failed,
+      'conflict': conflicts,
+      'resolved': resolved,
+      'total': pending + synced + failed + conflicts + resolved,
     };
   }
 
@@ -1457,24 +1572,39 @@ class AppDatabase extends _$AppDatabase {
 
   /// All sales within [from]..[to].
   Future<List<PendingSale>> getSalesByDateRange(DateTime from, DateTime to) {
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Future.value(const <PendingSale>[]);
+    }
     return (select(pendingSales)
           ..where(
             (s) =>
                 s.createdAt.isBiggerOrEqualValue(from) &
-                s.createdAt.isSmallerOrEqualValue(to),
+                s.createdAt.isSmallerOrEqualValue(to) &
+                s.branchId.isIn(branchIds),
           )
           ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
         .get();
   }
 
   /// Stream of all sales (for real-time).
-  Stream<List<PendingSale>> watchAllSales() => (select(
-        pendingSales,
-      )..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
-          .watch();
+  Stream<List<PendingSale>> watchAllSales() {
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Stream.value(const <PendingSale>[]);
+    }
+    return (select(pendingSales)
+          ..where((s) => s.branchId.isIn(branchIds))
+          ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
+        .watch();
+  }
 
   /// Stream of today's sales.
   Stream<List<PendingSale>> watchTodaysSales() {
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Stream.value(const <PendingSale>[]);
+    }
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -1482,7 +1612,8 @@ class AppDatabase extends _$AppDatabase {
           ..where(
             (s) =>
                 s.createdAt.isBiggerOrEqualValue(startOfDay) &
-                s.createdAt.isSmallerThanValue(endOfDay),
+                s.createdAt.isSmallerThanValue(endOfDay) &
+                s.branchId.isIn(branchIds),
           )
           ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
         .watch();
@@ -1495,6 +1626,9 @@ class AppDatabase extends _$AppDatabase {
     String branchId, {
     DateTime? now,
   }) {
+    if (_customerTenantId == null || !_activeBranchIds().contains(branchId)) {
+      return Stream.value(const <PendingSale>[]);
+    }
     final current = now ?? DateTime.now();
     final startOfDay = DateTime(current.year, current.month, current.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -1511,7 +1645,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Get sales items for a specific sale.
-  Future<List<PendingSaleItem>> getSaleItems(String saleId) {
+  Future<List<PendingSaleItem>> getSaleItems(String saleId) async {
+    final sale = await getPendingSaleById(saleId);
+    if (sale == null) return const <PendingSaleItem>[];
     return (select(
       pendingSaleItems,
     )..where((i) => i.saleId.equals(saleId)))
@@ -1519,7 +1655,12 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<PendingSale?> getPendingSaleById(String saleId) {
-    return (select(pendingSales)..where((s) => s.id.equals(saleId)))
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Future.value(null);
+    }
+    return (select(pendingSales)
+          ..where((s) => s.id.equals(saleId) & s.branchId.isIn(branchIds)))
         .getSingleOrNull();
   }
 
@@ -1527,10 +1668,13 @@ class AppDatabase extends _$AppDatabase {
   /// payment reference. The server uses `paystack-<reference>` as its
   /// offline id, while older app builds used a random local sale id.
   Future<PendingSale?> getMerchantMpesaSaleByReference(String reference) async {
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) return null;
     final matches = await (select(pendingSales)
           ..where((s) =>
               s.paymentMethod.equals('MPESA') &
-              s.paymentReference.equals(reference))
+              s.paymentReference.equals(reference) &
+              s.branchId.isIn(branchIds))
           ..orderBy([(s) => OrderingTerm.asc(s.createdAt)])
           ..limit(1))
         .get();
@@ -1550,7 +1694,11 @@ class AppDatabase extends _$AppDatabase {
       final sale = await getPendingSaleById(saleId);
       if (sale == null || sale.status == 'VOIDED') return;
 
-      await (update(pendingSales)..where((s) => s.id.equals(saleId))).write(
+      final branchIds = _activeBranchIds();
+      if (branchIds.isEmpty || _customerTenantId == null) return;
+      await (update(pendingSales)
+            ..where((s) => s.id.equals(saleId) & s.branchId.isIn(branchIds)))
+          .write(
         PendingSalesCompanion(
           status: const Value('VOIDED'),
           voidReason: Value(reason),
@@ -1576,21 +1724,36 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Stream all sale items (for category / product reports).
-  Stream<List<PendingSaleItem>> watchAllSaleItems() =>
-      select(pendingSaleItems).watch();
+  Stream<List<PendingSaleItem>> watchAllSaleItems() {
+    final branchIds = _activeBranchIds();
+    if (_customerTenantId == null || branchIds.isEmpty) {
+      return Stream.value(const <PendingSaleItem>[]);
+    }
+    final saleIds = selectOnly(pendingSales)
+      ..addColumns([pendingSales.id])
+      ..where(pendingSales.branchId.isIn(branchIds));
+    return (select(pendingSaleItems)
+          ..where((item) => item.saleId.isInQuery(saleIds)))
+        .watch();
+  }
 
   /// Sales grouped by payment method for a date range.
   Future<List<Map<String, dynamic>>> getSalesByPaymentMethod(
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
       'SELECT payment_method, COUNT(*) as count, SUM(total) as total_amount '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ? '
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       'GROUP BY payment_method '
       'ORDER BY total_amount DESC',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -1608,13 +1771,18 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
       'SELECT cashier_id, COUNT(*) as count, SUM(total) as total_amount '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ? '
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       'GROUP BY cashier_id '
       'ORDER BY total_amount DESC',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -1633,17 +1801,19 @@ class AppDatabase extends _$AppDatabase {
     DateTime to, {
     int limit = 20,
   }) async {
+    final scope = _salesBranchScope('ps');
     final result = await customSelect(
       'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, SUM(psi.total) as total_revenue '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
       'GROUP BY psi.product_id, psi.product_name '
       'ORDER BY total_qty DESC '
       'LIMIT ?',
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
+        ...scope.variables,
         Variable.withInt(limit),
       ],
     ).get();
@@ -1664,16 +1834,22 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('ps');
     final result = await customSelect(
       'SELECT c.id as category_id, c.name as category_name, '
-      'COALESCE(SUM(psi.quantity), 0) as total_qty, COALESCE(SUM(psi.total), 0) as total_revenue '
+      'COALESCE(SUM(CASE WHEN ps.id IS NOT NULL THEN psi.quantity ELSE 0 END), 0) as total_qty, '
+      'COALESCE(SUM(CASE WHEN ps.id IS NOT NULL THEN psi.total ELSE 0 END), 0) as total_revenue '
       'FROM categories c '
       'LEFT JOIN products p ON p.category_id = c.id '
       'LEFT JOIN pending_sale_items psi ON psi.product_id = p.id '
-      'LEFT JOIN pending_sales ps ON ps.id = psi.sale_id AND ps.created_at >= ? AND ps.created_at <= ? '
+      'LEFT JOIN pending_sales ps ON ps.id = psi.sale_id AND ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
       'GROUP BY c.id, c.name '
       'ORDER BY total_revenue DESC',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -1730,18 +1906,21 @@ class AppDatabase extends _$AppDatabase {
 
   /// Dashboard summary: total sales, revenue, avg ticket for today.
   Future<Map<String, dynamic>> getDashboardSummary() async {
+    final scope = _salesBranchScope('pending_sales');
+    final itemScope = _salesBranchScope('ps');
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
-      'FROM pending_sales WHERE created_at >= ? AND created_at < ? '
+      'FROM pending_sales WHERE created_at >= ? AND created_at < ?${scope.clause} '
       "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
       "AND UPPER(payment_method) <> 'MPESA'",
       variables: [
         Variable.withDateTime(startOfDay),
         Variable.withDateTime(endOfDay),
+        ...scope.variables,
       ],
     ).getSingle();
     // Items sold today
@@ -1749,12 +1928,13 @@ class AppDatabase extends _$AppDatabase {
       'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at < ? '
+      'WHERE ps.created_at >= ? AND ps.created_at < ?${itemScope.clause} '
       "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
       "AND UPPER(ps.payment_method) <> 'MPESA'",
       variables: [
         Variable.withDateTime(startOfDay),
         Variable.withDateTime(endOfDay),
+        ...itemScope.variables,
       ],
     ).getSingle();
     return {
@@ -1771,6 +1951,21 @@ class AppDatabase extends _$AppDatabase {
     String branchId,
     DateTime date,
   ) async {
+    if (_customerTenantId == null || !_activeBranchIds().contains(branchId)) {
+      return {
+        'date':
+            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+        'totalSales': 0.0,
+        'totalTransactions': 0,
+        'totalTax': 0.0,
+        'totalDiscount': 0.0,
+        'cashSales': 0.0,
+        'mpesaSales': 0.0,
+        'cardSales': 0.0,
+        'creditSales': 0.0,
+        'outstandingBalance': 0.0,
+      };
+    }
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     final row = await customSelect(
@@ -1812,22 +2007,32 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
+    final itemScope = _salesBranchScope('ps');
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
-      'FROM pending_sales WHERE created_at >= ? AND created_at <= ? '
+      'FROM pending_sales WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
       "AND UPPER(payment_method) <> 'MPESA'",
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).getSingle();
     final itemsResult = await customSelect(
       'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?${itemScope.clause} '
       "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
       "AND UPPER(ps.payment_method) <> 'MPESA'",
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...itemScope.variables,
+      ],
     ).getSingle();
     return {
       'transactionCount': result.read<int>('count'),
@@ -1842,22 +2047,32 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
+    final itemScope = _salesBranchScope('ps');
     final result = await customSelect(
       'SELECT COALESCE(COUNT(*), 0) as count, COALESCE(SUM(total), 0) as revenue, '
       'COALESCE(AVG(total), 0) as avg_ticket '
-      'FROM pending_sales WHERE created_at >= ? AND created_at <= ? '
+      'FROM pending_sales WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
       "AND UPPER(payment_method) <> 'MPESA'",
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).getSingle();
     final itemsResult = await customSelect(
       'SELECT COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?${itemScope.clause} '
       "AND UPPER(ps.status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED') "
       "AND UPPER(ps.payment_method) <> 'MPESA'",
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...itemScope.variables,
+      ],
     ).getSingle();
     return {
       'transactionCount': result.read<int>('count'),
@@ -1872,13 +2087,18 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
       'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ? '
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       'GROUP BY strftime(\'%H\', created_at) '
       'ORDER BY hour',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -1897,13 +2117,18 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
       'SELECT date(created_at) as date, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ? '
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       'GROUP BY date(created_at) '
       'ORDER BY date',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -1922,14 +2147,19 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('ps');
     final result = await customSelect(
       'SELECT date(ps.created_at) as date, COALESCE(SUM(psi.quantity), 0) as items_sold '
       'FROM pending_sales ps '
       'INNER JOIN pending_sale_items psi ON psi.sale_id = ps.id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
       'GROUP BY date(ps.created_at) '
       'ORDER BY date',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -1946,6 +2176,7 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
       'SELECT '
       'COALESCE(COUNT(*), 0) as transaction_count, '
@@ -1955,8 +2186,12 @@ class AppDatabase extends _$AppDatabase {
       'COALESCE(SUM(CASE WHEN payment_method LIKE \'%card%\' OR payment_method LIKE \'%credit%\' THEN 1 ELSE 0 END), 0) as card_count, '
       'COALESCE(SUM(CASE WHEN payment_method LIKE \'%mpesa%\' OR payment_method LIKE \'%pesapal%\' OR payment_method LIKE \'%touristtap%\' THEN 1 ELSE 0 END), 0) as digital_count '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ?',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause}',
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).getSingle();
     return {
       'transactionCount': result.read<int>('transaction_count'),
@@ -1973,14 +2208,19 @@ class AppDatabase extends _$AppDatabase {
     DateTime from,
     DateTime to,
   ) async {
+    final scope = _salesBranchScope('pending_sales');
     final result = await customSelect(
       'SELECT strftime(\'%H\', created_at) as hour, COUNT(*) as transaction_count, SUM(total) as total_amount '
       'FROM pending_sales '
-      'WHERE created_at >= ? AND created_at <= ? '
+      'WHERE created_at >= ? AND created_at <= ?${scope.clause} '
       'GROUP BY strftime(\'%H\', created_at) '
       'ORDER BY transaction_count DESC '
       'LIMIT 5',
-      variables: [Variable.withDateTime(from), Variable.withDateTime(to)],
+      variables: [
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -2001,11 +2241,12 @@ class AppDatabase extends _$AppDatabase {
     DateTime to, {
     int limit = 10,
   }) async {
+    final scope = _salesBranchScope('ps');
     final result = await customSelect(
       'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, SUM(psi.total) as total_revenue '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.created_at >= ? AND ps.created_at <= ? '
+      'WHERE ps.created_at >= ? AND ps.created_at <= ?${scope.clause} '
       'GROUP BY psi.product_id, psi.product_name '
       'HAVING total_qty < 5 '
       'ORDER BY total_qty ASC '
@@ -2013,6 +2254,7 @@ class AppDatabase extends _$AppDatabase {
       variables: [
         Variable.withDateTime(from),
         Variable.withDateTime(to),
+        ...scope.variables,
         Variable.withInt(limit),
       ],
     ).get();
@@ -2108,6 +2350,7 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE TABLE IF NOT EXISTS customers ('
       '  id TEXT PRIMARY KEY NOT NULL, '
+      '  tenant_id TEXT, '
       '  name TEXT NOT NULL, '
       '  phone TEXT, '
       '  email TEXT, '
@@ -2130,6 +2373,17 @@ class AppDatabase extends _$AppDatabase {
     } catch (_) {
       // column already exists
     }
+    try {
+      await customStatement('ALTER TABLE customers ADD COLUMN tenant_id TEXT');
+    } catch (_) {
+      // column already exists
+    }
+    // Existing rows stay unassigned. Guessing their tenant after a prior
+    // account switch could expose one shop's customer data to another shop.
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_customers_tenant_name '
+      'ON customers (tenant_id, name)',
+    );
     await createCustomerInstallmentsTable();
   }
 
@@ -2141,6 +2395,7 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE TABLE IF NOT EXISTS customer_installments ('
       '  id TEXT PRIMARY KEY NOT NULL, '
+      '  tenant_id TEXT, '
       '  customer_id TEXT NOT NULL, '
       '  amount REAL NOT NULL, '
       '  due_date TEXT NOT NULL, '
@@ -2160,6 +2415,15 @@ class AppDatabase extends _$AppDatabase {
         'ALTER TABLE customer_installments ADD COLUMN collection_allocations TEXT',
       );
     }
+    if (!columns.any((row) => row.read<String>('name') == 'tenant_id')) {
+      await customStatement(
+        'ALTER TABLE customer_installments ADD COLUMN tenant_id TEXT',
+      );
+    }
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_customer_installments_tenant_due '
+      'ON customer_installments (tenant_id, customer_id, due_date)',
+    );
   }
 
   Future<String> addCustomerInstallment(
@@ -2172,12 +2436,22 @@ class AppDatabase extends _$AppDatabase {
       throw ArgumentError.value(amount, 'amount', 'Must be a positive amount');
     }
     await createCustomerInstallmentsTable();
+    final tenantId = _requireCustomerTenantId();
+    final customer = await customSelect(
+      'SELECT id FROM customers WHERE id = ? AND tenant_id = ?',
+      variables: [
+        Variable.withString(customerId),
+        Variable.withString(tenantId),
+      ],
+    ).getSingleOrNull();
+    if (customer == null) throw StateError('Customer was not found');
     final id = 'inst-${DateTime.now().microsecondsSinceEpoch}';
     await customInsert(
-      'INSERT INTO customer_installments (id, customer_id, amount, due_date, note, status, created_at) '
-      'VALUES (?, ?, ?, ?, ?, \'pending\', ?)',
+      'INSERT INTO customer_installments (id, tenant_id, customer_id, amount, due_date, note, status, created_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, \'pending\', ?)',
       variables: [
         Variable.withString(id),
+        Variable.withString(tenantId),
         Variable.withString(customerId),
         Variable.withReal(amount),
         Variable.withString(dueDate.toIso8601String()),
@@ -2192,9 +2466,14 @@ class AppDatabase extends _$AppDatabase {
     String customerId,
   ) async {
     await createCustomerInstallmentsTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT * FROM customer_installments WHERE customer_id = ? ORDER BY due_date ASC',
-      variables: [Variable.withString(customerId)],
+      'SELECT * FROM customer_installments WHERE customer_id = ? AND tenant_id = ? ORDER BY due_date ASC',
+      variables: [
+        Variable.withString(customerId),
+        Variable.withString(tenantId),
+      ],
     ).get();
     return result
         .map(
@@ -2222,10 +2501,14 @@ class AppDatabase extends _$AppDatabase {
     String allocationsJson,
   ) async {
     await createCustomerInstallmentsTable();
+    final tenantId = _requireCustomerTenantId();
     return transaction(() async {
       final current = await customSelect(
-        'SELECT status, collection_allocations FROM customer_installments WHERE id = ?',
-        variables: [Variable.withString(installmentId)],
+        'SELECT status, collection_allocations FROM customer_installments WHERE id = ? AND tenant_id = ?',
+        variables: [
+          Variable.withString(installmentId),
+          Variable.withString(tenantId),
+        ],
       ).getSingleOrNull();
       if (current == null) throw StateError('Payment schedule was not found');
       final status = current.read<String>('status').toLowerCase();
@@ -2237,18 +2520,22 @@ class AppDatabase extends _$AppDatabase {
 
       final changed = await customUpdate(
         'UPDATE customer_installments SET collection_allocations = ? '
-        'WHERE id = ? AND status IN (\'pending\', \'overdue\') '
+        'WHERE id = ? AND tenant_id = ? AND status IN (\'pending\', \'overdue\') '
         'AND collection_allocations IS NULL',
         variables: [
           Variable.withString(allocationsJson),
           Variable.withString(installmentId),
+          Variable.withString(tenantId),
         ],
       );
       if (changed == 1) return allocationsJson;
 
       final latest = await customSelect(
-        'SELECT collection_allocations FROM customer_installments WHERE id = ?',
-        variables: [Variable.withString(installmentId)],
+        'SELECT collection_allocations FROM customer_installments WHERE id = ? AND tenant_id = ?',
+        variables: [
+          Variable.withString(installmentId),
+          Variable.withString(tenantId),
+        ],
       ).getSingleOrNull();
       final saved = latest?.readNullable<String>('collection_allocations');
       if (saved != null && saved.isNotEmpty) return saved;
@@ -2259,10 +2546,15 @@ class AppDatabase extends _$AppDatabase {
   Future<bool> markInstallmentPaid(String installmentId) async {
     await createCustomerInstallmentsTable();
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return false;
     return transaction(() async {
       final installment = await customSelect(
-        'SELECT customer_id, amount, status FROM customer_installments WHERE id = ?',
-        variables: [Variable.withString(installmentId)],
+        'SELECT customer_id, amount, status FROM customer_installments WHERE id = ? AND tenant_id = ?',
+        variables: [
+          Variable.withString(installmentId),
+          Variable.withString(tenantId),
+        ],
       ).getSingleOrNull();
       final status = installment?.read<String>('status').toLowerCase();
       if (installment == null || (status != 'pending' && status != 'overdue')) {
@@ -2274,10 +2566,11 @@ class AppDatabase extends _$AppDatabase {
       final paidAt = DateTime.now().toIso8601String();
       final updatedInstallments = await customUpdate(
         'UPDATE customer_installments SET status = \'paid\', paid_at = ? '
-        'WHERE id = ? AND status IN (\'pending\', \'overdue\')',
+        'WHERE id = ? AND tenant_id = ? AND status IN (\'pending\', \'overdue\')',
         variables: [
           Variable.withString(paidAt),
           Variable.withString(installmentId),
+          Variable.withString(tenantId),
         ],
       );
       if (updatedInstallments != 1) return false;
@@ -2287,10 +2580,11 @@ class AppDatabase extends _$AppDatabase {
       // part of this transaction and ask the caller to refresh.
       final updatedCustomers = await customUpdate(
         'UPDATE customers SET balance = balance - ? '
-        'WHERE id = ? AND balance >= ? - 0.005',
+        'WHERE id = ? AND tenant_id = ? AND balance >= ? - 0.005',
         variables: [
           Variable.withReal(amount),
           Variable.withString(customerId),
+          Variable.withString(tenantId),
           Variable.withReal(amount),
         ],
       );
@@ -2308,13 +2602,18 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getOverdueInstallments() async {
     await createCustomerInstallmentsTable();
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
       'SELECT ci.*, c.name as customer_name, c.phone as customer_phone '
       'FROM customer_installments ci '
-      'JOIN customers c ON c.id = ci.customer_id '
-      'WHERE ci.status = \'pending\' AND ci.due_date < ? '
+      'JOIN customers c ON c.id = ci.customer_id AND c.tenant_id = ci.tenant_id '
+      'WHERE ci.tenant_id = ? AND ci.status = \'pending\' AND ci.due_date < ? '
       'ORDER BY ci.due_date ASC',
-      variables: [Variable.withString(DateTime.now().toIso8601String())],
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(DateTime.now().toIso8601String()),
+      ],
     ).get();
     return result
         .map(
@@ -2333,9 +2632,12 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Map<String, dynamic>>> searchCustomers(String query) async {
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT * FROM customers WHERE name LIKE ? OR phone LIKE ? ORDER BY total_purchases DESC LIMIT 20',
+      'SELECT * FROM customers WHERE tenant_id = ? AND (name LIKE ? OR phone LIKE ?) ORDER BY total_purchases DESC LIMIT 20',
       variables: [
+        Variable.withString(tenantId),
         Variable.withString('%$query%'),
         Variable.withString('%$query%'),
       ],
@@ -2345,17 +2647,22 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Map<String, dynamic>>> getAllCustomers() async {
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT * FROM customers ORDER BY name ASC',
+      'SELECT * FROM customers WHERE tenant_id = ? ORDER BY name ASC',
+      variables: [Variable.withString(tenantId)],
     ).get();
     return result.map(_customerRowToMap).toList();
   }
 
   Future<Map<String, dynamic>?> getCustomer(String id) async {
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return null;
     final result = await customSelect(
-      'SELECT * FROM customers WHERE id = ?',
-      variables: [Variable.withString(id)],
+      'SELECT * FROM customers WHERE id = ? AND tenant_id = ?',
+      variables: [Variable.withString(id), Variable.withString(tenantId)],
     ).get();
     if (result.isEmpty) return null;
     return _customerRowToMap(result.first);
@@ -2368,14 +2675,21 @@ class AppDatabase extends _$AppDatabase {
     String? branchId,
   }) async {
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null ||
+        branchId == null ||
+        branchId.isEmpty ||
+        !_activeBranchIds().contains(branchId)) {
+      return const [];
+    }
     final rows = await customSelect(
       "SELECT id, customer_id, receipt_number, total, payment_method, "
       "payment_reference FROM pending_sales "
       "WHERE is_synced = 0 AND customer_id IS NOT NULL "
       "AND UPPER(status) NOT IN ('VOIDED', 'REFUNDED', 'FAILED', 'CANCELLED') "
       "AND UPPER(payment_method) IN ('CREDIT', 'SPLIT')"
-      "${branchId == null ? '' : ' AND branch_id = ?'}",
-      variables: branchId == null ? const [] : [Variable.withString(branchId)],
+      ' AND branch_id = ?',
+      variables: [Variable.withString(branchId)],
     ).get();
     final debtSales = <Map<String, dynamic>>[];
     for (final row in rows) {
@@ -2442,34 +2756,36 @@ class AppDatabase extends _$AppDatabase {
     double creditLimit = 0,
   }) async {
     await createCustomersTable();
+    final tenantId = _requireCustomerTenantId();
     // Check if customer exists by name (case-insensitive)
     final existing = await customSelect(
-      'SELECT id FROM customers WHERE LOWER(name) = LOWER(?)',
-      variables: [Variable.withString(name)],
+      'SELECT id FROM customers WHERE tenant_id = ? AND LOWER(name) = LOWER(?)',
+      variables: [Variable.withString(tenantId), Variable.withString(name)],
     ).get();
     if (existing.isNotEmpty) {
       final existingId = existing.first.read<String>('id');
       // Update contact/location details if provided
       if (phone != null && phone.isNotEmpty) {
-        await customStatement('UPDATE customers SET phone = ? WHERE id = ?', [
-          phone,
-          existingId,
-        ]);
+        await customStatement(
+          'UPDATE customers SET phone = ? WHERE id = ? AND tenant_id = ?',
+          [phone, existingId, tenantId],
+        );
       }
       if (location != null && location.isNotEmpty) {
         await customStatement(
-          'UPDATE customers SET location = ? WHERE id = ?',
-          [location, existingId],
+          'UPDATE customers SET location = ? WHERE id = ? AND tenant_id = ?',
+          [location, existingId, tenantId],
         );
       }
       return existingId;
     }
     // Insert new
     await customInsert(
-      'INSERT INTO customers (id, name, phone, email, location, notes, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) '
-      'VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0)',
+      'INSERT INTO customers (id, tenant_id, name, phone, email, location, notes, total_purchases, total_spent, created_at, balance, credit_limit, loyalty_points) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0)',
       variables: [
         Variable.withString(id),
+        Variable.withString(tenantId),
         Variable.withString(name),
         Variable.withString(phone ?? ''),
         Variable.withString(email ?? ''),
@@ -2489,30 +2805,74 @@ class AppDatabase extends _$AppDatabase {
     String? phone,
     String? location,
     String? email,
+    String? expectedTenantId,
   }) async {
+    await upsertCustomersById([
+      {
+        'id': id,
+        'name': name,
+        'phone': phone,
+        'location': location,
+        'email': email,
+      },
+    ], expectedTenantId: expectedTenantId);
+  }
+
+  /// Cache server-confirmed customers under the active tenant. This also
+  /// restores the usable directory after upgrading from the older unscoped
+  /// local customer cache.
+  Future<void> upsertCustomersById(Iterable<Map<String, dynamic>> customers,
+      {String? expectedTenantId}) async {
+    final records = customers.where((customer) {
+      final id = customer['id']?.toString().trim() ?? '';
+      return id.isNotEmpty;
+    }).toList();
+    if (records.isEmpty) return;
+
     await createCustomersTable();
-    await customStatement(
-      '''
+    final tenantId = _requireCustomerTenantId();
+    if (expectedTenantId != null && expectedTenantId != tenantId) return;
+    await transaction(() async {
+      if (_customerTenantId != tenantId) return;
+      for (final customer in records) {
+        final id = customer['id'].toString().trim();
+        final name = customer['name']?.toString().trim() ?? '';
+        await customStatement(
+          '''
         INSERT INTO customers (
-          id, name, phone, email, location, notes,
+          id, tenant_id, name, phone, email, location, notes,
           total_purchases, total_spent, created_at,
           balance, credit_limit, loyalty_points
-        ) VALUES (?, ?, ?, ?, ?, '', 0, 0, ?, 0, 0, 0)
+        ) VALUES (?, ?, ?, ?, ?, ?, '', 0, 0, ?, 0, 0, 0)
         ON CONFLICT(id) DO UPDATE SET
+          tenant_id = excluded.tenant_id,
           name = excluded.name,
           phone = excluded.phone,
           email = excluded.email,
           location = excluded.location
-      ''',
-      [
-        id,
-        name,
-        phone ?? '',
-        email ?? '',
-        location ?? '',
-        DateTime.now().toIso8601String(),
-      ],
-    );
+        WHERE customers.tenant_id = excluded.tenant_id
+           OR customers.tenant_id IS NULL
+          ''',
+          [
+            id,
+            tenantId,
+            name,
+            customer['phone']?.toString() ?? '',
+            customer['email']?.toString() ?? '',
+            (customer['location'] ?? customer['address'])?.toString() ?? '',
+            DateTime.now().toIso8601String(),
+          ],
+        );
+        // A server-confirmed customer may have a pre-upgrade local schedule.
+        // Claim it only when the current tenant's server sent this same ID.
+        await customStatement(
+          'UPDATE customer_installments SET tenant_id = ? '
+          'WHERE customer_id = ? AND tenant_id IS NULL '
+          'AND EXISTS (SELECT 1 FROM customers WHERE id = ? AND tenant_id = ?)',
+          [tenantId, id, id, tenantId],
+        );
+      }
+    });
   }
 
   // Customer Debt/Balance Management
@@ -2522,48 +2882,56 @@ class AppDatabase extends _$AppDatabase {
   // "Allowed parameters must either be null or bool, int, num, String...".
   Future<void> updateCustomerBalance(String customerId, double amount) async {
     await createCustomersTable();
+    final tenantId = _requireCustomerTenantId();
     await customStatement(
-      'UPDATE customers SET balance = balance + ? WHERE id = ?',
-      [amount, customerId],
+      'UPDATE customers SET balance = balance + ? WHERE id = ? AND tenant_id = ?',
+      [amount, customerId, tenantId],
     );
   }
 
   Future<void> setCustomerBalance(String customerId, double amount) async {
     await createCustomersTable();
-    await customStatement('UPDATE customers SET balance = ? WHERE id = ?', [
-      amount,
-      customerId,
-    ]);
+    final tenantId = _requireCustomerTenantId();
+    await customStatement(
+      'UPDATE customers SET balance = ? WHERE id = ? AND tenant_id = ?',
+      [amount, customerId, tenantId],
+    );
   }
 
   Future<void> setCustomerCreditLimit(String customerId, double limit) async {
     await createCustomersTable();
+    final tenantId = _requireCustomerTenantId();
     await customStatement(
-      'UPDATE customers SET credit_limit = ? WHERE id = ?',
-      [limit, customerId],
+      'UPDATE customers SET credit_limit = ? WHERE id = ? AND tenant_id = ?',
+      [limit, customerId, tenantId],
     );
   }
 
   Future<void> addLoyaltyPoints(String customerId, int points) async {
     await createCustomersTable();
+    final tenantId = _requireCustomerTenantId();
     await customStatement(
-      'UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ?',
-      [points, customerId],
+      'UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ? AND tenant_id = ?',
+      [points, customerId, tenantId],
     );
   }
 
   Future<void> redeemLoyaltyPoints(String customerId, int points) async {
     await createCustomersTable();
+    final tenantId = _requireCustomerTenantId();
     await customStatement(
-      'UPDATE customers SET loyalty_points = loyalty_points - ? WHERE id = ? AND loyalty_points >= ?',
-      [points, customerId, points],
+      'UPDATE customers SET loyalty_points = loyalty_points - ? WHERE id = ? AND tenant_id = ? AND loyalty_points >= ?',
+      [points, customerId, tenantId, points],
     );
   }
 
   Future<List<Map<String, dynamic>>> getCustomersWithDebt() async {
     await createCustomersTable();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT * FROM customers WHERE balance > 0 ORDER BY balance DESC',
+      'SELECT * FROM customers WHERE tenant_id = ? AND balance > 0 ORDER BY balance DESC',
+      variables: [Variable.withString(tenantId)],
     ).get();
     return result
         .map(
@@ -2581,13 +2949,15 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> recordCustomerPurchase(String customerId, double amount) async {
     await createCustomersTable();
+    final tenantId = _requireCustomerTenantId();
     await customStatement(
       'UPDATE customers SET total_purchases = total_purchases + 1, '
-      'total_spent = total_spent + ?, last_purchase_at = ? WHERE id = ?',
+      'total_spent = total_spent + ?, last_purchase_at = ? WHERE id = ? AND tenant_id = ?',
       [
         amount,
         DateTime.now().toIso8601String(),
         customerId,
+        tenantId,
       ],
     );
   }
@@ -2596,14 +2966,23 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getCustomerTopProducts(
     String customerId,
   ) async {
+    final tenantId = _customerTenantId;
+    final scope = _salesBranchScope('ps');
+    if (tenantId == null || _activeBranchIds().isEmpty) return const [];
+    await createCustomersTable();
     final result = await customSelect(
       'SELECT psi.product_id, psi.product_name, SUM(psi.quantity) as total_qty, COUNT(*) as times_bought '
       'FROM pending_sale_items psi '
       'INNER JOIN pending_sales ps ON ps.id = psi.sale_id '
-      'WHERE ps.customer_id = ? '
+      'INNER JOIN customers c ON c.id = ps.customer_id '
+      'WHERE ps.customer_id = ? AND c.tenant_id = ?${scope.clause} '
       'GROUP BY psi.product_id, psi.product_name '
       'ORDER BY total_qty DESC LIMIT 10',
-      variables: [Variable.withString(customerId)],
+      variables: [
+        Variable.withString(customerId),
+        Variable.withString(tenantId),
+        ...scope.variables,
+      ],
     ).get();
     return result
         .map(
@@ -2615,6 +2994,27 @@ class AppDatabase extends _$AppDatabase {
           },
         )
         .toList();
+  }
+
+  /// Customer sale history constrained by both the current workspace and its
+  /// active branches. Screens must not query pending_sales directly because
+  /// this device can retain rows from a previous shop.
+  Future<List<QueryRow>> getSalesForCustomer(String customerId) async {
+    final tenantId = _customerTenantId;
+    final scope = _salesBranchScope('ps');
+    if (tenantId == null || _activeBranchIds().isEmpty) return const [];
+    await createCustomersTable();
+    return customSelect(
+      'SELECT ps.* FROM pending_sales ps '
+      'INNER JOIN customers c ON c.id = ps.customer_id '
+      'WHERE ps.customer_id = ? AND c.tenant_id = ?${scope.clause} '
+      'ORDER BY ps.created_at DESC',
+      variables: [
+        Variable.withString(customerId),
+        Variable.withString(tenantId),
+        ...scope.variables,
+      ],
+    ).get();
   }
 
   // Single insert/update helpers
@@ -2686,17 +3086,22 @@ class AppDatabase extends _$AppDatabase {
     String? phone,
     String? email,
   }) async {
+    final tenantId = _requireCustomerTenantId();
     final existing = await customSelect(
-      'SELECT id FROM suppliers WHERE name = ? OR phone = ?',
-      variables: [Variable.withString(name), Variable.withString(phone ?? '')],
+      'SELECT id FROM suppliers WHERE tenant_id = ? AND (name = ? OR phone = ?)',
+      variables: [
+        Variable.withString(tenantId),
+        Variable.withString(name),
+        Variable.withString(phone ?? ''),
+      ],
     ).getSingleOrNull();
 
     if (existing != null) return existing.read<String>('id');
 
     final now = DateTime.now().toIso8601String();
     await customStatement(
-      'INSERT OR IGNORE INTO suppliers (id, name, phone, email, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
-      [id, name, phone, email, now, now],
+      'INSERT OR IGNORE INTO suppliers (id, tenant_id, name, phone, email, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
+      [id, tenantId, name, phone, email, now, now],
     );
     return id;
   }
@@ -2704,6 +3109,8 @@ class AppDatabase extends _$AppDatabase {
   /// Get all suppliers with their debt balances
   Future<List<Map<String, dynamic>>> getSupplierDebts() async {
     await _createSupplierFinanceTables();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect('''
       SELECT
         s.id, s.name, s.phone, s.email,
@@ -2717,10 +3124,10 @@ class AppDatabase extends _$AppDatabase {
             AND si3.due_date IS NOT NULL
             AND si3.due_date < datetime('now')) as overdue_count
       FROM suppliers s
-      WHERE s.is_active = 1
+      WHERE s.is_active = 1 AND s.tenant_id = ?
       GROUP BY s.id
       ORDER BY s.name ASC
-    ''').get();
+    ''', variables: [Variable.withString(tenantId)]).get();
 
     return result
         .map(
@@ -2749,6 +3156,15 @@ class AppDatabase extends _$AppDatabase {
     String? notes,
   }) async {
     await _createSupplierFinanceTables();
+    final tenantId = _requireCustomerTenantId();
+    final supplier = await customSelect(
+      'SELECT id FROM suppliers WHERE id = ? AND tenant_id = ?',
+      variables: [
+        Variable.withString(supplierId),
+        Variable.withString(tenantId),
+      ],
+    ).getSingleOrNull();
+    if (supplier == null) throw StateError('Supplier not found in this shop');
     final now = DateTime.now().toIso8601String();
     await customStatement(
       'INSERT INTO supplier_payments (supplier_id, amount, notes, payment_date, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -2761,9 +3177,16 @@ class AppDatabase extends _$AppDatabase {
     String supplierId,
   ) async {
     await _createSupplierFinanceTables();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT id, amount, notes, payment_date FROM supplier_payments WHERE supplier_id = ? ORDER BY payment_date DESC',
-      variables: [Variable.withString(supplierId)],
+      'SELECT sp.id, sp.amount, sp.notes, sp.payment_date '
+      'FROM supplier_payments sp INNER JOIN suppliers s ON s.id = sp.supplier_id '
+      'WHERE sp.supplier_id = ? AND s.tenant_id = ? ORDER BY sp.payment_date DESC',
+      variables: [
+        Variable.withString(supplierId),
+        Variable.withString(tenantId),
+      ],
     ).get();
 
     return result
@@ -2784,8 +3207,12 @@ class AppDatabase extends _$AppDatabase {
   /// the Finance screen switches to reading/writing through the API.
   Future<List<Map<String, dynamic>>> getAllLocalSupplierData() async {
     await _createSupplierFinanceTables();
-
-    final suppliers = await customSelect('SELECT * FROM suppliers').get();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
+    final suppliers = await customSelect(
+      'SELECT * FROM suppliers WHERE tenant_id = ?',
+      variables: [Variable.withString(tenantId)],
+    ).get();
     final result = <Map<String, dynamic>>[];
 
     for (final supplierRow in suppliers) {
@@ -2846,9 +3273,16 @@ class AppDatabase extends _$AppDatabase {
     String supplierId,
   ) async {
     await _createSupplierFinanceTables();
+    final tenantId = _customerTenantId;
+    if (tenantId == null) return const [];
     final result = await customSelect(
-      'SELECT * FROM supplier_invoices WHERE supplier_id = ? ORDER BY created_at DESC',
-      variables: [Variable.withString(supplierId)],
+      'SELECT si.* FROM supplier_invoices si '
+      'INNER JOIN suppliers s ON s.id = si.supplier_id '
+      'WHERE si.supplier_id = ? AND s.tenant_id = ? ORDER BY si.created_at DESC',
+      variables: [
+        Variable.withString(supplierId),
+        Variable.withString(tenantId),
+      ],
     ).get();
 
     return result

@@ -284,10 +284,13 @@ class BackgroundSyncService {
   }
 
   static Map<String, dynamic> _buildSyncEventPayload(SyncQueueData item) {
+    final payload = Map<String, dynamic>.from(
+      jsonDecode(item.payload) as Map,
+    )..remove('_localTenantId');
     return {
       'eventId': item.id,
       'eventType': item.eventType,
-      'payload': jsonDecode(item.payload),
+      'payload': payload,
       'deviceId': item.deviceId,
       'createdAt': item.createdAt.toIso8601String(),
       'sequenceNumber': item.sequenceNumber,

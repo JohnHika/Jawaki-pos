@@ -438,7 +438,8 @@ class SyncService {
                 .toList(),
           })),
           deviceId: Value(
-            _storage.getDeviceId() ?? 'recovered-${DateTime.now().millisecondsSinceEpoch}',
+            _storage.getDeviceId() ??
+                'recovered-${DateTime.now().millisecondsSinceEpoch}',
           ),
           userId: Value(sale.cashierId),
           sequenceNumber: Value(sequenceNumber),
@@ -450,7 +451,8 @@ class SyncService {
       }
 
       if (reenqueued > 0) {
-        debugPrint('[SyncService] Recovered $reenqueued orphaned unsynced sale(s)');
+        debugPrint(
+            '[SyncService] Recovered $reenqueued orphaned unsynced sale(s)');
       }
     } catch (e) {
       // Recovery is best-effort — never let it break the normal sync cycle.
@@ -466,7 +468,8 @@ class SyncService {
   /// invoice carries its original local id as offlineId so a retry after
   /// a partial failure won't create duplicates server-side.
   Future<void> migrateLocalSupplierDataIfNeeded() async {
-    if (_storage.isSupplierDataMigrated()) return;
+    final tenantId = _storage.getTenantId();
+    if (tenantId == null || _storage.isSupplierDataMigrated(tenantId)) return;
     if (!_connectivity.isOnline) return;
 
     final branchId = _storage.getBranchId();
@@ -477,6 +480,7 @@ class SyncService {
 
       var failures = 0;
       for (final supplier in localData) {
+        if (_storage.getTenantId() != tenantId) return;
         // Each supplier migrates independently — one supplier's data quirk
         // (e.g. a payment total that doesn't reconcile cleanly) shouldn't
         // block every other supplier's records from migrating.
@@ -491,8 +495,8 @@ class SyncService {
       // Only mark migrated when every supplier succeeded — otherwise leave
       // the flag unset so the next online run retries the failed suppliers
       // (invoices carry offlineId, so retries won't duplicate server-side).
-      if (failures == 0) {
-        await _storage.setSupplierDataMigrated(true);
+      if (failures == 0 && _storage.getTenantId() == tenantId) {
+        await _storage.setSupplierDataMigrated(tenantId, true);
       }
     } catch (e) {
       // Leave the flag unset so the next time the device comes online it
@@ -574,6 +578,8 @@ class SyncService {
 
     try {
       final branchId = _storage.getBranchId();
+      final tenantId = _storage.getTenantId();
+      if (branchId == null || branchId.isEmpty || tenantId == null) return;
       var cursor = since ??
           _storage.getSyncCursor(branchId: branchId) ??
           _storage.getLastSyncAt(branchId: branchId)?.toUtc().toIso8601String();
@@ -586,7 +592,14 @@ class SyncService {
         final events = response['events'] as List? ?? const [];
 
         for (final event in events) {
-          await _processServerEvent(Map<String, dynamic>.from(event as Map));
+          if (_storage.getTenantId() != tenantId ||
+              _storage.getBranchId() != branchId) {
+            return;
+          }
+          await _processServerEvent(
+            Map<String, dynamic>.from(event as Map),
+            expectedTenantId: tenantId,
+          );
         }
 
         final hasMore = response['hasMore'] == true;
@@ -665,7 +678,10 @@ class SyncService {
     return value == null ? null : double.tryParse(value.toString());
   }
 
-  Future<void> _processServerEvent(Map<String, dynamic> event) async {
+  Future<void> _processServerEvent(
+    Map<String, dynamic> event, {
+    String? expectedTenantId,
+  }) async {
     final eventType = event['eventType'] as String;
     final payload = event['payload'] as Map<String, dynamic>;
 
@@ -687,7 +703,10 @@ class SyncService {
         break;
       case 'CUSTOMER_CREATED':
       case 'CUSTOMER_UPDATED':
-        await _updateLocalCustomer(payload);
+        await _updateLocalCustomer(
+          payload,
+          expectedTenantId: expectedTenantId,
+        );
         break;
     }
   }
@@ -917,7 +936,10 @@ class SyncService {
 
   /// Applies a CUSTOMER_CREATED/UPDATED pull event to the local customers
   /// table. Customers created on Device A are now visible on Device B.
-  Future<void> _updateLocalCustomer(Map<String, dynamic> data) async {
+  Future<void> _updateLocalCustomer(
+    Map<String, dynamic> data, {
+    String? expectedTenantId,
+  }) async {
     final customerId = data['id']?.toString();
     if (customerId == null) return;
 
@@ -928,6 +950,7 @@ class SyncService {
       phone: data['phone']?.toString(),
       location: data['address']?.toString(),
       email: data['email']?.toString(),
+      expectedTenantId: expectedTenantId,
     );
   }
 
