@@ -167,6 +167,9 @@ final receiptProvider =
       'customerName': customer?['name'],
       'customerPhone': customer?['phone'],
       'status': sale.status,
+      // Keep cloud delivery state visible on the receipt so a device-only
+      // sale cannot be mistaken for one already synced across the workspace.
+      'isSynced': sale.isSynced,
       'voidReason': sale.voidReason,
       'voidedAt': sale.voidedAt?.toIso8601String(),
       // Amount still owed on a credit sale, if the payment metadata carries

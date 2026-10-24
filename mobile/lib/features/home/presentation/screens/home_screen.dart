@@ -94,14 +94,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   List<_NavItem> _buildNavItems(RolePermissions perms) {
     final items = <_NavItem>[];
-    // Dashboard is the shared business overview. Its cards and actions remain
-    // role-aware inside the screen, but every signed-in user should be able
-    // to see the same orientation point instead of losing the destination.
-    items.add(_NavItem(
-        icon: Icons.dashboard_outlined,
-        activeIcon: Icons.dashboard_rounded,
-        label: 'Dashboard',
-        path: '/dashboard'));
+    if (perms.canSeeDashboard) {
+      items.add(_NavItem(
+          icon: Icons.dashboard_outlined,
+          activeIcon: Icons.dashboard_rounded,
+          label: 'Dashboard',
+          path: '/dashboard'));
+    }
     items.add(_NavItem(
         icon: Icons.point_of_sale_outlined,
         activeIcon: Icons.point_of_sale_rounded,
@@ -434,12 +433,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _latestMoreItems = moreItems;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = _resolveCurrentIndex(allNavItems);
-    final atDashboard = GoRouterState.of(context).uri.path == '/dashboard';
+    final homePath = perms.canSeeDashboard ? '/dashboard' : '/';
+    final atHome = GoRouterState.of(context).uri.path == homePath;
 
     // Tabs are reached with context.go, so the stack holds a single page and
     // the system Back would close the app from every screen (go_router skips
-    // PopScope on a one-page stack). Send Back to the Dashboard first; Back on
-    // the Dashboard itself still leaves the app.
+    // PopScope on a one-page stack). Send Back to the user's first permitted
+    // work surface; Back there itself still leaves the app.
     return BackButtonListener(
         onBackButtonPressed: () async {
           // A sheet or dialog is on top of the shell: Back closes it instead of
@@ -453,8 +453,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // A screen was pushed on top of a tab (Settings -> Plan & Billing):
           // let Back pop just that one step, like any app.
           if (GoRouter.of(context).canPop()) return false;
-          if (atDashboard) return false;
-          context.go('/dashboard');
+          if (atHome) return false;
+          context.go(homePath);
           return true;
         },
         child: Scaffold(

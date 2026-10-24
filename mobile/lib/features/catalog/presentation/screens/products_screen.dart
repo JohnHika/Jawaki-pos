@@ -320,6 +320,26 @@ class ProductsScreen extends ConsumerWidget {
                   final filtered =
                       _filterProducts(products, selectedCategory, searchQuery);
                   if (filtered.isEmpty) {
+                    if (products.isEmpty &&
+                        searchQuery.isEmpty &&
+                        syncAsync.isLoading) {
+                      return Center(
+                        child: Padding(
+                          padding: DesignSpacing.paddingScreen,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: DesignSpacing.md),
+                              Text(
+                                'Loading your product catalog…',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
                     // Distinguish a genuinely empty catalog from a local
                     // cache that's empty because the sync from the backend
                     // failed — showing "no products yet" in the latter case

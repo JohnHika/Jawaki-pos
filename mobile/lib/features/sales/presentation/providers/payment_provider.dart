@@ -717,21 +717,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
   Future<Map<String, dynamic>?> _pollMerchantMpesaStatus(
       String reference) async {
-    // Allow the provider time to register the offline mobile approval.
-    // The webhook can also settle it while this screen is open.
-    for (var attempt = 0; attempt < 11; attempt++) {
-      await Future.delayed(Duration(seconds: attempt == 0 ? 10 : 5));
-      try {
-        final status = await _apiClient.getMerchantMpesaStatus(reference);
-        if (['COMPLETED', 'FAILED', 'NEEDS_REVIEW']
-            .contains(status['status'])) {
-          return status;
-        }
-      } catch (_) {
-        // Network interruption is not proof of failure or a reason to charge again.
+    // Give the STK prompt a moment to reach the handset, then return control
+    // to the cashier. A long 60-second wait kept the only checkout button
+    // disabled; the same button safely checks this reference again without
+    // starting a second charge.
+    await Future<void>.delayed(const Duration(seconds: 2));
+    try {
+      final status = await _apiClient.getMerchantMpesaStatus(reference);
+      if (['COMPLETED', 'FAILED', 'NEEDS_REVIEW'].contains(status['status'])) {
+        return status;
       }
+      return status;
+    } catch (_) {
+      // Network interruption is not proof of failure or a reason to charge again.
+      return null;
     }
-    return null;
   }
 
   String _paymentError(Object error) {

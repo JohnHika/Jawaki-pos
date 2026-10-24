@@ -168,7 +168,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               onRecordReceived: () => _showCollectionSheet(
                 title: 'Record payment from ${item.customerName ?? 'customer'}',
                 amount: item.outstandingAmount,
-                onSave: (amount, method, reference) =>
+                onSave: (amount, method, reference, offlineId) =>
                     controller.recordRetailCollection(
                   ReceivableCollectionRequest(
                     receivableId: item.id,
@@ -176,6 +176,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     amount: amount,
                     method: method,
                     reference: reference,
+                    offlineId: offlineId,
                   ),
                 ),
               ),
@@ -200,7 +201,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
               onRecordReceived: () => _showCollectionSheet(
                 title: 'Record payment from ${item.debtor.name}',
                 amount: item.outstandingAmount,
-                onSave: (amount, method, reference) =>
+                onSave: (amount, method, reference, offlineId) =>
                     controller.recordPeerCollection(
                   ReceivableCollectionRequest(
                     receivableId: item.id,
@@ -208,6 +209,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                     amount: amount,
                     method: method,
                     reference: reference,
+                    offlineId: offlineId,
                   ),
                 ),
               ),
@@ -490,13 +492,15 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
     required String title,
     required double amount,
     required Future<void> Function(
-            double amount, String method, String? reference)
+            double amount, String method, String? reference, String offlineId)
         onSave,
   }) async {
     final amountController =
         TextEditingController(text: amount.toStringAsFixed(0));
     final reference = TextEditingController();
+    final offlineId = const Uuid().v4();
     String? error;
+    bool saving = false;
     await showModalBottomSheet<void>(
       useRootNavigator: true,
       context: context,
@@ -515,6 +519,7 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 controller: amountController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setSheetState(() => error = null),
                 decoration: InputDecoration(
                     labelText: 'Collected (KES)', errorText: error)),
             const SizedBox(height: DesignSpacing.md),
@@ -523,20 +528,57 @@ class _FinanceScreenState extends ConsumerState<FinanceScreen> {
                 decoration:
                     const InputDecoration(labelText: 'Reference (optional)')),
             const SizedBox(height: DesignSpacing.xl),
-            _sheetButton('Record collection', () async {
-              final parsed = double.tryParse(amountController.text) ?? 0;
-              if (parsed <= 0) {
-                setSheetState(() => error = 'Amount must be greater than zero');
-                return;
-              }
-              await onSave(parsed, 'CASH',
-                  reference.text.trim().isEmpty ? null : reference.text.trim());
-              if (sheetContext.mounted) Navigator.pop(sheetContext);
-            }),
+            SizedBox(
+              width: double.infinity,
+              height: DesignSpacing.huge,
+              child: FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final parsed =
+                            double.tryParse(amountController.text) ?? 0;
+                        if (parsed <= 0) {
+                          setSheetState(
+                              () => error = 'Amount must be greater than zero');
+                          return;
+                        }
+                        setSheetState(() {
+                          saving = true;
+                          error = null;
+                        });
+                        try {
+                          await onSave(
+                            parsed,
+                            'CASH',
+                            reference.text.trim().isEmpty
+                                ? null
+                                : reference.text.trim(),
+                            offlineId,
+                          );
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        } catch (e) {
+                          if (sheetContext.mounted) {
+                            setSheetState(() {
+                              error = e is FinanceFormException
+                                  ? e.message
+                                  : 'Couldn’t record this collection. Check your connection and try again.';
+                            });
+                          }
+                        } finally {
+                          if (sheetContext.mounted) {
+                            setSheetState(() => saving = false);
+                          }
+                        }
+                      },
+                child: Text(saving ? 'Recording…' : 'Record collection'),
+              ),
+            ),
           ],
         ),
       ),
     );
+    amountController.dispose();
+    reference.dispose();
   }
 
   Future<void> _showReceivableActions({

@@ -88,6 +88,7 @@ class ReceivableCollectionRequest {
     required this.amount,
     required this.method,
     this.reference,
+    this.offlineId,
   });
 
   final String receivableId;
@@ -95,6 +96,9 @@ class ReceivableCollectionRequest {
   final double amount;
   final String method;
   final String? reference;
+
+  /// Stable per collection action so a retry after a lost response is safe.
+  final String? offlineId;
 }
 
 class BulkCollectionRequest {
@@ -353,6 +357,7 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
       amount: request.amount,
       method: request.method,
       reference: request.reference,
+      offlineId: request.offlineId,
     );
   }
 
@@ -364,6 +369,7 @@ class _LiveFinanceHubDataSource implements FinanceHubDataSource {
       amount: request.amount,
       method: request.method,
       reference: request.reference,
+      offlineId: request.offlineId,
     );
   }
 

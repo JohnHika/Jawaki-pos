@@ -95,6 +95,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
       maxSize: 0.95,
       child: const AddEditProductSheet(),
     );
+    if (mounted) await _loadOnboarding();
   }
 
   Future<void> _showStaffInvite() async {

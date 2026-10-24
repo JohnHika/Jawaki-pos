@@ -175,37 +175,55 @@ export class CatalogService {
 
     const { categoryIds, pricingTiers, ...productData } = dto;
 
-    const product = await this.prisma.product.create({
-      data: {
-        tenantId,
-        ...productData,
-        sku,
-        categories: categoryIds
-          ? {
-              create: categoryIds.map((categoryId) => ({ categoryId })),
-            }
-          : undefined,
-        pricingTiers: pricingTiers
-          ? {
-              create: pricingTiers.map((tier, index) => ({
-                unit: tier.unit,
-                quantityPerUnit: tier.quantityPerUnit,
-                price: tier.price,
-                sortOrder: index + 1,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        categories: {
-          include: {
-            category: {
-              select: { id: true, name: true },
+    const product = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          tenantId,
+          ...productData,
+          sku,
+          categories: categoryIds
+            ? {
+                create: categoryIds.map((categoryId) => ({ categoryId })),
+              }
+            : undefined,
+          pricingTiers: pricingTiers
+            ? {
+                create: pricingTiers.map((tier, index) => ({
+                  unit: tier.unit,
+                  quantityPerUnit: tier.quantityPerUnit,
+                  price: tier.price,
+                  sortOrder: index + 1,
+                })),
+              }
+            : undefined,
+        },
+        include: {
+          categories: {
+            include: {
+              category: {
+                select: { id: true, name: true },
+              },
             },
           },
+          pricingTiers: { orderBy: { sortOrder: 'asc' } },
         },
-        pricingTiers: { orderBy: { sortOrder: 'asc' } },
-      },
+      });
+
+      const onboarding = await tx.tenantOnboarding.findUnique({
+        where: { tenantId },
+        select: { id: true },
+      });
+      if (onboarding) {
+        await tx.tenantOnboardingStep.updateMany({
+          where: {
+            onboardingId: onboarding.id,
+            key: 'add_catalog',
+            status: { not: 'COMPLETED' },
+          },
+          data: { status: 'COMPLETED', completedAt: new Date(), deferredAt: null },
+        });
+      }
+      return created;
     });
 
     await this.invalidateProductCache(tenantId);

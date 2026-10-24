@@ -175,6 +175,7 @@ class CartState {
     double? discountAmount,
     String? customerId,
     String? customerName,
+    bool clearCustomer = false,
     String? notes,
     Coupon? coupon,
     bool clearCoupon = false,
@@ -183,8 +184,8 @@ class CartState {
       items: items ?? this.items,
       discountPercent: discountPercent ?? this.discountPercent,
       discountAmount: discountAmount ?? this.discountAmount,
-      customerId: customerId ?? this.customerId,
-      customerName: customerName ?? this.customerName,
+      customerId: clearCustomer ? null : (customerId ?? this.customerId),
+      customerName: clearCustomer ? null : (customerName ?? this.customerName),
       notes: notes ?? this.notes,
       coupon: clearCoupon ? null : (coupon ?? this.coupon),
     );
@@ -676,7 +677,11 @@ class CartNotifier extends StateNotifier<CartState> {
   }
 
   void setCustomer(String? customerId, {String? customerName}) {
-    state = state.copyWith(customerId: customerId, customerName: customerName);
+    state = state.copyWith(
+      customerId: customerId,
+      customerName: customerName,
+      clearCustomer: customerId == null,
+    );
   }
 
   void setNotes(String? notes) {

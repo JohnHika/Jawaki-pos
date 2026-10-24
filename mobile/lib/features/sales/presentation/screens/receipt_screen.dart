@@ -146,8 +146,45 @@ class ReceiptScreen extends ConsumerWidget {
       ),
       backgroundColor: isDark ? DesignColors.darkBg : DesignColors.surfaceMuted,
       body: receiptAsync.when(
-        data: (receipt) => _buildReceipt(
-            context, receipt, ref.watch(tenantIdentityProvider).logoUrl),
+        data: (receipt) => Column(
+          children: [
+            if (receipt['isSynced'] == false)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(
+                  DesignSpacing.lg,
+                  DesignSpacing.sm,
+                  DesignSpacing.lg,
+                  0,
+                ),
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.warning.withValues(alpha: 0.12),
+                  borderRadius:
+                      BorderRadius.circular(DesignSpacing.radiusMd),
+                  border: Border.all(
+                    color: DesignColors.warning.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.cloud_upload_outlined,
+                        color: DesignColors.warning),
+                    SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Sale saved on this device and waiting to sync. Keep this device online.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: _buildReceipt(
+                  context, receipt, ref.watch(tenantIdentityProvider).logoUrl),
+            ),
+          ],
+        ),
         // The machine sits on "Processing" while the receipt loads, then
         // starts printing the moment the data lands.
         loading: () => ReceiptPrinterView(

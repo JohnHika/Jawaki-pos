@@ -244,7 +244,7 @@ Future<void> syncCatalogCacheFromApi() async {
     final status = await connectivity.checkCurrentStatus();
     if (status != ConnectionStatus.online) {
       debugPrint('[CatalogSync] Skipped: connectivity check reported offline');
-      return;
+      throw StateError('The product catalog has not been checked while offline.');
     }
   }
 

@@ -49,7 +49,6 @@ class _InstallmentFormState extends State<_InstallmentForm> {
   final _reference = TextEditingController();
   // Fixed for this sheet so a retry after a dropped connection cannot pay twice.
   final _offlineId = 'peer-bulk-${DateTime.now().microsecondsSinceEpoch}';
-  String _method = 'CASH';
   String? _error;
   bool _saving = false;
 
@@ -81,7 +80,7 @@ class _InstallmentFormState extends State<_InstallmentForm> {
       await widget.controller.recordPeerBulkCollection(BulkCollectionRequest(
         branchId: widget.branchId,
         allocations: plan.allocations,
-        method: _method,
+        method: 'CASH',
         reference:
             _reference.text.trim().isEmpty ? null : _reference.text.trim(),
         offlineId: _offlineId,
@@ -109,8 +108,11 @@ class _InstallmentFormState extends State<_InstallmentForm> {
 
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(DesignSpacing.xl, DesignSpacing.sm,
-            DesignSpacing.xl, MediaQuery.viewInsetsOf(context).bottom + DesignSpacing.xl),
+        padding: EdgeInsets.fromLTRB(
+            DesignSpacing.xl,
+            DesignSpacing.sm,
+            DesignSpacing.xl,
+            MediaQuery.viewInsetsOf(context).bottom + DesignSpacing.xl),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -125,15 +127,23 @@ class _InstallmentFormState extends State<_InstallmentForm> {
                 style: theme.textTheme.bodyMedium,
               ),
               const SizedBox(height: DesignSpacing.lg),
-              SegmentedButton<String>(
-                expandedInsets: EdgeInsets.zero,
-                segments: const <ButtonSegment<String>>[
-                  ButtonSegment(value: 'CASH', label: Text('Cash')),
-                  ButtonSegment(value: 'MPESA', label: Text('M-Pesa')),
-                  ButtonSegment(value: 'CARD', label: Text('Card')),
-                ],
-                selected: <String>{_method},
-                onSelectionChanged: (v) => setState(() => _method = v.first),
+              Container(
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                ),
+                child: const Row(
+                  children: <Widget>[
+                    Icon(Icons.payments_outlined, color: DesignColors.brand),
+                    SizedBox(width: DesignSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Record cash already received. Electronic payments must be verified through a Paystack request before they can reduce this balance.',
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: DesignSpacing.md),
               TextField(
@@ -162,8 +172,7 @@ class _InstallmentFormState extends State<_InstallmentForm> {
                   padding: const EdgeInsets.all(DesignSpacing.md),
                   decoration: BoxDecoration(
                     color: DesignColors.peach.withValues(alpha: 0.5),
-                    borderRadius:
-                        BorderRadius.circular(DesignSpacing.radiusMd),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,7 +214,7 @@ class _InstallmentFormState extends State<_InstallmentForm> {
               TextField(
                 controller: _reference,
                 decoration: const InputDecoration(
-                    labelText: 'Reference, e.g. M-Pesa code (optional)'),
+                    labelText: 'Receipt or note (optional)'),
               ),
               const SizedBox(height: DesignSpacing.xl),
               SizedBox(

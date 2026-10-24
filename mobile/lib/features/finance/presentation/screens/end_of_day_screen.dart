@@ -512,6 +512,10 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
       await getIt<ApiClient>().closeEndOfDay(
         branchId,
         countedCash: counted,
+        // Close the same branch-local business day whose figures and existing
+        // close status were displayed above. The server otherwise defaults to
+        // its UTC date, which can still be yesterday near midnight in Nairobi.
+        date: _todayIso(),
         notes: notesController.text.trim().isEmpty
             ? null
             : notesController.text.trim(),

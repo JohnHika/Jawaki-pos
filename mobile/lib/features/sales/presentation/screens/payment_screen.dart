@@ -888,10 +888,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     if (result != null && mounted) {
       final customerId = cart.customerId;
+      var customerHistoryFailed = false;
 
       if (customerId != null) {
-        await getIt<AppDatabase>()
-            .recordCustomerPurchase(customerId, cart.total);
+        try {
+          await getIt<AppDatabase>()
+              .recordCustomerPurchase(customerId, cart.total);
+        } catch (_) {
+          // The sale is already saved or provider-confirmed. A local customer
+          // history counter must never strand the cashier on checkout and make
+          // them think they should charge the customer again.
+          customerHistoryFailed = true;
+        }
       }
 
       if (!mounted) return;
@@ -901,6 +909,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ref.invalidate(filteredProductsProvider);
       ref.invalidate(favoriteProductsProvider);
       context.go('/receipt/$result?fresh=1');
+      if (customerHistoryFailed) {
+        showGlassSnackBar(
+          context,
+          'Sale completed. Customer purchase history could not be updated.',
+          icon: Icons.info_outline_rounded,
+          color: DesignColors.warning,
+        );
+      }
       // Shown after navigating so the cashier still sees the change figure on
       // the receipt screen while handing the money back.
       if (cashChangeDue > 0) {

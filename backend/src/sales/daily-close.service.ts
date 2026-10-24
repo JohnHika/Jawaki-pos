@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { SalesService } from './sales.service';
 import { CashReconciliationService } from '../cash-flow/cash-reconciliation.service';
 import { CloseDayDto } from './dto/daily-close.dto';
+import { todayInTimezone } from '../common/operating-hours';
 
 /**
  * End-of-day "Z-report" close. Finalizes one branch-day into a permanent
@@ -25,10 +26,11 @@ export class DailyCloseService {
     private reconciliationService: CashReconciliationService,
   ) {}
 
-  /** UTC midnight for the given (or today's) date — the stable key for a
-   * business day, matching how DailyBrief normalizes its date. */
-  private normalizeDate(date?: string): Date {
-    const base = date ? new Date(date) : new Date();
+  /** UTC midnight for the given date, or the branch's current business day. */
+  private normalizeDate(date: string | undefined, timezone: string): Date {
+    const base = date
+      ? new Date(date)
+      : new Date(`${todayInTimezone(timezone)}T00:00:00.000Z`);
     return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
   }
 
@@ -36,7 +38,7 @@ export class DailyCloseService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
-    const date = this.normalizeDate(dto.date);
+    const date = this.normalizeDate(dto.date, branch.timezone ?? 'Africa/Nairobi');
     const dateStr = date.toISOString().split('T')[0];
 
     // Full sales + payment-method picture for the day.
@@ -102,7 +104,7 @@ export class DailyCloseService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
-    const normalized = this.normalizeDate(date);
+    const normalized = this.normalizeDate(date, branch.timezone ?? 'Africa/Nairobi');
     const close = await this.prisma.dailyClose.findUnique({
       where: { branchId_date: { branchId, date: normalized } },
       include: { closedBy: { select: { firstName: true, lastName: true } } },
