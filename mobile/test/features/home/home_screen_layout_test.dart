@@ -157,7 +157,9 @@ Future<_HomeHarness> _pumpHome(
   await tester.pumpWidget(ProviderScope(
     overrides: [
       permissionsProvider.overrideWithValue(
-        RolePermissions(const ['products.view', 'sales.create']),
+        RolePermissions(
+          const ['products.view', 'sales.create', 'customers.view'],
+        ),
       ),
       userRoleProvider.overrideWithValue('ADMIN'),
       tenantIdentityProvider.overrideWithValue(TenantIdentity.empty),
