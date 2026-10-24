@@ -39,12 +39,71 @@ export class TenantOnboardingService {
 
   async updateStep(actor: Actor, key: string, status: 'PENDING' | 'DEFERRED' | 'COMPLETED') {
     const onboarding = await this.assertOwnerOrPermission(actor, 'users.create');
-    if (key === 'activate_payment' && status === 'COMPLETED') {
-      const payout = await this.prisma.merchantPaymentAccount.findUnique({
-        where: { tenantId: actor.tenantId }, select: { status: true },
-      });
-      if (payout?.status !== 'ACTIVE') {
-        throw new ConflictException('Connect a business payout account to complete payment setup');
+    const supportedSteps = new Set([
+      'confirm_business',
+      'configure_branch',
+      'invite_staff',
+      'add_catalog',
+      'activate_payment',
+    ]);
+    if (!supportedSteps.has(key)) throw new NotFoundException('Onboarding step was not found');
+
+    if (status === 'COMPLETED') {
+      switch (key) {
+        case 'confirm_business': {
+          const [tenant, owner] = await Promise.all([
+            this.prisma.tenant.findUnique({
+              where: { id: actor.tenantId }, select: { name: true },
+            }),
+            this.prisma.user.findUnique({
+              where: { id: onboarding.ownerUserId },
+              select: { email: true },
+            }),
+          ]);
+          if (!tenant?.name?.trim() || !owner?.email?.trim()) {
+            throw new ConflictException('Add the business name and owner email before confirming business details');
+          }
+          break;
+        }
+        case 'configure_branch': {
+          const branch = await this.prisma.branch.findFirst({
+            where: { tenantId: actor.tenantId, isActive: true },
+            select: { id: true },
+          });
+          if (!branch) throw new ConflictException('Create or activate a branch before completing branch setup');
+          break;
+        }
+        case 'invite_staff': {
+          const invitation = await this.prisma.tenantStaffInvitation.findFirst({
+            where: {
+              tenantId: actor.tenantId,
+              OR: [
+                { status: 'ACCEPTED' },
+                { status: 'PENDING', expiresAt: { gt: new Date() } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (!invitation) throw new ConflictException('Send a valid staff invitation before completing this step');
+          break;
+        }
+        case 'add_catalog': {
+          const product = await this.prisma.product.findFirst({
+            where: { tenantId: actor.tenantId, isActive: true },
+            select: { id: true },
+          });
+          if (!product) throw new ConflictException('Add an active product before completing catalog setup');
+          break;
+        }
+        case 'activate_payment': {
+          const payout = await this.prisma.merchantPaymentAccount.findUnique({
+            where: { tenantId: actor.tenantId }, select: { status: true },
+          });
+          if (payout?.status !== 'ACTIVE') {
+            throw new ConflictException('Connect a business payout account to complete payment setup');
+          }
+          break;
+        }
       }
     }
     const step = await this.prisma.tenantOnboardingStep.updateMany({

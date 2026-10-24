@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../catalog/presentation/widgets/add_edit_product_sheet.dart';
@@ -34,6 +35,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
   final Set<String> _updatingKeys = {};
 
   ApiClient get _api => getIt<ApiClient>();
+  AuthService get _auth => getIt<AuthService>();
 
   @override
   void initState() {
@@ -104,6 +106,174 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
       await _updateStep('invite_staff', 'COMPLETED');
     }
   }
+
+  Future<void> _reviewBusiness() async {
+    final user = _auth.currentUser ?? const <String, dynamic>{};
+    final tenant = user['tenant'] is Map
+        ? Map<String, dynamic>.from(user['tenant'] as Map)
+        : const <String, dynamic>{};
+    final businessName = [
+      tenant['name'],
+      user['tenantName'],
+      user['companyName'],
+      widget.companyName,
+    ].map((value) => value?.toString().trim() ?? '').firstWhere(
+          (value) => value.isNotEmpty,
+          orElse: () => '',
+        );
+    final ownerName = [user['firstName'], user['lastName']]
+        .map((value) => value?.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty)
+        .join(' ');
+    final email = user['email']?.toString().trim() ?? '';
+    if (businessName.isEmpty || email.isEmpty) {
+      showGlassSnackBar(
+        context,
+        'Business details are incomplete. Update your workspace profile first.',
+        icon: Icons.info_outline_rounded,
+        color: DesignColors.warning,
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm business details'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          _reviewLine(dialogContext, 'Business', businessName),
+          _reviewLine(dialogContext, 'Owner',
+              ownerName.isEmpty ? 'Not set' : ownerName),
+          _reviewLine(dialogContext, 'Email', email),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Go back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm details'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _updateStep('confirm_business', 'COMPLETED');
+    }
+  }
+
+  Future<void> _reviewBranch() async {
+    try {
+      final branches = (await _api.getBranches())
+          .whereType<Map>()
+          .map((branch) => Map<String, dynamic>.from(branch))
+          .where((branch) => branch['isActive'] == true)
+          .toList();
+      if (!mounted) return;
+      final branchId = _auth.branchId;
+      final currentBranchName =
+          _auth.currentUser?['branchName']?.toString().trim();
+      Map<String, dynamic>? branch;
+      for (final candidate in branches) {
+        if (candidate['id']?.toString() == branchId) {
+          branch = candidate;
+          break;
+        }
+      }
+      if (branch == null && currentBranchName?.isNotEmpty == true) {
+        for (final candidate in branches) {
+          if (candidate['name']?.toString().trim() == currentBranchName) {
+            branch = candidate;
+            break;
+          }
+        }
+      }
+      branch ??= branches.isEmpty ? null : branches.first;
+      final selectedBranch = branch;
+      if (selectedBranch == null) {
+        showGlassSnackBar(
+          context,
+          'Create or activate a branch in Settings > My business > Branches, then return here.',
+          icon: Icons.store_outlined,
+          color: DesignColors.warning,
+        );
+        await context.push('/settings');
+        if (mounted) await _loadOnboarding();
+        return;
+      }
+      final branchName = selectedBranch['name']?.toString().trim() ?? '';
+      final branchCode = selectedBranch['code']?.toString().trim() ?? '';
+      if (branchName.isEmpty || branchCode.isEmpty) {
+        showGlassSnackBar(
+          context,
+          'Add a branch name and code in Settings > My business > Branches.',
+          icon: Icons.store_outlined,
+          color: DesignColors.warning,
+        );
+        await context.push('/settings');
+        if (mounted) await _loadOnboarding();
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Confirm your first branch'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            _reviewLine(dialogContext, 'Branch', branchName),
+            _reviewLine(dialogContext, 'Branch code', branchCode),
+            if ((selectedBranch['address']?.toString().trim() ?? '').isNotEmpty)
+              _reviewLine(dialogContext, 'Address',
+                  selectedBranch['address'].toString()),
+            if ((selectedBranch['phone']?.toString().trim() ?? '').isNotEmpty)
+              _reviewLine(
+                  dialogContext, 'Phone', selectedBranch['phone'].toString()),
+            const SizedBox(height: 8),
+            const Text('This active branch will be used for sales and stock.'),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Review later'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm branch'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && mounted) {
+        await _updateStep('configure_branch', 'COMPLETED');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        'Could not load your branches. Check your connection and try again.',
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+    }
+  }
+
+  Widget _reviewLine(BuildContext context, String label, String value) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 84,
+            child: Text(label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextSecondary))),
+          ),
+          Expanded(
+            child: Text(value,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: context.themed(DesignColors.darkTextPrimary),
+                    fontWeight: FontWeight.w600)),
+          ),
+        ]),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +397,37 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
 
   Widget _checklist() {
     final steps = _steps;
+    if (steps.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: context.themed(DesignColors.darkSurface),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
+          border: Border.all(color: context.themed(DesignColors.darkBorder)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.checklist_rounded,
+              color: context.themed(DesignColors.darkTextSecondary), size: 30),
+          const SizedBox(height: 12),
+          Text('Setup checklist unavailable',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: context.themed(DesignColors.darkTextPrimary))),
+          const SizedBox(height: 6),
+          Text(
+            'You can still add products and manage your workspace from Settings.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.themed(DesignColors.darkTextSecondary)),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => context.go('/'),
+            icon: const Icon(Icons.home_outlined),
+            label: const Text('Return to dashboard'),
+          ),
+        ]),
+      );
+    }
     final completed =
         steps.where((step) => step['status'] == 'COMPLETED').length;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -284,9 +485,14 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
   Widget _stepCard(Map<String, dynamic> step) {
     final key = step['key']?.toString() ?? '';
     final status = step['status']?.toString() ?? 'PENDING';
-    final detail = _details[key] ??
-        _StepDetail(key, 'Complete setup', 'Review this workspace setting.',
-            Icons.checklist_rounded);
+    final detail = _details[key];
+    final supported = detail != null;
+    final displayDetail = detail ??
+        const _StepDetail(
+            '',
+            'Setup item',
+            'Update Counterbase to review this item.',
+            Icons.info_outline_rounded);
     final isDone = status == 'COMPLETED';
     final isBusy = _updatingKeys.contains(key);
     return Container(
@@ -302,29 +508,29 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(isDone ? Icons.check_circle_rounded : detail.icon,
+          Icon(isDone ? Icons.check_circle_rounded : displayDetail.icon,
               color: isDone ? DesignColors.success : DesignColors.accent),
           const SizedBox(width: 12),
           Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text(detail.title,
+                Text(displayDetail.title,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: context.themed(DesignColors.darkTextPrimary))),
-                Text(detail.subtitle,
+                Text(displayDetail.subtitle,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: context.themed(DesignColors.darkTextSecondary))),
               ])),
           _statusBadge(status),
         ]),
-        if (!isDone) ...[
+        if (!isDone && supported) ...[
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
               child: key == 'invite_staff'
                   ? GradientButton(
-                      label: detail.actionLabel,
+                      label: displayDetail.actionLabel,
                       icon: Icons.send_rounded,
                       onPressed: isBusy ? null : () => _performStepAction(key),
                       height: 44,
@@ -340,7 +546,7 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text(detail.actionLabel),
+                          : Text(displayDetail.actionLabel),
                     ),
             ),
             const SizedBox(width: DesignSpacing.sm),
@@ -357,17 +563,24 @@ class _OwnerWelcomeScreenState extends State<OwnerWelcomeScreen> {
 
   Future<void> _performStepAction(String key) async {
     switch (key) {
+      case 'confirm_business':
+        await _reviewBusiness();
+        return;
+      case 'configure_branch':
+        await _reviewBranch();
+        return;
       case 'invite_staff':
         await _showStaffInvite();
+        return;
       case 'add_catalog':
         await _addFirstProduct();
+        return;
       case 'activate_payment':
         if (mounted) {
           await context.push<bool>('/payments/setup');
           if (mounted) await _loadOnboarding();
         }
-      default:
-        await _updateStep(key, 'COMPLETED');
+        return;
     }
   }
 
@@ -403,9 +616,11 @@ class _StepDetail {
 
 const _details = <String, _StepDetail>{
   'confirm_business': _StepDetail('confirm_business', 'Confirm your business',
-      'Review the owner and business details.', Icons.business_center_outlined),
+      'Review the owner and business details.', Icons.business_center_outlined,
+      actionLabel: 'Review details'),
   'configure_branch': _StepDetail('configure_branch', 'Configure your branch',
-      'Confirm the location where sales begin.', Icons.store_outlined),
+      'Confirm the location where sales begin.', Icons.store_outlined,
+      actionLabel: 'Review branch'),
   'invite_staff': _StepDetail(
       'invite_staff',
       'Invite your team',

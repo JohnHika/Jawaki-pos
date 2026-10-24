@@ -110,6 +110,16 @@ class SettingsScreen extends ConsumerWidget {
         id: 'business',
         title: 'My business',
         entries: [
+          if (isBillingAdmin || perms.has('users.create'))
+            SettingsEntry(
+              id: 'workspace-setup',
+              icon: Icons.checklist_rounded,
+              title: 'Workspace setup',
+              subtitle: 'Review business, branch, team, catalog and payouts',
+              keywords: const ['onboarding', 'checklist', 'setup', 'first sale'],
+              onTap: () => context.push('/owner-welcome',
+                  extra: identity.companyName),
+            ),
           if (isBillingAdmin)
             SettingsEntry(
               id: 'logo',
