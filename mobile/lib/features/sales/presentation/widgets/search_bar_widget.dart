@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,6 +18,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   bool _showClear = false;
+  Timer? _searchDebounce;
   late AnimationController _animController;
   late Animation<double> _iconTween;
 
@@ -44,6 +47,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     _animController.dispose();
@@ -55,6 +59,10 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final providerQuery = ref.watch(searchQueryProvider);
     if (_controller.text != providerQuery) {
+      // A route reset or clear action can arrive while a typed query is
+      // waiting to be applied. Cancel it so stale text cannot re-filter the
+      // catalog after the screen has been reset.
+      _searchDebounce?.cancel();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _controller.text == providerQuery) return;
         _controller.value = TextEditingValue(
@@ -109,6 +117,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
                       ),
                     ),
                     onPressed: () {
+                      _searchDebounce?.cancel();
                       _controller.clear();
                       ref.read(searchQueryProvider.notifier).state = '';
                       _focusNode.unfocus();
@@ -123,7 +132,15 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
           onChanged: (value) {
-            ref.read(searchQueryProvider.notifier).state = value;
+            _searchDebounce?.cancel();
+            if (value.trim().isEmpty) {
+              ref.read(searchQueryProvider.notifier).state = '';
+              return;
+            }
+            _searchDebounce = Timer(const Duration(milliseconds: 160), () {
+              if (!mounted) return;
+              ref.read(searchQueryProvider.notifier).state = value;
+            });
           },
           textInputAction: TextInputAction.search,
         ),
