@@ -37,8 +37,8 @@ class CloudFeatureRoutes {
 
   Future<shelf.Response> _mpesaUnavailable(shelf.Request request) async =>
       _response(
-        'M-Pesa matching needs the online workspace',
-        'Connect to the online Counterbase workspace to match M-Pesa messages with debts. Your local sales and debts remain saved on this device.',
+        'M-Pesa message matching is unavailable',
+        'Pasted M-Pesa messages cannot verify a payment. Connect to your workspace and use Finance to send a Paystack M-Pesa request. Your local sales and debts remain saved on this device.',
       );
 
   shelf.Response _response(String error, String message) => shelf.Response(
