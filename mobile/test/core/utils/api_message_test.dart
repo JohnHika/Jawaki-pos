@@ -38,4 +38,18 @@ void main() {
     expect(apiErrorMessage(StateError('SQLite constraint stack')),
         'Something went wrong. Please try again.');
   });
+
+  test('keeps concise user-facing exception messages', () {
+    expect(
+      apiErrorMessage(Exception('Could not load subscription')),
+      'Could not load subscription',
+    );
+  });
+
+  test('hides transport details from plain exception messages', () {
+    expect(
+      apiErrorMessage(Exception('SocketException: Failed host lookup')),
+      'Something went wrong. Please try again.',
+    );
+  });
 }

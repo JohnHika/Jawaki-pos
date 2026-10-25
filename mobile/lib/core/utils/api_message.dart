@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 /// Turns an API failure into a sentence a shop owner can act on.
@@ -40,7 +42,24 @@ String apiErrorMessage(Object error) {
       return "Couldn't reach the server. Check your internet and try again.";
     }
   }
+  if (error is TimeoutException) {
+    return "Couldn't finish in time. Check your connection and try again.";
+  }
+  if (error is Exception) {
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+    if (_isSafeExceptionMessage(message)) return message;
+  }
   return 'Something went wrong. Please try again.';
+}
+
+bool _isSafeExceptionMessage(String message) {
+  if (message.isEmpty || message.length > 180 || message.contains('\n')) {
+    return false;
+  }
+  return !RegExp(
+    r'(?:DioException|SocketException|HttpException|FormatException|StateError|TypeError|RangeError|TimeoutException|stack trace|traceback|package:|file:///|https?://|/api/v\d+/|sqlite|postgres|prisma|constraint|errno|failed host lookup|connection refused|connection reset|handshake|certificate|status code|response body|null check operator|not a subtype|unhandled exception|error:)',
+    caseSensitive: false,
+  ).hasMatch(message);
 }
 
 String? _friendlyValidationMessage(String message) {

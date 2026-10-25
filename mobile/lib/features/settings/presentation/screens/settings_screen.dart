@@ -27,6 +27,7 @@ import '../../../../core/services/export_document_service.dart';
 import '../../../../core/widgets/release_notes.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/format.dart';
 import '../widgets/settings_layout.dart';
@@ -3057,17 +3058,7 @@ class _BranchManagementSheetState extends State<_BranchManagementSheet> {
   }
 
   String? _apiErrorMessage(Object error) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map && data['message'] != null) {
-        final message = data['message'];
-        if (message is List && message.isNotEmpty) {
-          return message.first.toString();
-        }
-        return message.toString();
-      }
-    }
-    return null;
+    return apiErrorMessage(error);
   }
 
   void _showAddBranchDialog() {
