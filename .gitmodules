@@ -1,0 +1,3 @@
+[submodule "store-management-system"]
+	path = store-management-system
+	url = https://github.com/JohnHika/store-management-system.git
