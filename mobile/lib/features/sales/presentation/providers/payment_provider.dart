@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -129,8 +130,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // it must not turn the same cart back into a fresh charge action.
       state = state.copyWith(
         isProcessing: false,
-        error:
-            'Paystack confirmed this payment. Tap Check M-Pesa Payment to finish the receipt.',
+        error: null,
       );
       return;
     }
@@ -647,9 +647,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       if (!_isCurrentSession(sessionGeneration)) return;
       // Refresh canonical stock after a successful online sale. A failed pull
       // is non-fatal: the queued/periodic sync will retry it later.
-      try {
-        await _syncService.pullChanges();
-      } catch (_) {}
+      // This can paginate through many remote changes. The sale and its
+      // canonical receipt are already committed, so it must not hold the
+      // cashier on the payment screen after the sale succeeded.
+      unawaited(_syncService.pullChanges());
     } catch (_) {
       if (!_isCurrentSession(sessionGeneration)) return;
       await _tryQueueSaleForSync(

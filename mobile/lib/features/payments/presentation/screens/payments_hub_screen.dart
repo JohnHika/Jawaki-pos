@@ -10,6 +10,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/providers/payment_provider.dart';
@@ -87,7 +88,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
         if (!mounted) return;
         setState(() {
           _isLoading = false;
-          _error = e.toString();
+          _error = loadErrorSubtitle(e);
         });
       },
     );
@@ -247,7 +248,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           ? EmptyState(
               icon: Icons.error_outline_rounded,
               title: "Couldn't load payment data",
-              subtitle: 'Check your connection and try again.',
+              subtitle: _error!,
               actionLabel: 'Retry',
               iconColor: DesignColors.error,
               onAction: _loadData,

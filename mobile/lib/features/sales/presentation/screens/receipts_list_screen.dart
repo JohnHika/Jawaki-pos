@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../domain/receipt_search.dart';
 import '../../../../core/utils/format.dart';
@@ -82,7 +83,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _error = e.toString();
+          _error = loadErrorSubtitle(e);
         });
       }
     }
@@ -161,7 +162,7 @@ class _ReceiptsListScreenState extends ConsumerState<ReceiptsListScreen> {
               ? EmptyState(
                   icon: Icons.error_outline_rounded,
                   title: 'Couldn\'t load receipts',
-                  subtitle: 'Check your connection and try again.',
+                  subtitle: _error!,
                   actionLabel: 'Retry',
                   iconColor: DesignColors.error,
                   onAction: () {
