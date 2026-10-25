@@ -1685,13 +1685,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       'quantity': received,
                     });
                   }
-                  if (receivedItems.every(
-                    (item) => (item['quantity'] as num) <= 0,
-                  )) {
-                    setDialogState(() => validationError =
-                        'At least one item must have a received quantity.');
-                    return;
-                  }
                   if (hasDifference && notesController.text.trim().isEmpty) {
                     setDialogState(() => validationError =
                         'Add a note to explain the quantity difference.');

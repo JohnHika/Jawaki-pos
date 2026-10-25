@@ -203,6 +203,44 @@ describe('InventoryService stock transfers', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('records a fully missing shipment as zero received when the discrepancy is documented', async () => {
+    const { prisma, service } = createTransferService();
+    const transferUpdate = jest.fn(async ({ data }) => ({ ...transfer, ...data }));
+    const itemUpdate = jest.fn(async () => ({ id: 'transfer-item-1' }));
+    const stockUpdate = jest.fn();
+    const movementCreate = jest.fn();
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 'transfer-1' }]),
+      stockTransfer: {
+        findUnique: jest.fn(async () => transfer),
+        update: transferUpdate,
+      },
+      stockTransferItem: { update: itemUpdate },
+      stock: { update: stockUpdate },
+      stockMovement: { create: movementCreate },
+    };
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const result = await service.receiveTransfer('transfer-1', 'user-1', 'tenant-1', {
+      receivedItems: [{ productId: 'product-1', quantity: 0 }],
+      notes: 'Shipment was lost before arrival',
+    }, 'branch-destination');
+
+    expect(result.status).toBe('completed');
+    expect(itemUpdate).toHaveBeenCalledWith({
+      where: { id: 'transfer-item-1' },
+      data: { receivedQty: 0 },
+    });
+    expect(stockUpdate).not.toHaveBeenCalled();
+    expect(movementCreate).not.toHaveBeenCalled();
+    expect(transferUpdate).toHaveBeenCalledWith({
+      where: { id: 'transfer-1' },
+      data: expect.objectContaining({
+        notes: 'Received: Shipment was lost before arrival',
+      }),
+    });
+  });
+
   it('rejects products that are not part of the dispatched transfer', async () => {
     const { prisma, service } = createTransferService();
     await expect(

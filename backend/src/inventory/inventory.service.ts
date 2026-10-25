@@ -605,7 +605,6 @@ export class InventoryService {
     );
     const receivedProductIds = new Set<string>();
     let hasDifference = false;
-    let totalReceived = 0;
     for (const item of dto.receivedItems) {
       if (!sentItems.has(item.productId)) {
         throw new BadRequestException('Received items must match the dispatched transfer');
@@ -618,14 +617,10 @@ export class InventoryService {
       if (item.quantity > sentQty) {
         throw new BadRequestException('Received quantity cannot exceed the amount dispatched');
       }
-      totalReceived += item.quantity;
       if (item.quantity !== sentQty) hasDifference = true;
     }
     if (receivedProductIds.size !== sentItems.size) {
       throw new BadRequestException('Enter the received quantity for every transferred product');
-    }
-    if (totalReceived <= 0) {
-      throw new BadRequestException('At least one transferred item must be received');
     }
     if (hasDifference && !dto.notes?.trim()) {
       throw new BadRequestException('Add a note explaining the quantity difference');
@@ -701,7 +696,9 @@ export class InventoryService {
           status: 'completed',
           approvedById: userId,
           notes: dto.notes
-            ? `${lockedTransfer.notes || ''}\nReceived: ${dto.notes}`
+            ? [lockedTransfer.notes, `Received: ${dto.notes}`]
+                .filter(Boolean)
+                .join('\n')
             : lockedTransfer.notes,
         },
       });
