@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,10 +23,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _overdueInstallments = [];
   bool _isLoading = true;
-  String? _lastQuery;
   String? _loadError;
   bool _showDebtOnly = false;
   final _searchController = TextEditingController();
+  Timer? _serverBalanceDebounce;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -33,13 +36,19 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   Future<void> _loadOverdue() async {
-    final db = getIt<AppDatabase>();
-    final overdue = await db.getOverdueInstallments();
-    if (mounted) setState(() => _overdueInstallments = overdue);
+    try {
+      final db = getIt<AppDatabase>();
+      final overdue = await db.getOverdueInstallments();
+      if (mounted) setState(() => _overdueInstallments = overdue);
+    } catch (_) {
+      // The overdue reminder is secondary; keep the customer list usable.
+    }
   }
 
   @override
   void dispose() {
+    _loadGeneration++;
+    _serverBalanceDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -140,34 +149,43 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   Future<void> _loadCustomers({String? query}) async {
-    _lastQuery = query;
+    final normalizedQuery = query?.trim();
+    final generation = ++_loadGeneration;
+    _serverBalanceDebounce?.cancel();
     setState(() {
-      _isLoading = true;
+      // Keep the current results visible while the next local search runs.
+      _isLoading = _customers.isEmpty;
       _loadError = null;
     });
     try {
       final db = getIt<AppDatabase>();
-      final local = (query != null && query.isNotEmpty)
-          ? await db.searchCustomers(query)
+      final local = (normalizedQuery != null && normalizedQuery.isNotEmpty)
+          ? await db.searchCustomers(normalizedQuery)
           : await db.getAllCustomers();
       // Show the phone's own list straight away. The server balances are
       // layered on afterwards: waiting for them here left the page on a
       // spinner for the whole network timeout whenever the phone was offline.
-      if (mounted) {
-        setState(() {
-          _customers = _applyDebtFilter(local);
-          _isLoading = false;
-          _loadError = null;
-        });
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _customers = _applyDebtFilter(local);
+        _isLoading = false;
+        _loadError = null;
+      });
+      if (normalizedQuery == null || normalizedQuery.isEmpty) {
+        unawaited(_loadOverdue());
       }
-      _loadOverdue();
-      _refreshServerBalances(local, query);
-    } catch (e) {
-      if (mounted) {
+      // Search runs on the local database immediately. Wait until typing stops
+      // before requesting the same full server balance snapshot again.
+      _serverBalanceDebounce = Timer(const Duration(milliseconds: 320), () {
+        if (!mounted || generation != _loadGeneration) return;
+        unawaited(_refreshServerBalances(local, normalizedQuery, generation));
+      });
+    } catch (_) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _isLoading = false;
           _loadError =
-              "Couldn't load customers. Check your connection and try again.";
+              "Couldn't read the saved customer list. Please try again.";
         });
       }
     }
@@ -176,11 +194,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   Future<void> _refreshServerBalances(
     List<Map<String, dynamic>> local,
     String? query,
+    int generation,
   ) async {
     final merged = await _withServerBalances(local, query)
         .timeout(const Duration(seconds: 6), onTimeout: () => local);
-    // Ignore a late answer if the user has searched again meanwhile.
-    if (!mounted || identical(merged, local) || _lastQuery != query) return;
+    // Ignore a late answer if the user has searched again meanwhile, even if
+    // they later type the same query a second time.
+    if (!mounted || generation != _loadGeneration || identical(merged, local)) {
+      return;
+    }
     setState(() => _customers = _applyDebtFilter(merged));
   }
 

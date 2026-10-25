@@ -1297,9 +1297,10 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                           CircularProgressIndicator(color: DesignColors.accent))
                   : _failed
                       ? EmptyState(
-                          icon: Icons.cloud_off_rounded,
-                          title: 'Customers could not load',
-                          subtitle: 'Try again or add a customer to continue.',
+                          icon: Icons.error_outline_rounded,
+                          title: 'Could not read saved customers',
+                          subtitle:
+                              'The customer list on this device could not be opened. Try again or add a customer.',
                           actionLabel: 'Retry',
                           onAction: _loadCustomers,
                         )

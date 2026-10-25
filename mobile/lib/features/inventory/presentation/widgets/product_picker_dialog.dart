@@ -239,9 +239,10 @@ class _ProductPickerDialogState extends ConsumerState<ProductPickerDialog> {
                 )
               : _loadFailed
                   ? EmptyState(
-                      icon: Icons.cloud_off_rounded,
-                      title: "Couldn't load products",
-                      subtitle: 'Check your connection and try again.',
+                      icon: Icons.error_outline_rounded,
+                      title: "Couldn't read saved products",
+                      subtitle:
+                          'The saved product list could not be opened. Try again.',
                       actionLabel: 'Try again',
                       actionIcon: Icons.refresh_rounded,
                       iconColor: DesignColors.warning,
