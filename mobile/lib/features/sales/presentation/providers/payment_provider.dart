@@ -346,9 +346,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
       await _database.markSaleAsSynced(localSaleId);
       if (!_isCurrentSession(sessionGeneration)) return null;
-      try {
-        await _syncService.pullChanges();
-      } catch (_) {}
+      // Paystack has verified the charge and the canonical receipt is saved.
+      // Pulling unrelated remote changes can paginate for minutes, so let the
+      // cashier return to the receipt while the background sync catches up.
+      unawaited(_syncService.pullChanges());
       if (!_isCurrentSession(sessionGeneration)) return null;
 
       _pendingLocalSaleId = null;
