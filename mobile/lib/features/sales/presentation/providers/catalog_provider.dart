@@ -357,7 +357,10 @@ Future<void> _performCatalogSync({
           .whereType<LocalStockCompanion>()
           .toList();
       if (stockItems.isNotEmpty && isSameCatalogScope()) {
-        await database.updateLocalStock(stockItems);
+        await database.reconcileLocalStockWithPendingSales(
+          branchId: branchId,
+          serverStock: stockItems,
+        );
       }
     }
     debugPrint('[CatalogSync] Sync complete');

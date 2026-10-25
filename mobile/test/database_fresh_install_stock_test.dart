@@ -1,5 +1,6 @@
 import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,9 +17,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final storage = StorageService();
     await storage.initialize();
+    await storage.saveTenantId('tenant-1');
     await storage.saveBranchId('branch-1');
-    final database =
-        AppDatabase.forTesting(NativeDatabase.memory(), storage);
+    final database = AppDatabase.forTesting(NativeDatabase.memory(), storage);
     addTearDown(database.close);
     return database;
   }
@@ -59,5 +60,71 @@ void main() {
     );
 
     expect(total, 12.0);
+  });
+
+  test('catalog reconciliation preserves unsynced sale deductions', () async {
+    final database = await freshDatabase();
+    final now = DateTime.now();
+    await database.into(database.pendingSales).insert(
+          PendingSalesCompanion.insert(
+            id: 'offline-sale-1',
+            receiptNumber: 'LOCAL-1',
+            subtotal: 30,
+            total: 30,
+            paymentMethod: 'CASH',
+            cashierId: 'user-1',
+            branchId: 'branch-1',
+            status: const Value('COMPLETED'),
+            createdAt: now,
+          ),
+        );
+    await database.into(database.pendingSaleItems).insert(
+          PendingSaleItemsCompanion.insert(
+            saleId: 'offline-sale-1',
+            productId: 'product-1',
+            productName: 'Test product',
+            sku: 'TEST-1',
+            quantity: 3,
+            unitPrice: 10,
+            total: 30,
+          ),
+        );
+
+    await database.reconcileLocalStockWithPendingSales(
+      branchId: 'branch-1',
+      serverStock: [
+        LocalStockCompanion.insert(
+          id: 'stock-branch-1-product-1',
+          productId: 'product-1',
+          branchId: 'branch-1',
+          quantity: 20,
+          updatedAt: now,
+        ),
+      ],
+    );
+
+    expect(
+      (await database.getProductStock('product-1', 'branch-1'))?.quantity,
+      17,
+    );
+
+    await database.markSaleAsSynced('offline-sale-1');
+    await database.reconcileLocalStockWithPendingSales(
+      branchId: 'branch-1',
+      serverStock: [
+        LocalStockCompanion.insert(
+          id: 'stock-branch-1-product-1',
+          productId: 'product-1',
+          branchId: 'branch-1',
+          quantity: 17,
+          updatedAt: now,
+        ),
+      ],
+    );
+
+    expect(
+      (await database.getProductStock('product-1', 'branch-1'))?.quantity,
+      17,
+    );
   });
 }

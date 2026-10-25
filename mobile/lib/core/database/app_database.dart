@@ -1179,6 +1179,61 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Reconcile a server stock snapshot without erasing deductions from sales
+  /// that are still waiting to sync. The server snapshot cannot include those
+  /// sales yet, so write its canonical quantity minus the local pending sale
+  /// quantities in one transaction. Once a sale syncs, the next snapshot uses
+  /// the server's already-decremented quantity and no longer subtracts it.
+  Future<void> reconcileLocalStockWithPendingSales({
+    required String branchId,
+    required List<LocalStockCompanion> serverStock,
+  }) async {
+    if (_customerTenantId == null ||
+        !_activeBranchIds().contains(branchId) ||
+        serverStock.isEmpty) {
+      return;
+    }
+
+    await transaction(() async {
+      final pendingSalesForBranch = await (select(pendingSales)
+            ..where((sale) =>
+                sale.branchId.equals(branchId) &
+                sale.status.equals('COMPLETED') &
+                sale.isSynced.equals(false)))
+          .get();
+      final pendingSaleIds =
+          pendingSalesForBranch.map((sale) => sale.id).toList();
+      final pendingQuantityByProduct = <String, double>{};
+      if (pendingSaleIds.isNotEmpty) {
+        final pendingItems = await (select(pendingSaleItems)
+              ..where((item) => item.saleId.isIn(pendingSaleIds)))
+            .get();
+        for (final item in pendingItems) {
+          pendingQuantityByProduct.update(
+            item.productId,
+            (quantity) => quantity + item.quantity,
+            ifAbsent: () => item.quantity,
+          );
+        }
+      }
+
+      final now = DateTime.now();
+      final reconciledStock = serverStock.map((item) {
+        final productId = item.productId.value;
+        final serverQuantity = item.quantity.value;
+        final pendingQuantity = pendingQuantityByProduct[productId] ?? 0;
+        return item.copyWith(
+          quantity: Value(serverQuantity - pendingQuantity),
+          updatedAt: Value(now),
+        );
+      }).toList();
+
+      await batch((batch) {
+        batch.insertAllOnConflictUpdate(localStock, reconciledStock);
+      });
+    });
+  }
+
   // ===== DAILY PURCHASES (for simplified profit calculation) =====
 
   Future<void> addDailyPurchase({
@@ -1422,8 +1477,8 @@ class AppDatabase extends _$AppDatabase {
     } else {
       // No local stock row yet for this product+branch — previously this
       // silently did nothing, so the first sale of a product never showed
-      // any deduction. Create the row so the sale is reflected; the next
-      // catalog sync corrects it to the server's (now-decremented) value.
+      // any deduction. Create the row so the sale is reflected; catalog
+      // reconciliation preserves the deduction until the sale syncs.
       final start = -amount;
       await into(localStock).insert(
         LocalStockCompanion.insert(
