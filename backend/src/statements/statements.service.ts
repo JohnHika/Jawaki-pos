@@ -12,6 +12,7 @@ import { Prisma, StatementLink } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import pdfMake = require('pdfmake');
 import { PrismaService } from '../common/prisma/prisma.service';
+import { publicApiBase } from '../common/public-api-url';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ReferralsService } from '../referrals/referrals.service';
@@ -257,13 +258,7 @@ export class StatementsService {
 
   /** Where the page lives, e.g. https://api.example.com. Null when no public address is configured. */
   publicOrigin(): string | null {
-    const base = [
-      this.config.get<string>('PUBLIC_API_URL'),
-      this.config.get<string>('API_PUBLIC_URL'),
-      this.config.get<string>('RENDER_EXTERNAL_URL'),
-    ].find((value) => value?.trim());
-    if (!base) return null;
-    return base.trim().replace(/\/+$/, '').replace(/\/api\/v\d+$/, '');
+    return publicApiBase(this.config)?.replace(/\/api\/v\d+$/, '') ?? null;
   }
 
   private linkUrl(token: string): { path: string; url: string | null } {

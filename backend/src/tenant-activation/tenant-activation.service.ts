@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { publicApiBase } from '../common/public-api-url';
 import { PaystackService } from '../ai-billing/paystack.service';
 import { ReferralsService } from '../referrals/referrals.service';
 
@@ -173,14 +174,10 @@ export class TenantActivationService {
       ?.trim();
     if (explicit) return explicit;
 
-    const publicBase = [
-      this.configService.get<string>('PUBLIC_API_URL'),
-      this.configService.get<string>('API_PUBLIC_URL'),
-      this.configService.get<string>('RENDER_EXTERNAL_URL'),
-    ].find((value) => value?.trim());
+    const publicBase = publicApiBase(this.configService);
     if (!publicBase) return undefined;
 
-    const normalized = publicBase.trim().replace(/\/+$/, '');
+    const normalized = publicBase.replace(/\/+$/, '');
     const apiPrefix = normalized.endsWith('/api/v1')
         ? normalized
         : `${normalized}/api/v1`;

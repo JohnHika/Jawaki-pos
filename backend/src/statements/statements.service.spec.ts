@@ -128,6 +128,19 @@ describe('creating a link', () => {
     expect(link.url).toBeNull();
     expect(link.shareText.en).toContain(link.path);
   });
+
+  it('uses the stable Vercel production domain when no explicit API URL is set', async () => {
+    const { service } = build({
+      env: {
+        VERCEL_ENV: 'production',
+        VERCEL_PROJECT_PRODUCTION_URL: 'api.archeaxon.com',
+      },
+    });
+    const link = await service.createLink('u', 't', { customerId: 'c1' } as any);
+
+    expect(link.url).toMatch(/^https:\/\/api\.archeaxon\.com\/s\//);
+    expect(link.shareText.en).toContain(link.url as string);
+  });
 });
 
 describe('opening a link', () => {

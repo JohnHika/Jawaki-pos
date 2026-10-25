@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { publicApiBase } from '../common/public-api-url';
 import { PaystackService } from '../ai-billing/paystack.service';
 import { RecurringBillingService } from './recurring-billing.service';
 import { PLAN_PRICING } from '../subscription/subscription.service';
@@ -268,13 +269,9 @@ export class PaystackBillingService {
   private callbackUrl(): string | undefined {
     const explicit = this.config.get<string>('PAYSTACK_BILLING_CALLBACK_URL')?.trim();
     if (explicit) return explicit;
-    const publicBase = [
-      this.config.get<string>('PUBLIC_API_URL'),
-      this.config.get<string>('API_PUBLIC_URL'),
-      this.config.get<string>('RENDER_EXTERNAL_URL'),
-    ].find((value) => value?.trim());
+    const publicBase = publicApiBase(this.config);
     if (!publicBase) return undefined;
-    const normalized = publicBase.trim().replace(/\/+$/, '');
+    const normalized = publicBase.replace(/\/+$/, '');
     const apiPrefix = normalized.endsWith('/api/v1')
       ? normalized
       : `${normalized}/api/v1`;

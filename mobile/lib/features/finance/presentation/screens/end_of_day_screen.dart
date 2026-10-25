@@ -187,6 +187,8 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
         ? asDouble(physicalCash)
         : null;
     final closeStatusKnown = closeError == null && summaryError == null;
+    final cashStatusKnown = cashError == null && expectedCash != null;
+    final canClose = closeStatusKnown && cashStatusKnown;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, DesignSpacing.lg,
@@ -342,15 +344,15 @@ class _EndOfDayScreenState extends ConsumerState<EndOfDayScreen> {
           child: GradientButton(
             label: summaryError != null
                 ? 'Reconnect to verify sales'
-                : !closeStatusKnown
+                : closeError != null
                     ? 'Connect to check close status'
-                    : closed
-                        ? 'Re-close day'
-                        : 'Close end of day',
+                    : !cashStatusKnown
+                        ? 'Reconnect to verify till cash'
+                        : closed
+                            ? 'Re-close day'
+                            : 'Close end of day',
             icon: Icons.check_circle_outline_rounded,
-            onPressed: closeStatusKnown && summaryError == null
-                ? () => _showCloseSheet(expectedCash)
-                : null,
+            onPressed: canClose ? () => _showCloseSheet(expectedCash) : null,
             height: 52,
             borderRadius: DesignSpacing.radiusMd,
           ),
