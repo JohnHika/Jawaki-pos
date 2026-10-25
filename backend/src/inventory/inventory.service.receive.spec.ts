@@ -123,3 +123,140 @@ describe('InventoryService stock writer locking', () => {
     });
   });
 });
+
+describe('InventoryService stock transfers', () => {
+  const transfer = {
+    id: 'transfer-1',
+    fromBranchId: 'branch-source',
+    toBranchId: 'branch-destination',
+    status: 'in_transit',
+    notes: null,
+    createdAt: new Date('2026-10-25T10:00:00.000Z'),
+    createdById: 'user-1',
+    items: [
+      {
+        id: 'transfer-item-1',
+        productId: 'product-1',
+        requestedQty: 5,
+        sentQty: 5,
+        receivedQty: null,
+      },
+    ],
+  };
+
+  function createTransferService() {
+    const prisma = {
+      branch: {
+        findMany: jest.fn(async () => [
+          { id: 'branch-source', name: 'Source' },
+          { id: 'branch-destination', name: 'Destination' },
+        ]),
+      },
+      product: { findMany: jest.fn() },
+      stockTransfer: {
+        findUnique: jest.fn(async () => transfer),
+        findMany: jest.fn(),
+        count: jest.fn(),
+      },
+      $transaction: jest.fn(),
+    } as any;
+    const service = new InventoryService(
+      prisma,
+      { invalidatePattern: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    return { prisma, service };
+  }
+
+  it('rejects duplicate received products before opening a transaction', async () => {
+    const { prisma, service } = createTransferService();
+    await expect(
+      service.receiveTransfer('transfer-1', 'user-1', 'tenant-1', {
+        receivedItems: [
+          { productId: 'product-1', quantity: 2 },
+          { productId: 'product-1', quantity: 2 },
+        ],
+      }),
+    ).rejects.toThrow('Each transferred product must be listed once');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects quantities above what was dispatched', async () => {
+    const { prisma, service } = createTransferService();
+    await expect(
+      service.receiveTransfer('transfer-1', 'user-1', 'tenant-1', {
+        receivedItems: [{ productId: 'product-1', quantity: 6 }],
+      }),
+    ).rejects.toThrow('Received quantity cannot exceed the amount dispatched');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('requires a note when a received quantity differs from the dispatched quantity', async () => {
+    const { prisma, service } = createTransferService();
+    await expect(
+      service.receiveTransfer('transfer-1', 'user-1', 'tenant-1', {
+        receivedItems: [{ productId: 'product-1', quantity: 4 }],
+      }),
+    ).rejects.toThrow('Add a note explaining the quantity difference');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects products that are not part of the dispatched transfer', async () => {
+    const { prisma, service } = createTransferService();
+    await expect(
+      service.receiveTransfer('transfer-1', 'user-1', 'tenant-1', {
+        receivedItems: [{ productId: 'product-other', quantity: 1 }],
+      }),
+    ).rejects.toThrow('Received items must match the dispatched transfer');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('returns readable branch and product names and includes incoming transfers', async () => {
+    const incomingTransfer = {
+      ...transfer,
+      items: [
+        {
+          productId: 'product-1',
+          requestedQty: 5,
+          sentQty: 5,
+          receivedQty: null,
+        },
+      ],
+    };
+    const { prisma, service } = createTransferService();
+    prisma.stockTransfer.findUnique.mockClear();
+    prisma.stockTransfer.findMany.mockResolvedValue([incomingTransfer]);
+    prisma.stockTransfer.count.mockResolvedValue(1);
+    prisma.product.findMany.mockResolvedValue([{ id: 'product-1', name: 'Tea' }]);
+
+    const result = await service.getTransfers('tenant-1', 'branch-destination');
+
+    expect(prisma.stockTransfer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { fromBranchId: { in: ['branch-source', 'branch-destination'] } },
+            { toBranchId: { in: ['branch-source', 'branch-destination'] } },
+            { OR: [{ fromBranchId: 'branch-destination' }, { toBranchId: 'branch-destination' }] },
+          ]),
+        }),
+      }),
+    );
+    expect(result.items[0]).toMatchObject({
+      fromBranchName: 'Source',
+      toBranchName: 'Destination',
+      items: [{ productName: 'Tea', requestedQty: 5, sentQty: 5 }],
+    });
+  });
+
+  it('does not expose another branch transfer by its ID', async () => {
+    const { prisma, service } = createTransferService();
+
+    await expect(
+      service.getTransfer('transfer-1', 'tenant-1', 'branch-unrelated'),
+    ).rejects.toThrow('Access denied');
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+});

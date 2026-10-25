@@ -218,7 +218,8 @@ class ApiClient {
   }
 
   Future<List<dynamic>> getStaffInvitationRoles() async {
-    final response = await _dio.get('/tenant-onboarding/staff-invitation-options');
+    final response =
+        await _dio.get('/tenant-onboarding/staff-invitation-options');
     return response.data as List<dynamic>;
   }
 
@@ -956,6 +957,36 @@ class ApiClient {
     final response = await _dio.post('/inventory/batches/receive', data: data);
     return response.data;
   }
+
+  Future<Map<String, dynamic>> createInventoryTransfer(
+          Map<String, dynamic> data) async =>
+      _payload(await _dio.post('/inventory/transfers', data: data));
+
+  Future<Map<String, dynamic>> getInventoryTransfers({
+    String? branchId,
+    String? status,
+    int page = 1,
+    int limit = 50,
+  }) async =>
+      _payload(await _dio.get('/inventory/transfers', queryParameters: {
+        if (branchId != null) 'branchId': branchId,
+        if (status != null) 'status': status,
+        'page': page,
+        'limit': limit,
+      }));
+
+  Future<Map<String, dynamic>> sendInventoryTransfer(String id) async =>
+      _payload(await _dio.post('/inventory/transfers/$id/send'));
+
+  Future<Map<String, dynamic>> receiveInventoryTransfer(
+    String id, {
+    required List<Map<String, dynamic>> receivedItems,
+    String? notes,
+  }) async =>
+      _payload(await _dio.post('/inventory/transfers/$id/receive', data: {
+        'receivedItems': receivedItems,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      }));
 
   // Stock Request endpoints
   Future<Map<String, dynamic>> createStockRequest(

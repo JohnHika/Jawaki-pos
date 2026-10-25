@@ -25,7 +25,7 @@ import {
   StockWithBatchesResponseDto,
   ExpiryDashboardResponseDto,
 } from './dto/inventory.dto';
-import { StockMovementType } from '@prisma/client';
+import { Prisma, StockMovementType } from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 import { applyPurchaseCost } from '../common/product-cost';
 
@@ -391,7 +391,15 @@ export class InventoryService {
 
   // ==================== STOCK TRANSFERS ====================
 
-  async createTransfer(userId: string, tenantId: string, dto: CreateTransferDto) {
+  async createTransfer(
+    userId: string,
+    tenantId: string,
+    dto: CreateTransferDto,
+    activeBranchId?: string,
+  ) {
+    if (activeBranchId && dto.fromBranchId !== activeBranchId) {
+      throw new ForbiddenException('Transfers must leave from your active branch');
+    }
     // Verify branches
     const [fromBranch, toBranch] = await Promise.all([
       this.prisma.branch.findFirst({ where: { id: dto.fromBranchId, tenantId } }),
@@ -402,6 +410,22 @@ export class InventoryService {
     if (!toBranch) throw new NotFoundException('Destination branch not found');
     if (dto.fromBranchId === dto.toBranchId) {
       throw new BadRequestException('Cannot transfer to the same branch');
+    }
+    if (new Set(dto.items.map((item) => item.productId)).size !== dto.items.length) {
+      throw new BadRequestException('Each product can appear only once in a transfer');
+    }
+
+    if (dto.requestId) {
+      const prior = await this.prisma.stockTransfer.findUnique({
+        where: { requestId: dto.requestId },
+        include: { items: true },
+      });
+      if (prior) {
+        if (!this.matchesTransferRequest(prior, dto)) {
+          throw new ConflictException('This transfer request key was already used for a different transfer');
+        }
+        return this.getTransfer(prior.id, tenantId, activeBranchId);
+      }
     }
 
     // Verify products and stock
@@ -431,34 +455,61 @@ export class InventoryService {
     }
 
     // Create transfer
-    const transfer = await this.prisma.stockTransfer.create({
-      data: {
-        fromBranchId: dto.fromBranchId,
-        toBranchId: dto.toBranchId,
-        status: 'pending',
-        notes: dto.notes,
-        createdById: userId,
-        items: {
-          create: dto.items.map((item) => ({
-            productId: item.productId,
-            requestedQty: item.quantity,
-          })),
-        },
-      },
-      include: {
-        items: {
-          include: {
-            transfer: false,
+    let transfer: { id: string };
+    try {
+      transfer = await this.prisma.stockTransfer.create({
+        data: {
+          requestId: dto.requestId,
+          fromBranchId: dto.fromBranchId,
+          toBranchId: dto.toBranchId,
+          status: 'pending',
+          notes: dto.notes,
+          createdById: userId,
+          items: {
+            create: dto.items.map((item) => ({
+              productId: item.productId,
+              requestedQty: item.quantity,
+            })),
           },
         },
-      },
-    });
+        select: { id: true },
+      });
+    } catch (error) {
+      if (
+        dto.requestId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const prior = await this.prisma.stockTransfer.findUnique({
+          where: { requestId: dto.requestId },
+          include: { items: true },
+        });
+        if (prior && this.matchesTransferRequest(prior, dto)) {
+          return this.getTransfer(prior.id, tenantId, activeBranchId);
+        }
+        if (prior) {
+          throw new ConflictException(
+            'This transfer request key was already used for a different transfer',
+          );
+        }
+      }
+      throw error;
+    }
 
-    return this.getTransfer(transfer.id, tenantId);
+    return this.getTransfer(transfer.id, tenantId, activeBranchId);
   }
 
-  async sendTransfer(transferId: string, userId: string, tenantId: string) {
+  async sendTransfer(
+    transferId: string,
+    userId: string,
+    tenantId: string,
+    activeBranchId?: string,
+  ) {
     const transfer = await this.getTransferInternal(transferId, tenantId);
+
+    if (activeBranchId && transfer.fromBranchId !== activeBranchId) {
+      throw new ForbiddenException('Only the source branch can dispatch this transfer');
+    }
 
     if (transfer.status !== 'pending') {
       throw new BadRequestException('Transfer is not in pending status');
@@ -537,11 +588,47 @@ export class InventoryService {
     userId: string,
     tenantId: string,
     dto: ReceiveTransferDto,
+    activeBranchId?: string,
   ) {
     const transfer = await this.getTransferInternal(transferId, tenantId);
 
+    if (activeBranchId && transfer.toBranchId !== activeBranchId) {
+      throw new ForbiddenException('Only the destination branch can confirm this transfer');
+    }
+
     if (transfer.status !== 'in_transit') {
       throw new BadRequestException('Transfer is not in transit');
+    }
+
+    const sentItems = new Map(
+      transfer.items.map((item) => [item.productId, Number(item.sentQty ?? item.requestedQty)]),
+    );
+    const receivedProductIds = new Set<string>();
+    let hasDifference = false;
+    let totalReceived = 0;
+    for (const item of dto.receivedItems) {
+      if (!sentItems.has(item.productId)) {
+        throw new BadRequestException('Received items must match the dispatched transfer');
+      }
+      if (receivedProductIds.has(item.productId)) {
+        throw new BadRequestException('Each transferred product must be listed once');
+      }
+      receivedProductIds.add(item.productId);
+      const sentQty = sentItems.get(item.productId)!;
+      if (item.quantity > sentQty) {
+        throw new BadRequestException('Received quantity cannot exceed the amount dispatched');
+      }
+      totalReceived += item.quantity;
+      if (item.quantity !== sentQty) hasDifference = true;
+    }
+    if (receivedProductIds.size !== sentItems.size) {
+      throw new BadRequestException('Enter the received quantity for every transferred product');
+    }
+    if (totalReceived <= 0) {
+      throw new BadRequestException('At least one transferred item must be received');
+    }
+    if (hasDifference && !dto.notes?.trim()) {
+      throw new BadRequestException('Add a note explaining the quantity difference');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -562,39 +649,43 @@ export class InventoryService {
         const item = lockedTransfer.items.find(
           (candidate) => candidate.productId === receivedItem.productId,
         );
-        if (!item) continue;
-
-        const stock = await lockStockForUpdate(
-          tx,
-          lockedTransfer.toBranchId,
-          receivedItem.productId,
-          true,
-        );
-        if (!stock) {
-          throw new ConflictException('Could not lock destination stock');
+        if (!item) {
+          throw new BadRequestException('Received items must match the dispatched transfer');
         }
 
-        const previousQty = Number(stock.quantity);
-        const newQty = previousQty + receivedItem.quantity;
+        if (receivedItem.quantity > 0) {
+          const stock = await lockStockForUpdate(
+            tx,
+            lockedTransfer.toBranchId,
+            receivedItem.productId,
+            true,
+          );
+          if (!stock) {
+            throw new ConflictException('Could not lock destination stock');
+          }
 
-        await tx.stock.update({
-          where: { id: stock.id },
-          data: { quantity: newQty },
-        });
+          const previousQty = Number(stock.quantity);
+          const newQty = previousQty + receivedItem.quantity;
 
-        await tx.stockMovement.create({
-          data: {
-            branchId: lockedTransfer.toBranchId,
-            productId: receivedItem.productId,
-            type: StockMovementType.TRANSFER_IN,
-            quantity: receivedItem.quantity,
-            previousQty,
-            newQty,
-            reference: transferId,
-            notes: `Transfer from branch`,
-            createdById: userId,
-          },
-        });
+          await tx.stock.update({
+            where: { id: stock.id },
+            data: { quantity: newQty },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              branchId: lockedTransfer.toBranchId,
+              productId: receivedItem.productId,
+              type: StockMovementType.TRANSFER_IN,
+              quantity: receivedItem.quantity,
+              previousQty,
+              newQty,
+              reference: transferId,
+              notes: `Transfer from branch`,
+              createdById: userId,
+            },
+          });
+        }
 
         // Update received quantity
         await tx.stockTransferItem.update({
@@ -622,23 +713,52 @@ export class InventoryService {
     });
   }
 
-  async getTransfer(transferId: string, tenantId: string) {
+  async getTransfer(
+    transferId: string,
+    tenantId: string,
+    activeBranchId?: string,
+  ) {
     const transfer = await this.getTransferInternal(transferId, tenantId);
+    if (
+      activeBranchId &&
+      transfer.fromBranchId !== activeBranchId &&
+      transfer.toBranchId !== activeBranchId
+    ) {
+      throw new ForbiddenException('Access denied');
+    }
+    const [branches, products] = await Promise.all([
+      this.prisma.branch.findMany({
+        where: {
+          id: { in: [transfer.fromBranchId, transfer.toBranchId] },
+          tenantId,
+        },
+        select: { id: true, name: true },
+      }),
+      this.prisma.product.findMany({
+        where: {
+          id: { in: transfer.items.map((item) => item.productId) },
+          tenantId,
+        },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
+    const productNames = new Map(products.map((product) => [product.id, product.name]));
 
     return {
       id: transfer.id,
       fromBranchId: transfer.fromBranchId,
-      fromBranchName: (transfer as any).fromBranch?.name,
+      fromBranchName: branchNames.get(transfer.fromBranchId),
       toBranchId: transfer.toBranchId,
-      toBranchName: (transfer as any).toBranch?.name,
+      toBranchName: branchNames.get(transfer.toBranchId),
       status: transfer.status,
       notes: transfer.notes,
-      items: transfer.items.map((i: any) => ({
+      items: transfer.items.map((i) => ({
         productId: i.productId,
-        productName: i.product?.name,
+        productName: productNames.get(i.productId),
         requestedQty: Number(i.requestedQty),
-        sentQty: i.sentQty ? Number(i.sentQty) : undefined,
-        receivedQty: i.receivedQty ? Number(i.receivedQty) : undefined,
+        sentQty: i.sentQty === null ? undefined : Number(i.sentQty),
+        receivedQty: i.receivedQty === null ? undefined : Number(i.receivedQty),
       })),
       createdAt: transfer.createdAt,
       createdById: transfer.createdById,
@@ -652,24 +772,24 @@ export class InventoryService {
     page = 1,
     limit = 20,
   ) {
-    const where: any = {};
-
-    if (branchId) {
-      where.OR = [{ fromBranchId: branchId }, { toBranchId: branchId }];
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    // Filter by tenant through branches
+    // A transfer belongs to the tenant only when both sides belong to it.
     const tenantBranches = await this.prisma.branch.findMany({
       where: { tenantId },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     const branchIds = tenantBranches.map((b) => b.id);
-
-    where.fromBranchId = { in: branchIds };
+    const where: any = {
+      AND: [
+        { fromBranchId: { in: branchIds } },
+        { toBranchId: { in: branchIds } },
+      ],
+    };
+    if (branchId) {
+      where.AND.push({
+        OR: [{ fromBranchId: branchId }, { toBranchId: branchId }],
+      });
+    }
+    if (status) where.status = status;
 
     const [transfers, total] = await Promise.all([
       this.prisma.stockTransfer.findMany({
@@ -688,8 +808,44 @@ export class InventoryService {
       this.prisma.stockTransfer.count({ where }),
     ]);
 
+    const involvedBranchIds = [...new Set(
+      transfers.flatMap((transfer) => [transfer.fromBranchId, transfer.toBranchId]),
+    )];
+    const involvedProductIds = [...new Set(
+      transfers.flatMap((transfer) => transfer.items.map((item) => item.productId)),
+    )];
+    const [branches, products] = await Promise.all([
+      this.prisma.branch.findMany({
+        where: { id: { in: involvedBranchIds }, tenantId },
+        select: { id: true, name: true },
+      }),
+      this.prisma.product.findMany({
+        where: { id: { in: involvedProductIds }, tenantId },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
+    const productNames = new Map(products.map((product) => [product.id, product.name]));
+
     return {
-      items: transfers,
+      items: transfers.map((transfer) => ({
+        id: transfer.id,
+        fromBranchId: transfer.fromBranchId,
+        fromBranchName: branchNames.get(transfer.fromBranchId),
+        toBranchId: transfer.toBranchId,
+        toBranchName: branchNames.get(transfer.toBranchId),
+        status: transfer.status,
+        notes: transfer.notes,
+        createdAt: transfer.createdAt,
+        createdById: transfer.createdById,
+        items: transfer.items.map((item) => ({
+          productId: item.productId,
+          productName: productNames.get(item.productId),
+          requestedQty: Number(item.requestedQty),
+          sentQty: item.sentQty === null ? undefined : Number(item.sentQty),
+          receivedQty: item.receivedQty === null ? undefined : Number(item.receivedQty),
+        })),
+      })),
       total,
       page,
       limit,
@@ -911,16 +1067,47 @@ export class InventoryService {
       throw new NotFoundException('Transfer not found');
     }
 
-    // Verify tenant access
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: transfer.fromBranchId, tenantId },
+    // Verify both sides belong to this tenant; checking only the source branch
+    // could expose a cross-tenant destination or allow a forged transfer row.
+    const branches = await this.prisma.branch.findMany({
+      where: {
+        id: { in: [transfer.fromBranchId, transfer.toBranchId] },
+        tenantId,
+      },
+      select: { id: true },
     });
 
-    if (!branch) {
+    if (branches.length !== 2) {
       throw new ForbiddenException('Access denied');
     }
 
     return transfer;
+  }
+
+  private matchesTransferRequest(
+    transfer: {
+      fromBranchId: string;
+      toBranchId: string;
+      notes: string | null;
+      items: Array<{ productId: string; requestedQty: unknown }>;
+    },
+    dto: CreateTransferDto,
+  ) {
+    if (
+      transfer.fromBranchId !== dto.fromBranchId ||
+      transfer.toBranchId !== dto.toBranchId ||
+      (transfer.notes ?? undefined) !== dto.notes ||
+      transfer.items.length !== dto.items.length
+    ) {
+      return false;
+    }
+
+    const existingItems = new Map(
+      transfer.items.map((item) => [item.productId, Number(item.requestedQty)]),
+    );
+    return dto.items.every(
+      (item) => existingItems.get(item.productId) === item.quantity,
+    );
   }
 
   // ==================== BATCH MANAGEMENT ====================

@@ -236,6 +236,11 @@ export class TransferItemDto {
 }
 
 export class CreateTransferDto {
+  @ApiPropertyOptional({ description: 'Idempotency key for safely retrying this transfer request' })
+  @IsOptional()
+  @IsUUID('4')
+  requestId?: string;
+
   @ApiProperty()
   @IsUUID('4', { message: 'From branch ID must be a valid UUID' })
   fromBranchId: string;
@@ -263,15 +268,29 @@ export class ReceiveTransferDto {
   @ApiProperty({ description: 'Received quantities per item' })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => TransferItemDto)
+  @Type(() => ReceiveTransferItemDto)
   @ArrayMinSize(1, { message: 'At least one item is required' })
-  receivedItems: TransferItemDto[];
+  @ArrayMaxSize(500, { message: 'Cannot receive more than 500 items at once' })
+  receivedItems: ReceiveTransferItemDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(1000, { message: 'Notes must not exceed 1000 characters' })
   notes?: string;
+}
+
+export class ReceiveTransferItemDto {
+  @ApiProperty()
+  @IsUUID('4', { message: 'Product ID must be a valid UUID' })
+  productId: string;
+
+  @ApiProperty({ description: 'Quantity physically received; zero is allowed' })
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'Quantity must have up to 3 decimal places' })
+  @Min(0, { message: 'Received quantity cannot be negative' })
+  @Max(10000000, { message: 'Received quantity cannot exceed 10,000,000' })
+  @Type(() => Number)
+  quantity: number;
 }
 
 // Query DTOs

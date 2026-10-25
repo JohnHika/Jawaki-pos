@@ -130,10 +130,17 @@ export class InventoryController {
   @ApiOperation({ summary: 'Create a stock transfer request' })
   @ApiResponse({ status: 201, description: 'Transfer created', type: TransferResponseDto })
   async createTransfer(@Request() req: any, @Body() dto: CreateTransferDto) {
-    return this.inventoryService.createTransfer(req.user.sub, req.user.tenantId, dto);
+    return this.inventoryService.createTransfer(
+      req.user.sub,
+      req.user.tenantId,
+      dto,
+      req.user.branchId,
+    );
   }
 
   @Get('transfers')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.transfers.view')
   @ApiOperation({ summary: 'Get stock transfers' })
   @ApiResponse({ status: 200, description: 'Transfer list' })
   @ApiQuery({ name: 'branchId', required: false })
@@ -149,7 +156,7 @@ export class InventoryController {
   ) {
     return this.inventoryService.getTransfers(
       req.user.tenantId,
-      branchId,
+      req.user.branchId ?? branchId,
       status,
       page,
       limit,
@@ -157,10 +164,16 @@ export class InventoryController {
   }
 
   @Get('transfers/:id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('inventory.transfers.view')
   @ApiOperation({ summary: 'Get transfer details' })
   @ApiResponse({ status: 200, description: 'Transfer details', type: TransferResponseDto })
   async getTransfer(@Param('id') id: string, @Request() req: any) {
-    return this.inventoryService.getTransfer(id, req.user.tenantId);
+    return this.inventoryService.getTransfer(
+      id,
+      req.user.tenantId,
+      req.user.branchId,
+    );
   }
 
   @Post('transfers/:id/send')
@@ -169,7 +182,12 @@ export class InventoryController {
   @ApiOperation({ summary: 'Send a pending transfer' })
   @ApiResponse({ status: 200, description: 'Transfer sent' })
   async sendTransfer(@Param('id') id: string, @Request() req: any) {
-    return this.inventoryService.sendTransfer(id, req.user.sub, req.user.tenantId);
+    return this.inventoryService.sendTransfer(
+      id,
+      req.user.sub,
+      req.user.tenantId,
+      req.user.branchId,
+    );
   }
 
   @Post('transfers/:id/receive')
@@ -182,7 +200,13 @@ export class InventoryController {
     @Request() req: any,
     @Body() dto: ReceiveTransferDto,
   ) {
-    return this.inventoryService.receiveTransfer(id, req.user.sub, req.user.tenantId, dto);
+    return this.inventoryService.receiveTransfer(
+      id,
+      req.user.sub,
+      req.user.tenantId,
+      dto,
+      req.user.branchId,
+    );
   }
 
   // ==================== BATCH & EXPIRY MANAGEMENT ====================

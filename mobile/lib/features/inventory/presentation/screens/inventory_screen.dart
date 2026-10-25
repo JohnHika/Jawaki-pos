@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
@@ -10,9 +11,11 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/auth/app_roles.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/format.dart';
 import '../../../../core/utils/stock_quantity_display.dart';
-import '../../../sales/presentation/providers/catalog_provider.dart' show syncCatalogCacheFromApi;
+import '../../../sales/presentation/providers/catalog_provider.dart'
+    show syncCatalogCacheFromApi;
 import '../widgets/product_picker_dialog.dart';
 import '../../../../core/widgets/motion_kit_extras.dart';
 
@@ -25,6 +28,7 @@ class InventoryScreen extends ConsumerStatefulWidget {
 }
 
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
+  static const _uuid = Uuid();
   int _totalItems = 0;
   int _lowStockCount = 0;
   double _totalValue = 0;
@@ -34,6 +38,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _stockSearchQuery = '';
   String? _transferProductId;
   String? _transferToBranchId;
+  late Future<List<dynamic>> _branchesFuture;
+  List<Map<String, dynamic>> _transfers = const [];
+  bool _isLoadingTransfers = true;
+  bool _isSubmittingTransfer = false;
+  String? _transferError;
+  String? _transferRequestId;
   final TextEditingController _transferQtyController = TextEditingController(
     text: '1',
   );
@@ -43,7 +53,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   @override
   void initState() {
     super.initState();
+    _transferQtyController.addListener(_invalidateTransferRequestKey);
+    final currentUser = getIt<AuthService>().currentUser;
+    final canViewTransfers = RolePermissions(
+      currentUser?['permissions'] as List<dynamic>?,
+    ).has('inventory.transfers.view');
+    _branchesFuture = canViewTransfers
+        ? getIt<ApiClient>().getBranches()
+        : Future.value(const <dynamic>[]);
+    _isLoadingTransfers = canViewTransfers;
     _loadData();
+    if (canViewTransfers) unawaited(_loadTransfers());
     // Stock levels live in the local cache that the POS/Products screens fill
     // from the server. Opened first on a fresh install, Inventory showed every
     // product at 0 with "20 alerts" and a KES 0 stock value. Refresh the cache
@@ -119,6 +139,53 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         );
       }
     }
+  }
+
+  Future<void> _loadTransfers() async {
+    final branchId = getIt<AuthService>().branchId;
+    if (!mounted) return;
+    setState(() {
+      _isLoadingTransfers = true;
+      _transferError = null;
+    });
+    if (branchId == null || branchId.isEmpty) {
+      setState(() {
+        _transfers = const [];
+        _isLoadingTransfers = false;
+        _transferError = 'Choose a branch to view its stock transfers.';
+      });
+      return;
+    }
+
+    try {
+      final result = await getIt<ApiClient>()
+          .getInventoryTransfers(branchId: branchId, limit: 50);
+      if (!mounted) return;
+      final rows = result['items'];
+      setState(() {
+        _transfers = rows is List
+            ? rows
+                .whereType<Map>()
+                .map((row) => Map<String, dynamic>.from(row))
+                .toList()
+            : const [];
+        _isLoadingTransfers = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingTransfers = false;
+        _transferError = apiErrorMessage(error);
+      });
+    }
+  }
+
+  void _replaceBranchesFuture() {
+    setState(() => _branchesFuture = getIt<ApiClient>().getBranches());
+  }
+
+  void _invalidateTransferRequestKey() {
+    _transferRequestId = null;
   }
 
   String _formatCurrency(double amount) {
@@ -209,6 +276,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
     final border =
         isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder;
+    final canViewTransfers = permissions.has('inventory.transfers.view');
 
     return Scaffold(
       appBar: BrandedAppBar(
@@ -243,7 +311,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       body: PageContainer(
         padding: EdgeInsets.zero,
         child: DefaultTabController(
-          length: 3,
+          length: canViewTransfers ? 3 : 2,
           child: Column(
             children: [
               // Compact overview keeps the stock work area visible above the fold.
@@ -298,15 +366,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ? DesignColors.darkSurfaceElevated
                       : DesignColors.surfaceBorder.withValues(alpha: 0.3),
                   border: Border.all(color: border),
-                borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
                 ),
                 child: TabBar(
                   labelColor: Colors.black,
                   unselectedLabelColor: secondaryColor,
                   indicator: BoxDecoration(
-                  color: DesignColors.accent,
-                  borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
-                ),
+                    color: DesignColors.accent,
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusSm),
+                  ),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
                   indicatorPadding: const EdgeInsets.all(DesignSpacing.xs),
@@ -316,10 +384,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   unselectedLabelStyle: const TextStyle(
                     fontWeight: FontWeight.w500,
                   ),
-                  tabs: const [
-                    Tab(text: 'Stock'),
-                    Tab(text: 'Low Stock'),
-                    Tab(text: 'Transfers'),
+                  tabs: [
+                    const Tab(text: 'Stock'),
+                    const Tab(text: 'Low Stock'),
+                    if (canViewTransfers) const Tab(text: 'Transfers'),
                   ],
                 ),
               ),
@@ -329,7 +397,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   children: [
                     _buildStockTab(context, permissions),
                     _buildLowStockTab(context, permissions),
-                    _buildTransfersTab(context),
+                    if (canViewTransfers)
+                      _buildTransfersTab(context, permissions),
                   ],
                 ),
               ),
@@ -433,7 +502,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    return CascadeScale(index: index, child: _buildStockItemCard(item, permissions));
+                    return CascadeScale(
+                        index: index,
+                        child: _buildStockItemCard(item, permissions));
                   },
                 ),
         ),
@@ -474,8 +545,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm + 2),
       child: Container(
         padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
-        decoration:
-            BoxDecoration(color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+        decoration: BoxDecoration(
+          color: surface,
+          border: Border.all(color: border),
+          borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -565,71 +639,71 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 Expanded(
                   child: Row(
                     children: [
-                // Stock count badge
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DesignSpacing.sm + 2,
-                      vertical: DesignSpacing.xs + 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: stockColor.withValues(alpha: 0.12),
-                      borderRadius:
-                          BorderRadius.circular(DesignSpacing.radiusSm),
-                      border: Border.all(
-                        color: stockColor.withValues(alpha: 0.25),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(stockIcon, color: stockColor, size: 14),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      // Stock count badge
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DesignSpacing.sm + 2,
+                            vertical: DesignSpacing.xs + 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: stockColor.withValues(alpha: 0.12),
+                            borderRadius:
+                                BorderRadius.circular(DesignSpacing.radiusSm),
+                            border: Border.all(
+                              color: stockColor.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                stockPresentation.primary,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelMedium!
-                                    .copyWith(
-                                      color: stockColor,
-                                      fontWeight: FontWeight.w700,
+                              Icon(stockIcon, color: stockColor, size: 14),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      stockPresentation.primary,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium!
+                                          .copyWith(
+                                            color: stockColor,
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                     ),
-                              ),
-                              if (stockPresentation.secondary != null)
-                                Text(
-                                  stockPresentation.secondary!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall!
-                                      .copyWith(
-                                        color:
-                                            stockColor.withValues(alpha: 0.8),
-                                        fontWeight: FontWeight.w500,
+                                    if (stockPresentation.secondary != null)
+                                      Text(
+                                        stockPresentation.secondary!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall!
+                                            .copyWith(
+                                              color: stockColor.withValues(
+                                                  alpha: 0.8),
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                       ),
+                                  ],
                                 ),
+                              ),
                             ],
                           ),
                         ),
+                      ),
+                      if (minStock > 0) ...[
+                        const SizedBox(width: 8),
+                        Text('Min: $minStock',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall!
+                                .copyWith(color: tertiaryColor)),
                       ],
-                    ),
-                  ),
-                ),
-                if (minStock > 0) ...[
-                  const SizedBox(width: 8),
-                  Text('Min: $minStock',
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall!
-                          .copyWith(color: tertiaryColor)),
-                ],
                     ],
                   ),
                 ),
@@ -745,7 +819,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             return Container(
               padding: const EdgeInsets.all(DesignSpacing.xxl),
               decoration: BoxDecoration(
-                  color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+                color: surface,
+                border: Border.all(color: border),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+              ),
               child: Column(
                 children: [
                   Container(
@@ -999,12 +1076,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
-  Widget _buildTransfersTab(BuildContext context) {
+  Widget _buildTransfersTab(BuildContext context, RolePermissions permissions) {
     final authService = getIt<AuthService>();
-    final fromBranchId = authService.branchId ?? 'branch-main';
+    final fromBranchId = authService.branchId;
+    final canCreateAndSend = permissions.has('inventory.transfers.create') &&
+        permissions.has('inventory.transfers.send');
+    final canReceive = permissions.has('inventory.transfers.receive');
 
     return FutureBuilder<List<dynamic>>(
-      future: getIt<ApiClient>().getBranches(),
+      future: _branchesFuture,
       builder: (context, snapshot) {
         final branches =
             (snapshot.data ?? const []).cast<Map<String, dynamic>>();
@@ -1014,118 +1094,323 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             .where((item) => ((item['stock'] as num?)?.toDouble() ?? 0) > 0)
             .toList();
 
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(
-            DesignSpacing.lg,
-            DesignSpacing.md,
-            DesignSpacing.lg,
-            DesignSpacing.massive + 4,
-          ),
-          children: [
-            const SectionHeader(
-              title: 'Stock Transfers',
-              subtitle: 'Move stock from this branch to another branch',
-              icon: Icons.swap_horiz_rounded,
+        return RefreshIndicator(
+          onRefresh: _loadTransfers,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              DesignSpacing.lg,
+              DesignSpacing.md,
+              DesignSpacing.lg,
+              DesignSpacing.massive + 4,
             ),
-            const SizedBox(height: 8),
-            Builder(builder: (context) {
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              final secondaryColor = isDark
-                  ? DesignColors.darkTextSecondary
-                  : DesignColors.textSecondary;
-              final surface =
-                  isDark ? DesignColors.darkSurfaceElevated : Colors.white;
-              return Container(
-                padding: const EdgeInsets.all(DesignSpacing.lg),
-                decoration: BoxDecoration(
-                  color: surface,
-                  border: Border.all(
-                      color: DesignColors.info.withValues(alpha: 0.3)),
+            children: [
+              const SectionHeader(
+                title: 'Stock Transfers',
+                subtitle: 'Send stock to a branch and confirm it on arrival',
+                icon: Icons.swap_horiz_rounded,
+              ),
+              const SizedBox(height: DesignSpacing.md),
+              if (canCreateAndSend && fromBranchId != null)
+                _buildTransferForm(
+                  context,
+                  products: products,
+                  destinationBranches: destinationBranches,
+                  branchesLoading:
+                      snapshot.connectionState == ConnectionState.waiting,
+                  branchesError: snapshot.hasError,
+                )
+              else
+                _transferNotice(
+                  context,
+                  icon: Icons.lock_outline_rounded,
+                  message: fromBranchId == null
+                      ? 'Choose a branch before creating stock transfers.'
+                      : 'Ask an owner or stock manager to grant the transfer create and dispatch permissions.',
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: _transferProductId,
-                      isExpanded: true,
-                      decoration: _transferInputDecoration(
-                        context,
-                        label: 'Product',
-                        icon: Icons.inventory_2_rounded,
-                      ),
-                      items: products.map((item) {
-                        final id = item['id'] as String;
-                        final name = item['name'] as String? ?? 'Product';
-                        final stock = (item['stock'] as num?)?.toDouble() ?? 0;
-                        return DropdownMenuItem(
-                          value: id,
-                          child: Text(
-                            '$name  (${_formatUnitQty(stock)} available)',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) =>
-                          setState(() => _transferProductId = value),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _transferToBranchId,
-                      isExpanded: true,
-                      decoration: _transferInputDecoration(
-                        context,
-                        label: 'Destination branch',
-                        icon: Icons.store_mall_directory_rounded,
-                      ),
-                      items: destinationBranches.map((branch) {
-                        return DropdownMenuItem(
-                          value: branch['id'] as String,
-                          child: Text(
-                            branch['name'] as String? ?? 'Branch',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) =>
-                          setState(() => _transferToBranchId = value),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _transferQtyController,
-                      keyboardType: TextInputType.number,
-                      decoration: _transferInputDecoration(
-                        context,
-                        label: 'Quantity',
-                        icon: Icons.numbers_rounded,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    GradientButton(
-                      label: 'Transfer Stock',
-                      icon: Icons.swap_horiz_rounded,
-                      height: 50,
-                      borderRadius: DesignSpacing.radiusLg,
-                      onPressed: destinationBranches.isEmpty || products.isEmpty
-                          ? null
-                          : () => _submitStockTransfer(fromBranchId),
-                    ),
-                    if (destinationBranches.isEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Add another branch in Settings before making a transfer.',
-                        style: Theme.of(context).textTheme.labelLarge!.copyWith(
-                              color: secondaryColor,
-                              fontWeight: FontWeight.w500,
-                            ),
-                      ),
-                    ],
-                  ],
+              const SizedBox(height: DesignSpacing.lg),
+              SectionHeader(
+                title: 'Branch transfers',
+                subtitle: canReceive
+                    ? 'Receive arrivals here and track stock already sent.'
+                    : 'Track stock already sent to or from this branch.',
+                icon: Icons.local_shipping_outlined,
+                trailing: IconButton(
+                  tooltip: 'Refresh transfers',
+                  onPressed: _isLoadingTransfers ? null : _loadTransfers,
+                  icon: const Icon(Icons.refresh_rounded),
                 ),
-              );
-            }),
-          ],
+              ),
+              if (_transferError != null) ...[
+                const SizedBox(height: DesignSpacing.sm),
+                InlineRetryNotice(
+                  message: _transferError!,
+                  onRetry: _loadTransfers,
+                ),
+              ],
+              if (_isLoadingTransfers)
+                const Padding(
+                  padding: EdgeInsets.all(DesignSpacing.xl),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_transfers.isEmpty)
+                _transferNotice(
+                  context,
+                  icon: Icons.inventory_2_outlined,
+                  message:
+                      'No branch transfers yet. Sent and incoming stock will appear here.',
+                )
+              else
+                ..._transfers.map((transfer) => _transferCard(
+                      context,
+                      transfer,
+                      currentBranchId: fromBranchId,
+                      canReceive: canReceive,
+                      canSend: permissions.has('inventory.transfers.send'),
+                    )),
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildTransferForm(
+    BuildContext context, {
+    required List<Map<String, dynamic>> products,
+    required List<Map<String, dynamic>> destinationBranches,
+    required bool branchesLoading,
+    required bool branchesError,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaryColor =
+        isDark ? DesignColors.darkTextSecondary : DesignColors.textSecondary;
+    final surface = isDark ? DesignColors.darkSurfaceElevated : Colors.white;
+    return Container(
+      padding: const EdgeInsets.all(DesignSpacing.lg),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+        border: Border.all(color: DesignColors.info.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Send stock',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: DesignSpacing.xs),
+          Text(
+            'The source branch is reduced when dispatched. The destination adds stock after it confirms receipt.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: secondaryColor,
+                  height: 1.35,
+                ),
+          ),
+          const SizedBox(height: DesignSpacing.md),
+          if (branchesLoading)
+            const LinearProgressIndicator()
+          else if (branchesError)
+            InlineRetryNotice(
+              message: 'Could not load branches. Refresh and try again.',
+              onRetry: _replaceBranchesFuture,
+            )
+          else ...[
+            DropdownButtonFormField<String>(
+              initialValue: _transferProductId,
+              isExpanded: true,
+              decoration: _transferInputDecoration(
+                context,
+                label: 'Product',
+                icon: Icons.inventory_2_rounded,
+              ),
+              items: products.map((item) {
+                final id = item['id'] as String;
+                final name = item['name'] as String? ?? 'Product';
+                final stock = (item['stock'] as num?)?.toDouble() ?? 0;
+                return DropdownMenuItem(
+                  value: id,
+                  child: Text(
+                    '$name · ${_formatUnitQty(stock)} available',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: _isSubmittingTransfer
+                  ? null
+                  : (value) => setState(() {
+                        _transferProductId = value;
+                        _transferRequestId = null;
+                      }),
+            ),
+            const SizedBox(height: DesignSpacing.md),
+            DropdownButtonFormField<String>(
+              initialValue: _transferToBranchId,
+              isExpanded: true,
+              decoration: _transferInputDecoration(
+                context,
+                label: 'Destination branch',
+                icon: Icons.store_mall_directory_rounded,
+              ),
+              items: destinationBranches.map((branch) {
+                return DropdownMenuItem(
+                  value: branch['id'] as String,
+                  child: Text(
+                    branch['name'] as String? ?? 'Branch',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: _isSubmittingTransfer
+                  ? null
+                  : (value) => setState(() {
+                        _transferToBranchId = value;
+                        _transferRequestId = null;
+                      }),
+            ),
+            const SizedBox(height: DesignSpacing.md),
+            TextFormField(
+              controller: _transferQtyController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              enabled: !_isSubmittingTransfer,
+              decoration: _transferInputDecoration(
+                context,
+                label: 'Quantity',
+                icon: Icons.numbers_rounded,
+              ),
+            ),
+            if (destinationBranches.isEmpty) ...[
+              const SizedBox(height: DesignSpacing.sm),
+              Text(
+                'Add another active branch in Settings before making a transfer.',
+                style: Theme.of(context).textTheme.labelLarge!.copyWith(
+                      color: secondaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ],
+            const SizedBox(height: DesignSpacing.md),
+            GradientButton(
+              label: _isSubmittingTransfer ? 'Sending…' : 'Send stock',
+              icon:
+                  _isSubmittingTransfer ? null : Icons.local_shipping_outlined,
+              height: 50,
+              borderRadius: DesignSpacing.radiusLg,
+              isLoading: _isSubmittingTransfer,
+              onPressed: destinationBranches.isEmpty ||
+                      products.isEmpty ||
+                      _isSubmittingTransfer
+                  ? null
+                  : _submitStockTransfer,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _transferNotice(BuildContext context,
+      {required IconData icon, required String message}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(DesignSpacing.md),
+      decoration: BoxDecoration(
+        color: (isDark ? DesignColors.darkSurface : Colors.white),
+        borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+        border: Border.all(
+          color: isDark ? DesignColors.darkBorder : DesignColors.surfaceBorder,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: DesignColors.info),
+          const SizedBox(width: DesignSpacing.sm),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    );
+  }
+
+  Widget _transferCard(
+    BuildContext context,
+    Map<String, dynamic> transfer, {
+    required String? currentBranchId,
+    required bool canReceive,
+    required bool canSend,
+  }) {
+    final transferId = transfer['id']?.toString() ?? '';
+    final status = transfer['status']?.toString().toLowerCase() ?? 'pending';
+    final toBranchId = transfer['toBranchId']?.toString();
+    final incoming = toBranchId == currentBranchId;
+    final items = (transfer['items'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    final itemSummary = items.map((item) {
+      final quantity =
+          (item['sentQty'] as num?) ?? (item['requestedQty'] as num?) ?? 0;
+      return '${item['productName'] ?? 'Product'} × ${_formatUnitQty(quantity.toDouble())}';
+    }).join(' · ');
+    final actionLabel = status == 'pending' && !incoming && canSend
+        ? 'Dispatch'
+        : status == 'in_transit' && incoming && canReceive
+            ? 'Receive'
+            : null;
+    return Card(
+      margin: const EdgeInsets.only(top: DesignSpacing.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xs),
+        child: ListTile(
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${incoming ? 'From' : 'To'} ${incoming ? transfer['fromBranchName'] ?? 'branch' : transfer['toBranchName'] ?? 'branch'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: DesignSpacing.xs),
+              StatusBadge(
+                label: switch (status) {
+                  'in_transit' => 'In transit',
+                  'completed' => 'Received',
+                  'pending' => 'Awaiting dispatch',
+                  _ => status,
+                },
+                color: status == 'completed'
+                    ? DesignColors.success
+                    : status == 'in_transit'
+                        ? DesignColors.info
+                        : DesignColors.warning,
+              ),
+            ],
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: DesignSpacing.xs),
+            child: Text(
+              itemSummary.isEmpty ? 'No item details' : itemSummary,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          trailing: actionLabel == null
+              ? null
+              : TextButton(
+                  onPressed: transferId.isEmpty
+                      ? null
+                      : () => status == 'pending'
+                          ? _dispatchTransfer(transferId)
+                          : _receiveTransfer(transfer),
+                  child: Text(actionLabel),
+                ),
+        ),
+      ),
     );
   }
 
@@ -1155,49 +1440,278 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
-  Future<void> _submitStockTransfer(String fromBranchId) async {
+  Future<void> _submitStockTransfer() async {
+    final fromBranchId = getIt<AuthService>().branchId;
     final productId = _transferProductId;
     final toBranchId = _transferToBranchId;
-    final quantity = int.tryParse(_transferQtyController.text.trim()) ?? 0;
+    final quantity = double.tryParse(_transferQtyController.text.trim());
 
-    if (productId == null || toBranchId == null || quantity <= 0) {
+    if (fromBranchId == null ||
+        fromBranchId.isEmpty ||
+        productId == null ||
+        toBranchId == null ||
+        quantity == null ||
+        !quantity.isFinite ||
+        quantity <= 0) {
       showGlassSnackBar(
         context,
-        'Select product, destination branch, and quantity',
+        'Select a product and destination, then enter a valid quantity.',
         icon: Icons.warning_amber_rounded,
         color: DesignColors.warning,
       );
       return;
     }
 
+    setState(() => _isSubmittingTransfer = true);
+    String? transferId;
     try {
-      await getIt<AppDatabase>().transferStock(
-        productId: productId,
-        fromBranchId: fromBranchId,
-        toBranchId: toBranchId,
-        quantity: quantity,
-      );
+      final requestId = _transferRequestId ??= _uuid.v4();
+      final created = await getIt<ApiClient>().createInventoryTransfer({
+        'requestId': requestId,
+        'fromBranchId': fromBranchId,
+        'toBranchId': toBranchId,
+        'items': [
+          {'productId': productId, 'quantity': quantity},
+        ],
+      });
+      transferId = created['id']?.toString();
+      if (transferId == null || transferId.isEmpty) {
+        throw StateError(
+            'The transfer was created without a reference. Refresh transfers before retrying.');
+      }
+      // Once creation is confirmed, retries should dispatch this record rather
+      // than creating another request. A pending row stays visible if dispatch
+      // fails so staff can safely try again from the list.
+      _transferRequestId = null;
+      await getIt<ApiClient>().sendInventoryTransfer(transferId);
       _transferQtyController.text = '1';
       setState(() {
         _transferProductId = null;
         _transferToBranchId = null;
       });
-      await _loadData();
+      unawaited(_loadData(showLoading: false));
+      unawaited(_refreshCatalogCache());
+      await _loadTransfers();
       if (!mounted) return;
       showGlassSnackBar(
         context,
-        'Stock transferred',
-        icon: Icons.check_circle_rounded,
-        color: DesignColors.success,
+        'Transfer dispatched. The destination branch must confirm receipt.',
+        icon: Icons.local_shipping_rounded,
+        color: DesignColors.info,
       );
     } catch (e) {
+      if (transferId != null) {
+        // The record exists even if dispatch failed. Refreshing lets staff
+        // use its explicit Dispatch action without submitting another one.
+        _transferRequestId = null;
+        unawaited(_loadTransfers());
+      }
       if (!mounted) return;
       showGlassSnackBar(
         context,
-        e.toString().replaceFirst('Bad state: ', ''),
+        transferId == null
+            ? apiErrorMessage(e)
+            : 'The transfer was created but not dispatched. Find it below and try Dispatch again.',
         icon: Icons.error_outline_rounded,
         color: DesignColors.error,
       );
+    } finally {
+      if (mounted) setState(() => _isSubmittingTransfer = false);
+    }
+  }
+
+  Future<void> _dispatchTransfer(String transferId) async {
+    try {
+      await getIt<ApiClient>().sendInventoryTransfer(transferId);
+      unawaited(_loadData(showLoading: false));
+      unawaited(_refreshCatalogCache());
+      await _loadTransfers();
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Transfer dispatched. The destination branch must confirm receipt.',
+          icon: Icons.local_shipping_rounded,
+          color: DesignColors.info,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        apiErrorMessage(error),
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+      unawaited(_loadTransfers());
+    }
+  }
+
+  Future<void> _receiveTransfer(Map<String, dynamic> transfer) async {
+    final transferId = transfer['id']?.toString();
+    if (transferId == null || transferId.isEmpty) return;
+    final result = await _showReceiveTransferDialog(transfer);
+    if (result == null || !mounted) return;
+    try {
+      await getIt<ApiClient>().receiveInventoryTransfer(
+        transferId,
+        receivedItems:
+            (result['receivedItems'] as List).cast<Map<String, dynamic>>(),
+        notes: result['notes']?.toString(),
+      );
+      unawaited(_loadData(showLoading: false));
+      unawaited(_refreshCatalogCache());
+      await _loadTransfers();
+      if (mounted) {
+        showGlassSnackBar(
+          context,
+          'Receipt confirmed. Destination stock has been updated.',
+          icon: Icons.check_circle_rounded,
+          color: DesignColors.success,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showGlassSnackBar(
+        context,
+        apiErrorMessage(error),
+        icon: Icons.error_outline_rounded,
+        color: DesignColors.error,
+      );
+      unawaited(_loadTransfers());
+    }
+  }
+
+  Future<Map<String, dynamic>?> _showReceiveTransferDialog(
+      Map<String, dynamic> transfer) async {
+    final items = (transfer['items'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    final quantityControllers = items.map((item) {
+      final sent =
+          (item['sentQty'] as num?) ?? (item['requestedQty'] as num?) ?? 0;
+      return TextEditingController(text: _formatUnitQty(sent.toDouble()));
+    }).toList();
+    final notesController = TextEditingController();
+    String? validationError;
+    try {
+      return await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Confirm received stock'),
+            content: SizedBox(
+              width: 440,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.62,
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    const Text(
+                        'Enter what physically arrived. If any quantity differs from what was sent, add a note.'),
+                    const SizedBox(height: DesignSpacing.md),
+                    for (var index = 0; index < items.length; index++) ...[
+                      Text(
+                        items[index]['productName']?.toString() ?? 'Product',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextFormField(
+                        controller: quantityControllers[index],
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText:
+                              'Received (sent ${_formatUnitQty(((items[index]['sentQty'] as num?) ?? (items[index]['requestedQty'] as num?) ?? 0).toDouble())})',
+                          suffixText: 'units',
+                        ),
+                      ),
+                      const SizedBox(height: DesignSpacing.sm),
+                    ],
+                    TextField(
+                      controller: notesController,
+                      maxLength: 500,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes for a quantity difference',
+                        hintText: 'Required when received quantities differ',
+                      ),
+                    ),
+                    if (validationError != null) ...[
+                      const SizedBox(height: DesignSpacing.xs),
+                      Text(
+                        validationError!,
+                        style: const TextStyle(color: DesignColors.error),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.inventory_rounded),
+                label: const Text('Confirm receipt'),
+                onPressed: () {
+                  final receivedItems = <Map<String, dynamic>>[];
+                  var hasDifference = false;
+                  for (var index = 0; index < items.length; index++) {
+                    final sent = ((items[index]['sentQty'] as num?) ??
+                            (items[index]['requestedQty'] as num?) ??
+                            0)
+                        .toDouble();
+                    final received =
+                        double.tryParse(quantityControllers[index].text.trim());
+                    if (received == null ||
+                        !received.isFinite ||
+                        received < 0 ||
+                        received > sent ||
+                        (received * 1000).round() != received * 1000) {
+                      setDialogState(() => validationError =
+                          'Enter a valid quantity from 0 to the amount sent (up to 3 decimal places).');
+                      return;
+                    }
+                    if ((sent * 1000).round() != (received * 1000).round()) {
+                      hasDifference = true;
+                    }
+                    receivedItems.add({
+                      'productId': items[index]['productId'],
+                      'quantity': received,
+                    });
+                  }
+                  if (receivedItems.every(
+                    (item) => (item['quantity'] as num) <= 0,
+                  )) {
+                    setDialogState(() => validationError =
+                        'At least one item must have a received quantity.');
+                    return;
+                  }
+                  if (hasDifference && notesController.text.trim().isEmpty) {
+                    setDialogState(() => validationError =
+                        'Add a note to explain the quantity difference.');
+                    return;
+                  }
+                  Navigator.of(dialogContext).pop({
+                    'receivedItems': receivedItems,
+                    'notes': notesController.text.trim(),
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      for (final controller in quantityControllers) {
+        controller.dispose();
+      }
+      notesController.dispose();
     }
   }
 
@@ -1220,7 +1734,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             child: Container(
               padding: const EdgeInsets.all(DesignSpacing.radiusMd + 2),
               decoration: BoxDecoration(
-                  color: surface, border: Border.all(color: border), borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),),
+                color: surface,
+                border: Border.all(color: border),
+                borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+              ),
               child: const Row(
                 children: [
                   ShimmerWidget(

@@ -934,6 +934,7 @@ model StockMovement {
 
 model StockTransfer {
   id           String   @id @default(uuid())
+  requestId    String?  @unique
   fromBranchId String
   toBranchId   String
   status       String   @default("pending") // pending, in_transit, completed, cancelled
