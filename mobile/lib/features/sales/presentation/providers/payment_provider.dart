@@ -102,6 +102,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
   bool get hasUnresolvedMerchantPayment => _pendingMpesaRequestId != null;
 
+  /// True when a payment-hub status check belongs to the checkout currently
+  /// held open by this notifier. The checkout must keep its reference until
+  /// it writes the verified receipt and clears the cart.
+  bool isActiveMerchantCheckout(String reference) =>
+      _pendingMpesaRequestId != null && state.currentTransactionId == reference;
+
   /// Payment UI state belongs to one cashier, shop, and branch. Invalidates
   /// async completions too, so a late provider response cannot write a sale
   /// into whichever account signed in next.
@@ -116,10 +122,19 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   bool _isCurrentSession(int generation) => generation == _sessionGeneration;
 
   void acknowledgeMerchantPayment(String reference, String status) {
-    if (state.currentTransactionId != reference ||
-        (status != 'COMPLETED' && status != 'FAILED')) {
+    if (state.currentTransactionId != reference) return;
+    if (status == 'COMPLETED') {
+      // Keep the reference locked to checkout until it persists the receipt
+      // and clears the cart. The payment hub can confirm provider status, but
+      // it must not turn the same cart back into a fresh charge action.
+      state = state.copyWith(
+        isProcessing: false,
+        error:
+            'Paystack confirmed this payment. Tap Check M-Pesa Payment to finish the receipt.',
+      );
       return;
     }
+    if (status != 'FAILED') return;
     _pendingLocalSaleId = null;
     _pendingMpesaFingerprint = null;
     _pendingMpesaRequestId = null;

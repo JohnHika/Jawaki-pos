@@ -109,14 +109,32 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
       await _refreshServerTotals();
       if (!mounted) return;
       final status = charge['status']?.toString() ?? 'PENDING';
-      ref.read(paymentProvider.notifier).acknowledgeMerchantPayment(reference, status);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        status == 'COMPLETED'
-            ? 'Payment confirmed. Receipt ${charge['receiptNumber'] ?? reference} is saved.'
-            : status == 'NEEDS_REVIEW'
-                ? 'Payment needs review. Give support reference $reference.'
-                : 'Payment status: $status · $reference',
-      )));
+      final paymentNotifier = ref.read(paymentProvider.notifier);
+      final belongsToActiveCheckout =
+          paymentNotifier.isActiveMerchantCheckout(reference);
+      if (status == 'FAILED' || status == 'COMPLETED') {
+        paymentNotifier.acknowledgeMerchantPayment(reference, status);
+      }
+
+      final isReceivable = charge['purpose']?.toString() == 'RECEIVABLE';
+      if (status == 'COMPLETED' &&
+          !belongsToActiveCheckout &&
+          !isReceivable &&
+          charge['saleId'] != null) {
+        context.push('/receipt/${charge['saleId']}');
+        return;
+      }
+
+      final message = status == 'COMPLETED'
+          ? isReceivable
+              ? 'Payment confirmed. The customer balance has been updated.'
+              : belongsToActiveCheckout
+                  ? 'Payment confirmed. Return to checkout and tap “Check M-Pesa Payment” to finish the receipt. Do not send another request.'
+                  : 'Payment confirmed. Receipt ${charge['receiptNumber'] ?? reference} is saved.'
+          : status == 'NEEDS_REVIEW'
+              ? 'Payment needs review. Give support reference $reference.'
+              : 'Payment status: $status · $reference';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
