@@ -21,7 +21,14 @@ import {
   ReconcileOfflineSalesDto,
   SalesQueryDto,
 } from './dto/sales.dto';
-import { PaymentMethod, PaymentStatus, Prisma, SaleStatus, StockMovementType } from '@prisma/client';
+import {
+  PaymentMethod,
+  PaymentStatus,
+  Prisma,
+  ReceivableStatus,
+  SaleStatus,
+  StockMovementType,
+} from '@prisma/client';
 import { lockStockForUpdate } from '../common/stock-lock';
 
 @Injectable()
@@ -852,21 +859,75 @@ export class SalesService {
       throw new NotFoundException('Sale not found');
     }
 
+    // A repeated request is a safe retry (for example after the app lost the
+    // original response). Never restore stock or reverse cash twice.
+    if (sale.status === SaleStatus.VOIDED) return sale;
+
     if (sale.status !== SaleStatus.COMPLETED) {
       throw new BadRequestException('Only completed sales can be voided');
     }
 
     // Void sale and restore stock
-    const voided = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const outcome = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.$queryRaw`
         SELECT id FROM sales WHERE id = ${saleId} FOR UPDATE
       `;
       const lockedSale = await tx.sale.findUnique({
         where: { id: saleId },
-        include: { items: true },
+        include: { items: true, payments: true },
       });
-      if (!lockedSale || lockedSale.status !== SaleStatus.COMPLETED) {
+      if (!lockedSale) {
+        throw new NotFoundException('Sale not found');
+      }
+      if (lockedSale.status === SaleStatus.VOIDED) {
+        return { sale: lockedSale, didVoid: false };
+      }
+      if (lockedSale.status !== SaleStatus.COMPLETED) {
         throw new BadRequestException('Only completed sales can be voided');
+      }
+
+      // A credit sale's receivable is part of the sale's financial record.
+      // Close an untouched receivable with the void. If any amount has already
+      // been collected (or an M-Pesa request is pending), stop and require that
+      // money to be reconciled first instead of erasing a real customer debt.
+      const receivableRows = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM retail_receivables WHERE "saleId" = ${saleId} FOR UPDATE
+      `;
+      if (receivableRows.length > 0) {
+        const receivableId = receivableRows[0].id;
+        const lockKey = `merchant-receivable:${tenantId}:retail:${receivableId}`;
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+        `;
+        const receivable = await tx.retailReceivable.findUnique({
+          where: { id: receivableId },
+          include: { payments: { select: { id: true } } },
+        });
+        if (!receivable) throw new NotFoundException('Sale receivable not found');
+        const hasCollectedAmount =
+          receivable.payments.length > 0 ||
+          receivable.status !== ReceivableStatus.OPEN ||
+          !receivable.outstandingAmount.equals(receivable.originalAmount);
+        const pendingCharge = await tx.merchantCharge.count({
+          where: {
+            tenantId,
+            purpose: 'RECEIVABLE',
+            receivableType: 'retail',
+            receivableId,
+            status: { in: ['PENDING', 'SETTLING', 'NEEDS_REVIEW'] },
+          },
+        });
+        if (hasCollectedAmount || pendingCharge > 0) {
+          throw new ConflictException(
+            pendingCharge > 0
+              ? 'This sale has an M-Pesa debt payment in progress. Resolve it before voiding the sale.'
+              : 'This sale has collected debt payments. Refund or reconcile them before voiding the sale.',
+          );
+        }
+        await tx.retailReceivable.update({
+          where: { id: receivableId },
+          data: { status: ReceivableStatus.VOIDED, outstandingAmount: 0 },
+        });
       }
 
       const voidedSale = await tx.sale.update({
@@ -922,12 +983,21 @@ export class SalesService {
       // doesn't keep inflating "available cash to restock." Same tx as the
       // status flip: a crash can't leave a voided sale with its cash still
       // counted in the till (or an un-voided sale with cash removed).
-      if (sale.paymentMethod === PaymentMethod.CASH && Number(sale.paidAmount) > 0) {
+      const cashReceived =
+        lockedSale.paymentMethod === PaymentMethod.CASH
+          ? Number(lockedSale.paidAmount) - Number(lockedSale.changeAmount)
+          : lockedSale.paymentMethod === PaymentMethod.SPLIT
+            ? lockedSale.payments
+                .filter((payment) => payment.method === PaymentMethod.CASH)
+                .reduce((sum, payment) => sum + Number(payment.amount), 0) -
+              Number(lockedSale.changeAmount)
+            : 0;
+      if (cashReceived > 0) {
         await this.cashFlowService.recordEntry({
           tx,
           branchId: sale.branchId,
           type: CashEntryType.SALE_CASH_IN,
-          amount: -(Number(sale.paidAmount) - Number(sale.changeAmount)),
+          amount: -cashReceived,
           referenceType: 'sale',
           referenceId: sale.id,
           note: `Voided: ${reason}`,
@@ -935,9 +1005,11 @@ export class SalesService {
         });
       }
 
-      return voidedSale;
+      return { sale: voidedSale, didVoid: true };
     });
 
+    const voided = outcome.sale;
+    if (!outcome.didVoid) return voided;
     await this.coupons?.releaseForSale(saleId);
     await this.recordVoid(sale, userId, tenantId, reason);
 

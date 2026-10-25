@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/services/haptic_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,6 +9,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/receipt_printer_service.dart';
 import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/export_document_service.dart';
@@ -826,24 +828,61 @@ class ReceiptScreen extends ConsumerWidget {
     final db = getIt<AppDatabase>();
     final userName = getIt<AuthService>().currentUser?['name'] as String?;
 
-    // Void on the backend first (authoritative stock restore + audit) when
-    // reachable; a failure there shouldn't block the local void, since the
-    // sync layer will reconcile. Best-effort.
+    var queueVoidSync = false;
+    // Void on the backend first when reachable. Authorization and validation
+    // failures must not be turned into a local-only void; network and
+    // not-yet-synced receipt failures can be queued for ordered recovery.
     try {
       await getIt<ApiClient>().voidSale(saleId, reason: reason);
-    } catch (_) {
-      // offline / not-yet-synced sale — local void still applies below
+    } catch (error) {
+      if (error is DioException &&
+          const {400, 401, 403, 409, 422}
+              .contains(error.response?.statusCode)) {
+        if (context.mounted) {
+          showGlassSnackBar(
+            context,
+            'Sale was not voided: ${loadErrorSubtitle(error)}',
+            icon: Icons.error_outline_rounded,
+            color: DesignColors.error,
+          );
+        }
+        return;
+      }
+      queueVoidSync = true;
     }
 
     try {
       await db.voidPendingSale(saleId, reason: reason, voidedBy: userName);
+      var syncQueued = !queueVoidSync;
+      if (queueVoidSync) {
+        final auth = getIt<AuthService>();
+        final userId = auth.userId;
+        if (userId != null && userId.isNotEmpty) {
+          try {
+            await getIt<SyncService>().queueSaleVoidForSync(
+              saleId: saleId,
+              reason: reason,
+              voidedById: userId,
+            );
+            syncQueued = true;
+          } catch (_) {
+            syncQueued = false;
+          }
+        }
+      }
       ref.invalidate(receiptProvider(saleId));
       if (context.mounted) {
         showGlassSnackBar(
           context,
-          'Sale voided',
-          icon: Icons.check_circle_outline_rounded,
-          color: DesignColors.success,
+          syncQueued
+              ? queueVoidSync
+                  ? 'Sale voided on this device. Sync is queued.'
+                  : 'Sale voided'
+              : 'Sale voided locally, but its cloud sync could not be queued. Reconnect and retry sync.',
+          icon: syncQueued
+              ? Icons.check_circle_outline_rounded
+              : Icons.sync_problem_rounded,
+          color: syncQueued ? DesignColors.success : DesignColors.warning,
         );
       }
     } catch (e) {

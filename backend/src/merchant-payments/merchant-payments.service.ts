@@ -365,7 +365,7 @@ export class MerchantPaymentsService {
           select: { id: true, outstandingAmount: true, status: true },
         });
     if (!receivable) throw new NotFoundException('Receivable was not found for this business');
-    if (receivable.status === 'PAID' || receivable.status === 'WRITTEN_OFF') {
+    if (['PAID', 'WRITTEN_OFF', 'VOIDED'].includes(receivable.status)) {
       throw new ConflictException('This receivable is already closed');
     }
     if (input.amount > Number(receivable.outstandingAmount)) {
@@ -411,7 +411,7 @@ export class MerchantPaymentsService {
               select: { outstandingAmount: true, status: true },
             });
         if (!currentReceivable) throw new NotFoundException('Receivable was not found for this business');
-        if (currentReceivable.status === 'PAID' || currentReceivable.status === 'WRITTEN_OFF') {
+        if (['PAID', 'WRITTEN_OFF', 'VOIDED'].includes(currentReceivable.status)) {
           throw new ConflictException('This receivable is already closed');
         }
 

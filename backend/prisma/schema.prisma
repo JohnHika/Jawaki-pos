@@ -1124,6 +1124,7 @@ enum ReceivableStatus {
   PARTIAL
   PAID
   WRITTEN_OFF
+  VOIDED
 }
 
 enum ReceivablePaymentMethod {

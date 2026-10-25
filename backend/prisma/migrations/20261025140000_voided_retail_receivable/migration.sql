@@ -1,0 +1,1 @@
+ALTER TYPE "ReceivableStatus" ADD VALUE IF NOT EXISTS 'VOIDED';

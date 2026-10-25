@@ -1711,6 +1711,33 @@ class AppDatabase extends _$AppDatabase {
 
       final branchIds = _activeBranchIds();
       if (branchIds.isEmpty || _customerTenantId == null) return;
+
+      // Credit and split sales add their debt to the local customer balance
+      // when the receipt is committed. Reverse that exact sale contribution
+      // in the same transaction as the void so offline customer lists do not
+      // keep showing a debt after the receipt was cancelled.
+      final debtAmount = _pendingSaleDebtAmount(sale);
+      if (debtAmount > 0) {
+        final customerId = sale.customerId;
+        if (customerId == null || customerId.isEmpty) {
+          throw StateError('This debt sale has no customer to adjust');
+        }
+        final tenantId = _requireCustomerTenantId();
+        final updatedCustomers = await customUpdate(
+          'UPDATE customers SET balance = CASE WHEN balance > ? '
+          'THEN balance - ? ELSE 0 END WHERE id = ? AND tenant_id = ?',
+          variables: [
+            Variable.withReal(debtAmount),
+            Variable.withReal(debtAmount),
+            Variable.withString(customerId),
+            Variable.withString(tenantId),
+          ],
+        );
+        if (updatedCustomers != 1) {
+          throw StateError('The debt customer could not be found');
+        }
+      }
+
       await (update(pendingSales)
             ..where((s) => s.id.equals(saleId) & s.branchId.isIn(branchIds)))
           .write(
@@ -1736,6 +1763,42 @@ class AppDatabase extends _$AppDatabase {
         }
       }
     });
+  }
+
+  double _pendingSaleDebtAmount(PendingSale sale) {
+    switch (sale.paymentMethod.toUpperCase()) {
+      case 'CREDIT':
+        return sale.total;
+      case 'SPLIT':
+        final reference = sale.paymentReference;
+        if (reference == null || reference.isEmpty) {
+          throw StateError('This split sale has no saved tender breakdown');
+        }
+        final decoded = jsonDecode(reference);
+        if (decoded is! List) {
+          throw StateError('This split sale has an invalid tender breakdown');
+        }
+        var creditAmount = 0.0;
+        var hasCreditTender = false;
+        for (final row in decoded.whereType<Map>()) {
+          if (row['method']?.toString().toUpperCase() != 'CREDIT') continue;
+          hasCreditTender = true;
+          final rawAmount = row['amount'];
+          final amount = rawAmount is num
+              ? rawAmount.toDouble()
+              : double.tryParse(rawAmount?.toString() ?? '');
+          if (amount == null || !amount.isFinite || amount <= 0) {
+            throw StateError('This split sale has an invalid debt amount');
+          }
+          creditAmount += amount;
+        }
+        if (!hasCreditTender || !creditAmount.isFinite || creditAmount <= 0) {
+          throw StateError('This split sale has no valid debt portion');
+        }
+        return creditAmount;
+      default:
+        return 0;
+    }
   }
 
   /// Stream all sale items (for category / product reports).

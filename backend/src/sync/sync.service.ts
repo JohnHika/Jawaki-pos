@@ -744,13 +744,39 @@ export class SyncService {
         return { serverId: sale.id, receiptNumber: sale.receiptNumber };
 
       case SyncEventType.SALE_VOIDED:
+        const localSaleId = payload.saleId?.toString().trim();
+        if (!localSaleId) {
+          throw new BadRequestException('Sale void event is missing its sale id');
+        }
+        // Offline devices identify receipts with their local sale UUID. The
+        // server creates a separate Sale.id, so resolve by either identity
+        // after the preceding SALE_CREATED event has been accepted. A verified
+        // Paystack sale uses its transaction reference as the local receipt id.
+        const paystackReference = localSaleId.startsWith('paystack-')
+          ? localSaleId.slice('paystack-'.length)
+          : null;
+        const saleToVoid = await this.prisma.sale.findFirst({
+          where: {
+            branchId,
+            branch: { tenantId },
+            OR: [
+              { id: localSaleId },
+              { offlineId: localSaleId },
+              ...(paystackReference
+                ? [{ payments: { some: { transactionId: paystackReference } } }]
+                : []),
+            ],
+          },
+          select: { id: true },
+        });
+        if (!saleToVoid) throw new NotFoundException('Sale not found for void event');
         await this.salesService.voidSale(
-          payload.saleId,
+          saleToVoid.id,
           payload.voidedById,
           tenantId,
           payload.reason,
         );
-        return { serverId: payload.saleId };
+        return { serverId: saleToVoid.id };
 
       case SyncEventType.REFUND_CREATED:
         const refund = await this.salesService.createRefund(userId, tenantId, {

@@ -267,6 +267,65 @@ class SyncService {
     }
   }
 
+  /// Queue a void after ensuring an unsynced receipt is created first.
+  /// Keeping these events in sequence means an offline void cannot later
+  /// resurrect as a completed cloud sale.
+  Future<void> queueSaleVoidForSync({
+    required String saleId,
+    required String reason,
+    required String voidedById,
+  }) async {
+    final sale = await _database.getPendingSaleById(saleId);
+    if (sale == null || sale.status != 'VOIDED') {
+      throw StateError('The local sale must be voided before it can sync');
+    }
+
+    // For a sale voided before its first successful upload, create the
+    // SALE_CREATED event first. The sweep serializes it ahead of this void.
+    await _recoverOrphanedUnsyncedSales();
+
+    final priorVoids = await (_database.select(_database.syncQueue)
+          ..where((q) =>
+              q.eventType.equals(SyncEventType.saleVoided.wireName) &
+              q.recordId.equals(saleId))
+          ..orderBy([(q) => OrderingTerm.desc(q.sequenceNumber)]))
+        .get();
+    if (priorVoids
+        .any((item) => item.status == 'synced' || item.status == 'resolved')) {
+      return;
+    }
+    SyncQueueData? waitingVoid;
+    for (final item in priorVoids) {
+      if (item.status == 'pending' || item.status == 'conflict') {
+        waitingVoid = item;
+        break;
+      }
+    }
+    waitingVoid ??= priorVoids.isEmpty ? null : priorVoids.first;
+    if (waitingVoid != null) {
+      if (waitingVoid.status == 'failed') {
+        await _database.resetSyncQueueItem(waitingVoid.id);
+      }
+      if (_connectivity.isOnline) await syncPendingEvents();
+      return;
+    }
+
+    await queueSyncItem(
+      tableName: 'sales',
+      recordId: saleId,
+      action: SyncAction.update,
+      eventType: SyncEventType.saleVoided,
+      data: {
+        'saleId': saleId,
+        'reason': reason,
+        'voidedById': voidedById,
+      },
+      deviceId: _storage.getDeviceId() ??
+          'recovered-${DateTime.now().millisecondsSinceEpoch}',
+      userId: voidedById,
+    );
+  }
+
   /// Get sync queue statistics
   Future<Map<String, int>> getSyncStats() async {
     return await _database.getSyncQueueStats();
@@ -388,7 +447,10 @@ class SyncService {
       final liveQueueItems = await (_database.select(_database.syncQueue)
             ..where((q) => q.status.isIn(['pending', 'conflict'])))
           .get();
-      final liveRecordIds = liveQueueItems.map((q) => q.recordId).toSet();
+      final liveSaleCreateIds = liveQueueItems
+          .where((q) => q.eventType == SyncEventType.saleCreated.wireName)
+          .map((q) => q.recordId)
+          .toSet();
 
       var reenqueued = 0;
       for (final sale in unsyncedSales) {
@@ -398,7 +460,7 @@ class SyncService {
         // already have settled. The SALE_CREATED pull reconciles the local
         // receipt by its payment reference instead.
         if (sale.paymentMethod.toUpperCase() == 'MPESA') continue;
-        if (liveRecordIds.contains(sale.id)) continue;
+        if (liveSaleCreateIds.contains(sale.id)) continue;
 
         final sequenceNumber = await _database.getNextSyncSequenceNumber();
         await _database.addToSyncQueue(SyncQueueCompanion(
@@ -420,7 +482,10 @@ class SyncService {
             'customerId': sale.customerId,
             'cashierId': sale.cashierId,
             'userId': sale.cashierId,
-            'status': sale.status,
+            // A void is sent as a later SALE_VOIDED event. Creating the row
+            // as VOIDED first would make the host restore-stock operation
+            // treat it as already voided and skip the return movement.
+            'status': sale.status == 'VOIDED' ? 'COMPLETED' : sale.status,
             'createdAt': sale.createdAt.toIso8601String(),
             'notes': sale.notes,
             'items': (await _database.getSaleItems(sale.id))

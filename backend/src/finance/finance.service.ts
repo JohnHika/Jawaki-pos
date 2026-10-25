@@ -382,7 +382,11 @@ export class FinanceService {
     const delegate: any = type === 'retail' ? tx.retailReceivable : tx.peerReceivable;
     const receivable = await delegate.findFirst({ where: { id: receivableId, tenantId, branchId: dto.branchId } });
     if (!receivable) throw new NotFoundException('Receivable not found');
-    if (receivable.status === ReceivableStatus.WRITTEN_OFF || receivable.status === ReceivableStatus.PAID) {
+    if (
+      receivable.status === ReceivableStatus.WRITTEN_OFF ||
+      receivable.status === ReceivableStatus.PAID ||
+      receivable.status === ReceivableStatus.VOIDED
+    ) {
       throw new BadRequestException('Receivable is not open for payment');
     }
     const outstanding = this.money(receivable.outstandingAmount);

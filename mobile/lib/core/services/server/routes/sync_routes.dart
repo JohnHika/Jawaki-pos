@@ -319,10 +319,23 @@ class SyncRoutes {
   }
 
   Future<void> _processSaleVoided(Map<String, dynamic> payload) async {
-    final saleId = payload['id'] as String?;
-    if (saleId != null) {
-      await _db.customStatement(
-        'UPDATE pending_sales SET status = \'VOIDED\' WHERE id = ${Sql.str(saleId)}',
+    final saleId = payload['saleId']?.toString().trim() ??
+        payload['id']?.toString().trim() ??
+        '';
+    final reason = payload['reason']?.toString().trim() ?? '';
+    if (saleId.isEmpty || reason.isEmpty) {
+      throw const FormatException(
+          'Sale void event is missing its sale id or reason');
+    }
+    final sale = await _db.getPendingSaleById(saleId);
+    if (sale == null) {
+      throw const FormatException('Voided sale was not found on this device');
+    }
+    if (sale.status != 'VOIDED') {
+      await _db.voidPendingSale(
+        saleId,
+        reason: reason,
+        voidedBy: payload['voidedById']?.toString(),
       );
     }
   }
