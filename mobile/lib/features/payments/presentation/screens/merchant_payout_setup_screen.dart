@@ -315,6 +315,42 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                             ),
                           ),
                           const SizedBox(height: 20),
+                          Card(
+                            color: DesignColors.accentSubtle
+                                .withValues(alpha: 0.35),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.storefront_outlined,
+                                      color: DesignColors.accent),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Name on the M-Pesa prompt',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w700),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          'The prompt uses the shared Paystack business name (currently “Axon POS”), so it may not show each shop’s name. Counterbase receipts show the shop name. A different prompt name for every shop requires separate Paystack merchant integrations.',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
                           if ((ready || needsVerification) &&
                               !_isChangingPayout) ...[
                             _enter(
