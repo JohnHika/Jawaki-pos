@@ -3456,6 +3456,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<String> recordSupplierInvoice({
     String? invoiceId,
+    String? branchId,
     required String supplierName,
     String? phone,
     String? email,
@@ -3524,7 +3525,8 @@ class AppDatabase extends _$AppDatabase {
         ],
       );
 
-      final branchId = _storage.getBranchId() ?? 'branch-main';
+      final targetBranchId =
+          branchId ?? _storage.getBranchId() ?? 'branch-main';
       for (final item in items) {
         final name = ((item['name'] as String?) ?? '').trim();
         if (name.isEmpty) continue;
@@ -3545,7 +3547,7 @@ class AppDatabase extends _$AppDatabase {
           name: name,
           sku: sku,
           unitCost: unitCost,
-          branchId: branchId,
+          branchId: targetBranchId,
           quantity: quantity,
           nowIso: nowIso,
         );

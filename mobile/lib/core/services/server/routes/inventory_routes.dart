@@ -4,6 +4,7 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart' show Router;
 import '../../../database/app_database.dart';
 import '../middleware.dart';
+import '../server_user_access.dart';
 import '../sql_helper.dart';
 
 /// Inventory routes for phone server mode.
@@ -63,26 +64,65 @@ class InventoryRoutes {
 
   /// POST /api/v1/inventory/batches/receive
   Future<shelf.Response> _handleReceiveBatches(shelf.Request request) async {
+    final access = await ServerUserAccess.load(_db, request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!access.has('inventory.batches.receive')) {
+      return _error(403, 'You do not have permission to receive stock');
+    }
+
     final body = getRequestBody(request);
     if (body == null) return _error(400, 'Request body required');
 
     final productId = body['productId'] as String?;
-    final branchId = body['branchId'] as String?;
+    final branchId = body['branchId']?.toString().trim();
     final batches = body['batches'];
-    final quantity = batches is List
-        ? batches.fold<double>(0, (sum, item) {
-            if (item is! Map) return sum;
-            final batchQty = (item['quantity'] as num?)?.toDouble() ?? 0;
-            final unitsPerQuantity =
-                (item['unitsPerQuantity'] as num?)?.toDouble() ?? 1;
-            return sum + (batchQty * unitsPerQuantity);
-          })
-        : ((body['quantity'] as num?)?.toDouble() ?? 0);
+    var quantity = 0.0;
+    if (batches is List) {
+      if (batches.isEmpty) {
+        return _error(400, 'At least one valid stock batch is required');
+      }
+      for (final item in batches) {
+        if (item is! Map || item['quantity'] is! num) {
+          return _error(400, 'Each stock batch needs a valid quantity');
+        }
+        final batchQuantity = (item['quantity'] as num).toDouble();
+        final unitsPerQuantity = item['unitsPerQuantity'] == null
+            ? 1.0
+            : item['unitsPerQuantity'] is num
+                ? (item['unitsPerQuantity'] as num).toDouble()
+                : double.nan;
+        if (!batchQuantity.isFinite ||
+            batchQuantity <= 0 ||
+            batchQuantity > 10000000 ||
+            !unitsPerQuantity.isFinite ||
+            unitsPerQuantity <= 0 ||
+            unitsPerQuantity > 10000000) {
+          return _error(
+              400, 'Stock batch quantity and unit size must be positive');
+        }
+        quantity += batchQuantity * unitsPerQuantity;
+      }
+    } else if (body['quantity'] is num) {
+      quantity = (body['quantity'] as num).toDouble();
+    }
     final batchNumber = body['batchNumber'] as String? ??
         'BATCH-${DateTime.now().millisecondsSinceEpoch}';
 
-    if (productId == null || branchId == null || quantity <= 0) {
+    if (productId == null ||
+        productId.trim().isEmpty ||
+        branchId == null ||
+        branchId.isEmpty ||
+        !quantity.isFinite ||
+        quantity <= 0 ||
+        quantity > 10000000) {
       return _error(400, 'productId, branchId, and quantity > 0 are required');
+    }
+    if (access.branchId != null && access.branchId != branchId) {
+      return _error(403, 'You can only receive stock for your assigned branch');
+    }
+    if (access.branchId == null && !access.has('branches.update')) {
+      return _error(
+          403, 'Your account needs an assigned branch to receive stock');
     }
 
     final currentQuantity = await _db.incrementLocalStock(

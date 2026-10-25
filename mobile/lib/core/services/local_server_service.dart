@@ -130,7 +130,10 @@ class LocalServerService {
         taxRatePercent: getIt<AuthService>().taxRatePercent,
       ).addRoutes(appRouter);
       InventoryRoutes(dbLocal).addRoutes(appRouter);
-      SyncRoutes(dbLocal).addRoutes(appRouter);
+      SyncRoutes(
+        dbLocal,
+        taxRatePercent: getIt<AuthService>().taxRatePercent,
+      ).addRoutes(appRouter);
       ReportRoutes(dbLocal).addRoutes(appRouter);
       ImageRoutes().addRoutes(appRouter);
       PaymentRoutes().addRoutes(appRouter);
