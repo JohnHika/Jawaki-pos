@@ -305,69 +305,122 @@ Future<void> _performCatalogSync({
 
   try {
     debugPrint('[CatalogSync] Fetching categories and products...');
-    final responses = await Future.wait<Object>([
-      apiClient.getCategories(),
-      apiClient.getAllProducts(branchId: branchId),
-    ]);
-    final categoriesResponse = responses[0] as List<dynamic>;
-    final flatCategories = _flattenCategories(categoriesResponse);
-    final categoryItems = flatCategories
-        .map(_categoryToCompanion)
-        .whereType<CategoriesCompanion>()
-        .toList();
+    await syncCatalogSources(
+      syncCategories: () async {
+        final categoriesResponse = await apiClient.getCategories();
+        final flatCategories = _flattenCategories(categoriesResponse);
+        final categoryItems = flatCategories
+            .map(_categoryToCompanion)
+            .whereType<CategoriesCompanion>()
+            .toList();
 
-    // Logout or switching shops while the requests were in flight must not
-    // repopulate the shared local tables with the previous shop's catalog.
-    if (!isSameCatalogScope()) {
-      debugPrint('[CatalogSync] Skipped cache write: active shop changed');
-      return;
-    }
-    await database.replaceCategories(categoryItems);
-    debugPrint('[CatalogSync] Stored ${categoryItems.length} categories');
+        // Logout or switching shops while requests are in flight must not
+        // repopulate the shared local tables with the previous shop's data.
+        if (!isSameCatalogScope()) {
+          debugPrint(
+              '[CatalogSync] Skipped category cache write: shop changed');
+          return;
+        }
+        await database.replaceCategories(categoryItems);
+        debugPrint('[CatalogSync] Stored ${categoryItems.length} categories');
+      },
+      syncProducts: () async {
+        final productsResponse =
+            await apiClient.getAllProducts(branchId: branchId);
+        final productMaps = productsResponse
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
 
-    final productsResponse = responses[1] as List<dynamic>;
-    final productMaps = productsResponse
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+        final productItems = productMaps
+            .map(_productToCompanion)
+            .whereType<ProductsCompanion>()
+            .toList();
+        if (!isSameCatalogScope()) {
+          debugPrint('[CatalogSync] Skipped product cache write: shop changed');
+          return;
+        }
+        // Publish product rows to the local stream immediately. Category
+        // refresh is independent and must not delay the catalog screen.
+        await database.replaceProducts(productItems);
+        debugPrint('[CatalogSync] Stored ${productItems.length} products');
 
-    final productItems = productMaps
-        .map(_productToCompanion)
-        .whereType<ProductsCompanion>()
-        .toList();
-    if (!isSameCatalogScope()) {
-      debugPrint(
-          '[CatalogSync] Skipped remaining cache writes: active shop changed');
-      return;
-    }
-    await database.replaceProducts(productItems);
-    debugPrint('[CatalogSync] Stored ${productItems.length} products');
+        final tierItems =
+            productMaps.expand(_pricingTiersToCompanions).toList();
+        if (!isSameCatalogScope()) {
+          debugPrint('[CatalogSync] Skipped pricing cache write: shop changed');
+          return;
+        }
+        await database.replaceAllPricingTiers(tierItems);
 
-    final tierItems = productMaps.expand(_pricingTiersToCompanions).toList();
-    if (!isSameCatalogScope()) {
-      debugPrint(
-          '[CatalogSync] Skipped pricing cache write: active shop changed');
-      return;
-    }
-    await database.replaceAllPricingTiers(tierItems);
-
-    if (branchId != null) {
-      final stockItems = productMaps
-          .map((p) => _stockToCompanion(p, branchId))
-          .whereType<LocalStockCompanion>()
-          .toList();
-      if (stockItems.isNotEmpty && isSameCatalogScope()) {
-        await database.reconcileLocalStockWithPendingSales(
-          branchId: branchId,
-          serverStock: stockItems,
-        );
-      }
-    }
+        if (branchId != null) {
+          final stockItems = productMaps
+              .map((p) => _stockToCompanion(p, branchId))
+              .whereType<LocalStockCompanion>()
+              .toList();
+          if (stockItems.isNotEmpty && isSameCatalogScope()) {
+            await database.reconcileLocalStockWithPendingSales(
+              branchId: branchId,
+              serverStock: stockItems,
+            );
+          }
+        }
+      },
+    );
     debugPrint('[CatalogSync] Sync complete');
   } catch (e, st) {
     debugPrint('[CatalogSync] FAILED: $e');
     debugPrint('[CatalogSync] Stack: $st');
     rethrow;
+  }
+}
+
+class _CatalogSyncTaskResult {
+  const _CatalogSyncTaskResult.success()
+      : error = null,
+        stackTrace = null;
+
+  const _CatalogSyncTaskResult.failure(this.error, this.stackTrace);
+
+  final Object? error;
+  final StackTrace? stackTrace;
+}
+
+Future<_CatalogSyncTaskResult> _captureCatalogSyncTask(
+  Future<void> Function() task,
+) async {
+  try {
+    await task();
+    return const _CatalogSyncTaskResult.success();
+  } catch (error, stackTrace) {
+    return _CatalogSyncTaskResult.failure(error, stackTrace);
+  }
+}
+
+/// Refreshes independent catalog sources concurrently. Product data is the
+/// primary screen content, so category failures retain the previous category
+/// cache but do not hold fresh products back. Product failures still reach the
+/// screen's normal retry state.
+@visibleForTesting
+Future<void> syncCatalogSources({
+  required Future<void> Function() syncCategories,
+  required Future<void> Function() syncProducts,
+}) async {
+  final results = await Future.wait([
+    _captureCatalogSyncTask(syncCategories),
+    _captureCatalogSyncTask(syncProducts),
+  ]);
+
+  final categories = results[0];
+  if (categories.error != null) {
+    debugPrint(
+      '[CatalogSync] Category refresh failed; keeping saved categories: ${categories.error}',
+    );
+  }
+
+  final products = results[1];
+  if (products.error != null) {
+    Error.throwWithStackTrace(products.error!, products.stackTrace!);
   }
 }
 

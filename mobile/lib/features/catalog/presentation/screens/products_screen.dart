@@ -370,139 +370,135 @@ class ProductsScreen extends ConsumerWidget {
                     );
                   }
 
-                  return categoriesAsync.when(
-                    data: (categories) {
-                      final categoryMap = {
-                        for (var c in categories) c.id: c.name
-                      };
-                      return RefreshIndicator(
-                        onRefresh: () async {
-                          try {
-                            // Keep the refresh indicator visible until the
-                            // remote catalog has actually been fetched and
-                            // written to Drift. Both product and category
-                            // streams update from those writes.
-                            ref.invalidate(_catalogSyncProvider(currentUserId));
-                            await ref.read(
-                                _catalogSyncProvider(currentUserId).future);
-                          } catch (_) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Could not refresh the catalog. Your saved products are still available.',
-                                ),
+                  final categoryMap = {
+                    for (final category
+                        in categoriesAsync.valueOrNull ?? const <Category>[])
+                      category.id: category.name,
+                  };
+                  final productResults = gridView
+                      ? GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                              0, DesignSpacing.lg, DesignSpacing.xxl + 64),
+                          // Photo cards need the tall shape; without any
+                          // photos the same card left a big empty block
+                          // under the price, so size it to its content.
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: productGridColumns(
+                                MediaQuery.sizeOf(context).width),
+                            crossAxisSpacing: DesignSpacing.sm + 2,
+                            mainAxisSpacing: DesignSpacing.sm + 2,
+                            childAspectRatio: 0.72,
+                            // Fixed row height for photo-less cards: image
+                            // header + a two-line name + category + price,
+                            // so nothing is left empty below the price.
+                            mainAxisExtent: filtered.any(
+                                    (p) => (p.imageUrl ?? '').trim().isNotEmpty)
+                                ? null
+                                : 158,
+                          ),
+                          itemCount: filtered.length,
+                          // First-mount entrance: each card fades/rises
+                          // in once, staggered (see StaggeredItem).
+                          // Keys are stable per product, so pull-to-
+                          // refresh never replays the choreography.
+                          itemBuilder: (context, index) {
+                            final product = filtered[index];
+                            return StaggeredItem(
+                              itemKey: 'catalog-grid-${product.id}',
+                              index: index,
+                              child: _ProductGridCard(
+                                product: product,
+                                categoryName: categoryMap[product.categoryId] ??
+                                    'Unknown',
+                                onEdit: perms.canEditProducts
+                                    ? () => _showAddEditProduct(context, ref,
+                                        product: product)
+                                    : null,
+                                onDelete: perms.canEditProducts
+                                    ? () =>
+                                        _confirmDelete(context, ref, product)
+                                    : null,
+                                isDark: isDark,
                               ),
                             );
-                          }
-                        },
-                        color: DesignColors.brand,
-                        backgroundColor: isDark
-                            ? DesignColors.darkSurfaceElevated
-                            : Colors.white,
-                        child: gridView
-                            ? GridView.builder(
-                                padding: const EdgeInsets.fromLTRB(
-                                    DesignSpacing.lg,
-                                    0,
-                                    DesignSpacing.lg,
-                                    DesignSpacing.xxl + 64),
-                                // Photo cards need the tall shape; without any
-                                // photos the same card left a big empty block
-                                // under the price, so size it to its content.
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: productGridColumns(
-                                      MediaQuery.sizeOf(context).width),
-                                  crossAxisSpacing: DesignSpacing.sm + 2,
-                                  mainAxisSpacing: DesignSpacing.sm + 2,
-                                  childAspectRatio: 0.72,
-                                  // Fixed row height for photo-less cards: image
-                                  // header + a two-line name + category + price,
-                                  // so nothing is left empty below the price.
-                                  mainAxisExtent: filtered.any((p) =>
-                                          (p.imageUrl ?? '').trim().isNotEmpty)
-                                      ? null
-                                      : 158,
-                                ),
-                                itemCount: filtered.length,
-                                // First-mount entrance: each card fades/rises
-                                // in once, staggered (see StaggeredItem).
-                                // Keys are stable per product, so pull-to-
-                                // refresh never replays the choreography.
-                                itemBuilder: (context, index) {
-                                  final product = filtered[index];
-                                  return StaggeredItem(
-                                    itemKey: 'catalog-grid-${product.id}',
-                                    index: index,
-                                    child: _ProductGridCard(
-                                      product: product,
-                                      categoryName:
-                                          categoryMap[product.categoryId] ??
-                                              'Unknown',
-                                      onEdit: perms.canEditProducts
-                                          ? () => _showAddEditProduct(
-                                              context, ref,
-                                              product: product)
-                                          : null,
-                                      onDelete: perms.canEditProducts
-                                          ? () => _confirmDelete(
-                                              context, ref, product)
-                                          : null,
-                                      isDark: isDark,
-                                    ),
-                                  );
-                                },
-                              )
-                            : ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(
-                                    DesignSpacing.lg,
-                                    0,
-                                    DesignSpacing.lg,
-                                    DesignSpacing.xxl + 64),
-                                itemCount: filtered.length,
-                                itemBuilder: (context, index) {
-                                  final product = filtered[index];
-                                  return StaggeredItem(
-                                    itemKey: 'catalog-list-${product.id}',
-                                    index: index,
-                                    child: _ProductListTile(
-                                      product: product,
-                                      categoryName:
-                                          categoryMap[product.categoryId] ??
-                                              'Unknown',
-                                      onEdit: perms.canEditProducts
-                                          ? () => _showAddEditProduct(
-                                              context, ref,
-                                              product: product)
-                                          : null,
-                                      onDelete: perms.canEditProducts
-                                          ? () => _confirmDelete(
-                                              context, ref, product)
-                                          : null,
-                                      isDark: isDark,
-                                    ),
-                                  );
-                                },
+                          },
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
+                              0, DesignSpacing.lg, DesignSpacing.xxl + 64),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final product = filtered[index];
+                            return StaggeredItem(
+                              itemKey: 'catalog-list-${product.id}',
+                              index: index,
+                              child: _ProductListTile(
+                                product: product,
+                                categoryName: categoryMap[product.categoryId] ??
+                                    'Unknown',
+                                onEdit: perms.canEditProducts
+                                    ? () => _showAddEditProduct(context, ref,
+                                        product: product)
+                                    : null,
+                                onDelete: perms.canEditProducts
+                                    ? () =>
+                                        _confirmDelete(context, ref, product)
+                                    : null,
+                                isDark: isDark,
                               ),
-                      );
+                            );
+                          },
+                        );
+
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      try {
+                        // Keep the refresh indicator visible until the
+                        // remote catalog has actually been fetched and
+                        // written to Drift.
+                        ref.invalidate(_catalogSyncProvider(currentUserId));
+                        await ref
+                            .read(_catalogSyncProvider(currentUserId).future);
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Could not refresh the catalog. Your saved products are still available.',
+                            ),
+                          ),
+                        );
+                      }
                     },
-                    loading: () => const Center(
-                        child: CircularProgressIndicator(
-                            color: DesignColors.brand)),
-                    error: (e, _) => EmptyState(
-                      icon: Icons.category_outlined,
-                      title: 'Couldn\'t load categories',
-                      subtitle: 'Check your connection and try again.',
-                      iconColor: DesignColors.error,
-                      actionLabel: 'Retry',
-                      onAction: () => ref.invalidate(categoriesProvider),
+                    color: DesignColors.brand,
+                    backgroundColor: isDark
+                        ? DesignColors.darkSurfaceElevated
+                        : Colors.white,
+                    child: Column(
+                      children: [
+                        if (categoriesAsync.hasError)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              DesignSpacing.lg,
+                              DesignSpacing.sm,
+                              DesignSpacing.lg,
+                              DesignSpacing.sm,
+                            ),
+                            child: InlineRetryNotice(
+                              message:
+                                  'Product categories are unavailable. You can still browse and sell your saved products.',
+                              onRetry: () => ref.invalidate(categoriesProvider),
+                            ),
+                          ),
+                        Expanded(child: productResults),
+                      ],
                     ),
                   );
                 },
                 loading: () => GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                      DesignSpacing.lg, 0, DesignSpacing.lg, DesignSpacing.xxl + 64),
+                  padding: const EdgeInsets.fromLTRB(DesignSpacing.lg, 0,
+                      DesignSpacing.lg, DesignSpacing.xxl + 64),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount:
                         productGridColumns(MediaQuery.sizeOf(context).width),
@@ -809,57 +805,61 @@ class _ProductGridCard extends ConsumerWidget {
               // and a long two-line name can never overflow.
               Expanded(
                 child: Padding(
-                padding: const EdgeInsets.fromLTRB(DesignSpacing.md,
-                    DesignSpacing.sm, DesignSpacing.sm, DesignSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: titleColor,
-                            fontSize: 13,
-                          ),
-                    ),
-                    const SizedBox(height: DesignSpacing.xs - 1),
-                    Text(categoryName,
-                        maxLines: 1,
+                  padding: const EdgeInsets.fromLTRB(DesignSpacing.md,
+                      DesignSpacing.sm, DesignSpacing.sm, DesignSpacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelSmall
-                            ?.copyWith(color: secondaryColor)),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            formatMoney(product.price),
-                            style: DesignType.numeric(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: DesignColors.brand,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: titleColor,
+                              fontSize: 13,
+                            ),
+                      ),
+                      const SizedBox(height: DesignSpacing.xs - 1),
+                      Text(categoryName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: secondaryColor)),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              formatMoney(product.price),
+                              style: DesignType.numeric(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: DesignColors.brand,
+                              ),
                             ),
                           ),
-                        ),
-                        Text(
-                          inStock ? '${stock.toStringAsFixed(0)} left' : 'Out',
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: inStock
-                                        ? DesignColors.success
-                                        : DesignColors.error,
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          Text(
+                            inStock
+                                ? '${stock.toStringAsFixed(0)} left'
+                                : 'Out',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: inStock
+                                      ? DesignColors.success
+                                      : DesignColors.error,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               ),
             ],
           ),
