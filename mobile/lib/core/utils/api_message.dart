@@ -65,10 +65,11 @@ String? _friendlyValidationMessage(String message) {
 String _messageFromPayload(Object? payload) {
   if (payload is String) return payload.trim();
   if (payload is List) {
-    return payload
-        .map(_messageFromPayload)
-        .where((value) => value.isNotEmpty)
-        .join(' ');
+    for (final item in payload) {
+      final message = _messageFromPayload(item);
+      if (message.isNotEmpty) return message;
+    }
+    return '';
   }
   if (payload is Map) {
     for (final key in const ['message', 'error', 'detail']) {

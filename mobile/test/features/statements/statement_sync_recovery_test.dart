@@ -25,6 +25,20 @@ void main() {
       );
     });
 
+    test('recovers when a gateway nests the UUID validation message', () {
+      expect(
+        statementNeedsCustomerSync(responseError(
+          400,
+          {
+            'error': {
+              'message': 'Validation failed: customerId must be a UUID',
+            },
+          },
+        )),
+        isTrue,
+      );
+    });
+
     test('recovers a customer missing from the workspace', () {
       expect(
         statementNeedsCustomerSync(

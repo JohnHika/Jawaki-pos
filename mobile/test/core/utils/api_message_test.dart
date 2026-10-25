@@ -34,6 +34,20 @@ void main() {
     );
   });
 
+  test('unwraps a gateway-wrapped customer UUID validation message', () {
+    expect(
+      apiErrorMessage(responseError(
+        400,
+        {
+          'error': {
+            'message': 'Validation failed: customerId must be a UUID',
+          },
+        },
+      )),
+      'This customer record needs to sync before a statement can be sent. Reconnect and try again.',
+    );
+  });
+
   test('uses a calm fallback for non-network implementation exceptions', () {
     expect(apiErrorMessage(StateError('SQLite constraint stack')),
         'Something went wrong. Please try again.');
