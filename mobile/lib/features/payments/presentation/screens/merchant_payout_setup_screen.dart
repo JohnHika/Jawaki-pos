@@ -280,6 +280,41 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                 ],
                               )),
                           const SizedBox(height: 20),
+                          Card(
+                            color: DesignColors.warning.withValues(alpha: 0.08),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.info_outline_rounded,
+                                      color: DesignColors.warning),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Verification and payout timing',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w700),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          'Customer M-Pesa and debt payments route through a verified Paystack bank subaccount. New or changed subaccounts stay unavailable until a Paystack integration administrator verifies them. Paystack sets the settlement schedule and may hold the first payout while verification is pending. This screen supports bank destinations; M-Pesa wallet payouts use a separate Paystack Transfers flow with transfer fees.',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
                           if ((ready || needsVerification) &&
                               !_isChangingPayout) ...[
                             _enter(
@@ -381,7 +416,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                                       padding: EdgeInsets.only(
                                                           top: 8),
                                                       child: Text(
-                                                        'Paystack has received your details and is verifying the account. Customer M-Pesa and debt payments will turn on after approval. Cash sales are available now.',
+                                                        'Waiting for the administrator of the Paystack integration to verify this shop subaccount. Customer M-Pesa and debt payments stay off until approval; cash sales are available now.',
                                                       ),
                                                     )
                                                   : const SizedBox(
