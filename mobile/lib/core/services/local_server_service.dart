@@ -8,6 +8,7 @@ import 'package:shelf_router/shelf_router.dart';
 import '../database/app_database.dart';
 import '../di/injection.dart';
 import '../network/api_client.dart';
+import 'auth_service.dart';
 import 'connectivity_service.dart';
 import 'server/middleware.dart';
 import 'server/auth_token.dart';
@@ -123,7 +124,10 @@ class LocalServerService {
 
       AuthRoutes(dbLocal).addRoutes(appRouter);
       CatalogRoutes(dbLocal).addRoutes(appRouter);
-      SalesRoutes(dbLocal).addRoutes(appRouter);
+      SalesRoutes(
+        dbLocal,
+        taxRatePercent: getIt<AuthService>().taxRatePercent,
+      ).addRoutes(appRouter);
       InventoryRoutes(dbLocal).addRoutes(appRouter);
       SyncRoutes(dbLocal).addRoutes(appRouter);
       ReportRoutes(dbLocal).addRoutes(appRouter);

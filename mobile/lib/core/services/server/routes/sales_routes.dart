@@ -4,13 +4,14 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart' show Router;
 import '../../../database/app_database.dart';
 import '../middleware.dart';
-import '../sql_helper.dart';
 
 /// Sales routes for phone server mode.
 class SalesRoutes {
   final AppDatabase _db;
+  final double _taxRatePercent;
 
-  SalesRoutes(this._db);
+  SalesRoutes(this._db, {double taxRatePercent = 0})
+      : _taxRatePercent = taxRatePercent;
 
   void addRoutes(Router r) {
     r.post('/api/v1/sales', _handleCreateSale);
@@ -29,49 +30,239 @@ class SalesRoutes {
       return _error(400, 'Request body is required');
     }
 
-    final items =
-        (body['items'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final saleId = body['offlineId']?.toString().trim().isNotEmpty == true
+        ? body['offlineId'].toString().trim()
+        : body['id']?.toString().trim().isNotEmpty == true
+            ? body['id'].toString().trim()
+            : _uuid();
+    final branchId = body['branchId']?.toString().trim() ?? '';
+    final rawItems = body['items'];
+    if (branchId.isEmpty || rawItems is! List || rawItems.isEmpty) {
+      return _error(400, 'A branch and at least one sale item are required');
+    }
 
-    final saleCompanion = PendingSalesCompanion(
-      id: Value(body['id'] as String? ?? _uuid()),
-      receiptNumber:
-          Value(body['receiptNumber'] as String? ?? _generateReceiptNo()),
-      subtotal: Value((body['subtotal'] as num?)?.toDouble() ?? 0),
-      discount: Value((body['discount'] as num?)?.toDouble() ?? 0),
-      tax: Value((body['tax'] as num?)?.toDouble() ?? 0),
-      total: Value((body['total'] as num?)?.toDouble() ?? 0),
-      paymentMethod: Value(body['paymentMethod'] as String? ?? 'CASH'),
-      paymentReference: Value(body['paymentReference'] as String?),
-      customerId: Value(body['customerId'] as String?),
-      cashierId: Value(body['cashierId'] as String? ?? ''),
-      branchId: Value(body['branchId'] as String? ?? ''),
-      notes: Value(body['notes'] as String?),
+    // The cashier commits a local receipt before asking the server to sync.
+    // Reuse that id and acknowledge the saved receipt instead of creating a
+    // duplicate with a generated id when the phone server is this device.
+    final existing = await _db.getPendingSaleById(saleId);
+    if (existing != null) {
+      if (existing.branchId != branchId) {
+        return _error(409, 'The sale id is already used by another branch');
+      }
+      return _saleCreatedResponse(
+        id: existing.id,
+        receiptNumber: existing.receiptNumber,
+        created: false,
+      );
+    }
+
+    final itemCompanions = <PendingSaleItemsCompanion>[];
+    var subtotal = 0.0;
+    for (final rawItem in rawItems) {
+      if (rawItem is! Map) {
+        return _error(400, 'Sale items must be valid objects');
+      }
+      final item = Map<String, dynamic>.from(rawItem);
+      final productId = item['productId']?.toString().trim() ?? '';
+      final quantity = _number(item['quantity']) ?? 0;
+      final unitPrice = _number(item['unitPrice']) ?? 0;
+      final lineDiscount = _number(item['discount']) ?? 0;
+      if (productId.isEmpty ||
+          !quantity.isFinite ||
+          quantity <= 0 ||
+          !unitPrice.isFinite ||
+          unitPrice < 0 ||
+          !lineDiscount.isFinite ||
+          lineDiscount < 0 ||
+          lineDiscount > unitPrice * quantity) {
+        return _error(
+            400, 'Each sale item needs a product, price, and quantity');
+      }
+
+      final product = await _db.getProduct(productId);
+      final productName =
+          item['productName']?.toString().trim().isNotEmpty == true
+              ? item['productName'].toString().trim()
+              : product?.name ?? '';
+      if (productName.isEmpty) {
+        return _error(400, 'A sale item could not be matched to a product');
+      }
+      final expectedLineTotal =
+          (unitPrice * quantity - lineDiscount).clamp(0, double.infinity);
+      final reportedLineTotal = _number(item['total']);
+      if (reportedLineTotal != null &&
+          (!reportedLineTotal.isFinite ||
+              reportedLineTotal < 0 ||
+              (reportedLineTotal - expectedLineTotal).abs() > 0.01)) {
+        return _error(400, 'A sale item total does not match its price');
+      }
+      final lineTotal = expectedLineTotal.toDouble();
+      if (!lineTotal.isFinite || lineTotal < 0) {
+        return _error(400, 'Sale item totals must be valid amounts');
+      }
+      subtotal += lineTotal;
+      itemCompanions.add(
+        PendingSaleItemsCompanion.insert(
+          saleId: saleId,
+          productId: productId,
+          productName: productName,
+          sku: item['sku']?.toString() ?? product?.sku ?? '',
+          quantity: quantity,
+          unitPrice: unitPrice,
+          discount: Value(lineDiscount),
+          total: lineTotal,
+          unit: Value(item['unit']?.toString() ?? item['saleUnit']?.toString()),
+          quantityPerUnit: Value(
+            _number(item['quantityPerUnit'] ?? item['unitConversionFactor']),
+          ),
+        ),
+      );
+    }
+
+    final paymentMethod =
+        (body['paymentMethod']?.toString() ?? 'CASH').toUpperCase();
+    if (!const {'CASH', 'CREDIT', 'SPLIT'}.contains(paymentMethod)) {
+      return _error(
+        400,
+        paymentMethod == 'MPESA'
+            ? 'M-Pesa sales must be confirmed by the payment provider'
+            : 'The selected payment method is not supported',
+      );
+    }
+    final discount = _number(body['discountAmount']) ?? 0;
+    if (!discount.isFinite ||
+        discount < 0 ||
+        discount > subtotal ||
+        !_taxRatePercent.isFinite ||
+        _taxRatePercent < 0) {
+      return _error(400, 'The sale discount or tax settings are invalid');
+    }
+    final tax = ((subtotal - discount).clamp(0, double.infinity) *
+            (_taxRatePercent / 100))
+        .toDouble();
+    final computedTotal =
+        (subtotal + tax - discount).clamp(0, double.infinity).toDouble();
+    final reportedTotal = _number(body['totalAmount']);
+    if (reportedTotal != null &&
+        (!reportedTotal.isFinite ||
+            reportedTotal < 0 ||
+            (reportedTotal - computedTotal).abs() > 0.01)) {
+      return _error(400, 'The sale total does not match its items and tax');
+    }
+    final total = computedTotal;
+    if (!total.isFinite || total <= 0 || total > 10000000) {
+      return _error(400, 'The sale total must be between 0 and 10,000,000');
+    }
+    final customerId = body['customerId']?.toString();
+    final tenders = body['tenders'];
+    final paidAmount = (_number(body['paidAmount']) ?? total).toDouble();
+    if (!paidAmount.isFinite || paidAmount < 0) {
+      return _error(400, 'The amount paid must be a valid amount');
+    }
+    if (!{'CREDIT', 'SPLIT'}.contains(paymentMethod) && paidAmount < total) {
+      return _error(400, 'The amount paid is less than the sale total');
+    }
+    var debtAmount = paymentMethod == 'CREDIT'
+        ? (total - paidAmount).clamp(0, double.infinity).toDouble()
+        : 0.0;
+    String? paymentReference = body['paymentReference']?.toString();
+    if (paymentMethod == 'SPLIT') {
+      if (tenders is! List || tenders.length != 2 || customerId == null) {
+        return _error(400, 'A split payment needs cash, debt, and a customer');
+      }
+      final tenderRows = tenders.whereType<Map>().toList();
+      final creditTenders = tenderRows
+          .where((tender) => tender['method']?.toString() == 'CREDIT')
+          .toList();
+      final cashTenders = tenderRows
+          .where((tender) => tender['method']?.toString() == 'CASH')
+          .toList();
+      if (tenderRows.length != 2 ||
+          creditTenders.length != 1 ||
+          cashTenders.length != 1) {
+        return _error(
+            400, 'A split payment needs one cash and one debt portion');
+      }
+      final creditAmount = _number(creditTenders.single['amount']);
+      final cashAmount = _number(cashTenders.single['amount']);
+      if (creditAmount == null ||
+          cashAmount == null ||
+          !creditAmount.isFinite ||
+          !cashAmount.isFinite ||
+          creditAmount <= 0 ||
+          cashAmount <= 0 ||
+          (creditAmount + cashAmount - total).abs() > 0.01) {
+        return _error(400, 'Cash and debt must add up to the sale total');
+      }
+      debtAmount = creditAmount;
+      paymentReference = jsonEncode(tenders);
+    } else if (paymentMethod == 'CREDIT') {
+      if (customerId == null || customerId.isEmpty) {
+        return _error(400, 'Choose a customer before recording a credit sale');
+      }
+      paymentReference ??= customerId;
+    }
+
+    final now = DateTime.now();
+    final receiptNumber = _generateReceiptNo();
+    final authUser = getAuthUser(request);
+    final cashierId = authUser?['sub']?.toString() ?? '';
+    final saleCompanion = PendingSalesCompanion.insert(
+      id: saleId,
+      receiptNumber: receiptNumber,
+      subtotal: subtotal,
+      discount: Value(discount),
+      tax: Value(tax),
+      total: total,
+      paymentMethod: paymentMethod,
+      paymentReference: Value(paymentReference),
+      customerId: Value(customerId),
+      cashierId: cashierId,
+      branchId: branchId,
+      notes: Value(body['notes']?.toString()),
       status: const Value('COMPLETED'),
-      createdAt: Value(DateTime.now()),
+      createdAt: now,
+      // This route accepts a sale into the host phone's local database. The
+      // host still needs to upload it to the cloud when connectivity returns.
       isSynced: const Value(false),
     );
 
-    final itemCompanions = items
-        .map((i) => PendingSaleItemsCompanion(
-              saleId: Value(body['id'] as String? ?? _uuid()),
-              productId: Value(i['productId'] as String? ?? ''),
-              productName: Value(i['productName'] as String? ?? ''),
-              sku: Value(i['sku'] as String? ?? ''),
-              quantity: Value((i['quantity'] as num?)?.toDouble() ?? 1),
-              unitPrice: Value((i['unitPrice'] as num?)?.toDouble() ?? 0),
-              discount: Value((i['discount'] as num?)?.toDouble() ?? 0),
-              total: Value((i['total'] as num?)?.toDouble() ?? 0),
-            ))
-        .toList();
+    await _db.createPendingSale(
+      saleCompanion,
+      itemCompanions,
+      customerBalanceDelta: debtAmount,
+      decrementLocalStock: true,
+    );
 
-    await _db.createPendingSale(saleCompanion, itemCompanions);
+    return _saleCreatedResponse(
+      id: saleId,
+      receiptNumber: receiptNumber,
+      created: true,
+    );
+  }
 
+  shelf.Response _saleCreatedResponse({
+    required String id,
+    required String receiptNumber,
+    required bool created,
+  }) {
     return shelf.Response(
-      201,
-      body:
-          jsonEncode({'message': 'Sale created', 'id': saleCompanion.id.value}),
+      created ? 201 : 200,
+      body: jsonEncode({
+        'success': true,
+        'data': {
+          'id': id,
+          'offlineId': id,
+          'receiptNumber': receiptNumber,
+        },
+      }),
       headers: {'content-type': 'application/json'},
     );
+  }
+
+  double? _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    return value == null ? null : double.tryParse(value.toString());
   }
 
   /// GET /api/v1/sales?startDate=&endDate=&page=&limit=
@@ -171,13 +362,62 @@ class SalesRoutes {
   /// POST /api/v1/sales/<id>/void
   Future<shelf.Response> _handleVoidSale(
       shelf.Request request, String id) async {
-    await _db.customStatement(
-      'UPDATE pending_sales SET status = \'VOIDED\' WHERE id = ${Sql.str(id)}',
-    );
+    final authUser = getAuthUser(request);
+    final userId = authUser?['sub']?.toString();
+    if (!await _hasSaleVoidPermission(userId)) {
+      return _error(403, 'You do not have permission to void sales');
+    }
+
+    final body = getRequestBody(request);
+    final reason = body?['reason']?.toString().trim() ?? '';
+    if (reason.isEmpty) {
+      return _error(400, 'A reason is required to void a sale');
+    }
+
+    final sale = await _db.getPendingSaleById(id);
+    if (sale == null) {
+      return _error(404, 'Sale not found');
+    }
+
+    // This is the authoritative phone-server copy. The database operation
+    // marks the receipt and restores stock atomically, and is idempotent if
+    // the caller retries after losing the response.
+    if (sale.status != 'VOIDED') {
+      await _db.voidPendingSale(
+        id,
+        reason: reason,
+        voidedBy: userId,
+      );
+    }
     return shelf.Response.ok(
-      jsonEncode({'message': 'Sale voided'}),
+      jsonEncode({
+        'success': true,
+        'data': {
+          'id': id,
+          'status': 'VOIDED',
+          'voidReason': sale.voidReason ?? reason,
+        },
+      }),
       headers: {'content-type': 'application/json'},
     );
+  }
+
+  Future<bool> _hasSaleVoidPermission(String? userId) async {
+    if (userId == null || userId.isEmpty) return false;
+    final rows = await _db.customSelect(
+      'SELECT permissions_json, is_active FROM server_users WHERE id = ?',
+      variables: [Variable.withString(userId)],
+    ).get();
+    if (rows.isEmpty || rows.first.read<int>('is_active') != 1) return false;
+
+    final permissionsJson = rows.first.readNullable<String>('permissions_json');
+    if (permissionsJson == null) return false;
+    try {
+      final permissions = jsonDecode(permissionsJson);
+      return permissions is List && permissions.contains('sales.void');
+    } on FormatException {
+      return false;
+    }
   }
 
   Map<String, dynamic> _saleToMap(PendingSale s) {
