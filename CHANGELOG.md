@@ -1,5 +1,12 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.145+2188 (October 25, 2026)
+
+### Make stock requests safer and more reliable
+- Show a real error when local stock-request data cannot be read instead of presenting an empty queue.
+- Validate request quantities and statuses, preserve fractional quantities, and return proper not-found/conflict responses.
+- Restrict local request edits and cancellations to the original requester, and require a manager-level role to resolve requests.
+
 ## v1.0.144+2187 (October 25, 2026)
 
 ### Make action errors clear and actionable
