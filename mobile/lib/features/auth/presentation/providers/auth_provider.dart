@@ -334,6 +334,10 @@ final authControllerProvider =
 });
 
 final currentUserProvider = Provider<Map<String, dynamic>?>((ref) {
+  // A few pre-auth screens and isolated widget tests can render before the
+  // dependency container is configured. Treat that state as signed out;
+  // AuthController will be used as soon as AuthService is registered.
+  if (!getIt.isRegistered<AuthService>()) return null;
   return ref.watch(authControllerProvider).user;
 });
 
