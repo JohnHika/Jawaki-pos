@@ -5,8 +5,12 @@ describe('CashFlowService', () => {
   const branchId = 'branch-1';
   let prisma: any;
   let service: CashFlowService;
+  let positiveManualAdjustment: number;
+  let negativeManualAdjustment: number;
 
   beforeEach(() => {
+    positiveManualAdjustment = 0;
+    negativeManualAdjustment = -2;
     prisma = {
       branchCashSettings: {
         findUnique: jest.fn().mockResolvedValue({ mode: CashFlowMode.ALL_REVENUE }),
@@ -16,6 +20,12 @@ describe('CashFlowService', () => {
       },
       cashLedgerEntry: {
         aggregate: jest.fn(async ({ where }: any) => {
+          if (where.amount?.gt !== undefined) {
+            return { _sum: { amount: positiveManualAdjustment } };
+          }
+          if (where.amount?.lt !== undefined) {
+            return { _sum: { amount: negativeManualAdjustment } };
+          }
           const amounts: Record<string, number> = {
             [CashEntryType.SALE_CASH_IN]: 100,
             [CashEntryType.RECEIVABLE_COLLECTION_IN]: 0,
@@ -68,6 +78,21 @@ describe('CashFlowService', () => {
 
     expect(result.availableCash).toBe(321);
     expect(result.expectedPhysicalCash).toBe(321);
+  });
+
+  it('includes positive till adjustments so a repeated overage count is not booked twice', async () => {
+    prisma.branchCashSettings.findUnique.mockResolvedValue({ mode: CashFlowMode.CASH_ONLY });
+    positiveManualAdjustment = 10;
+
+    const result = await service.getAvailableCash(branchId);
+
+    // A first count of 78 against the original 68 books a +10 adjustment.
+    // The next count should expect 78, not 68 (which would book the same
+    // overage again on every retry).
+    expect(result.expectedPhysicalCash).toBe(78);
+    expect(result.availableCash).toBe(78);
+    expect(result.todaysCashIn).toBe(110);
+    expect(result.breakdown).toMatchObject({ manualAdjustmentIn: 10, manualAdjustmentOut: 2 });
   });
 
   it('reads cash figures from the caller transaction when one is provided', async () => {

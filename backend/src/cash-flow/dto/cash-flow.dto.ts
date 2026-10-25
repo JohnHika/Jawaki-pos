@@ -75,7 +75,10 @@ export class AvailableCashResponseDto {
     receivableCollections?: number;
     restockOut: number;
     expenseOut: number;
+    /** Absolute amount of negative manual adjustments made today. */
     manualAdjustment: number;
+    manualAdjustmentIn?: number;
+    manualAdjustmentOut?: number;
     runningBalance?: number;
   };
 }

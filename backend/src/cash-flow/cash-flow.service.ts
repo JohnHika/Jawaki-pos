@@ -123,17 +123,24 @@ export class CashFlowService {
 
     const restockOut = await this.sumToday(branchId, CashEntryType.RESTOCK_OUT, startOfDay, endOfDay, db);
     const expenseOut = await this.sumToday(branchId, CashEntryType.EXPENSE_OUT, startOfDay, endOfDay, db);
-    // Manual adjustments can be positive (top-up) or negative (removal) — only
-    // the negative side counts as a payout; positive ones behave like an
-    // OPENING_BALANCE-style inflow and are excluded from todaysCashOut.
-    const manualAdjustment = await this.sumNegativeToday(
+    // Reconciliation adjustments can correct the till either direction. Keep
+    // both sides in the physical-cash equation so a previous overage is not
+    // counted again the next time staff recount the same till.
+    const manualAdjustmentOut = await this.sumNegativeToday(
       branchId,
       CashEntryType.MANUAL_ADJUSTMENT,
       startOfDay,
       endOfDay,
       db,
     );
-    const todaysCashOut = restockOut + expenseOut + manualAdjustment;
+    const manualAdjustmentIn = await this.sumPositiveToday(
+      branchId,
+      CashEntryType.MANUAL_ADJUSTMENT,
+      startOfDay,
+      endOfDay,
+      db,
+    );
+    const todaysCashOut = restockOut + expenseOut + manualAdjustmentOut;
 
     if (mode === CashFlowMode.RUNNING_BALANCE) {
       const last = await db.cashLedgerEntry.findFirst({
@@ -162,7 +169,9 @@ export class CashFlowService {
           receivableCollections,
           restockOut,
           expenseOut,
-          manualAdjustment,
+          manualAdjustment: manualAdjustmentOut,
+          manualAdjustmentIn,
+          manualAdjustmentOut,
         },
       };
     }
@@ -183,13 +192,14 @@ export class CashFlowService {
         this.sumToday(branchId, CashEntryType.SALE_CASH_IN, startOfDay, endOfDay, db),
         this.sumToday(branchId, CashEntryType.RECEIVABLE_COLLECTION_IN, startOfDay, endOfDay, db),
       ]);
-      const expectedPhysicalCash = salesCashIn + receivableCollections - todaysCashOut;
+      const expectedPhysicalCash =
+        salesCashIn + receivableCollections + manualAdjustmentIn - todaysCashOut;
 
       return {
         mode,
-        availableCash: allRevenue - todaysCashOut,
+        availableCash: allRevenue + manualAdjustmentIn - todaysCashOut,
         expectedPhysicalCash,
-        todaysCashIn: allRevenue,
+        todaysCashIn: allRevenue + manualAdjustmentIn,
         todaysCashOut,
         breakdown: {
           allRevenue,
@@ -198,7 +208,9 @@ export class CashFlowService {
           expectedPhysicalCash,
           restockOut,
           expenseOut,
-          manualAdjustment,
+          manualAdjustment: manualAdjustmentOut,
+          manualAdjustmentIn,
+          manualAdjustmentOut,
         },
       };
     }
@@ -214,16 +226,20 @@ export class CashFlowService {
     );
     return {
       mode,
-      availableCash: salesCashIn + receivableCollections - todaysCashOut,
-      expectedPhysicalCash: salesCashIn + receivableCollections - todaysCashOut,
-      todaysCashIn: salesCashIn + receivableCollections,
+      availableCash:
+        salesCashIn + receivableCollections + manualAdjustmentIn - todaysCashOut,
+      expectedPhysicalCash:
+        salesCashIn + receivableCollections + manualAdjustmentIn - todaysCashOut,
+      todaysCashIn: salesCashIn + receivableCollections + manualAdjustmentIn,
       todaysCashOut,
       breakdown: {
         salesCashIn,
         receivableCollections,
         restockOut,
         expenseOut,
-        manualAdjustment,
+        manualAdjustment: manualAdjustmentOut,
+        manualAdjustmentIn,
+        manualAdjustmentOut,
       },
     };
   }
@@ -307,5 +323,24 @@ export class CashFlowService {
       _sum: { amount: true },
     });
     return Math.abs(Number(result._sum.amount) || 0);
+  }
+
+  private async sumPositiveToday(
+    branchId: string,
+    type: CashEntryType,
+    start: Date,
+    end: Date,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<number> {
+    const result = await db.cashLedgerEntry.aggregate({
+      where: {
+        branchId,
+        type,
+        createdAt: { gte: start, lt: end },
+        amount: { gt: 0 },
+      },
+      _sum: { amount: true },
+    });
+    return Number(result._sum.amount) || 0;
   }
 }
