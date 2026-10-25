@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.147+2190 (October 25, 2026)
+
+### Make statement recovery clearer and restore cloud access after stopping phone server
+- Give Debt Replies a full, plain-language recovery state and allow pull-to-refresh when the list is short or empty.
+- Restore the API address that was active before phone-server mode when its server stops, so the app does not keep sending requests to a closed localhost port.
+
 ## v1.0.146+2189 (October 25, 2026)
 
 ### Keep sync failures visible and retry safely

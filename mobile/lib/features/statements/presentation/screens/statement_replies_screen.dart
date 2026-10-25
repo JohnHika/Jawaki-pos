@@ -29,16 +29,25 @@ class StatementRepliesScreen extends ConsumerWidget {
         child: claims.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(DesignSpacing.lg),
             children: [
-              InlineRetryNotice(
-                message: apiErrorMessage(e),
-                onRetry: () => ref.invalidate(statementClaimsProvider),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: DesignSpacing.xl),
+                child: EmptyState(
+                  icon: Icons.mark_chat_read_outlined,
+                  title: "Couldn't load customer replies",
+                  subtitle: apiErrorMessage(e),
+                  iconColor: DesignColors.warning,
+                  actionLabel: 'Try again',
+                  onAction: () => ref.invalidate(statementClaimsProvider),
+                ),
               ),
             ],
           ),
           data: (rows) => rows.isEmpty
               ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   children: const [
                     SizedBox(height: 80),
                     EmptyState(
@@ -50,6 +59,7 @@ class StatementRepliesScreen extends ConsumerWidget {
                   ],
                 )
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(DesignSpacing.lg,
                       DesignSpacing.md, DesignSpacing.lg, DesignSpacing.xxxl),
                   itemCount: rows.length,

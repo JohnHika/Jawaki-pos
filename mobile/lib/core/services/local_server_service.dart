@@ -41,6 +41,7 @@ class LocalServerService {
   StreamSubscription<ConnectionStatus>? _autoStartSubscription;
   bool _isRunning = false;
   int _port = 3000;
+  String? _previousApiBaseUrl;
   final List<Map<String, dynamic>> _connectedClients = [];
 
   bool get isRunning => _isRunning;
@@ -154,6 +155,7 @@ class LocalServerService {
       // talks to itself instead of the old remote backend.
       try {
         final apiClient = getIt<ApiClient>();
+        _previousApiBaseUrl ??= apiClient.baseUrl;
         apiClient.setBaseUrl('http://127.0.0.1:$port/api/v1');
         debugPrint('[LocalServer] ✅ API client redirected to local server');
       } catch (e) {
@@ -189,6 +191,16 @@ class LocalServerService {
       await _server!.close(force: true);
       _isRunning = false;
       _connectedClients.clear();
+      final previousApiBaseUrl = _previousApiBaseUrl;
+      _previousApiBaseUrl = null;
+      if (previousApiBaseUrl != null) {
+        try {
+          getIt<ApiClient>().setBaseUrl(previousApiBaseUrl);
+          debugPrint('[LocalServer] API client restored after server stop');
+        } catch (e) {
+          debugPrint('[LocalServer] Could not restore API client URL: $e');
+        }
+      }
       debugPrint('[LocalServer] Server stopped');
     } catch (e) {
       debugPrint('[LocalServer] Error stopping: $e');
