@@ -114,37 +114,41 @@ class SyncRoutes {
   /// POST /api/v1/sync/pull — return recent changes since timestamp
   Future<shelf.Response> _handlePull(shelf.Request request) async {
     final body = getRequestBody(request);
-    final since = body?['since'] as String?;
+    final rawSince = body?['since'];
+    if (rawSince != null && rawSince is! String) {
+      return _error(400, 'Sync timestamp must be a valid date');
+    }
+    final since = rawSince as String?;
     final sinceDate = since != null
         ? DateTime.tryParse(since)
         : DateTime.now().subtract(const Duration(days: 7));
+    if (sinceDate == null)
+      return _error(400, 'Sync timestamp must be a valid date');
 
     // Return a list of events that happened since the given timestamp
     // For now, we return product/category updates from the sync_queue
     final events = <Map<String, dynamic>>[];
 
-    if (sinceDate != null) {
-      try {
-        final result = await _db
-            .customSelect(
-              'SELECT * FROM sync_queue WHERE created_at > ${Sql.str(sinceDate.toIso8601String())} AND status = \'synced\' ORDER BY created_at ASC LIMIT 100',
-            )
-            .get();
+    try {
+      final result = await _db
+          .customSelect(
+            'SELECT * FROM sync_queue WHERE created_at > ${Sql.str(sinceDate.toIso8601String())} AND status = \'synced\' ORDER BY created_at ASC LIMIT 100',
+          )
+          .get();
 
-        for (final row in result) {
-          events.add({
-            'id': row.read<String>('id'),
-            'eventType': row.read<String>('event_type'),
-            'entityTable': row.read<String>('entity_table'),
-            'recordId': row.read<String>('record_id'),
-            'action': row.read<String>('action'),
-            'payload': row.read<String>('payload'),
-            'createdAt': row.read<String>('created_at'),
-          });
-        }
-      } catch (_) {
-        // Table might be empty, that's fine
+      for (final row in result) {
+        events.add({
+          'id': row.read<String>('id'),
+          'eventType': row.read<String>('event_type'),
+          'entityTable': row.read<String>('entity_table'),
+          'recordId': row.read<String>('record_id'),
+          'action': row.read<String>('action'),
+          'payload': row.read<String>('payload'),
+          'createdAt': row.read<String>('created_at'),
+        });
       }
+    } catch (_) {
+      return _error(500, 'Could not load sync updates');
     }
 
     return shelf.Response.ok(
@@ -199,29 +203,26 @@ class SyncRoutes {
         headers: {'content-type': 'application/json'},
       );
     } catch (_) {
-      return shelf.Response.ok(
-        jsonEncode([]),
-        headers: {'content-type': 'application/json'},
-      );
+      return _error(500, 'Could not load failed sync items');
     }
   }
 
   /// POST /api/v1/sync/retry
   Future<shelf.Response> _handleRetry(shelf.Request request) async {
     try {
-      final failed = await _db.getFailedSyncQueue();
-      for (final item in failed) {
-        await _db.resetSyncQueueItem(item.id);
-      }
+      final failed = await _db.transaction(() async {
+        final items = await _db.getFailedSyncQueue();
+        for (final item in items) {
+          await _db.resetSyncQueueItem(item.id);
+        }
+        return items;
+      });
       return shelf.Response.ok(
         jsonEncode({'message': 'Retry initiated', 'count': failed.length}),
         headers: {'content-type': 'application/json'},
       );
     } catch (_) {
-      return shelf.Response.ok(
-        jsonEncode({'message': 'Nothing to retry', 'count': 0}),
-        headers: {'content-type': 'application/json'},
-      );
+      return _error(500, 'Could not restart failed sync items');
     }
   }
 

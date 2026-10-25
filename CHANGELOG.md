@@ -1,5 +1,12 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.146+2189 (October 25, 2026)
+
+### Keep sync failures visible and retry safely
+- Report sync-history and failed-item read errors instead of showing an empty queue.
+- Make failed-item retries atomic and return an error if the retry cannot be completed.
+- Reject invalid sync timestamps and surface change-feed read failures.
+
 ## v1.0.145+2188 (October 25, 2026)
 
 ### Make stock requests safer and more reliable
