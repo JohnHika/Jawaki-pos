@@ -7,6 +7,7 @@ import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
@@ -639,7 +640,7 @@ class ProductsScreen extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Could not delete product: $e'),
+              content: Text('Could not delete product. ${apiErrorMessage(e)}'),
               backgroundColor: DesignColors.error,
             ),
           );
@@ -1296,7 +1297,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     if (ctx.mounted) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
-                          content: Text('Could not add category: $e'),
+                          content: Text(
+                              'Could not add category. ${apiErrorMessage(e)}'),
                           backgroundColor: DesignColors.error,
                         ),
                       );
@@ -1429,7 +1431,8 @@ class _CategoryManagementSheet extends ConsumerWidget {
                     if (ctx.mounted) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
-                          content: Text('Could not update category: $e'),
+                          content: Text(
+                              'Could not update category. ${apiErrorMessage(e)}'),
                           backgroundColor: DesignColors.error,
                         ),
                       );
@@ -1472,7 +1475,7 @@ class _CategoryManagementSheet extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Could not delete category: $e'),
+              content: Text('Could not delete category. ${apiErrorMessage(e)}'),
               backgroundColor: DesignColors.error,
             ),
           );

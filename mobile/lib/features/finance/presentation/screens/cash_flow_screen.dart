@@ -6,6 +6,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'finance_screen.dart' show FinanceScreen;
@@ -269,7 +270,8 @@ class _CashFlowScreenState extends ConsumerState<CashFlowScreen> {
       ref.invalidate(_availableCashProvider);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not change mode: $e',
+        showGlassSnackBar(
+            context, 'Could not change cash flow mode. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {

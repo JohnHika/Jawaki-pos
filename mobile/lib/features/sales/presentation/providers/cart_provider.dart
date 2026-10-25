@@ -8,6 +8,7 @@ import 'package:axon_pos/core/database/app_database.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/coupon_rules.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
+import 'package:axon_pos/core/utils/api_message.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -522,7 +523,7 @@ class CartNotifier extends StateNotifier<CartState> {
     } catch (e) {
       return {
         'available': false,
-        'message': 'Error checking stock: $e',
+        'message': 'Could not verify stock. ${apiErrorMessage(e)}',
         'currentStock': 0,
         'required': quantity,
       };

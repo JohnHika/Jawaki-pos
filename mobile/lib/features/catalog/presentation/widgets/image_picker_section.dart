@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/api_message.dart';
 
 /// Reusable image picker + uploader used by product, category, and logo
 /// forms. Handles camera/gallery selection, upload to the configured
@@ -83,6 +84,7 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       ),
     );
     if (source == null || !mounted) return;
+    final sourceName = source == ImageSource.camera ? 'camera' : 'gallery';
 
     await Future<void>.delayed(const Duration(milliseconds: 180));
 
@@ -93,14 +95,14 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
         imageQuality: 85,
         maxWidth: 1024,
       );
-    } on PlatformException catch (e) {
+    } on PlatformException {
       _showImageError(
-        'Could not open ${source == ImageSource.camera ? 'camera' : 'gallery'}: ${e.message ?? e.code}',
+        'Could not open $sourceName. Check the app permission and try again.',
       );
       return;
     } catch (e) {
       _showImageError(
-        'Could not open ${source == ImageSource.camera ? 'camera' : 'gallery'}: $e',
+        'Could not open $sourceName. ${apiErrorMessage(e)}',
       );
       return;
     }
@@ -127,7 +129,7 @@ class _ImagePickerSectionState extends State<ImagePickerSection> {
       });
       widget.onImageChanged(url, publicId);
     } catch (e) {
-      _showImageError('Image upload failed: $e');
+      _showImageError('Image upload failed. ${apiErrorMessage(e)}');
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }

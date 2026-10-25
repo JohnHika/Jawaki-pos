@@ -11,6 +11,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/supplier_receipt_ocr_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 
 /// Cash till vs credit — mirrors CashFundingSource on the backend.
@@ -482,7 +483,8 @@ class _InvoiceReviewScreenState extends ConsumerState<InvoiceReviewScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not save invoice: $e',
+        showGlassSnackBar(
+            context, 'Could not save invoice. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {

@@ -6,6 +6,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/utils/load_error.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -294,7 +295,8 @@ class _CashReconciliationScreenState
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not record cash count: $e',
+        showGlassSnackBar(
+            context, 'Could not record cash count. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     }

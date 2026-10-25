@@ -1774,7 +1774,10 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.sharePdf(bytes, 'sales_export');
       }
     } catch (e) {
-      if (context.mounted) _showSnack(context, 'Could not prepare your file: $e');
+      if (context.mounted) {
+        _showSnack(
+            context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+      }
     }
   }
 
@@ -1836,7 +1839,10 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.sharePdf(bytes, 'inventory_export');
       }
     } catch (e) {
-      if (context.mounted) _showSnack(context, 'Could not prepare your file: $e');
+      if (context.mounted) {
+        _showSnack(
+            context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+      }
     }
   }
 
@@ -1897,7 +1903,10 @@ class SettingsScreen extends ConsumerWidget {
         await ExportDocumentService.sharePdf(bytes, 'products_export');
       }
     } catch (e) {
-      if (context.mounted) _showSnack(context, 'Could not prepare your file: $e');
+      if (context.mounted) {
+        _showSnack(
+            context, 'Could not prepare your file. ${apiErrorMessage(e)}');
+      }
     }
   }
 
@@ -2150,7 +2159,9 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       if (mounted) setState(() => _isDesignatedPrinter = value);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not update the till printer setting: $e',
+        showGlassSnackBar(
+            context,
+            'Could not update the till printer setting. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {
@@ -2197,7 +2208,8 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Could not scan for printers: $e',
+        showGlassSnackBar(context,
+            'Could not scan for printers. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {
@@ -2225,7 +2237,8 @@ class _PrinterSettingsSheetState extends State<_PrinterSettingsSheet> {
       }
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Connection failed: $e',
+        showGlassSnackBar(context,
+            'Could not connect to the printer. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     } finally {
@@ -2739,7 +2752,9 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
         _isConfirmingBiometric = false;
       });
       if (mounted) {
-        showGlassSnackBar(context, 'Could not check fingerprint or face unlock: $e',
+        showGlassSnackBar(
+            context,
+            'Could not check fingerprint or face unlock. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     }

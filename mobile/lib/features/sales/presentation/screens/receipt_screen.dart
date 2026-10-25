@@ -15,6 +15,7 @@ import '../../../../core/services/print_queue_service.dart';
 import '../../../../core/services/export_document_service.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/theme/share_format_sheet.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/receipt_printer.dart';
 import '../../../../core/providers/tenant_provider.dart';
 import '../../../../core/utils/load_error.dart';
@@ -767,7 +768,8 @@ class ReceiptScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        showGlassSnackBar(context, 'Could not print receipt: $e',
+        showGlassSnackBar(
+            context, 'Could not print receipt. ${apiErrorMessage(e)}',
             icon: Icons.error_outline_rounded, color: DesignColors.error);
       }
     }

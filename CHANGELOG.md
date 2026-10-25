@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.144+2187 (October 25, 2026)
+
+### Make action errors clear and actionable
+- Replace raw transport and platform exceptions in checkout, catalog, finance, receipt, printer, export, image upload, and biometric flows with shared plain-language error guidance.
+- Keep camera and gallery permission failures specific while avoiding platform exception details in the UI.
+
 ## v1.0.143+2186 (October 25, 2026)
 
 ### Improve statement recovery and clarify Paystack prompt names
