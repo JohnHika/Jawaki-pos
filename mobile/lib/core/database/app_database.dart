@@ -3325,6 +3325,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<String> recordSupplierInvoice({
+    String? invoiceId,
     required String supplierName,
     String? phone,
     String? email,
@@ -3338,6 +3339,14 @@ class AppDatabase extends _$AppDatabase {
     required List<Map<String, dynamic>> items,
   }) async {
     await _createSupplierFinanceTables();
+    final stableInvoiceId = invoiceId?.trim();
+    if (stableInvoiceId != null && stableInvoiceId.isNotEmpty) {
+      final existing = await customSelect(
+        'SELECT id FROM supplier_invoices WHERE id = ?',
+        variables: [Variable.withString(stableInvoiceId)],
+      ).getSingleOrNull();
+      if (existing != null) return stableInvoiceId;
+    }
     final now = DateTime.now();
     final nowIso = now.toIso8601String();
     final supplierId = await insertOrGetSupplier(
@@ -3346,7 +3355,9 @@ class AppDatabase extends _$AppDatabase {
       phone: phone,
       email: email,
     );
-    final invoiceId = 'supplier-invoice-${now.microsecondsSinceEpoch}';
+    final invoiceRecordId = stableInvoiceId == null || stableInvoiceId.isEmpty
+        ? 'supplier-invoice-${now.microsecondsSinceEpoch}'
+        : stableInvoiceId;
     final subtotal = items.fold<double>(
       0,
       (sum, item) => sum + ((item['lineTotal'] as num?)?.toDouble() ?? 0),
@@ -3365,7 +3376,7 @@ class AppDatabase extends _$AppDatabase {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         [
-          invoiceId,
+          invoiceRecordId,
           supplierId,
           invoiceNumber,
           receiptImagePath,
@@ -3418,7 +3429,7 @@ class AppDatabase extends _$AppDatabase {
           ''',
           [
             'supplier-invoice-item-${DateTime.now().microsecondsSinceEpoch}-${name.hashCode.abs()}',
-            invoiceId,
+            invoiceRecordId,
             productId,
             name,
             sku,
@@ -3437,12 +3448,13 @@ class AppDatabase extends _$AppDatabase {
         await recordSupplierPayment(
           supplierId,
           paidAmount,
-          notes: 'Initial payment for invoice ${invoiceNumber ?? invoiceId}',
+          notes:
+              'Initial payment for invoice ${invoiceNumber ?? invoiceRecordId}',
         );
       }
     });
 
-    return invoiceId;
+    return invoiceRecordId;
   }
 
   Future<String> _upsertProductFromSupplierItem({

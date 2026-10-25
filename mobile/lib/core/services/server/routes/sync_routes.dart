@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart' show Router;
@@ -31,29 +32,29 @@ class SyncRoutes {
     final events =
         (body['events'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final results = <Map<String, dynamic>>[];
+    await _ensureProcessedEventsTable();
 
     for (final event in events) {
+      final suppliedEventId = event['eventId']?.toString().trim();
+      final eventId = suppliedEventId == null || suppliedEventId.isEmpty
+          ? _uuid()
+          : suppliedEventId;
       try {
-        final eventId = event['eventId'] as String? ?? _uuid();
         final deviceId = event['deviceId'] as String? ?? '';
         final eventType = event['eventType'] as String? ?? '';
         final payload = event['payload'] as Map<String, dynamic>? ?? {};
 
-        // Dedupe retried events: a client retrying the same eventId must
-        // not re-run side effects (e.g. STOCK_ADJUSTED would decrement
-        // stock twice and corrupt it). Check-before-process, then insert
-        // into the ledger after processing succeeds — so a processing
-        // failure leaves the event un-recorded and a client retry can
-        // still land it.
-        await _ensureProcessedEventsTable();
-        final alreadyProcessed = await _db
-            .customSelect(
-              'SELECT event_id FROM server_processed_events WHERE event_id = ${Sql.str(eventId)}',
-            )
-            .get();
-        final isDuplicate = alreadyProcessed.isNotEmpty;
-        if (!isDuplicate) {
-          // Process based on event type
+        // Apply each event and record its id atomically. A crash between a
+        // stock/sale update and the dedupe insert must never replay the
+        // side effect when the client retries this event.
+        final isDuplicate = await _db.transaction(() async {
+          final alreadyProcessed = await _db
+              .customSelect(
+                'SELECT event_id FROM server_processed_events WHERE event_id = ${Sql.str(eventId)}',
+              )
+              .get();
+          if (alreadyProcessed.isNotEmpty) return true;
+
           switch (eventType) {
             case 'SALE_CREATED':
               await _processSaleCreated(payload);
@@ -64,14 +65,22 @@ class SyncRoutes {
             case 'STOCK_ADJUSTED':
               await _processStockAdjusted(payload);
               break;
-            default:
+            case 'CUSTOMER_CREATED':
+            case 'CUSTOMER_UPDATED':
+              await _processCustomer(payload);
               break;
+            case 'SUPPLIER_INVOICE_CREATED':
+              await _processSupplierInvoice(payload, eventId);
+              break;
+            default:
+              throw UnsupportedError('Unsupported sync event: $eventType');
           }
           await _db.customStatement(
-            'INSERT OR IGNORE INTO server_processed_events (event_id, processed_at) '
+            'INSERT INTO server_processed_events (event_id, processed_at) '
             'VALUES (${Sql.vals([eventId, DateTime.now().toIso8601String()])})',
           );
-        }
+          return false;
+        });
 
         results.add({
           'success': true,
@@ -81,11 +90,17 @@ class SyncRoutes {
           'serverTimestamp': DateTime.now().toIso8601String(),
           'duplicate': isDuplicate,
         });
-      } catch (e) {
+      } catch (e, stack) {
+        debugPrint('[PhoneServer Sync] Failed event $eventId: $e');
+        debugPrint(stack.toString());
+        final unsupportedEvent = e is UnsupportedError;
         results.add({
           'success': false,
-          'eventId': event['eventId'],
-          'error': e.toString(),
+          'eventId': eventId,
+          'error': unsupportedEvent
+              ? 'This update is not supported by the shop phone. Update it, then retry Sync.'
+              : 'This update could not be saved. We’ll retry shortly; check Sync status if the problem continues.',
+          'retryable': !unsupportedEvent,
         });
       }
     }
@@ -222,7 +237,9 @@ class SyncRoutes {
     final saleId = payload['offlineId']?.toString() ??
         payload['id']?.toString() ??
         payload['saleId']?.toString();
-    if (saleId == null) return;
+    if (saleId == null || saleId.trim().isEmpty) {
+      throw const FormatException('Sale sync event is missing its id');
+    }
 
     final existing = await _db.getPendingSaleById(saleId);
     if (existing != null) {
@@ -232,6 +249,14 @@ class SyncRoutes {
 
     final createdAt = _parseTimestamp(payload['createdAt']) ?? DateTime.now();
     final items = payload['items'] as List<dynamic>? ?? [];
+    final saleItems = items.whereType<Map>().toList();
+    final branchId = payload['branchId']?.toString().trim() ?? '';
+    if (branchId.isEmpty ||
+        saleItems.isEmpty ||
+        saleItems.length != items.length) {
+      throw const FormatException(
+          'Sale sync event is missing its branch or valid items');
+    }
 
     await _db.into(_db.pendingSales).insert(
           PendingSalesCompanion(
@@ -250,7 +275,7 @@ class SyncRoutes {
             cashierId: Value(payload['cashierId']?.toString() ??
                 payload['userId']?.toString() ??
                 ''),
-            branchId: Value(payload['branchId']?.toString() ?? ''),
+            branchId: Value(branchId),
             notes: Value(payload['notes']?.toString()),
             status: Value(payload['status']?.toString() ?? 'COMPLETED'),
             createdAt: Value(createdAt),
@@ -259,17 +284,23 @@ class SyncRoutes {
           ),
         );
 
-    for (final item in items.whereType<Map>()) {
+    for (final item in saleItems) {
+      final productId = item['productId']?.toString().trim() ?? '';
+      final quantity = _parseNumber(item['quantity']) ?? 0;
+      if (productId.isEmpty || quantity <= 0) {
+        throw const FormatException(
+            'Sale sync item is missing its product or quantity');
+      }
       await _db.into(_db.pendingSaleItems).insert(
             PendingSaleItemsCompanion.insert(
               saleId: saleId,
-              productId: item['productId']?.toString() ?? '',
+              productId: productId,
               productName: item['productName']?.toString() ?? '',
               sku: item['sku']?.toString() ??
                   (item['product'] is Map
                       ? (item['product'] as Map)['sku']?.toString() ?? ''
                       : ''),
-              quantity: _parseNumber(item['quantity']) ?? 0,
+              quantity: quantity,
               unitPrice: _parseNumber(item['unitPrice']) ?? 0,
               discount: Value(_parseNumber(item['discount']) ?? 0),
               total: _parseNumber(
@@ -280,6 +311,10 @@ class SyncRoutes {
               quantityPerUnit: Value(_parseNumber(item['quantityPerUnit'])),
             ),
           );
+      // A queued sale can arrive from another phone without an existing sale
+      // row. Keep its stock movement in the same transaction as the sale and
+      // event ledger so retries never deduct stock twice.
+      await _db.decrementStock(productId, branchId, quantity);
     }
   }
 
@@ -299,6 +334,70 @@ class SyncRoutes {
     if (productId != null && branchId != null && quantity != null) {
       await _db.decrementStock(productId, branchId, quantity);
     }
+  }
+
+  Future<void> _processCustomer(Map<String, dynamic> payload) async {
+    final customerId = payload['id']?.toString().trim() ?? '';
+    final name = payload['name']?.toString().trim() ?? '';
+    if (customerId.isEmpty || name.isEmpty) {
+      throw const FormatException(
+          'Customer sync event is missing its id or name');
+    }
+    await _db.upsertCustomerById(
+      customerId,
+      name,
+      phone: payload['phone']?.toString(),
+      email: payload['email']?.toString(),
+      location: (payload['location'] ?? payload['address'])?.toString(),
+    );
+  }
+
+  Future<void> _processSupplierInvoice(
+    Map<String, dynamic> payload,
+    String eventId,
+  ) async {
+    final supplierName = payload['supplierName']?.toString().trim() ?? '';
+    if (supplierName.isEmpty) {
+      throw const FormatException(
+          'Supplier invoice is missing the supplier name');
+    }
+
+    final invoiceItems = (payload['items'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((item) {
+          final quantity = _parseNumber(item['quantity']) ?? 1;
+          final unitCost = _parseNumber(item['unitCost']) ?? 0;
+          return <String, dynamic>{
+            'name': (item['name'] ?? item['productName'])?.toString() ?? '',
+            'sku': item['sku']?.toString(),
+            'quantity': quantity,
+            'unit': item['unit']?.toString() ?? 'piece',
+            'unitCost': unitCost,
+            'lineTotal': _parseNumber(item['lineTotal'] ?? item['total']) ??
+                quantity * unitCost,
+            'confidence': _parseNumber(item['confidence']) ?? 0,
+            'rawText': item['rawText']?.toString(),
+          };
+        })
+        .where((item) => (item['name'] as String).trim().isNotEmpty)
+        .toList();
+    if (invoiceItems.isEmpty) {
+      throw const FormatException('Supplier invoice has no valid items');
+    }
+
+    await _db.recordSupplierInvoice(
+      invoiceId: payload['offlineId']?.toString() ?? eventId,
+      supplierName: supplierName,
+      phone: payload['phone']?.toString(),
+      email: payload['email']?.toString(),
+      invoiceNumber: payload['invoiceNumber']?.toString(),
+      terms: payload['fundingSource']?.toString() == 'CREDIT_SUPPLIER'
+          ? 'pay_later'
+          : 'paid',
+      paidAmount: _parseNumber(payload['paidAmount']) ?? 0,
+      dueDate: _parseTimestamp(payload['dueDate']),
+      items: invoiceItems,
+    );
   }
 
   String _uuid() => 'sync-${DateTime.now().microsecondsSinceEpoch}';

@@ -130,8 +130,11 @@ shelf.Middleware errorHandler() {
         debugPrint('[Server Error] $e');
         debugPrint(stack.toString());
         return shelf.Response.internalServerError(
-          body: jsonEncode(
-              {'error': 'Internal server error', 'message': e.toString()}),
+          body: jsonEncode({
+            'error': 'Internal server error',
+            'message':
+                'The shop phone could not complete this request. Please try again.',
+          }),
           headers: {'content-type': 'application/json'},
         );
       }

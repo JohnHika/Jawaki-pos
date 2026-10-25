@@ -225,7 +225,8 @@ class BackgroundSyncService {
           if (_isConflictError(errorMessage)) {
             await database.markSyncQueueConflict(item.id, errorMessage);
             conflictCount++;
-          } else if (_isRetryableServerError(errorMessage)) {
+          } else if (firstResult['retryable'] == true ||
+              _isRetryableServerError(errorMessage)) {
             await database.scheduleSyncQueueRetry(
               item.id,
               errorMessage,
