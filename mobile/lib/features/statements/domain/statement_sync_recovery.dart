@@ -6,9 +6,7 @@ import 'package:dio/dio.dart';
 bool statementNeedsCustomerSync(Object error) {
   if (error is! DioException) return false;
 
-  final payload = error.response?.data;
-  final raw = payload is Map ? payload['message'] : payload;
-  final message = raw is List ? raw.join(' ') : raw?.toString() ?? '';
+  final message = _messageFromPayload(error.response?.data);
 
   if (RegExp(r'customerId\s+must\s+be\s+a\s+UUID', caseSensitive: false)
       .hasMatch(message)) {
@@ -21,4 +19,21 @@ bool statementNeedsCustomerSync(Object error) {
       RegExp(r'customer\s+(?:not found|does not exist|was not found)',
               caseSensitive: false)
           .hasMatch(message);
+}
+
+String _messageFromPayload(Object? payload) {
+  if (payload is String) return payload;
+  if (payload is List) {
+    return payload
+        .map(_messageFromPayload)
+        .where((value) => value.isNotEmpty)
+        .join(' ');
+  }
+  if (payload is Map) {
+    for (final key in const ['message', 'error', 'detail']) {
+      final message = _messageFromPayload(payload[key]);
+      if (message.isNotEmpty) return message;
+    }
+  }
+  return '';
 }

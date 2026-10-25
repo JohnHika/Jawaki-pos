@@ -338,7 +338,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                         ),
                                         const SizedBox(height: 5),
                                         Text(
-                                          'The prompt uses the shared Paystack business name (currently “Axon POS”), so it may not show each shop’s name. Counterbase receipts show the shop name. A different prompt name for every shop requires separate Paystack merchant integrations.',
+                                          'The prompt uses the shared Paystack business label for this integration, so it may not show each shop’s name. Counterbase receipts show the shop name. This setup cannot assign a different prompt label to each shop.',
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall,

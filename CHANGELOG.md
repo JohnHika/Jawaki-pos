@@ -1,5 +1,11 @@
 # Axon POS — Detailed Changelog
 
+## v1.0.143+2186 (October 25, 2026)
+
+### Improve statement recovery and clarify Paystack prompt names
+- Recognize nested API error responses so unsynced customer statements trigger the recovery path instead of exposing raw validation text.
+- Describe the shared Paystack prompt label without showing an outdated business name.
+
 ## v1.0.102+2145 (October 24, 2026)
 
 ### Clarify merchant payout identity during M-Pesa checkout

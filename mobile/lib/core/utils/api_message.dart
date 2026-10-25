@@ -6,27 +6,17 @@ import 'package:dio/dio.dart';
 String apiErrorMessage(Object error) {
   if (error is DioException) {
     final data = error.response?.data;
-    if (data is Map) {
-      final message = data['message'];
-      if (message is String && message.trim().isNotEmpty) {
-        final validationMessage = _friendlyValidationMessage(message.trim());
-        if (validationMessage != null) return validationMessage;
-        // Old API deployments returned Express/Nest's raw route miss to the
-        // app, exposing paths like "Cannot POST /api/v1/mpesa/parse".
-        if (RegExp(r'^Cannot (?:GET|POST|PUT|PATCH|DELETE) /api/v\d+/')
-            .hasMatch(message.trim())) {
-          return 'This feature is temporarily unavailable. Update Counterbase and try again.';
-        }
-        return message;
+    final message = _messageFromPayload(data);
+    if (message.isNotEmpty) {
+      final validationMessage = _friendlyValidationMessage(message);
+      if (validationMessage != null) return validationMessage;
+      // Old API deployments returned Express/Nest's raw route miss to the
+      // app, exposing paths like "Cannot POST /api/v1/mpesa/parse".
+      if (RegExp(r'^Cannot (?:GET|POST|PUT|PATCH|DELETE) /api/v\d+/')
+          .hasMatch(message)) {
+        return 'This feature is temporarily unavailable. Update Counterbase and try again.';
       }
-      if (message is List && message.isNotEmpty) {
-        final first = message.first.toString();
-        return _friendlyValidationMessage(first) ?? first;
-      }
-      final inner = data['error'];
-      if (inner is Map && inner['message'] is String) {
-        return inner['message'] as String;
-      }
+      return message;
     }
     final status = error.response?.statusCode;
     if (status == 401) return 'Your session expired. Sign in again.';
@@ -63,10 +53,30 @@ bool _isSafeExceptionMessage(String message) {
 }
 
 String? _friendlyValidationMessage(String message) {
-  if (message.trim().toLowerCase() == 'customerid must be a uuid') {
+  if (RegExp(r'\bcustomerid\s+must\s+be\s+a\s+uuid\b', caseSensitive: false)
+      .hasMatch(message)) {
     return 'This customer record needs to sync before a statement can be sent. Reconnect and try again.';
   }
   return null;
+}
+
+/// API gateways may wrap a validation error in one or more `error` objects.
+/// Unwrap those common envelopes so the app can still show a useful message.
+String _messageFromPayload(Object? payload) {
+  if (payload is String) return payload.trim();
+  if (payload is List) {
+    return payload
+        .map(_messageFromPayload)
+        .where((value) => value.isNotEmpty)
+        .join(' ');
+  }
+  if (payload is Map) {
+    for (final key in const ['message', 'error', 'detail']) {
+      final message = _messageFromPayload(payload[key]);
+      if (message.isNotEmpty) return message;
+    }
+  }
+  return '';
 }
 
 /// "just now", "5 min ago", "3 h ago", "Yesterday", "12 Oct".
