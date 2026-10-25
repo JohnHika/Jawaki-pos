@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/notification_service.dart';
@@ -291,27 +293,37 @@ class AuthController extends StateNotifier<AuthState> {
     return _authService.isDeviceAuthenticationAvailable();
   }
 
-  String _getErrorMessage(dynamic error) {
-    final msg = error.toString();
-    if (msg.contains('401') || msg.contains('Invalid credentials')) {
-      return 'Invalid email or password';
+  String _getErrorMessage(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401) {
+        final path = error.requestOptions.path;
+        if (path.contains('/pin')) {
+          return 'That PIN is not correct. Try again.';
+        }
+        if (path.contains('/google')) {
+          return 'Google sign-in could not be verified. Try again or use email and password.';
+        }
+        return 'Invalid email or password.';
+      }
+      if (status == 403) {
+        final body = error.response?.data;
+        final message = body is Map ? body['message']?.toString() : null;
+        if (message?.toLowerCase().contains('deactivat') == true) {
+          return 'This account is deactivated. Contact your administrator.';
+        }
+      }
+      return apiErrorMessage(error);
     }
-    if (msg.contains('network') ||
-        msg.contains('Connection refused') ||
-        msg.contains('SocketException')) {
-      return 'Cloud POS is not reachable. Check your internet connection and try again.';
+
+    if (error is TimeoutException) {
+      return 'Sign-in timed out. Check your connection and try again.';
     }
-    if (msg.contains('403') || msg.contains('deactivated')) {
-      return 'Account deactivated. Contact administrator.';
-    }
-    // Show the actual error when debugging
-    if (msg.contains('400') || msg.contains('Bad Request')) {
-      return 'Cloud POS error. Please try again in a moment.';
-    }
-    debugPrint('[AuthError] $error');
-    return msg.length > 80
-        ? 'Login failed. Check your internet connection and try again.'
-        : msg;
+
+    // Avoid exposing platform, database, or transport exception details in
+    // the login form. Keep only the exception type in debug logs.
+    debugPrint('[AuthError] ${error.runtimeType}');
+    return 'Sign-in could not be completed. Check your details and try again.';
   }
 }
 

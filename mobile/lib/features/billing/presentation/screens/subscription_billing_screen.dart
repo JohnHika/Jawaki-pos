@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +12,7 @@ import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../../../core/widgets/motion.dart';
 import '../../../../core/widgets/motion_kit.dart';
 import '../../../subscription/domain/subscription_plans.dart';
@@ -212,30 +212,7 @@ class _SubscriptionBillingScreenState
   ApiClient get _apiClient => getIt<ApiClient>();
 
   String _friendlyError(Object error) {
-    if (error is DioException) {
-      final body = error.response?.data;
-      if (body is Map && body['message'] is String) {
-        return body['message'] as String;
-      }
-      if (error.response?.statusCode == 401) {
-        return 'Session expired. Please log in again.';
-      }
-      if (error.response?.statusCode == 403) {
-        return 'You don\u2019t have permission to view billing details.';
-      }
-      if (error.response?.statusCode != null &&
-          error.response!.statusCode! >= 500) {
-        return 'Server error. Please try again in a moment.';
-      }
-      if (error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.receiveTimeout ||
-          error.type == DioExceptionType.connectionError) {
-        return 'Couldn\u2019t reach the server. Check your internet and try again.';
-      }
-    }
-    final text = error.toString();
-    final cleaned = text.replaceFirst('Exception: ', '').trim();
-    return cleaned.isEmpty ? 'Something went wrong.' : cleaned;
+    return apiErrorMessage(error);
   }
 
   void _showChangePlanSheet() {

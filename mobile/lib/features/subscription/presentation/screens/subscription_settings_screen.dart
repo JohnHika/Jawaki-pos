@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/utils/api_message.dart';
 import '../../domain/subscription_plans.dart';
 
 /// Status badge colors for subscription state.
@@ -217,27 +217,7 @@ class _SubscriptionSettingsScreenState
   }
 
   String _friendlyError(Object error) {
-    if (error is DioException) {
-      if (error.response?.statusCode == 401) {
-        return 'Session expired. Please log in again.';
-      }
-      if (error.response?.statusCode == 403) {
-        return 'You don\u2019t have permission to view subscription details.';
-      }
-      if (error.response?.statusCode != null &&
-          error.response!.statusCode! >= 500) {
-        return 'Server error. Please try again in a moment.';
-      }
-      if (error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.receiveTimeout ||
-          error.type == DioExceptionType.connectionError) {
-        return 'Couldn\u2019t reach the server. Check your internet and try again.';
-      }
-    }
-    final text = error.toString();
-    return text.replaceFirst('Exception: ', '').trim().isEmpty
-        ? 'Something went wrong. Please try again.'
-        : text.replaceFirst('Exception: ', '').trim();
+    return apiErrorMessage(error);
   }
 
   @override
