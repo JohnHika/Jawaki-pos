@@ -25,6 +25,12 @@ class SalesRoutes {
 
   /// POST /api/v1/sales — create a new sale
   Future<shelf.Response> _handleCreateSale(shelf.Request request) async {
+    final access = await _loadSalesAccess(request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!access.has('sales.create')) {
+      return _error(403, 'You do not have permission to create sales');
+    }
+
     final body = getRequestBody(request);
     if (body == null) {
       return _error(400, 'Request body is required');
@@ -40,6 +46,12 @@ class SalesRoutes {
     if (branchId.isEmpty || rawItems is! List || rawItems.isEmpty) {
       return _error(400, 'A branch and at least one sale item are required');
     }
+    if (access.branchId != null && access.branchId != branchId) {
+      return _error(403, 'You can only create sales for your assigned branch');
+    }
+    if (access.branchId == null && !access.has('sales.view_all')) {
+      return _error(403, 'Your account needs an assigned branch to create sales');
+    }
 
     // The cashier commits a local receipt before asking the server to sync.
     // Reuse that id and acknowledge the saved receipt instead of creating a
@@ -48,6 +60,10 @@ class SalesRoutes {
     if (existing != null) {
       if (existing.branchId != branchId) {
         return _error(409, 'The sale id is already used by another branch');
+      }
+      if (existing.cashierId != access.userId &&
+          !access.has('sales.view_all')) {
+        return _error(403, 'You cannot access this sale');
       }
       return _saleCreatedResponse(
         id: existing.id,
@@ -205,8 +221,7 @@ class SalesRoutes {
 
     final now = DateTime.now();
     final receiptNumber = _generateReceiptNo();
-    final authUser = getAuthUser(request);
-    final cashierId = authUser?['sub']?.toString() ?? '';
+    final cashierId = access.userId;
     final saleCompanion = PendingSalesCompanion.insert(
       id: saleId,
       receiptNumber: receiptNumber,
@@ -267,17 +282,43 @@ class SalesRoutes {
 
   /// GET /api/v1/sales?startDate=&endDate=&page=&limit=
   Future<shelf.Response> _handleGetSales(shelf.Request request) async {
-    final params = request.url.queryParameters;
-    final startDate = params['startDate'] != null
-        ? DateTime.parse(params['startDate']!)
-        : DateTime.now().subtract(const Duration(days: 30));
-    final endDate = params['endDate'] != null
-        ? DateTime.parse(params['endDate']!)
-        : DateTime.now();
-    final page = int.tryParse(params['page'] ?? '1') ?? 1;
-    final limit = int.tryParse(params['limit'] ?? '50') ?? 50;
+    final access = await _loadSalesAccess(request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!access.has('sales.view') &&
+        !access.has('sales.create') &&
+        !access.has('reporting.sales_summary')) {
+      return _error(403, 'You do not have permission to view sales');
+    }
 
-    final sales = await _db.getSalesByDateRange(startDate, endDate);
+    final params = request.url.queryParameters;
+    final parsedStart = DateTime.tryParse(params['startDate'] ?? '');
+    final parsedEnd = DateTime.tryParse(params['endDate'] ?? '');
+    if ((params.containsKey('startDate') && parsedStart == null) ||
+        (params.containsKey('endDate') && parsedEnd == null)) {
+      return _error(400, 'Sale dates must be valid dates');
+    }
+    final startDate =
+        parsedStart ?? DateTime.now().subtract(const Duration(days: 30));
+    final endDate = parsedEnd ?? DateTime.now();
+    final page =
+        (int.tryParse(params['page'] ?? '1') ?? 1).clamp(1, 1000000).toInt();
+    final limit =
+        (int.tryParse(params['limit'] ?? '50') ?? 50).clamp(1, 500).toInt();
+
+    final rows = await _db.getSalesByDateRange(startDate, endDate);
+    final sales = rows.where((sale) {
+      if (access.branchId != null && sale.branchId != access.branchId) {
+        return false;
+      }
+      if (access.has('sales.view_all') ||
+          access.has('reporting.sales_summary') ||
+          sale.cashierId == access.userId) {
+        return true;
+      }
+      // The receipt screen allows staff with sales.view to open synced
+      // receipts; unsynced sales by another cashier remain restricted.
+      return access.has('sales.view') && sale.isSynced;
+    }).toList();
     final total = sales.length;
     final start = (page - 1) * limit;
     final paged = sales.skip(start).take(limit).toList();
@@ -296,6 +337,12 @@ class SalesRoutes {
   /// GET /api/v1/sales/<id>
   Future<shelf.Response> _handleGetSale(
       shelf.Request request, String id) async {
+    final access = await _loadSalesAccess(request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!access.has('sales.view') && !access.has('sales.create')) {
+      return _error(403, 'You do not have permission to view sales');
+    }
+
     final sales = await _db.getSalesByDateRange(
       DateTime.now().subtract(const Duration(days: 365)),
       DateTime.now().add(const Duration(days: 1)),
@@ -303,6 +350,14 @@ class SalesRoutes {
     final sale = sales.where((s) => s.id == id).firstOrNull;
     if (sale == null) {
       return _error(404, 'Sale not found');
+    }
+    if (access.branchId != null && sale.branchId != access.branchId) {
+      return _error(404, 'Sale not found');
+    }
+    if (!access.has('sales.view_all') &&
+        sale.cashierId != access.userId &&
+        !(access.has('sales.view') && sale.isSynced)) {
+      return _error(403, 'You can only view receipts for sales you recorded');
     }
 
     final items = await _db.getSaleItems(id);
@@ -334,7 +389,12 @@ class SalesRoutes {
 
   /// GET /api/v1/sales/daily-summary
   Future<shelf.Response> _handleDailySummary(shelf.Request request) async {
-    final summary = await _db.getDashboardSummary();
+    final access = await _loadSalesAccess(request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!_canViewSalesSummary(access)) {
+      return _error(403, 'You do not have permission to view sales summaries');
+    }
+    final summary = await _db.getDashboardSummary(branchId: access.branchId);
     return shelf.Response.ok(
       jsonEncode(summary),
       headers: {'content-type': 'application/json'},
@@ -347,6 +407,16 @@ class SalesRoutes {
     String branchId,
     String date,
   ) async {
+    final access = await _loadSalesAccess(request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!_canViewSalesSummary(access)) {
+      return _error(403, 'You do not have permission to view sales summaries');
+    }
+    if (access.branchId != null && branchId != access.branchId) {
+      return _error(
+          403, 'You can only view summaries for your assigned branch');
+    }
+
     final parsedDate = DateTime.tryParse(date);
     if (parsedDate == null || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)) {
       return _error(400, 'A valid date in YYYY-MM-DD format is required');
@@ -362,9 +432,9 @@ class SalesRoutes {
   /// POST /api/v1/sales/<id>/void
   Future<shelf.Response> _handleVoidSale(
       shelf.Request request, String id) async {
-    final authUser = getAuthUser(request);
-    final userId = authUser?['sub']?.toString();
-    if (!await _hasSaleVoidPermission(userId)) {
+    final access = await _loadSalesAccess(request);
+    if (access == null) return _error(401, 'Your session is no longer active');
+    if (!access.has('sales.void')) {
       return _error(403, 'You do not have permission to void sales');
     }
 
@@ -378,6 +448,9 @@ class SalesRoutes {
     if (sale == null) {
       return _error(404, 'Sale not found');
     }
+    if (access.branchId != null && sale.branchId != access.branchId) {
+      return _error(404, 'Sale not found');
+    }
 
     // This is the authoritative phone-server copy. The database operation
     // marks the receipt and restores stock atomically, and is idempotent if
@@ -386,7 +459,7 @@ class SalesRoutes {
       await _db.voidPendingSale(
         id,
         reason: reason,
-        voidedBy: userId,
+        voidedBy: access.userId,
       );
     }
     return shelf.Response.ok(
@@ -402,22 +475,43 @@ class SalesRoutes {
     );
   }
 
-  Future<bool> _hasSaleVoidPermission(String? userId) async {
-    if (userId == null || userId.isEmpty) return false;
+  Future<_SalesAccess?> _loadSalesAccess(shelf.Request request) async {
+    final authUser = getAuthUser(request);
+    final userId = authUser?['sub']?.toString();
+    if (userId == null || userId.isEmpty) return null;
     final rows = await _db.customSelect(
-      'SELECT permissions_json, is_active FROM server_users WHERE id = ?',
+      'SELECT permissions_json, is_active, branch_id, tenant_id '
+      'FROM server_users WHERE id = ?',
       variables: [Variable.withString(userId)],
     ).get();
-    if (rows.isEmpty || rows.first.read<int>('is_active') != 1) return false;
+    if (rows.isEmpty || rows.first.read<int>('is_active') != 1) return null;
+    final tokenTenantId = authUser?['tenantId']?.toString();
+    final userTenantId = rows.first.read<String>('tenant_id');
+    if (tokenTenantId == null || tokenTenantId != userTenantId) return null;
 
     final permissionsJson = rows.first.readNullable<String>('permissions_json');
-    if (permissionsJson == null) return false;
+    if (permissionsJson == null) return null;
     try {
       final permissions = jsonDecode(permissionsJson);
-      return permissions is List && permissions.contains('sales.void');
+      if (permissions is! List) return null;
+      return _SalesAccess(
+        userId: userId,
+        branchId: _nonEmpty(rows.first.readNullable<String>('branch_id')),
+        permissions: permissions.map((item) => item.toString()).toSet(),
+      );
     } on FormatException {
-      return false;
+      return null;
     }
+  }
+
+  bool _canViewSalesSummary(_SalesAccess access) =>
+      access.has('sales.view_all') ||
+      access.has('reporting.dashboard') ||
+      access.has('reporting.sales_summary');
+
+  String? _nonEmpty(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   Map<String, dynamic> _saleToMap(PendingSale s) {
@@ -458,4 +552,18 @@ class SalesRoutes {
       headers: {'content-type': 'application/json'},
     );
   }
+}
+
+class _SalesAccess {
+  final String userId;
+  final String? branchId;
+  final Set<String> permissions;
+
+  const _SalesAccess({
+    required this.userId,
+    required this.branchId,
+    required this.permissions,
+  });
+
+  bool has(String permission) => permissions.contains(permission);
 }

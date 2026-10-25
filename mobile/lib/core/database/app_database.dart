@@ -304,15 +304,27 @@ class AppDatabase extends _$AppDatabase {
     return branchIds;
   }
 
-  ({String clause, List<Variable> variables}) _salesBranchScope(String alias) {
-    final branchIds = _activeBranchIds().toList()..sort();
-    if (_customerTenantId == null || branchIds.isEmpty) {
+  ({String clause, List<Variable> variables}) _salesBranchScope(
+    String alias, {
+    String? onlyBranchId,
+  }) {
+    final branchIds = _activeBranchIds();
+    if (onlyBranchId != null) {
+      if (!branchIds.contains(onlyBranchId)) {
+        return (clause: ' AND 1 = 0', variables: const <Variable>[]);
+      }
+      branchIds
+        ..clear()
+        ..add(onlyBranchId);
+    }
+    final scopedBranchIds = branchIds.toList()..sort();
+    if (_customerTenantId == null || scopedBranchIds.isEmpty) {
       return (clause: ' AND 1 = 0', variables: const <Variable>[]);
     }
-    final placeholders = List.filled(branchIds.length, '?').join(', ');
+    final placeholders = List.filled(scopedBranchIds.length, '?').join(', ');
     return (
       clause: ' AND $alias.branch_id IN ($placeholders)',
-      variables: branchIds.map(Variable.withString).toList(),
+      variables: scopedBranchIds.map(Variable.withString).toList(),
     );
   }
 
@@ -2038,9 +2050,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Dashboard summary: total sales, revenue, avg ticket for today.
-  Future<Map<String, dynamic>> getDashboardSummary() async {
-    final scope = _salesBranchScope('pending_sales');
-    final itemScope = _salesBranchScope('ps');
+  Future<Map<String, dynamic>> getDashboardSummary({String? branchId}) async {
+    final scope = _salesBranchScope('pending_sales', onlyBranchId: branchId);
+    final itemScope = _salesBranchScope('ps', onlyBranchId: branchId);
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
