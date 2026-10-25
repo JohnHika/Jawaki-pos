@@ -8,6 +8,22 @@ import '../../../../core/legal/policy_catalog.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/utils/api_message.dart';
 
+class _LoadAttempt<T> {
+  const _LoadAttempt.success(this.value) : error = null;
+  const _LoadAttempt.failure(this.error) : value = null;
+
+  final T? value;
+  final Object? error;
+}
+
+Future<_LoadAttempt<T>> _tryLoad<T>(Future<T> Function() load) async {
+  try {
+    return _LoadAttempt<T>.success(await load());
+  } catch (error) {
+    return _LoadAttempt<T>.failure(error);
+  }
+}
+
 /// Owner setup for routing customer M-Pesa payments to the shop's bank.
 /// The app never asks for online-banking passwords, PINs, or OTPs.
 class MerchantPayoutSetupScreen extends StatefulWidget {
@@ -28,7 +44,11 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
   Map<String, dynamic>? _account;
   String? _bankCode;
   String? _error;
+  String? _accountLoadError;
+  String? _banksLoadError;
   bool _loading = true;
+  bool _initialLoadComplete = false;
+  bool _accountLoaded = false;
   bool _saving = false;
   bool _ownsAccount = false;
   bool _acceptedPaymentTerms = false;
@@ -108,21 +128,38 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
     setState(() {
       _loading = true;
       _error = null;
+      _accountLoaded = false;
+      _accountLoadError = null;
+      _banksLoadError = null;
     });
-    try {
-      final account = await _api.getMerchantPayoutAccount();
-      final banks = await _api.getMerchantPayoutBanks();
-      if (!mounted) return;
-      setState(() {
-        _account = account;
-        _banks = banks;
-        _bankCode = account['bankCode']?.toString();
-      });
-    } catch (error) {
-      if (mounted) setState(() => _error = _message(error));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    // Start both independent reads together. A bank-list outage should not
+    // hide a saved payout account, and an account-read failure must not make
+    // it possible to create a second route before the existing one is known.
+    final results = await Future.wait<Object>([
+      _tryLoad(_api.getMerchantPayoutAccount),
+      _tryLoad(_api.getMerchantPayoutBanks),
+    ]);
+    if (!mounted) return;
+
+    final accountResult = results[0] as _LoadAttempt<Map<String, dynamic>>;
+    final banksResult = results[1] as _LoadAttempt<List<Map<String, dynamic>>>;
+    setState(() {
+      if (accountResult.error == null && accountResult.value != null) {
+        _account = accountResult.value;
+        _bankCode = accountResult.value!['bankCode']?.toString();
+        _accountLoaded = true;
+      } else {
+        _accountLoadError = _message(accountResult.error!);
+      }
+
+      if (banksResult.error == null && banksResult.value != null) {
+        _banks = banksResult.value!;
+      } else {
+        _banksLoadError = _message(banksResult.error!);
+      }
+      _initialLoadComplete = true;
+      _loading = false;
+    });
   }
 
   String _message(Object error) {
@@ -131,7 +168,9 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
 
   Future<void> _save() async {
     final accountNumber = _accountNumber.text.replaceAll(RegExp(r'\s+'), '');
-    if (_bankCode == null ||
+    if (!_accountLoaded ||
+        _banksLoadError != null ||
+        _bankCode == null ||
         !RegExp(r'^\d{6,20}$').hasMatch(accountNumber) ||
         !_ownsAccount ||
         !_acceptedPaymentTerms) {
@@ -189,7 +228,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
     return Scaffold(
       appBar:
           const BrandedAppBar(title: 'Customer payments', showBackButton: true),
-      body: _loading
+      body: _loading && !_initialLoadComplete
           ? const Center(child: CircularProgressIndicator())
           : LayoutBuilder(
               builder: (context, constraints) {
@@ -205,6 +244,26 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                         padding: EdgeInsets.fromLTRB(
                             horizontalPadding, 18, horizontalPadding, 32),
                         children: [
+                          if (_accountLoadError != null) ...[
+                            _LoadErrorCard(
+                              title: 'Could not refresh payout details',
+                              message: '$_accountLoadError The saved payout '
+                                  'status could not be confirmed, so payout '
+                                  'changes are paused until it loads successfully.',
+                              onRetry: _loading ? null : _load,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          if (_banksLoadError != null) ...[
+                            _LoadErrorCard(
+                              title: 'Could not load supported banks',
+                              message: '$_banksLoadError Your saved payout '
+                                  'status is still shown. Refresh before '
+                                  'changing payout details.',
+                              onRetry: _loading ? null : _load,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           _enter(
                               0,
                               Column(
@@ -505,8 +564,13 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                             _enter(
                                 4,
                                 FilledButton.icon(
-                                  onPressed:
-                                      _saving || _banks.isEmpty ? null : _save,
+                                  onPressed: _saving ||
+                                          _loading ||
+                                          !_accountLoaded ||
+                                          _banksLoadError != null ||
+                                          _banks.isEmpty
+                                      ? null
+                                      : _save,
                                   icon: AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 220),
                                     child: _saving
@@ -551,6 +615,50 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
             ),
     );
   }
+}
+
+class _LoadErrorCard extends StatelessWidget {
+  const _LoadErrorCard({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: DesignColors.warning.withValues(alpha: 0.09),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.cloud_off_rounded, color: DesignColors.warning),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(message),
+                  ],
+                ),
+              ),
+              if (onRetry != null)
+                IconButton(
+                  tooltip: 'Retry',
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+            ],
+          ),
+        ),
+      );
 }
 
 /// An animated settlement card that appears as soon as a bank is selected.
