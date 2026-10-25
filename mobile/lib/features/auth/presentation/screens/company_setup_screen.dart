@@ -11,6 +11,7 @@ import 'package:axon_pos/core/config/google_auth_config.dart';
 import 'package:axon_pos/core/di/injection.dart';
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/legal/policy_catalog.dart';
+import 'package:axon_pos/core/providers/business_layout_provider.dart';
 import 'package:axon_pos/core/services/auth_service.dart';
 import 'package:axon_pos/core/services/storage_service.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
@@ -76,6 +77,7 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
   int _currentStep = 0;
   bool _isLoading = false;
   bool _acceptedSignupPolicies = false;
+  String _businessLayoutId = 'general_retail';
   String? _errorMessage;
   String? _challengeId;
   String? _challengeEmail;
@@ -117,6 +119,13 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
               : _emailController.text.trim(),
         ),
         acceptedPolicyTypes: kSignupPolicyTypes,
+        settings: {
+          'businessLayout': BusinessLayoutConfig(
+            preset: businessLayoutPreset(_businessLayoutId),
+            priorityPaths:
+                businessLayoutPreset(_businessLayoutId).priorityPaths,
+          ).toJson(),
+        },
       );
 
   String? _optional(TextEditingController controller) {
@@ -397,6 +406,102 @@ class _CompanySetupScreenState extends ConsumerState<CompanySetupScreen> {
                     color: context.themed(DesignColors.darkTextTertiary),
                   ),
             ),
+            const SizedBox(height: 26),
+            Text(
+              'Choose a business layout',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: context.themed(DesignColors.darkTextPrimary),
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Counterbase will put the most relevant work areas first. You can change this any time.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.themed(DesignColors.darkTextTertiary),
+                    height: 1.4,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            LayoutBuilder(builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: businessLayoutPresets.map((preset) {
+                  final selected = _businessLayoutId == preset.id;
+                  return SizedBox(
+                    width: cardWidth,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () =>
+                          setState(() => _businessLayoutId = preset.id),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        constraints: const BoxConstraints(minHeight: 88),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: context.themed(selected
+                              ? DesignColors.brand.withValues(alpha: 0.16)
+                              : DesignColors.darkSurfaceElevated),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: context.themed(selected
+                                ? DesignColors.brand
+                                : DesignColors.darkBorder),
+                            width: selected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(preset.icon,
+                                size: 20,
+                                color: context.themed(selected
+                                    ? DesignColors.brand
+                                    : DesignColors.darkTextSecondary)),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    preset.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: context
+                                          .themed(DesignColors.darkTextPrimary),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    preset.description,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: context.themed(
+                                          DesignColors.darkTextTertiary),
+                                      fontSize: 10.5,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (selected)
+                              const Icon(Icons.check_circle_rounded,
+                                  color: DesignColors.brand, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            }),
           ],
         );
       case 1:

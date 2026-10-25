@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 
@@ -10,6 +11,7 @@ import '../../../../core/widgets/form_kit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
 import '../providers/catalog_categories_provider.dart';
@@ -31,7 +33,8 @@ class _UnitPriceTier {
 /// list and the product detail screen.
 class AddEditProductSheet extends ConsumerStatefulWidget {
   final Product? product;
-  const AddEditProductSheet({super.key, this.product});
+  final String? entityLabel;
+  const AddEditProductSheet({super.key, this.product, this.entityLabel});
   @override
   ConsumerState<AddEditProductSheet> createState() =>
       _AddEditProductSheetState();
@@ -40,6 +43,7 @@ class AddEditProductSheet extends ConsumerStatefulWidget {
 class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
+  late final TextEditingController _skuController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _minStockController;
   // Lowest price a cashier may sell at without a manager. Lives on the server
@@ -83,6 +87,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.product?.name ?? '');
+    _skuController = TextEditingController(text: widget.product?.sku ?? '');
     _descriptionController =
         TextEditingController(text: widget.product?.description ?? '');
     _selectedCategoryId = widget.product?.categoryId;
@@ -238,6 +243,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
   @override
   void dispose() {
     _nameController.dispose();
+    _skuController.dispose();
     _descriptionController.dispose();
     _minStockController.dispose();
     _minPriceController.dispose();
@@ -250,6 +256,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final entityLabel = widget.entityLabel ?? businessLayout.productSingular;
+    final entityLabelLower = entityLabel.toLowerCase();
     final categoriesAsync = ref.watch(categoriesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
@@ -295,8 +304,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     controller: _nameController,
                     style: TextStyle(color: titleColor),
                     decoration: InputDecoration(
-                      labelText: 'Product Name *',
-                      hintText: 'e.g. Panadol Extra (10 tablets)',
+                      labelText: '$entityLabel Name *',
+                      hintText: entityLabel == 'Book'
+                          ? 'e.g. A Grain of Wheat — Ngũgĩ wa Thiong\'o'
+                          : 'e.g. Panadol Extra (10 tablets)',
                       hintStyle: TextStyle(color: tertiaryColor),
                       labelStyle: TextStyle(
                         color: secondaryColor,
@@ -328,8 +339,54 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                     ),
                     textCapitalization: TextCapitalization.words,
                     validator: (v) => v == null || v.trim().isEmpty
-                        ? 'Enter product name'
+                        ? 'Enter $entityLabelLower name'
                         : null,
+                  ),
+                  const SizedBox(height: DesignSpacing.md + 2),
+
+                  TextFormField(
+                    controller: _skuController,
+                    style: TextStyle(color: titleColor),
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'[A-Za-z0-9_-]')),
+                      LengthLimitingTextInputFormatter(50),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: businessLayout.productCodeLabel,
+                      hintText: entityLabel == 'Book'
+                          ? 'Enter the ISBN or scan code'
+                          : 'Leave blank to generate automatically',
+                      hintStyle: TextStyle(color: tertiaryColor),
+                      prefixIcon:
+                          Icon(Icons.qr_code_2_rounded, color: tertiaryColor),
+                      filled: true,
+                      fillColor: fieldFill,
+                      border: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderSide: BorderSide(color: fieldBorder),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderSide: BorderSide(color: fieldBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignSpacing.radiusMd),
+                        borderSide: const BorderSide(
+                            color: DesignColors.brand, width: 1.5),
+                      ),
+                    ),
+                    validator: (value) {
+                      final code = value?.trim() ?? '';
+                      if (code.isNotEmpty && code.length < 3) {
+                        return 'Enter at least 3 characters';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: DesignSpacing.md + 2),
 
@@ -493,7 +550,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
                   ImagePickerSection(
                     initialImageUrl: _imageUrl,
                     type: 'product',
-                    label: 'Add product image (optional)',
+                    label: 'Add $entityLabelLower image (optional)',
                     onPhotoPicked: _identifyFromPhoto,
                     onImageChanged: (url, publicId) => setState(() {
                       _imageUrl = url;
@@ -507,7 +564,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
           ),
           PinnedActionBar(
             child: GradientButton(
-              label: isEditing ? 'Save Changes' : 'Add Product',
+              label: isEditing ? 'Save Changes' : 'Add $entityLabel',
               icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
               onPressed: _isSaving ? null : _saveProduct,
               isLoading: _isSaving,
@@ -661,6 +718,7 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         savedProduct = await apiClient.updateProduct(
           widget.product!.id,
           name: _nameController.text.trim(),
+          sku: _skuController.text.trim(),
           basePrice: primaryPrice,
           categoryIds: [_selectedCategoryId!],
           description: description,
@@ -677,6 +735,9 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
       } else {
         savedProduct = await apiClient.createProduct(
           name: _nameController.text.trim(),
+          sku: _skuController.text.trim().isEmpty
+              ? null
+              : _skuController.text.trim(),
           basePrice: primaryPrice,
           categoryIds: [_selectedCategoryId!],
           description: description,

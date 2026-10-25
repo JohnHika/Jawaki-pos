@@ -9,6 +9,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/auth/app_roles.dart';
 import '../../../../core/providers/tenant_provider.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../billing/presentation/widgets/subscription_entitlement_host.dart';
 import '../../../../core/services/haptic_service.dart';
@@ -92,7 +93,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  List<_NavItem> _buildNavItems(RolePermissions perms) {
+  List<_NavItem> _buildNavItems(
+      RolePermissions perms, BusinessLayoutConfig businessLayout) {
     final items = <_NavItem>[];
     if (perms.canSeeDashboard) {
       items.add(_NavItem(
@@ -120,7 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       items.add(_NavItem(
           icon: Icons.inventory_2_outlined,
           activeIcon: Icons.inventory_2_rounded,
-          label: 'Products',
+          label: businessLayout.preset.productsLabel,
           path: '/products'));
     }
     if (perms.canSeeInventory) {
@@ -251,7 +253,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: 'Trade Partners',
           path: '/partners'));
     }
-    return items;
+    if (businessLayout.priorityPaths.isEmpty) return items;
+    final itemsByPath = {for (final item in items) item.path: item};
+    final prioritizedPaths =
+        businessLayout.priorityPaths.where(itemsByPath.containsKey).toSet();
+    return [
+      for (final path in businessLayout.priorityPaths)
+        if (itemsByPath.containsKey(path)) itemsByPath[path]!,
+      ...items.where((item) => !prioritizedPaths.contains(item.path)),
+    ];
   }
 
   /// Finds which nav item matches the router's current location, so the
@@ -430,7 +440,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final connectivity = getIt<ConnectivityService>();
     final perms = ref.watch(permissionsProvider);
-    final allNavItems = _buildNavItems(perms);
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final allNavItems = _buildNavItems(perms, businessLayout);
     const maxVisible = 4;
     final hasMore = allNavItems.length > maxVisible;
     final visibleNavItems =

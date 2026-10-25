@@ -20,6 +20,24 @@ void main() {
     final storage = StorageService();
     await storage.initialize();
     database = AppDatabase.forTesting(NativeDatabase.memory(), storage);
+    await database.customStatement(
+      'CREATE TABLE server_users ('
+      'id TEXT PRIMARY KEY NOT NULL, '
+      'tenant_id TEXT NOT NULL, '
+      'branch_id TEXT, '
+      'is_active INTEGER NOT NULL, '
+      'permissions_json TEXT)',
+    );
+    await database.customStatement(
+      'INSERT INTO server_users '
+      '(id, tenant_id, branch_id, is_active, permissions_json) '
+      'VALUES (?, ?, NULL, 1, ?)',
+      [
+        'sync-test-user',
+        'sync-test-tenant',
+        jsonEncode(['sync.status', 'sync.push', 'sync.pull']),
+      ],
+    );
     router = Router();
     SyncRoutes(database).addRoutes(router);
   });
@@ -33,7 +51,13 @@ void main() {
   }) {
     return router.call(
       shelf.Request(method, Uri.parse('http://localhost$path')).change(
-        context: {if (body != null) 'body': body},
+        context: {
+          'user': {
+            'sub': 'sync-test-user',
+            'tenantId': 'sync-test-tenant',
+          },
+          if (body != null) 'body': body,
+        },
       ),
     );
   }

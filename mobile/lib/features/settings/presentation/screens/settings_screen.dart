@@ -111,6 +111,15 @@ class SettingsScreen extends ConsumerWidget {
         id: 'business',
         title: 'My business',
         entries: [
+          if (isBillingAdmin)
+            SettingsEntry(
+              id: 'business-layout',
+              icon: Icons.tune_rounded,
+              title: 'Business layout',
+              subtitle: 'Adapt Counterbase for your kind of shop',
+              keywords: const ['industry', 'bookshop', 'kamukunji', 'shortcuts', 'customize'],
+              onTap: () => context.push('/settings/business-layout'),
+            ),
           if (isBillingAdmin || perms.has('users.create'))
             SettingsEntry(
               id: 'workspace-setup',

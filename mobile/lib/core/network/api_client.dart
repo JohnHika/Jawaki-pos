@@ -414,6 +414,7 @@ class ApiClient {
     String? logoPublicId,
     double? taxRatePercent,
     bool? showTaxOnReceipt,
+    Map<String, dynamic>? settings,
   }) async {
     final response = await _dio.patch('/branches/tenants/current', data: {
       if (name != null) 'name': name,
@@ -421,6 +422,7 @@ class ApiClient {
       if (logoPublicId != null) 'logoPublicId': logoPublicId,
       if (taxRatePercent != null) 'taxRatePercent': taxRatePercent,
       if (showTaxOnReceipt != null) 'showTaxOnReceipt': showTaxOnReceipt,
+      if (settings != null) 'settings': settings,
     });
     return response.data as Map<String, dynamic>;
   }
@@ -802,6 +804,7 @@ class ApiClient {
 
   Future<Map<String, dynamic>> createProduct({
     required String name,
+    String? sku,
     required double basePrice,
     required List<String> categoryIds,
     String? description,
@@ -815,6 +818,7 @@ class ApiClient {
   }) async {
     final response = await _dio.post('/catalog/products', data: {
       'name': name,
+      if (sku != null && sku.trim().isNotEmpty) 'sku': sku.trim(),
       'basePrice': basePrice,
       'categoryIds': categoryIds,
       if (description != null) 'description': description,
@@ -832,6 +836,7 @@ class ApiClient {
   Future<Map<String, dynamic>> updateProduct(
     String id, {
     String? name,
+    String? sku,
     double? basePrice,
     List<String>? categoryIds,
     String? description,
@@ -847,6 +852,7 @@ class ApiClient {
   }) async {
     final response = await _dio.patch('/catalog/products/$id', data: {
       if (name != null) 'name': name,
+      if (sku != null && sku.trim().isNotEmpty) 'sku': sku.trim(),
       if (basePrice != null) 'basePrice': basePrice,
       if (categoryIds != null) 'categoryIds': categoryIds,
       if (description != null) 'description': description,

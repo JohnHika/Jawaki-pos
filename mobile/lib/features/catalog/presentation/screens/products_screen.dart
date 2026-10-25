@@ -7,6 +7,7 @@ import '../../../../core/widgets/motion.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
@@ -62,6 +63,9 @@ class ProductsScreen extends ConsumerWidget {
     final searchQuery = ref.watch(_searchQueryProvider);
     final gridView = ref.watch(_catalogGridViewProvider);
     final perms = ref.watch(permissionsProvider);
+    final businessLayout = ref.watch(businessLayoutProvider);
+    final productName = businessLayout.productSingular.toLowerCase();
+    final productPlural = businessLayout.productsLabel.toLowerCase();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor =
         isDark ? DesignColors.darkTextPrimary : DesignColors.textPrimary;
@@ -72,7 +76,7 @@ class ProductsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: BrandedAppBar(
-        title: 'Products',
+        title: businessLayout.productsLabel,
         showBackButton: false,
         actions: [
           if (perms.canEditProducts)
@@ -124,7 +128,7 @@ class ProductsScreen extends ConsumerWidget {
                                   ),
                         ),
                         Text(
-                          'Products, pricing, and stock',
+                          '${businessLayout.productsLabel}, pricing, and stock',
                           style: Theme.of(context)
                               .textTheme
                               .labelSmall
@@ -135,12 +139,16 @@ class ProductsScreen extends ConsumerWidget {
                   ),
                   if (perms.canEditProducts)
                     IconButton(
-                      tooltip: 'Add Product',
+                      tooltip: 'Add ${businessLayout.productSingular}',
                       constraints: const BoxConstraints(
                           minWidth: DesignSpacing.xl + 24,
                           minHeight: DesignSpacing.xl + 24),
                       padding: EdgeInsets.zero,
-                      onPressed: () => _showAddEditProduct(context, ref),
+                      onPressed: () => _showAddEditProduct(
+                        context,
+                        ref,
+                        entityLabel: businessLayout.productSingular,
+                      ),
                       icon: Container(
                         padding: const EdgeInsets.all(DesignSpacing.sm),
                         decoration: BoxDecoration(
@@ -180,7 +188,7 @@ class ProductsScreen extends ConsumerWidget {
               child: TextField(
                 style: TextStyle(color: titleColor),
                 decoration: InputDecoration(
-                  hintText: 'Search products by name...',
+                  hintText: businessLayout.catalogSearchHint,
                   hintStyle: TextStyle(color: tertiaryColor),
                   prefixIcon: Icon(Icons.search_rounded, color: tertiaryColor),
                   suffixIcon: searchQuery.isNotEmpty
@@ -290,7 +298,7 @@ class ProductsScreen extends ConsumerWidget {
                       Row(
                         children: [
                           Text(
-                            '${filtered.length} product${filtered.length == 1 ? '' : 's'}',
+                            '${filtered.length} ${filtered.length == 1 ? productName : productPlural}',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: secondaryColor,
@@ -333,7 +341,7 @@ class ProductsScreen extends ConsumerWidget {
                               const CircularProgressIndicator(),
                               const SizedBox(height: DesignSpacing.md),
                               Text(
-                                'Loading your product catalog…',
+                                'Loading your ${businessLayout.productsLabel.toLowerCase()} catalog…',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                             ],
@@ -350,7 +358,8 @@ class ProductsScreen extends ConsumerWidget {
                         syncAsync.hasError) {
                       return EmptyState(
                         icon: Icons.sync_problem_rounded,
-                        title: 'Couldn\'t load your product catalog',
+                        title:
+                            'Couldn\'t load your ${businessLayout.productsLabel.toLowerCase()} catalog',
                         subtitle: 'Check your connection and try again.',
                         iconColor: DesignColors.error,
                         actionLabel: 'Retry',
@@ -361,13 +370,13 @@ class ProductsScreen extends ConsumerWidget {
                     return EmptyState(
                       icon: Icons.inventory_2_outlined,
                       title: searchQuery.isNotEmpty
-                          ? 'No products match "$searchQuery"'
-                          : 'No products yet',
+                          ? 'No $productPlural match "$searchQuery"'
+                          : 'No $productPlural yet',
                       subtitle: searchQuery.isNotEmpty
                           ? 'Try a different search or clear the filters.'
                           : perms.canEditProducts
-                              ? 'Tap + to add a new product.'
-                              : 'Ask an administrator to add products to this catalog.',
+                              ? 'Tap + to add a new $productName.'
+                              : 'Ask an administrator to add $productPlural to this catalog.',
                     );
                   }
 
@@ -595,8 +604,11 @@ class ProductsScreen extends ConsumerWidget {
     }
     if (query.isNotEmpty) {
       final q = query.toLowerCase();
-      filtered =
-          filtered.where((p) => p.name.toLowerCase().contains(q)).toList();
+      filtered = filtered
+          .where((p) =>
+              p.name.toLowerCase().contains(q) ||
+              p.sku.toLowerCase().contains(q))
+          .toList();
     }
     filtered.sort((a, b) => a.name.compareTo(b.name));
     return filtered;
@@ -613,13 +625,18 @@ class ProductsScreen extends ConsumerWidget {
   }
 
   void _showAddEditProduct(BuildContext context, WidgetRef ref,
-      {Product? product}) {
+      {Product? product, String? entityLabel}) {
+    final resolvedLabel =
+        entityLabel ?? ref.read(businessLayoutProvider).productSingular;
     GlassBottomSheet.show(
       context,
-      title: product == null ? 'Add Product' : 'Edit Product',
+      title: product == null ? 'Add $resolvedLabel' : 'Edit $resolvedLabel',
       initialSize: 0.9,
       maxSize: 0.95,
-      child: AddEditProductSheet(product: product),
+      child: AddEditProductSheet(
+        product: product,
+        entityLabel: resolvedLabel,
+      ),
     );
   }
 

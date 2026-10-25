@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../core/providers/business_layout_provider.dart';
 import '../providers/catalog_provider.dart';
 
 class SearchBarWidget extends ConsumerStatefulWidget {
@@ -57,6 +58,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final businessLayout = ref.watch(businessLayoutProvider);
     final providerQuery = ref.watch(searchQueryProvider);
     if (_controller.text != providerQuery) {
       // A route reset or clear action can arrive while a typed query is
@@ -86,7 +88,7 @@ class _SearchBarWidgetState extends ConsumerState<SearchBarWidget>
           controller: _controller,
           focusNode: _focusNode,
           decoration: InputDecoration(
-            hintText: 'Search products...',
+            hintText: businessLayout.preset.posSearchHint,
             hintStyle: TextStyle(
               color: isDark
                   ? DesignColors.darkTextTertiary

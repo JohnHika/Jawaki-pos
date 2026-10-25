@@ -51,6 +51,7 @@ import '../../features/reports/presentation/screens/analytics_dashboard_screen.d
 import '../../features/reports/presentation/screens/inventory_forecasting_screen.dart';
 import '../../features/payments/presentation/screens/payment_analytics_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/settings/presentation/screens/business_layout_screen.dart';
 import '../../features/settings/presentation/screens/user_guide_screen.dart';
 import '../../features/settings/presentation/screens/operating_hours_screen.dart';
 import '../../features/settings/presentation/screens/bug_report_screen.dart';
@@ -677,6 +678,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             name: 'settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: '/settings/business-layout',
+            name: 'business-layout',
+            builder: (context, state) => const BusinessLayoutScreen(),
           ),
 
           // Legacy route: redirects into the consolidated Plan & Billing
