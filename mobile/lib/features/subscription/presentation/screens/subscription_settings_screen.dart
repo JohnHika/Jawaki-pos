@@ -110,18 +110,29 @@ class _SubscriptionSettingsScreenState
   }
 
   void _showChangePlanDialog() {
-    // Backend returns the plan uppercase ('CORE'); the catalog ids are
-    // lowercase ('core') — compare case-insensitively throughout.
-    final currentPlanId =
-        (_plan?['plan'] as String? ?? 'core').toLowerCase();
+    // Plan selection is only available during the free trial. The backend
+    // records this as the plan that starts after the trial; it does not change
+    // current access or charge the merchant at selection time.
+    if ((_plan?['subscriptionStatus'] as String? ?? '').toUpperCase() !=
+        'TRIAL') {
+      return;
+    }
 
-    String? selectedPlanId;
+    final currentPlanId = (_plan?['plan'] as String? ?? 'TRIAL').toLowerCase();
+    final pendingPlanId = (_plan?['pendingPlan'] as String?)?.toLowerCase();
+    final firstAvailablePlan = kAvailablePlans.first.id;
+    final initialPlanId = kAvailablePlans
+            .any((plan) => plan.id == pendingPlanId || plan.id == currentPlanId)
+        ? (pendingPlanId ?? currentPlanId)
+        : firstAvailablePlan;
+
+    String? selectedPlanId = initialPlanId;
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
-          final targetId = selectedPlanId ?? currentPlanId;
+          final targetId = selectedPlanId ?? initialPlanId;
           return Theme(
             data: Theme.of(dialogContext).copyWith(
               splashFactory: InkRipple.splashFactory,
@@ -130,10 +141,11 @@ class _SubscriptionSettingsScreenState
               backgroundColor: context.themed(DesignColors.darkSurfaceElevated),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
-                side: BorderSide(color: context.themed(DesignColors.darkBorder)),
+                side:
+                    BorderSide(color: context.themed(DesignColors.darkBorder)),
               ),
               title: Text(
-                'Change Plan',
+                'Choose your next plan',
                 style: TextStyle(
                   color: context.themed(DesignColors.darkTextPrimary),
                   fontWeight: FontWeight.w800,
@@ -143,7 +155,7 @@ class _SubscriptionSettingsScreenState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Select a new plan. Changes take effect immediately.',
+                    'Choose the plan that starts after your free trial. Your trial access stays the same, and this choice does not charge you.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: context.themed(DesignColors.darkTextSecondary),
                         ),
@@ -177,7 +189,8 @@ class _SubscriptionSettingsScreenState
                   borderRadius: DesignSpacing.radiusMd,
                   onPressed: () async {
                     final target = targetId;
-                    if (target == currentPlanId) {
+                    if (target == pendingPlanId ||
+                        (pendingPlanId == null && target == currentPlanId)) {
                       Navigator.pop(dialogContext);
                       return;
                     }
@@ -196,13 +209,17 @@ class _SubscriptionSettingsScreenState
                       if (!context.mounted) return;
                       showGlassSnackBar(
                         context,
-                        'Plan changed to ${planDisplayName(target)}',
+                        'Next plan set to ${planDisplayName(target)}',
                         icon: Icons.check_circle_rounded,
                         color: DesignColors.success,
                       );
                     } catch (e) {
-                      if (!dialogContext.mounted) return;
-                      Navigator.pop(dialogContext);
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                      if (mounted) {
+                        setState(() => _error = _friendlyError(e));
+                      }
                     } finally {
                       if (mounted) setState(() => _isChangingPlan = false);
                     }
@@ -243,15 +260,39 @@ class _SubscriptionSettingsScreenState
             _buildCurrentPlanCard(),
             const SizedBox(height: DesignSpacing.xl),
 
-            // ── Change Plan Button ──
+            // Plan selection is only offered during a trial. Paid plans stay
+            // active for their current period, so the button must not lead to
+            // a change the billing service will reject.
             if (!_isLoadingPlan && _plan != null) ...[
-              GradientButton(
-                label: _isChangingPlan ? 'Changing plan…' : 'Change Plan',
-                icon: Icons.swap_horiz_rounded,
-                onPressed: _isChangingPlan ? null : _showChangePlanDialog,
-                height: DesignSpacing.xl + 28,
-                borderRadius: DesignSpacing.radiusXl,
-              ),
+              if ((_plan?['subscriptionStatus'] as String? ?? '')
+                      .toUpperCase() ==
+                  'TRIAL')
+                GradientButton(
+                  label: _isChangingPlan ? 'Saving plan…' : 'Choose plan',
+                  icon: Icons.swap_horiz_rounded,
+                  onPressed: _isChangingPlan ? null : _showChangePlanDialog,
+                  height: DesignSpacing.xl + 28,
+                  borderRadius: DesignSpacing.radiusXl,
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(DesignSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: context
+                        .themed(DesignColors.darkSurface)
+                        .withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
+                    border: Border.all(
+                        color: context.themed(DesignColors.darkBorder)),
+                  ),
+                  child: Text(
+                    'Your paid plan is active for this billing period. Plan changes are not available while it is active.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: context.themed(DesignColors.darkTextSecondary),
+                          height: 1.4,
+                        ),
+                  ),
+                ),
               const SizedBox(height: DesignSpacing.xxl),
             ],
 
@@ -291,7 +332,8 @@ class _SubscriptionSettingsScreenState
       return Container(
         padding: const EdgeInsets.all(DesignSpacing.xl),
         decoration: BoxDecoration(
-          color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
+          color:
+              context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(DesignSpacing.radiusXl),
           border: Border.all(color: context.themed(DesignColors.darkBorder)),
         ),
@@ -302,7 +344,8 @@ class _SubscriptionSettingsScreenState
             const SizedBox(height: DesignSpacing.md),
             Text(
               'Could not load subscription details',
-              style: TextStyle(color: context.themed(DesignColors.darkTextSecondary)),
+              style: TextStyle(
+                  color: context.themed(DesignColors.darkTextSecondary)),
             ),
           ],
         ),
@@ -314,6 +357,7 @@ class _SubscriptionSettingsScreenState
     final nextBilling = _plan?['currentPeriodEnd'] as String?;
     final trialEnds = _plan?['currentPeriodEnd'] as String?;
     final isTrial = status.toUpperCase() == 'TRIAL';
+    final pendingPlan = _plan?['pendingPlan'] as String?;
     final price = formatKes(planPriceKes(planName));
 
     return Container(
@@ -421,8 +465,7 @@ class _SubscriptionSettingsScreenState
                     horizontal: DesignSpacing.sm, vertical: DesignSpacing.xs),
                 decoration: BoxDecoration(
                   color: DesignColors.accent.withValues(alpha: 0.10),
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusFull),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
                   border: Border.all(
                     color: DesignColors.accent.withValues(alpha: 0.25),
                   ),
@@ -441,7 +484,8 @@ class _SubscriptionSettingsScreenState
           // Divider
           Container(
             height: 1,
-            color: context.themed(DesignColors.darkBorder).withValues(alpha: 0.6),
+            color:
+                context.themed(DesignColors.darkBorder).withValues(alpha: 0.6),
           ),
           const SizedBox(height: DesignSpacing.lg),
           // Trial / billing info
@@ -450,6 +494,11 @@ class _SubscriptionSettingsScreenState
               Icons.timer_outlined,
               'Trial ends ${_formatDate(trialEnds)}',
             ),
+            if (pendingPlan != null && pendingPlan.trim().isNotEmpty)
+              _buildInfoRow(
+                Icons.event_available_rounded,
+                'Next plan: ${planDisplayName(pendingPlan)} after trial',
+              ),
             _buildInfoRow(
               Icons.credit_card_rounded,
               'No payment method on file yet',
@@ -474,7 +523,8 @@ class _SubscriptionSettingsScreenState
       padding: const EdgeInsets.only(bottom: DesignSpacing.sm),
       child: Row(
         children: [
-          Icon(icon, color: context.themed(DesignColors.darkTextSecondary), size: 16),
+          Icon(icon,
+              color: context.themed(DesignColors.darkTextSecondary), size: 16),
           const SizedBox(width: DesignSpacing.sm),
           Expanded(
             child: Text(
@@ -561,8 +611,7 @@ class _SubscriptionSettingsScreenState
                     horizontal: DesignSpacing.xs, vertical: DesignSpacing.xs),
                 decoration: BoxDecoration(
                   color: _statusColor(status).withValues(alpha: 0.10),
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusFull),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
                 ),
                 child: Text(
                   status.toUpperCase(),
@@ -785,13 +834,12 @@ class _PlanOptionTile extends StatelessWidget {
                       children: [
                         Text(
                           name,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                                color: context.themed(DesignColors.darkTextPrimary),
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: context
+                                        .themed(DesignColors.darkTextPrimary),
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
                         if (isCurrent) ...[
                           const SizedBox(width: DesignSpacing.sm),
@@ -800,7 +848,8 @@ class _PlanOptionTile extends StatelessWidget {
                                 horizontal: DesignSpacing.xs,
                                 vertical: DesignSpacing.xs),
                             decoration: BoxDecoration(
-                              color: context.themed(DesignColors.darkTextTertiary)
+                              color: context
+                                  .themed(DesignColors.darkTextTertiary)
                                   .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(
                                   DesignSpacing.radiusFull),
@@ -811,7 +860,8 @@ class _PlanOptionTile extends StatelessWidget {
                                   .textTheme
                                   .labelSmall
                                   ?.copyWith(
-                                    color: context.themed(DesignColors.darkTextTertiary),
+                                    color: context
+                                        .themed(DesignColors.darkTextTertiary),
                                     fontWeight: FontWeight.w700,
                                   ),
                             ),
@@ -823,7 +873,8 @@ class _PlanOptionTile extends StatelessWidget {
                     Text(
                       price,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: context.themed(DesignColors.darkTextSecondary),
+                            color:
+                                context.themed(DesignColors.darkTextSecondary),
                           ),
                     ),
                   ],
@@ -878,9 +929,7 @@ class _CurrentPlanSkeleton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ShimmerWidget(
-                        width: 120,
-                        height: 16,
-                        borderRadius: DesignSpacing.xs),
+                        width: 120, height: 16, borderRadius: DesignSpacing.xs),
                     SizedBox(height: DesignSpacing.sm),
                     ShimmerWidget(
                         width: 72,
@@ -900,11 +949,9 @@ class _CurrentPlanSkeleton extends StatelessWidget {
               height: 1,
               borderRadius: DesignSpacing.xs),
           SizedBox(height: DesignSpacing.lg),
-          ShimmerWidget(
-              width: 210, height: 12, borderRadius: DesignSpacing.xs),
+          ShimmerWidget(width: 210, height: 12, borderRadius: DesignSpacing.xs),
           SizedBox(height: DesignSpacing.sm),
-          ShimmerWidget(
-              width: 180, height: 12, borderRadius: DesignSpacing.xs),
+          ShimmerWidget(width: 180, height: 12, borderRadius: DesignSpacing.xs),
         ],
       ),
     );
@@ -925,30 +972,26 @@ class _InvoiceSkeletonList extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: DesignSpacing.sm),
           padding: const EdgeInsets.all(DesignSpacing.md),
           decoration: BoxDecoration(
-            color: context.themed(DesignColors.darkSurface).withValues(alpha: 0.82),
+            color: context
+                .themed(DesignColors.darkSurface)
+                .withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(DesignSpacing.radiusLg),
             border: Border.all(color: context.themed(DesignColors.darkBorder)),
           ),
           child: const Row(
             children: [
               ShimmerWidget(
-                  width: 36,
-                  height: 36,
-                  borderRadius: DesignSpacing.radiusMd),
+                  width: 36, height: 36, borderRadius: DesignSpacing.radiusMd),
               SizedBox(width: DesignSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     ShimmerWidget(
-                        width: 140,
-                        height: 12,
-                        borderRadius: DesignSpacing.xs),
+                        width: 140, height: 12, borderRadius: DesignSpacing.xs),
                     SizedBox(height: DesignSpacing.sm),
                     ShimmerWidget(
-                        width: 80,
-                        height: 10,
-                        borderRadius: DesignSpacing.xs),
+                        width: 80, height: 10, borderRadius: DesignSpacing.xs),
                   ],
                 ),
               ),
@@ -957,9 +1000,7 @@ class _InvoiceSkeletonList extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   ShimmerWidget(
-                      width: 64,
-                      height: 14,
-                      borderRadius: DesignSpacing.xs),
+                      width: 64, height: 14, borderRadius: DesignSpacing.xs),
                   SizedBox(height: DesignSpacing.sm),
                   ShimmerWidget(
                       width: 48,

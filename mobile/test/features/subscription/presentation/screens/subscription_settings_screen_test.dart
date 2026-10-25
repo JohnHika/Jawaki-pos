@@ -147,8 +147,8 @@ void main() {
       // Trial end date
       expect(find.textContaining('Trial ends'), findsOneWidget);
 
-      // Change Plan button
-      expect(find.text('Change Plan'), findsOneWidget);
+      // Trial plan choice is scheduled for after the trial.
+      expect(find.text('Choose plan'), findsOneWidget);
 
       // Invoice history section (below the fold once the feature card
       // renders — scroll it into view).
@@ -158,6 +158,17 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('INVOICE HISTORY'), findsOneWidget);
+    });
+
+    testWidgets('shows the trial plan selected for after the trial',
+        (tester) async {
+      spyApi.planData['pendingPlan'] = 'BUSINESS';
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Next plan: BUSINESS after trial'),
+          findsOneWidget);
     });
 
     testWidgets('shows what the current plan includes', (tester) async {
@@ -202,6 +213,11 @@ void main() {
       expect(find.text('Active'), findsOneWidget);
       expect(find.text('KES 10,000'), findsOneWidget);
       expect(find.textContaining('Next billing'), findsOneWidget);
+      expect(find.text('Choose plan'), findsNothing);
+      expect(
+        find.textContaining('Your paid plan is active for this billing period'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows error state when API fails', (tester) async {
@@ -290,12 +306,12 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
       await tester.pumpAndSettle();
 
-      // Tap Change Plan
-      await tester.tap(find.text('Change Plan'));
+      // Tap the trial plan selector.
+      await tester.tap(find.text('Choose plan'));
       await tester.pumpAndSettle();
 
       // Dialog should show plan options
-      expect(find.text('Change Plan'), findsNWidgets(2)); // title + button
+      expect(find.text('Choose your next plan'), findsOneWidget);
       expect(find.text('CURRENT'), findsOneWidget);
 
       // All three tiers from the shared catalog, priced from the catalog.
@@ -313,18 +329,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(
-            of: dialogFinder, matching: find.text('KES 3,200/mo')),
+        find.descendant(of: dialogFinder, matching: find.text('KES 3,200/mo')),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-            of: dialogFinder, matching: find.text('KES 6,500/mo')),
+        find.descendant(of: dialogFinder, matching: find.text('KES 6,500/mo')),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-            of: dialogFinder, matching: find.text('KES 10,000/mo')),
+        find.descendant(of: dialogFinder, matching: find.text('KES 10,000/mo')),
         findsOneWidget,
       );
     });
@@ -346,14 +359,15 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
       await tester.pumpAndSettle();
 
-      // Tap Change Plan
-      await tester.tap(find.text('Change Plan'));
+      // Tap the trial plan selector.
+      await tester.tap(find.text('Choose plan'));
       await tester.pumpAndSettle();
 
       // Select ENTERPRISE (tap the plan name text inside the dialog)
       final dialogFinder = find.byType(AlertDialog);
       await tester.tap(
-        find.descendant(of: dialogFinder, matching: find.text('ENTERPRISE').first),
+        find.descendant(
+            of: dialogFinder, matching: find.text('ENTERPRISE').first),
       );
       await tester.pumpAndSettle();
 
@@ -390,12 +404,13 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Change Plan'));
+      await tester.tap(find.text('Choose plan'));
       await tester.pumpAndSettle();
 
       final dialogFinder = find.byType(AlertDialog);
       await tester.tap(
-        find.descendant(of: dialogFinder, matching: find.text('BUSINESS').first),
+        find.descendant(
+            of: dialogFinder, matching: find.text('BUSINESS').first),
       );
       await tester.pumpAndSettle();
 
@@ -409,6 +424,32 @@ void main() {
 
       expect(spyApi.lastChangePlanCall, isNotNull);
       expect(spyApi.lastChangePlanCall!['planId'], 'BUSINESS');
+    });
+
+    testWidgets('shows a plan selection error instead of silently closing',
+        (tester) async {
+      spyApi.changePlanError = Exception('The plan could not be saved');
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: _router()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Choose plan'));
+      await tester.pumpAndSettle();
+      final dialogFinder = find.byType(AlertDialog);
+      await tester.tap(
+        find.descendant(
+            of: dialogFinder, matching: find.text('ENTERPRISE').first),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: dialogFinder,
+          matching: find.text('Change to ENTERPRISE'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('The plan could not be saved'), findsOneWidget);
     });
   });
 }
