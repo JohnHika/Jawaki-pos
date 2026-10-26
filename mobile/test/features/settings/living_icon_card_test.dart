@@ -53,38 +53,31 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  final switchFinder = find.byKey(const ValueKey('living-icon-switch'));
-
   testWidgets('starts on and explains automatic icon changes without a picker',
       (tester) async {
     await pump(tester, service());
-    expect(find.text('Living app icon'), findsOneWidget);
-    expect(tester.widget<Switch>(switchFinder).value, isTrue);
+    expect(find.text('Counterbase adapts its icon'), findsOneWidget);
     expect(find.text('The everyday Counterbase icon.'), findsOneWidget);
     expect(find.textContaining('decision stays on this phone'), findsOneWidget);
     expect(find.textContaining('20 hours'), findsOneWidget);
+    expect(find.text('24 looks'), findsOneWidget);
+    expect(find.byKey(const ValueKey('living-icon-gallery')), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
     expect(find.text('Add to home screen'), findsOneWidget);
-    expect(find.text('On a streak'), findsNothing);
-    expect(find.text('Record day'), findsNothing);
   });
 
-  testWidgets(
-      'switching it on waits for the app to be left, never switches now',
+  testWidgets('shows the current automatic milestone without a user picker',
       (tester) async {
-    SharedPreferences.setMockInitialValues({
-      AppIconService.enabledPref: false,
-    });
-    await pump(tester, service(streak: 5));
-    await tester.tap(switchFinder);
-    await tester.pumpAndSettle();
+    active = 'streak_6';
+    await pump(tester, service(streak: 6));
 
-    expect(tester.widget<Switch>(switchFinder).value, isTrue);
-    expect(active, 'standard',
-        reason: 'switching in the foreground closes the app');
-    expect(calls, isNot(contains('setIcon')));
-    expect(find.textContaining('updates the next time you leave the app'),
-        findsOneWidget);
-    expect(find.text('Add to home screen'), findsOneWidget);
+    expect(find.text('Now showing: 6-day streak'), findsOneWidget);
+    expect(
+      find.text('Your shop has recorded sales for at least six days in a row.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('living-icon-switch')), findsNothing);
+    expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
   testWidgets('Add to home screen asks the phone to pin the icon',
@@ -95,15 +88,5 @@ void main() {
 
     expect(calls, contains('pinCurrentIcon'));
     expect(find.textContaining('Check the prompt'), findsOneWidget);
-  });
-
-  testWidgets('switching it off says the everyday icon returns later',
-      (tester) async {
-    await pump(tester, service());
-    await tester.tap(switchFinder);
-    await tester.pumpAndSettle();
-
-    expect(tester.widget<Switch>(switchFinder).value, isFalse);
-    expect(find.textContaining('everyday icon comes back'), findsOneWidget);
   });
 }
