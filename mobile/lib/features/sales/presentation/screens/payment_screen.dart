@@ -203,7 +203,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final businessLayout = ref.watch(businessLayoutProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final shopName = ref.watch(tenantIdentityProvider).companyName;
-    final canChangePaymentMethod = paymentState.currentTransactionId == null &&
+    final canChangePaymentMethod = !paymentState.hasUnresolvedMerchantPayment &&
+        paymentState.currentTransactionId == null &&
         !paymentState.isProcessing &&
         !_isPreparingPayment;
 
@@ -362,7 +363,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   : () => _selectMpesa(
                         cart.total,
                         hasPendingRequest:
-                            paymentState.currentTransactionId != null,
+                            paymentState.hasUnresolvedMerchantPayment,
                       ),
             ),
             const SizedBox(height: DesignSpacing.md - 2),
@@ -411,6 +412,51 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   : null,
             ),
 
+            if (paymentState.hasUnresolvedMerchantPayment &&
+                paymentState.isRecoveredMerchantPayment) ...[
+              const SizedBox(height: DesignSpacing.lg),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(DesignSpacing.md),
+                decoration: BoxDecoration(
+                  color: DesignColors.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusMd),
+                  border: Border.all(
+                      color: DesignColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.history_rounded,
+                            color: DesignColors.warning, size: 20),
+                        SizedBox(width: DesignSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            'Previous M-Pesa request recovered',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: DesignSpacing.xs),
+                    const Text(
+                      'Check its status before taking another payment. This prevents charging the customer twice.',
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => context.push('/payments'),
+                        icon: const Icon(Icons.receipt_long_rounded),
+                        label: const Text('Open Payments to check'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             if (_selectedMethod == PaymentMethod.mpesa &&
                 paymentState.currentTransactionId != null) ...[
               const SizedBox(height: DesignSpacing.lg),
@@ -458,19 +504,33 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   border: Border.all(
                       color: DesignColors.error.withValues(alpha: 0.2)),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.error_outline_rounded,
-                        color: DesignColors.error, size: 20),
-                    const SizedBox(width: DesignSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        paymentState.error!,
-                        style: const TextStyle(
-                            color: DesignColors.error,
-                            fontSize: DesignType.chatBody - 1),
-                      ),
+                    Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded,
+                            color: DesignColors.error, size: 20),
+                        const SizedBox(width: DesignSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            paymentState.error!,
+                            style: const TextStyle(
+                                color: DesignColors.error,
+                                fontSize: DesignType.chatBody - 1),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (paymentState.isRecoveredMerchantPayment)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => context.push('/payments'),
+                          icon: const Icon(Icons.receipt_long_rounded),
+                          label: const Text('Open Payments to check'),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -486,11 +546,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           child: GradientButton(
             label: _getButtonText(paymentState),
             icon: Icons.payment_rounded,
-            onPressed: _selectedMethod == null ||
-                    paymentState.isProcessing ||
-                    _isPreparingPayment
+            onPressed: paymentState.isProcessing || _isPreparingPayment
                 ? null
-                : _processPayment,
+                : paymentState.hasUnresolvedMerchantPayment &&
+                        (paymentState.isRecoveredMerchantPayment ||
+                            paymentState.currentTransactionId == null)
+                    ? () => context.push('/payments')
+                    : _selectedMethod == null
+                        ? null
+                        : _processPayment,
             isLoading: paymentState.isProcessing || _isPreparingPayment,
             height: 56,
             borderRadius: DesignSpacing.radiusLg,
@@ -501,6 +565,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   String _getButtonText(PaymentState paymentState) {
+    if (paymentState.hasUnresolvedMerchantPayment &&
+        (paymentState.isRecoveredMerchantPayment ||
+            paymentState.currentTransactionId == null)) {
+      return 'Open Payments to check';
+    }
     if (_isPreparingPayment && !paymentState.isProcessing) {
       return 'Checking sale…';
     }

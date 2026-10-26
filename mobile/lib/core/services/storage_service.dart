@@ -39,6 +39,8 @@ class StorageService implements LifecycleLockStorage {
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
   static const String keyFinanceSnapshotPrefix = 'finance_snapshot_v1';
   static const String keyHeldSalesPrefix = 'held_sales_v1';
+  static const String keyPendingMerchantMpesaPrefix =
+      'pending_merchant_mpesa_v1';
   static const String keyHasSeenStaffTour = 'has_seen_staff_tour';
 
   Future<void> initialize() async {
@@ -275,6 +277,65 @@ class StorageService implements LifecycleLockStorage {
   /// in the key so logging in to another shop cannot reveal an old cart.
   static String heldSalesKey(String tenantId, String branchId) =>
       '$keyHeldSalesPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}';
+
+  /// An unresolved provider request must survive process death so a cashier
+  /// cannot accidentally charge the customer again after reopening the app.
+  /// This key is scoped to the tenant, branch, and cashier, matching the
+  /// backend's idempotency lock. The record contains only request/reference
+  /// identifiers and is stored in encrypted device storage.
+  static String pendingMerchantMpesaKey({
+    required String tenantId,
+    required String branchId,
+    required String userId,
+  }) =>
+      '$keyPendingMerchantMpesaPrefix:${Uri.encodeComponent(tenantId)}:${Uri.encodeComponent(branchId)}:${Uri.encodeComponent(userId)}';
+
+  Future<String?> getPendingMerchantMpesaRecord({
+    required String tenantId,
+    required String branchId,
+    required String userId,
+  }) async {
+    _checkInitialized();
+    return _secureStorage!.read(
+      key: pendingMerchantMpesaKey(
+        tenantId: tenantId,
+        branchId: branchId,
+        userId: userId,
+      ),
+    );
+  }
+
+  Future<void> savePendingMerchantMpesaRecord({
+    required String tenantId,
+    required String branchId,
+    required String userId,
+    required String record,
+  }) async {
+    _checkInitialized();
+    await _secureStorage!.write(
+      key: pendingMerchantMpesaKey(
+        tenantId: tenantId,
+        branchId: branchId,
+        userId: userId,
+      ),
+      value: record,
+    );
+  }
+
+  Future<void> clearPendingMerchantMpesaRecord({
+    required String tenantId,
+    required String branchId,
+    required String userId,
+  }) async {
+    _checkInitialized();
+    await _secureStorage!.delete(
+      key: pendingMerchantMpesaKey(
+        tenantId: tenantId,
+        branchId: branchId,
+        userId: userId,
+      ),
+    );
+  }
 
   String? getHeldSalesSnapshot({
     required String tenantId,

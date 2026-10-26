@@ -150,6 +150,60 @@ describe('MerchantPaymentsService', () => {
     }));
   });
 
+  it('recovers a saved merchant request only for its original cashier and shop', async () => {
+    const { prisma, service } = fixtures();
+    prisma.merchantCharge.findFirst.mockResolvedValue({
+      reference: 'CBSALE_recovery',
+      status: 'PENDING',
+      providerStatus: 'pay_offline',
+      amount: 500,
+      purpose: 'SALE',
+      saleId: null,
+      receiptNumber: null,
+    });
+
+    await expect(service.requestStatus(actor, 'request-1')).resolves.toEqual({
+      found: true,
+      charge: {
+        reference: 'CBSALE_recovery',
+        status: 'PENDING',
+        providerStatus: 'pay_offline',
+        amount: 500,
+        purpose: 'SALE',
+        receivableType: null,
+        receivableId: null,
+        receivablePaymentId: null,
+        saleId: null,
+        receiptNumber: null,
+      },
+    });
+    expect(prisma.merchantCharge.findFirst).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'shop-1',
+        cashierId: 'cashier-1',
+        requestId: 'request-1',
+        purpose: 'SALE',
+      },
+    });
+  });
+
+  it('reports an absent saved merchant request without exposing another cashier charge', async () => {
+    const { prisma, service } = fixtures();
+    prisma.merchantCharge.findFirst.mockResolvedValue(null);
+
+    await expect(service.requestStatus(actor, 'request-1')).resolves.toEqual({
+      found: false,
+    });
+    expect(prisma.merchantCharge.findFirst).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'shop-1',
+        cashierId: 'cashier-1',
+        requestId: 'request-1',
+        purpose: 'SALE',
+      },
+    });
+  });
+
   it('stores only masked bank data after Paystack creates the merchant subaccount', async () => {
     const { prisma, paystack, service } = fixtures();
     prisma.merchantPaymentAccount.findUnique.mockResolvedValue({

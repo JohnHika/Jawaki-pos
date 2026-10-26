@@ -11,6 +11,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart' hide CartItem;
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/utils/api_message.dart';
@@ -56,27 +57,44 @@ class _SaleExtras {
 // Payment state
 class PaymentState {
   final bool isProcessing;
+  final bool hasUnresolvedMerchantPayment;
+  final bool isRecoveredMerchantPayment;
   final String? error;
   final String? currentTransactionId;
 
   const PaymentState({
     this.isProcessing = false,
+    this.hasUnresolvedMerchantPayment = false,
+    this.isRecoveredMerchantPayment = false,
     this.error,
     this.currentTransactionId,
   });
 
   PaymentState copyWith({
     bool? isProcessing,
+    bool? hasUnresolvedMerchantPayment,
+    bool? isRecoveredMerchantPayment,
     String? error,
     String? currentTransactionId,
   }) {
     return PaymentState(
       isProcessing: isProcessing ?? this.isProcessing,
+      hasUnresolvedMerchantPayment:
+          hasUnresolvedMerchantPayment ?? this.hasUnresolvedMerchantPayment,
+      isRecoveredMerchantPayment:
+          isRecoveredMerchantPayment ?? this.isRecoveredMerchantPayment,
       error: error,
       currentTransactionId: currentTransactionId ?? this.currentTransactionId,
     );
   }
 }
+
+typedef _MerchantPaymentScope = ({
+  String tenantId,
+  String branchId,
+  String userId,
+  String key,
+});
 
 class PaymentNotifier extends StateNotifier<PaymentState> {
   final ApiClient _apiClient;
@@ -84,9 +102,18 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   final SyncService _syncService;
   final AuthService _authService;
   final ConnectivityService _connectivity;
+  final StorageService _storageService;
   String? _pendingMpesaFingerprint;
   String? _pendingMpesaRequestId;
   String? _pendingLocalSaleId;
+  String? _pendingMpesaReference;
+  _MerchantPaymentScope? _pendingMpesaScope;
+  bool _hasUnresolvedMerchantPayment = false;
+  bool _isRecoveredMerchantPayment = false;
+  Map<String, dynamic>? _recoveredMerchantCharge;
+  String? _loadedRecoveryScopeKey;
+  String? _loadingRecoveryScopeKey;
+  Future<void>? _recoveryFuture;
   int _sessionGeneration = 0;
 
   PaymentNotifier({
@@ -95,20 +122,261 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required SyncService syncService,
     required AuthService authService,
     required ConnectivityService connectivity,
+    required StorageService storageService,
   })  : _apiClient = apiClient,
         _database = database,
         _syncService = syncService,
         _authService = authService,
         _connectivity = connectivity,
-        super(const PaymentState());
+        _storageService = storageService,
+        super(const PaymentState()) {
+    unawaited(ensurePendingMerchantPaymentLoaded());
+  }
 
-  bool get hasUnresolvedMerchantPayment => _pendingMpesaRequestId != null;
+  bool get hasUnresolvedMerchantPayment => _hasUnresolvedMerchantPayment;
+  Map<String, dynamic>? get recoveredMerchantCharge =>
+      _recoveredMerchantCharge == null
+          ? null
+          : Map<String, dynamic>.from(_recoveredMerchantCharge!);
+
+  _MerchantPaymentScope? _currentMerchantPaymentScope() {
+    final tenantId = _authService.tenantId?.trim();
+    final branchId = _authService.branchId?.trim();
+    final userId = _authService.userId?.toString().trim();
+    if (tenantId == null ||
+        tenantId.isEmpty ||
+        branchId == null ||
+        branchId.isEmpty ||
+        userId == null ||
+        userId.isEmpty) {
+      return null;
+    }
+    return (
+      tenantId: tenantId,
+      branchId: branchId,
+      userId: userId,
+      key: StorageService.pendingMerchantMpesaKey(
+        tenantId: tenantId,
+        branchId: branchId,
+        userId: userId,
+      ),
+    );
+  }
+
+  /// Loads the encrypted request marker before any new tender is accepted.
+  /// When [force] is true, it also refreshes the backend's saved status for the
+  /// same request; it never creates or retries a provider charge.
+  Future<void> ensurePendingMerchantPaymentLoaded({bool force = false}) {
+    final scope = _currentMerchantPaymentScope();
+    if (scope == null) return Future<void>.value();
+    if (_hasUnresolvedMerchantPayment && !_isRecoveredMerchantPayment) {
+      return Future<void>.value();
+    }
+    if (!force && _loadedRecoveryScopeKey == scope.key) {
+      return Future<void>.value();
+    }
+    if (_loadingRecoveryScopeKey == scope.key && _recoveryFuture != null) {
+      return _recoveryFuture!;
+    }
+
+    final generation = _sessionGeneration;
+    _loadingRecoveryScopeKey = scope.key;
+    late final Future<void> recovery;
+    recovery =
+        _restorePendingMerchantPayment(scope, generation).whenComplete(() {
+      if (identical(_recoveryFuture, recovery)) {
+        _recoveryFuture = null;
+        _loadingRecoveryScopeKey = null;
+      }
+    });
+    _recoveryFuture = recovery;
+    return recovery;
+  }
+
+  Future<void> refreshPendingMerchantPayment() =>
+      ensurePendingMerchantPaymentLoaded(force: true);
+
+  Future<void> _restorePendingMerchantPayment(
+    _MerchantPaymentScope scope,
+    int generation,
+  ) async {
+    String? rawRecord;
+    try {
+      rawRecord = await _storageService.getPendingMerchantMpesaRecord(
+        tenantId: scope.tenantId,
+        branchId: scope.branchId,
+        userId: scope.userId,
+      );
+    } catch (_) {
+      if (!_isCurrentSession(generation)) return;
+      _hasUnresolvedMerchantPayment = true;
+      _isRecoveredMerchantPayment = true;
+      state = state.copyWith(
+        hasUnresolvedMerchantPayment: true,
+        isRecoveredMerchantPayment: true,
+        error:
+            'Counterbase could not check a previous M-Pesa request. Open Payments and try again before taking another payment.',
+      );
+      return;
+    }
+    if (!_isCurrentSession(generation)) return;
+    _loadedRecoveryScopeKey = scope.key;
+    if (rawRecord == null || rawRecord.trim().isEmpty) {
+      if (_isRecoveredMerchantPayment && _pendingMpesaScope == null) {
+        _hasUnresolvedMerchantPayment = false;
+        _isRecoveredMerchantPayment = false;
+        _recoveredMerchantCharge = null;
+        state = const PaymentState();
+      }
+      return;
+    }
+
+    _hasUnresolvedMerchantPayment = true;
+    _isRecoveredMerchantPayment = true;
+    _pendingMpesaScope = scope;
+
+    Map<String, dynamic> record;
+    try {
+      final decoded = jsonDecode(rawRecord);
+      if (decoded is! Map) {
+        throw const FormatException('Invalid request record');
+      }
+      record = Map<String, dynamic>.from(decoded);
+      final requestId = record['requestId']?.toString().trim();
+      if (requestId == null || requestId.isEmpty) {
+        throw const FormatException('Missing request identifier');
+      }
+      _pendingMpesaRequestId = requestId;
+      _pendingLocalSaleId = record['saleId']?.toString();
+      _pendingMpesaReference = record['reference']?.toString();
+    } catch (_) {
+      state = const PaymentState(
+        hasUnresolvedMerchantPayment: true,
+        isRecoveredMerchantPayment: true,
+        error:
+            'A previous M-Pesa request needs checking, but its saved reference could not be read. Do not start another payment; open Payments or contact support.',
+      );
+      return;
+    }
+
+    state = PaymentState(
+      currentTransactionId: _pendingMpesaReference,
+      hasUnresolvedMerchantPayment: true,
+      isRecoveredMerchantPayment: true,
+      error:
+          'A previous M-Pesa request is being recovered. Open Payments to check it before starting another sale.',
+    );
+
+    try {
+      final lookup = await _apiClient.getMerchantMpesaRequestStatus(
+        _pendingMpesaRequestId!,
+      );
+      if (!_isCurrentSession(generation)) return;
+      if (lookup['found'] != true || lookup['charge'] is! Map) {
+        await _clearPendingMerchantPayment(keepError: true);
+        if (!_isCurrentSession(generation)) return;
+        state = const PaymentState(
+          error:
+              'The earlier M-Pesa request was not created. You can try the payment again.',
+        );
+        return;
+      }
+
+      final charge = Map<String, dynamic>.from(lookup['charge'] as Map);
+      _recoveredMerchantCharge = charge;
+      _pendingMpesaReference = charge['reference']?.toString();
+      if (_pendingMpesaReference == null || _pendingMpesaReference!.isEmpty) {
+        state = state.copyWith(
+          error:
+              'The previous M-Pesa request has no provider reference yet. Open Payments and retry the status check; do not charge again.',
+        );
+        return;
+      }
+
+      final status = charge['status']?.toString().toUpperCase();
+      if (status == 'FAILED') {
+        await _clearPendingMerchantPayment(keepError: true);
+        if (!_isCurrentSession(generation)) return;
+        state = const PaymentState(
+          error:
+              'The previous M-Pesa payment failed. You can start the payment again.',
+        );
+        return;
+      }
+
+      state = PaymentState(
+        currentTransactionId: _pendingMpesaReference,
+        hasUnresolvedMerchantPayment: true,
+        isRecoveredMerchantPayment: true,
+        error: status == 'COMPLETED'
+            ? 'The earlier M-Pesa payment is confirmed. Open Payments to view its receipt before continuing.'
+            : 'The earlier M-Pesa request is still open. Open Payments and check it before taking another payment.',
+      );
+    } catch (_) {
+      if (!_isCurrentSession(generation)) return;
+      // A temporary network/API failure is not proof that Paystack did not
+      // charge the customer. Keep the durable lock and allow a later lookup.
+      state = state.copyWith(
+        error:
+            'Counterbase could not check the previous M-Pesa request yet. Open Payments and retry the check; do not charge again.',
+      );
+    }
+  }
+
+  Future<void> _persistPendingMerchantPayment() async {
+    final scope = _pendingMpesaScope ?? _currentMerchantPaymentScope();
+    final requestId = _pendingMpesaRequestId;
+    if (scope == null || requestId == null || requestId.isEmpty) {
+      throw StateError('Merchant payment recovery details are unavailable.');
+    }
+    await _storageService.savePendingMerchantMpesaRecord(
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      userId: scope.userId,
+      record: jsonEncode({
+        'requestId': requestId,
+        if (_pendingLocalSaleId != null) 'saleId': _pendingLocalSaleId,
+        if (_pendingMpesaReference != null) 'reference': _pendingMpesaReference,
+      }),
+    );
+  }
+
+  Future<void> _clearPendingMerchantPayment({bool keepError = false}) async {
+    final scope = _pendingMpesaScope ?? _currentMerchantPaymentScope();
+    if (scope != null) {
+      try {
+        await _storageService.clearPendingMerchantMpesaRecord(
+          tenantId: scope.tenantId,
+          branchId: scope.branchId,
+          userId: scope.userId,
+        );
+      } catch (_) {
+        // The backend is still the source of truth. A stale encrypted marker
+        // is safe: the next launch will look up this same request again.
+      }
+    }
+    _pendingMpesaFingerprint = null;
+    _pendingMpesaRequestId = null;
+    _pendingLocalSaleId = null;
+    _pendingMpesaReference = null;
+    _pendingMpesaScope = null;
+    _hasUnresolvedMerchantPayment = false;
+    _isRecoveredMerchantPayment = false;
+    _recoveredMerchantCharge = null;
+    if (!keepError) {
+      state = const PaymentState();
+    } else {
+      state = PaymentState(error: state.error);
+    }
+  }
 
   /// True when a payment-hub status check belongs to the checkout currently
   /// held open by this notifier. The checkout must keep its reference until
   /// it writes the verified receipt and clears the cart.
   bool isActiveMerchantCheckout(String reference) =>
-      _pendingMpesaRequestId != null && state.currentTransactionId == reference;
+      _pendingMpesaRequestId != null &&
+      !_isRecoveredMerchantPayment &&
+      state.currentTransactionId == reference;
 
   /// Payment UI state belongs to one cashier, shop, and branch. Invalidates
   /// async completions too, so a late provider response cannot write a sale
@@ -118,6 +386,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     _pendingMpesaFingerprint = null;
     _pendingMpesaRequestId = null;
     _pendingLocalSaleId = null;
+    _pendingMpesaReference = null;
+    _pendingMpesaScope = null;
+    _hasUnresolvedMerchantPayment = false;
+    _isRecoveredMerchantPayment = false;
+    _recoveredMerchantCharge = null;
+    _loadedRecoveryScopeKey = null;
+    _loadingRecoveryScopeKey = null;
+    _recoveryFuture = null;
     state = const PaymentState();
   }
 
@@ -130,7 +406,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// reference is resolved; only an M-Pesa retry may reuse that request.
   bool _blockPaymentStart({bool allowPendingMerchantRetry = false}) {
     if (state.isProcessing) return true;
-    if (!allowPendingMerchantRetry && _pendingMpesaRequestId != null) {
+    if (!allowPendingMerchantRetry && _hasUnresolvedMerchantPayment) {
       state = state.copyWith(
         isProcessing: false,
         error:
@@ -141,9 +417,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     return false;
   }
 
-  void acknowledgeMerchantPayment(String reference, String status) {
+  Future<void> acknowledgeMerchantPayment(
+      String reference, String status) async {
     if (state.currentTransactionId != reference) return;
     if (status == 'COMPLETED') {
+      if (_isRecoveredMerchantPayment) {
+        await _clearPendingMerchantPayment();
+        return;
+      }
       // Keep the reference locked to checkout until it persists the receipt
       // and clears the cart. The payment hub can confirm provider status, but
       // it must not turn the same cart back into a fresh charge action.
@@ -154,10 +435,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       return;
     }
     if (status != 'FAILED') return;
-    _pendingLocalSaleId = null;
-    _pendingMpesaFingerprint = null;
-    _pendingMpesaRequestId = null;
-    state = const PaymentState();
+    await _clearPendingMerchantPayment();
   }
 
   Future<String?> processCashPayment({
@@ -168,6 +446,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    await ensurePendingMerchantPaymentLoaded();
     if (_blockPaymentStart()) return null;
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
@@ -232,6 +511,17 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     String? customerId,
     String? couponCode,
   }) async {
+    await ensurePendingMerchantPaymentLoaded();
+    if (_isRecoveredMerchantPayment) {
+      state = state.copyWith(
+        isProcessing: false,
+        hasUnresolvedMerchantPayment: true,
+        isRecoveredMerchantPayment: true,
+        error:
+            'This M-Pesa request was recovered after reopening Counterbase. Open Payments to check it; a new request could charge the customer twice.',
+      );
+      return null;
+    }
     if (_blockPaymentStart(allowPendingMerchantRetry: true)) return null;
     final sessionGeneration = _sessionGeneration;
     final previousReference = state.currentTransactionId;
@@ -278,9 +568,43 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       final requestId = _pendingMpesaRequestId ?? _uuid.v4();
       String? reference = previousReference;
       if (reference == null) {
-        _pendingLocalSaleId = saleId;
-        _pendingMpesaRequestId = requestId;
-        _pendingMpesaFingerprint = fingerprint;
+        if (_pendingMpesaRequestId == null) {
+          final scope = _currentMerchantPaymentScope();
+          if (scope == null) {
+            state = state.copyWith(
+              isProcessing: false,
+              error:
+                  'Your shop session is incomplete. Sign in again before requesting an M-Pesa payment.',
+            );
+            return null;
+          }
+          _pendingLocalSaleId = saleId;
+          _pendingMpesaRequestId = requestId;
+          _pendingMpesaFingerprint = fingerprint;
+          _pendingMpesaScope = scope;
+          _hasUnresolvedMerchantPayment = true;
+          state = state.copyWith(hasUnresolvedMerchantPayment: true);
+          try {
+            // Persist before calling the backend. If the app closes while the
+            // provider request is in flight, the next launch can recover this
+            // exact idempotency key rather than create another charge.
+            await _persistPendingMerchantPayment();
+          } catch (_) {
+            _pendingMpesaFingerprint = null;
+            _pendingMpesaRequestId = null;
+            _pendingLocalSaleId = null;
+            _pendingMpesaScope = null;
+            _hasUnresolvedMerchantPayment = false;
+            state = state.copyWith(
+              isProcessing: false,
+              hasUnresolvedMerchantPayment: false,
+              error:
+                  'Counterbase could not save a secure payment recovery record. No M-Pesa request was sent. Try again.',
+            );
+            return null;
+          }
+          if (!_isCurrentSession(sessionGeneration)) return null;
+        }
         final response = await _apiClient.startMerchantMpesaPayment({
           'requestId': requestId,
           'phoneNumber': formattedPhone,
@@ -308,6 +632,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         });
         if (!_isCurrentSession(sessionGeneration)) return null;
         reference = response['reference']?.toString();
+        if (reference != null && reference.isNotEmpty) {
+          _pendingMpesaReference = reference;
+          await _persistPendingMerchantPayment();
+        }
       }
       if (reference == null || reference.isEmpty) {
         state = state.copyWith(
@@ -323,7 +651,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       saleId = 'paystack-$reference';
       _pendingLocalSaleId = saleId;
       _pendingMpesaFingerprint = fingerprint;
-      state = state.copyWith(currentTransactionId: reference);
+      _pendingMpesaReference = reference;
+      await _persistPendingMerchantPayment();
+      state = state.copyWith(
+        currentTransactionId: reference,
+        hasUnresolvedMerchantPayment: true,
+      );
       final verified = await _pollMerchantMpesaStatus(reference);
       if (!_isCurrentSession(sessionGeneration)) return null;
       if (verified == null || verified['status'] != 'COMPLETED') {
@@ -334,9 +667,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
                 ? 'Payment was received but the receipt needs review. Give support reference $reference. Do not charge again.'
                 : 'Payment is still pending. Press Check M-Pesa Payment to check this reference without a second charge: $reference.';
         if (status == 'FAILED') {
-          _pendingLocalSaleId = null;
-          _pendingMpesaFingerprint = null;
-          _pendingMpesaRequestId = null;
+          await _clearPendingMerchantPayment(keepError: true);
           state = PaymentState(error: message);
         } else {
           state = state.copyWith(isProcessing: false, error: message);
@@ -382,9 +713,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       unawaited(_syncService.pullChanges());
       if (!_isCurrentSession(sessionGeneration)) return null;
 
-      _pendingLocalSaleId = null;
-      _pendingMpesaFingerprint = null;
-      _pendingMpesaRequestId = null;
+      await _clearPendingMerchantPayment(keepError: true);
       state = const PaymentState();
       return localSaleId;
     } catch (e) {
@@ -393,17 +722,51 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // prompted. Network and server errors keep the idempotency key so a
       // retry can recover the original reference instead of charging twice.
       if (state.currentTransactionId == null &&
-          e is DioException &&
-          [400, 401, 403, 404, 409, 422].contains(e.response?.statusCode)) {
-        _pendingLocalSaleId = null;
-        _pendingMpesaFingerprint = null;
-        _pendingMpesaRequestId = null;
+          _pendingMpesaReference == null &&
+          e is DioException) {
+        final statusCode = e.response?.statusCode;
+        if ([400, 401, 403, 404, 422].contains(statusCode)) {
+          await _clearPendingMerchantPayment(keepError: true);
+        } else if (statusCode == 409 && _pendingMpesaRequestId != null) {
+          // A conflict can mean either a harmless pre-charge validation (for
+          // example, payout verification) or an earlier live request. Only
+          // release this checkout lock when the server confirms this exact
+          // idempotency key was never created.
+          try {
+            final lookup = await _apiClient.getMerchantMpesaRequestStatus(
+              _pendingMpesaRequestId!,
+            );
+            if (!_isCurrentSession(sessionGeneration)) return null;
+            if (lookup['found'] == false) {
+              await _clearPendingMerchantPayment(keepError: true);
+            } else if (lookup['found'] == true && lookup['charge'] is Map) {
+              final charge = Map<String, dynamic>.from(lookup['charge'] as Map);
+              _recoveredMerchantCharge = charge;
+              _pendingMpesaReference = charge['reference']?.toString();
+              _isRecoveredMerchantPayment = true;
+              if (_pendingMpesaReference != null &&
+                  _pendingMpesaReference!.isNotEmpty) {
+                await _persistPendingMerchantPayment();
+              }
+            }
+          } catch (_) {
+            // Keep the lock if the lookup is unavailable; a conflict alone
+            // is not proof that the customer was not charged.
+          }
+        }
       }
+      final pendingReference =
+          state.currentTransactionId ?? _pendingMpesaReference;
       state = state.copyWith(
           isProcessing: false,
-          error: state.currentTransactionId == null
-              ? _paymentError(e)
-              : 'Payment reference ${state.currentTransactionId} must be checked before retrying. No new charge will be sent.');
+          currentTransactionId: pendingReference,
+          hasUnresolvedMerchantPayment: _hasUnresolvedMerchantPayment,
+          isRecoveredMerchantPayment: _isRecoveredMerchantPayment,
+          error: pendingReference != null
+              ? 'Payment reference $pendingReference must be checked before retrying. No new charge will be sent.'
+              : _hasUnresolvedMerchantPayment
+                  ? 'This M-Pesa request may have reached the provider. Open Payments and check it before trying again.'
+                  : _paymentError(e));
       return null;
     }
   }
@@ -417,6 +780,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    await ensurePendingMerchantPaymentLoaded();
     if (_blockPaymentStart()) return null;
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
@@ -482,6 +846,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     double discountAmount = 0,
     String? couponCode,
   }) async {
+    await ensurePendingMerchantPaymentLoaded();
     if (_blockPaymentStart()) return null;
     final sessionGeneration = _sessionGeneration;
     state = state.copyWith(isProcessing: true, error: null);
@@ -788,6 +1153,7 @@ final paymentProvider =
     syncService: getIt<SyncService>(),
     authService: getIt<AuthService>(),
     connectivity: getIt<ConnectivityService>(),
+    storageService: getIt<StorageService>(),
   );
   ref.listen(
     authControllerProvider.select((auth) => auth.isAuthenticated

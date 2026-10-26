@@ -97,14 +97,33 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
 
   Future<void> _refreshMerchantCharges() async {
     try {
+      final paymentNotifier = ref.read(paymentProvider.notifier);
+      await paymentNotifier.ensurePendingMerchantPaymentLoaded(force: true);
       final rows = await getIt<ApiClient>().getRecentMerchantCharges();
+      final recovered = paymentNotifier.recoveredMerchantCharge;
+      final reference = recovered?['reference']?.toString();
+      if (recovered != null &&
+          reference != null &&
+          !rows.any((row) => row['reference']?.toString() == reference)) {
+        rows.insert(0, recovered);
+      }
       if (mounted) setState(() => _merchantCharges = rows);
     } catch (_) {
       // Offline takings remain available from the local database.
     }
   }
 
+  Future<void> _retryPendingPaymentRecovery() async {
+    try {
+      await ref.read(paymentProvider.notifier).refreshPendingMerchantPayment();
+    } finally {
+      await _refreshMerchantCharges();
+    }
+  }
+
   Future<void> _checkMerchantCharge(String reference) async {
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final charge = await getIt<ApiClient>().getMerchantMpesaStatus(reference);
       await _refreshMerchantCharges();
@@ -115,15 +134,16 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
       final belongsToActiveCheckout =
           paymentNotifier.isActiveMerchantCheckout(reference);
       if (status == 'FAILED' || status == 'COMPLETED') {
-        paymentNotifier.acknowledgeMerchantPayment(reference, status);
+        await paymentNotifier.acknowledgeMerchantPayment(reference, status);
       }
+      if (!mounted) return;
 
       final isReceivable = charge['purpose']?.toString() == 'RECEIVABLE';
       if (status == 'COMPLETED' &&
           !belongsToActiveCheckout &&
           !isReceivable &&
           charge['saleId'] != null) {
-        context.push('/receipt/${charge['saleId']}');
+        router.push('/receipt/${charge['saleId']}');
         return;
       }
 
@@ -136,11 +156,10 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
           : status == 'NEEDS_REVIEW'
               ? 'Payment needs review. Give support reference $reference.'
               : 'Payment status: $status · $reference';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(
               content:
                   Text('Could not check payment yet. Try again when online.')),
@@ -241,6 +260,7 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
   @override
   Widget build(BuildContext context) {
     final businessLayout = ref.watch(businessLayoutProvider);
+    final paymentState = ref.watch(paymentProvider);
     return Scaffold(
       appBar: BrandedAppBar(
         title: businessLayout.actionLabel('/payments', 'Payments'),
@@ -448,10 +468,35 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                       ),
                     ],
 
+                    if (paymentState.hasUnresolvedMerchantPayment &&
+                        paymentState.isRecoveredMerchantPayment &&
+                        !_merchantCharges.any((row) =>
+                            row['reference'] ==
+                            paymentState.currentTransactionId)) ...[
+                      const SizedBox(height: DesignSpacing.xxl),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.pending_actions_rounded,
+                              color: DesignColors.warning),
+                          title: const Text('Previous M-Pesa payment'),
+                          subtitle: const Text(
+                              'Its status could not be loaded. Reconnect and check before taking another payment.'),
+                          trailing: TextButton(
+                            onPressed: _retryPendingPaymentRecovery,
+                            child: const Text('Retry'),
+                          ),
+                        ),
+                      ),
+                    ],
+
                     if (_merchantCharges.any((row) =>
                         row['status'] == 'PENDING' ||
                         row['status'] == 'NEEDS_REVIEW' ||
-                        row['status'] == 'SETTLING')) ...[
+                        row['status'] == 'SETTLING' ||
+                        (paymentState.isRecoveredMerchantPayment &&
+                            row['reference'] ==
+                                paymentState.currentTransactionId &&
+                            row['status'] == 'COMPLETED'))) ...[
                       const SizedBox(height: DesignSpacing.xxl),
                       const SectionHeader(
                         title: 'Payments to check',
@@ -464,7 +509,11 @@ class _PaymentsHubScreenState extends ConsumerState<PaymentsHubScreen> {
                           .where((row) =>
                               row['status'] == 'PENDING' ||
                               row['status'] == 'NEEDS_REVIEW' ||
-                              row['status'] == 'SETTLING')
+                              row['status'] == 'SETTLING' ||
+                              (paymentState.isRecoveredMerchantPayment &&
+                                  row['reference'] ==
+                                      paymentState.currentTransactionId &&
+                                  row['status'] == 'COMPLETED'))
                           .map((row) {
                         final reference = row['reference']?.toString() ?? '';
                         return Card(

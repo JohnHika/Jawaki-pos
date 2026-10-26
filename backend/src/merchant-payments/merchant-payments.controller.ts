@@ -34,6 +34,14 @@ export class MerchantPaymentsController {
     return this.payments.recentCharges(actor);
   }
 
+  @Get('requests/:requestId')
+  requestStatus(
+    @CurrentUser() actor: { sub: string; tenantId: string },
+    @Param('requestId') requestId: string,
+  ) {
+    return this.payments.requestStatus(actor, requestId);
+  }
+
   @Post('account')
   @UseGuards(PermissionsGuard)
   @RequirePermissions('roles.update')

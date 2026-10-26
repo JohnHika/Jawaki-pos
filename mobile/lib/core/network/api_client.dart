@@ -1114,6 +1114,14 @@ class ApiClient {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  Future<Map<String, dynamic>> getMerchantMpesaRequestStatus(
+      String requestId) async {
+    final response = await _dio.get(
+      '/merchant-payments/requests/${Uri.encodeComponent(requestId)}',
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<Map<String, dynamic>> startMerchantReceivableMpesaPayment(
       Map<String, dynamic> data) async {
     final response =

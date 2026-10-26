@@ -727,6 +727,19 @@ export class MerchantPaymentsService {
     }));
   }
 
+  async requestStatus(actor: Actor, requestId: string) {
+    const charge = await this.prisma.merchantCharge.findFirst({
+      where: {
+        tenantId: actor.tenantId,
+        cashierId: actor.sub,
+        requestId,
+        purpose: "SALE",
+      },
+    });
+    if (!charge) return { found: false };
+    return { found: true, charge: this.presentCharge(charge) };
+  }
+
   async handleWebhook(event: string, data: { reference?: string }) {
     if (event !== "charge.success" || !data?.reference)
       return { received: true, handled: false };
