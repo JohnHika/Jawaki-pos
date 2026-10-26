@@ -48,6 +48,9 @@ class _FakeAuth extends Fake implements AuthService {
   bool get isLocked => false;
 
   @override
+  bool get isAuthenticated => true;
+
+  @override
   String? get deviceId => null;
 
   @override
