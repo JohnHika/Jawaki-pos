@@ -69,9 +69,8 @@
         </activity>
         <!-- Launcher entries. ".MainActivity" keeps the component name the app has
              always had, so home-screen shortcuts created before this change keep
-             working; it is the default and the only one enabled out of the box.
-             The others are switched on by AppIconPlugin only when the user opts in
-             to the living icon. Exactly one is enabled at a time. -->
+             working. Exactly one of these state-aware icon aliases is enabled at a
+             time; AppActivity switches it only while the app moves to background. -->
         <activity-alias
             android:name=".MainActivity"
             android:targetActivity=".AppActivity"
@@ -123,6 +122,66 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak6" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_6" android:roundIcon="@mipmap/ic_launcher_streak_6" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak7" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_7" android:roundIcon="@mipmap/ic_launcher_streak_7" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak8" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_8" android:roundIcon="@mipmap/ic_launcher_streak_8" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak9" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_9" android:roundIcon="@mipmap/ic_launcher_streak_9" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak10" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_10" android:roundIcon="@mipmap/ic_launcher_streak_10" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak11" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_11" android:roundIcon="@mipmap/ic_launcher_streak_11" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconStreak12" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_streak_12" android:roundIcon="@mipmap/ic_launcher_streak_12" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert3" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_3" android:roundIcon="@mipmap/ic_launcher_alert_3" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert4" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_4" android:roundIcon="@mipmap/ic_launcher_alert_4" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert5" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_5" android:roundIcon="@mipmap/ic_launcher_alert_5" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert6" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_6" android:roundIcon="@mipmap/ic_launcher_alert_6" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert7" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_7" android:roundIcon="@mipmap/ic_launcher_alert_7" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert8" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_8" android:roundIcon="@mipmap/ic_launcher_alert_8" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconAlert9" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_alert_9" android:roundIcon="@mipmap/ic_launcher_alert_9" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGold5" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_gold_5" android:roundIcon="@mipmap/ic_launcher_gold_5" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGold10" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_gold_10" android:roundIcon="@mipmap/ic_launcher_gold_10" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGold20" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_gold_20" android:roundIcon="@mipmap/ic_launcher_gold_20" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGold50" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_gold_50" android:roundIcon="@mipmap/ic_launcher_gold_50" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGold100" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_gold_100" android:roundIcon="@mipmap/ic_launcher_gold_100" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGold200" android:targetActivity=".AppActivity" android:exported="true" android:enabled="false" android:icon="@mipmap/ic_launcher_gold_200" android:roundIcon="@mipmap/ic_launcher_gold_200" android:label="@string/counterbase_app_label">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity-alias>
         <!-- FileProvider required for Android 7+ so we can share downloaded APKs
              with the system package installer using a content:// URI. -->

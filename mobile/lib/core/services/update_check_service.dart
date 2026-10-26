@@ -147,6 +147,7 @@ class UpdateCheckService extends ChangeNotifier {
   bool _isDownloading = false;
   bool _isInstalling = false;
   bool _updateOperationInProgress = false;
+  CancelToken? _activeDownloadCancelToken;
   bool _requiresInstallerPermission = false;
   double? _downloadProgress;
   int? _downloadedBytes;
@@ -265,8 +266,11 @@ class UpdateCheckService extends ChangeNotifier {
         }
       }
 
-      // Step 3: Use primary update if available, otherwise use secondary
-      final manifest = primaryUpdate ?? secondaryUpdate;
+      // Step 3: Prefer the newest release found across both sources. The API
+      // manifest can lag the GitHub release briefly (or after a failed
+      // manifest publish); when that happens, choosing the first non-null
+      // result would hide a newer APK that we already discovered.
+      final manifest = _newestAvailableUpdate(primaryUpdate, secondaryUpdate);
       if (manifest != null) {
         _cachedUpdate = manifest;
         _errorMessage = null;
@@ -653,6 +657,14 @@ class UpdateCheckService extends ChangeNotifier {
     await _downloadAndInstall(activeGateUpdate);
   }
 
+  /// Stops the active APK transfer. The download loop removes any partial
+  /// file and the gate returns to its retry state; installer handoff cannot
+  /// be cancelled here.
+  void cancelUpdateDownload() {
+    if (!_isDownloading || _isInstalling) return;
+    _activeDownloadCancelToken?.cancel('Update download cancelled by user.');
+  }
+
   Future<void> openInstallerPermissionSettings() async {
     if (!_isAndroid) return;
 
@@ -705,10 +717,15 @@ class UpdateCheckService extends ChangeNotifier {
       ..start();
     notifyListeners();
 
+    final cancelToken = CancelToken();
+    _activeDownloadCancelToken = cancelToken;
     try {
       final updateIdentity = _updateIdentity(update);
       final file = await _reuseDownloadedApk(updateIdentity) ??
-          await _downloadApk(update);
+          await _downloadApk(update, cancelToken: cancelToken);
+      if (cancelToken.isCancelled) {
+        throw cancelToken.cancelError!;
+      }
       _downloadedApkPath = file.path;
       _downloadedApkIdentity = updateIdentity;
       _isDownloading = false;
@@ -744,10 +761,17 @@ class UpdateCheckService extends ChangeNotifier {
       if (!kReleaseMode) {
         debugPrint('[UpdateCheck] Download/install error: $error');
       }
+    } finally {
+      if (identical(_activeDownloadCancelToken, cancelToken)) {
+        _activeDownloadCancelToken = null;
+      }
     }
   }
 
   String _friendlyDownloadError(Object error) {
+    if (error is DioException && CancelToken.isCancel(error)) {
+      return 'Download cancelled. Tap retry to download the update again.';
+    }
     if (error is DioException) {
       final status = error.response?.statusCode;
       if (status == 404) {
@@ -795,7 +819,10 @@ class UpdateCheckService extends ChangeNotifier {
     }
   }
 
-  Future<File> _downloadApk(AppUpdateInfo update) async {
+  Future<File> _downloadApk(
+    AppUpdateInfo update, {
+    required CancelToken cancelToken,
+  }) async {
     final tempDir = await getTemporaryDirectory();
     final safeVersion =
         update.displayVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
@@ -844,7 +871,10 @@ class UpdateCheckService extends ChangeNotifier {
       final actual = await existing.length();
       for (var index = 0; index < downloadUrls.length; index++) {
         try {
-          final head = await downloader.head(downloadUrls[index]);
+          final head = await downloader.head(
+            downloadUrls[index],
+            cancelToken: cancelToken,
+          );
           final expected = int.tryParse(
               head.headers.value(Headers.contentLengthHeader) ?? '');
           if (expected != null && expected > 0 && expected == actual) {
@@ -855,6 +885,7 @@ class UpdateCheckService extends ChangeNotifier {
             return existing;
           }
         } catch (_) {
+          if (cancelToken.isCancelled) rethrow;
           if (index == downloadUrls.length - 1) {
             final fallback = await _githubFallbackUrlForUpdate(update);
             if (fallback != null && !downloadUrls.contains(fallback)) {
@@ -879,6 +910,7 @@ class UpdateCheckService extends ChangeNotifier {
         await downloader.download(
           url,
           filePath,
+          cancelToken: cancelToken,
           deleteOnError: true,
           onReceiveProgress: (received, total) {
             _downloadedBytes = received;
@@ -896,6 +928,10 @@ class UpdateCheckService extends ChangeNotifier {
           final partial = File(filePath);
           if (await partial.exists()) await partial.delete();
         } catch (_) {}
+        if (cancelToken.isCancelled ||
+            (error is DioException && CancelToken.isCancel(error))) {
+          rethrow;
+        }
         if (index == downloadUrls.length - 1) {
           final fallback = await _githubFallbackUrlForUpdate(update);
           if (fallback != null && !downloadUrls.contains(fallback)) {
@@ -1072,6 +1108,54 @@ class UpdateCheckService extends ChangeNotifier {
     }
 
     return isNewerAppVersion(latestVersion, currentVersion);
+  }
+
+  AppUpdateInfo? _newestAvailableUpdate(
+    AppUpdateInfo? primary,
+    AppUpdateInfo? secondary,
+  ) {
+    if (primary == null) return secondary;
+    if (secondary == null) return primary;
+
+    final primaryBuild = primary.buildNumber;
+    final secondaryBuild = secondary.buildNumber;
+    if (primaryBuild != null && secondaryBuild != null) {
+      // Android versionCode is the release-line authority and remains
+      // monotonic even when the visible version name is reset.
+      return secondaryBuild > primaryBuild
+          ? _applyUpdatePolicy(primary, secondary)
+          : primary;
+    }
+
+    // Legacy sources may omit buildNumber. Compare their version strings in
+    // that case, retaining the API manifest on a tie because it carries the
+    // server-controlled minimum-version and force-update policy.
+    return isNewerAppVersion(secondary.latestVersion, primary.latestVersion)
+        ? _applyUpdatePolicy(primary, secondary)
+        : primary;
+  }
+
+  AppUpdateInfo _applyUpdatePolicy(
+    AppUpdateInfo policySource,
+    AppUpdateInfo release,
+  ) {
+    return AppUpdateInfo(
+      latestVersion: release.latestVersion,
+      releaseName: release.releaseName,
+      buildNumber: release.buildNumber,
+      minSupportedVersion: policySource.minSupportedVersion.isNotEmpty
+          ? policySource.minSupportedVersion
+          : release.minSupportedVersion,
+      minSupportedBuildNumber: policySource.minSupportedBuildNumber ??
+          release.minSupportedBuildNumber,
+      forceUpdate: policySource.forceUpdate || release.forceUpdate,
+      apkUrl: release.apkUrl,
+      releaseNotes: release.releaseNotes.trim().isNotEmpty
+          ? release.releaseNotes
+          : policySource.releaseNotes,
+      publishedAt: release.publishedAt,
+      updateSources: release.updateSources,
+    );
   }
 
   bool _isBelowMinimum({

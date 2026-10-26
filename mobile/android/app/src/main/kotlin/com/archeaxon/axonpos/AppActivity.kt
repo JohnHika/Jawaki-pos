@@ -29,8 +29,28 @@ class AppActivity : FlutterFragmentActivity() {
 	private val iconAliases = linkedMapOf(
 		"standard" to "MainActivity",
 		"streak" to "IconStreak",
+		"streak_6" to "IconStreak6",
+		"streak_7" to "IconStreak7",
+		"streak_8" to "IconStreak8",
+		"streak_9" to "IconStreak9",
+		"streak_10" to "IconStreak10",
+		"streak_11" to "IconStreak11",
+		"streak_12" to "IconStreak12",
 		"alert" to "IconAlert",
+		"alert_3" to "IconAlert3",
+		"alert_4" to "IconAlert4",
+		"alert_5" to "IconAlert5",
+		"alert_6" to "IconAlert6",
+		"alert_7" to "IconAlert7",
+		"alert_8" to "IconAlert8",
+		"alert_9" to "IconAlert9",
 		"gold" to "IconGold",
+		"gold_5" to "IconGold5",
+		"gold_10" to "IconGold10",
+		"gold_20" to "IconGold20",
+		"gold_50" to "IconGold50",
+		"gold_100" to "IconGold100",
+		"gold_200" to "IconGold200",
 	)
 
 	private fun aliasComponent(simpleName: String) =

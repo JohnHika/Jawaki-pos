@@ -302,7 +302,7 @@ class _MerchantPayoutSetupScreenState extends State<MerchantPayoutSetupScreen>
                                         ),
                                         const SizedBox(height: 5),
                                         Text(
-                                          'Customer M-Pesa and debt payments route through a verified Paystack bank subaccount. New or changed subaccounts stay unavailable until a Paystack integration administrator verifies them. Paystack sets the settlement schedule and may hold the first payout while verification is pending. This screen supports bank destinations; M-Pesa wallet payouts use a separate Paystack Transfers flow with transfer fees.',
+                                          'Customer M-Pesa and debt payments go to the verified bank account shown here, then settle on Paystack’s schedule. This setup cannot send those sales directly to an M-Pesa wallet. Wallet payouts use a separate Paystack Transfers flow with separate fees, and Counterbase does not offer that flow here. Paystack must verify new or changed bank details first.',
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall,

@@ -27,6 +27,8 @@ class StorageService implements LifecycleLockStorage {
   static const String keySyncCursor = 'sync_cursor';
   static const String keyPinHash = 'pin_hash';
   static const String keyPinSalt = 'pin_salt';
+  static const String keyPinLength = 'pin_length';
+  static const String keyRememberedServerPinLength = 'server_pin_length';
   static const String keyFavoriteProducts = 'favorite_products';
   static const String keyRememberLogin = 'remember_login';
   static const String keyRememberedEmail = 'remembered_email';
@@ -37,6 +39,7 @@ class StorageService implements LifecycleLockStorage {
   static const String keyAutoLockMinutes = 'setting_auto_lock_minutes';
   static const String keyPrimaryLoginMethod = 'setting_primary_login_method';
   static const String keyAuthLocked = 'auth_locked';
+  static const String keyAppBackgroundedAtMs = 'app_backgrounded_at_ms';
   static const String keySupplierDataMigrated = 'supplier_data_migrated_v1';
   static const String keyFinanceSnapshotPrefix = 'finance_snapshot_v1';
   static const String keyHeldSalesPrefix = 'held_sales_v1';
@@ -92,31 +95,55 @@ class StorageService implements LifecycleLockStorage {
 
   /// Key-stretching for the stored quick-unlock PIN: a 4-digit PIN has only
   /// 10,000 possible values, so a single SHA-256 round (the legacy v1
-  /// format) is far too cheap to brute force offline. v2 chains the digest
+  /// format) is far too cheap to brute force offline. The current format chains the digest
   /// this many times — sha256(prevDigest:salt:pin) — multiplying each
   /// guess's cost on-device while staying fast enough (tens of ms) for a
   /// single unlock attempt.
   static const int _pinHashRounds = 10000;
+  static const String _pinHashV3Prefix = 'v3:';
   static const String _pinHashV2Prefix = 'v2:';
   static const int _pinHashMaxRounds = 1000000; // reject absurd stored values
 
   /// Sets (or replaces) the on-device quick-unlock PIN. Stores a
-  /// self-describing `v2:<rounds>:<salt>:<hash>` stretched digest, never
+  /// self-describing `v3:<length>:<rounds>:<salt>:<hash>` stretched digest, never
   /// the raw digits — the per-device random salt stops precomputed-table
   /// reversal and the digest chain makes brute-forcing the stored value
   /// expensive on-device.
   Future<void> setLocalPin(String pin) async {
     _checkInitialized();
+    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      throw ArgumentError.value(pin, 'pin', 'PIN must contain 4 to 6 digits.');
+    }
     final salt = _generateSalt();
     final hash = _hashPin(pin, salt, _pinHashRounds);
     await _secureStorage!.write(
       key: keyPinHash,
-      value: '$_pinHashV2Prefix$_pinHashRounds:$salt:$hash',
+      value: '$_pinHashV3Prefix${pin.length}:$_pinHashRounds:$salt:$hash',
     );
-    // The v2 hash carries its own salt; this legacy key is kept in sync so
+    // The v3 hash carries its own salt; this legacy key is kept in sync so
     // the v1 verification path (which reads it) stays coherent for entries
     // that have not been upgraded yet.
     await _secureStorage!.write(key: keyPinSalt, value: salt);
+    await _secureStorage!.write(key: keyPinLength, value: '${pin.length}');
+  }
+
+  /// Returns the on-device quick-unlock PIN length without exposing the PIN.
+  Future<int?> getConfiguredPinLength() async {
+    _checkInitialized();
+    final storedHash = await _secureStorage!.read(key: keyPinHash);
+    if (storedHash != null && storedHash.startsWith(_pinHashV3Prefix)) {
+      final parts = storedHash.split(':');
+      if (parts.length == 5) {
+        final length = int.tryParse(parts[1]);
+        if (length != null && length >= 4 && length <= 6) return length;
+      }
+    }
+
+    // Older v1/v2 hashes don't encode their length. Use the separate local
+    // metadata when it exists so quick unlock still enforces the right size.
+    final value = await _secureStorage!.read(key: keyPinLength);
+    final length = int.tryParse(value ?? '');
+    return length != null && length >= 4 && length <= 6 ? length : null;
   }
 
   Future<bool> hasLocalPinSet() async {
@@ -127,15 +154,36 @@ class StorageService implements LifecycleLockStorage {
 
   /// Verifies a PIN entirely on-device — no network call, matching how
   /// biometric unlock already works. Accepts both the stretched
-  /// `v2:<rounds>:<salt>:<hash>` format and the legacy single-round
+  /// v3 and `v2:<rounds>:<salt>:<hash>` formats and the legacy single-round
   /// salt+hash pair written by older releases; a legacy match is
-  /// transparently re-stored in v2 (the plain PIN is in hand at that
+  /// transparently re-stored in v3 (the plain PIN is in hand at that
   /// moment) so existing installs converge on the stretched hash without a
   /// forced PIN reset.
   Future<bool> verifyLocalPin(String pin) async {
     _checkInitialized();
     final storedHash = await _secureStorage!.read(key: keyPinHash);
     if (storedHash == null || storedHash.isEmpty) return false;
+
+    if (storedHash.startsWith(_pinHashV3Prefix)) {
+      final parts = storedHash.split(':');
+      if (parts.length != 5) return false;
+      final pinLength = int.tryParse(parts[1]);
+      final rounds = int.tryParse(parts[2]);
+      final salt = parts[3];
+      final expected = parts[4];
+      if (pinLength == null ||
+          pinLength < 4 ||
+          pinLength > 6 ||
+          pin.length != pinLength ||
+          rounds == null ||
+          rounds < 1 ||
+          rounds > _pinHashMaxRounds ||
+          salt.isEmpty ||
+          expected.isEmpty) {
+        return false;
+      }
+      return _constantTimeEquals(_hashPin(pin, salt, rounds), expected);
+    }
 
     if (storedHash.startsWith(_pinHashV2Prefix)) {
       final parts = storedHash.split(':');
@@ -150,7 +198,16 @@ class StorageService implements LifecycleLockStorage {
           expected.isEmpty) {
         return false;
       }
-      return _constantTimeEquals(_hashPin(pin, salt, rounds), expected);
+      final matches =
+          _constantTimeEquals(_hashPin(pin, salt, rounds), expected);
+      if (matches) {
+        try {
+          await setLocalPin(pin);
+        } catch (_) {
+          // Keep the existing digest valid if the metadata upgrade fails.
+        }
+      }
+      return matches;
     }
 
     // Legacy v1: single-round sha256('<salt>:<pin>') with the salt stored
@@ -174,6 +231,11 @@ class StorageService implements LifecycleLockStorage {
     _checkInitialized();
     await _secureStorage!.delete(key: keyPinHash);
     await _secureStorage!.delete(key: keyPinSalt);
+    await _secureStorage!.delete(key: keyPinLength);
+    // Remove the server-length hint saved by older builds. Online login now
+    // grows the slot row as digits are entered, so that cached value is stale
+    // by definition when the account PIN changes from another device.
+    await _secureStorage!.delete(key: keyRememberedServerPinLength);
   }
 
   // Quick-unlock throttle state (see AuthService.unlockWithPin): the failed
@@ -619,9 +681,32 @@ class StorageService implements LifecycleLockStorage {
     return _prefs?.getBool(keyAuthLocked) ?? false;
   }
 
+  @override
+  DateTime? getAppBackgroundedAt() {
+    final milliseconds = _prefs?.getInt(keyAppBackgroundedAtMs);
+    if (milliseconds == null || milliseconds <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
+
+  @override
+  Future<void> setAppBackgroundedAt(DateTime timestamp) async {
+    _checkInitialized();
+    await _prefs!.setInt(
+      keyAppBackgroundedAtMs,
+      timestamp.millisecondsSinceEpoch,
+    );
+  }
+
+  @override
+  Future<void> clearAppBackgroundedAt() async {
+    _checkInitialized();
+    await _prefs!.remove(keyAppBackgroundedAtMs);
+  }
+
   Future<void> setAuthLocked(bool locked) async {
     _checkInitialized();
     await _prefs!.setBool(keyAuthLocked, locked);
+    if (!locked) await clearAppBackgroundedAt();
   }
 
   /// Whether this device's pre-existing local supplier invoices/payments
@@ -727,5 +812,6 @@ class StorageService implements LifecycleLockStorage {
     await _prefs!.remove(keyTenantSlug);
     await _prefs!.remove(keyLastSyncAt);
     await _prefs!.remove(keyAuthLocked);
+    await _prefs!.remove(keyAppBackgroundedAtMs);
   }
 }

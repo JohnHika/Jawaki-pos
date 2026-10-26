@@ -17,13 +17,17 @@ abstract class LifecycleLockAuth {
 abstract class LifecycleLockStorage {
   bool requireUnlockOnResume();
   int getAutoLockMinutes();
+  DateTime? getAppBackgroundedAt();
+  Future<void> setAppBackgroundedAt(DateTime timestamp);
+  Future<void> clearAppBackgroundedAt();
 }
 
 /// Controller that listens to [AppLifecycleState] changes and enforces the
 /// app's auto-lock and require-unlock-on-resume policies.
 ///
 /// Responsibilities:
-/// 1. Records a timestamp when the app backgrounds (paused/detached).
+/// 1. Persists a timestamp when the app backgrounds (paused/detached), so
+///    timer-based locks still work if Android kills the process.
 /// 2. On resume, checks if [requireUnlockOnResume] is true (immediate lock)
 ///    or if [getAutoLockMinutes] > 0 and the elapsed background time exceeds
 ///    the configured window.
@@ -42,6 +46,7 @@ class LifecycleLockController extends WidgetsBindingObserver {
   final GlobalKey<NavigatorState>? navigatorKey;
 
   DateTime? _backgroundedAt;
+  Future<void> _backgroundPersistence = Future<void>.value();
 
   LifecycleLockController({
     required this.authService,
@@ -57,7 +62,15 @@ class LifecycleLockController extends WidgetsBindingObserver {
   /// a background state (paused or detached).
   @visibleForTesting
   void onAppBackgrounded() {
-    _backgroundedAt = DateTime.now();
+    final timestamp = DateTime.now();
+    _backgroundedAt = timestamp;
+    _backgroundPersistence = _backgroundPersistence.then((_) async {
+      try {
+        await storageService.setAppBackgroundedAt(timestamp);
+      } catch (error) {
+        debugPrint('[LifecycleLock] Could not persist background time: $error');
+      }
+    });
     debugPrint(
       '[LifecycleLock] App backgrounded at $_backgroundedAt',
     );
@@ -69,18 +82,24 @@ class LifecycleLockController extends WidgetsBindingObserver {
   @visibleForTesting
   Future<void> onAppResumed() async {
     debugPrint('[LifecycleLock] App resumed');
+    // If the app resumed before the async preference write completed, wait
+    // for it before clearing the marker so it cannot land stale afterward.
+    await _backgroundPersistence;
 
     // Only enforce locks for authenticated sessions.
     if (!authService.isAuthenticated) {
       debugPrint('[LifecycleLock] Not authenticated — skipping lock check');
       _backgroundedAt = null;
+      await storageService.clearAppBackgroundedAt();
       return;
     }
 
     final requireUnlock = storageService.requireUnlockOnResume();
     final autoLockMinutes = storageService.getAutoLockMinutes();
-    final backgroundedAt = _backgroundedAt;
+    final backgroundedAt =
+        _backgroundedAt ?? storageService.getAppBackgroundedAt();
     _backgroundedAt = null;
+    await storageService.clearAppBackgroundedAt();
 
     debugPrint(
       '[LifecycleLock] requireUnlockOnResume=$requireUnlock, '

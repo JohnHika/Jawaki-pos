@@ -317,7 +317,7 @@ class SettingsScreen extends ConsumerWidget {
               id: 'appearance',
               icon: Icons.palette_rounded,
               title: 'Appearance',
-              subtitle: 'Light or dark look, and your app icon',
+              subtitle: 'Light or dark look and your adaptive app icon',
               keywords: const ['theme', 'dark mode', 'light mode', 'colour'],
               trailing: SettingsStatusChip(
                 text: themeLabel,
@@ -2799,13 +2799,17 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   late int _autoLockMinutes;
   late String _primaryLoginMethod;
   bool _isConfirmingBiometric = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
     _biometricEnabled = widget.biometricEnabled;
     _requireUnlockOnResume = widget.requireUnlockOnResume;
-    _autoLockMinutes = widget.autoLockMinutes;
+    const supportedLockDelays = {0, 1, 5, 15, 30};
+    _autoLockMinutes = supportedLockDelays.contains(widget.autoLockMinutes)
+        ? widget.autoLockMinutes
+        : 0;
     _primaryLoginMethod = widget.primaryLoginMethod;
   }
 
@@ -2817,10 +2821,32 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
   /// that was never actually verified.
   Future<void> _onBiometricToggled(bool enabling) async {
     if (!enabling) {
-      setState(() => _biometricEnabled = false);
-      await getIt<StorageService>().setBiometricEnabled(false);
-      if (_primaryLoginMethod == 'biometric') {
-        setState(() => _primaryLoginMethod = 'pin');
+      final shouldFallbackToPin = _primaryLoginMethod == 'biometric';
+      setState(() => _isConfirmingBiometric = true);
+      try {
+        final storage = getIt<StorageService>();
+        if (shouldFallbackToPin) {
+          await storage.setPrimaryLoginMethod('pin');
+        }
+        if (!mounted) return;
+        setState(() {
+          if (shouldFallbackToPin) _primaryLoginMethod = 'pin';
+        });
+        await storage.setBiometricEnabled(false);
+        if (!mounted) return;
+        setState(() {
+          _biometricEnabled = false;
+          _isConfirmingBiometric = false;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isConfirmingBiometric = false);
+        showGlassSnackBar(
+          context,
+          'Could not save the biometric setting. ${apiErrorMessage(e)}',
+          icon: Icons.error_outline_rounded,
+          color: DesignColors.error,
+        );
       }
       return;
     }
@@ -2828,19 +2854,38 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
     setState(() => _isConfirmingBiometric = true);
     try {
       final confirmed = await getIt<AuthService>().confirmBiometricEnrollment();
+      await getIt<StorageService>().setBiometricEnabled(confirmed);
+      if (!mounted) return;
       setState(() {
         _biometricEnabled = confirmed;
         _isConfirmingBiometric = false;
+        if (!confirmed && _primaryLoginMethod == 'biometric') {
+          _primaryLoginMethod = 'pin';
+        }
       });
-      await getIt<StorageService>().setBiometricEnabled(confirmed);
+      if (!confirmed && _primaryLoginMethod == 'pin') {
+        await getIt<StorageService>().setPrimaryLoginMethod('pin');
+      }
       if (!confirmed && mounted) {
         showGlassSnackBar(context, 'Fingerprint check failed or was cancelled',
             icon: Icons.fingerprint_rounded, color: DesignColors.error);
       }
     } catch (e) {
+      try {
+        final storage = getIt<StorageService>();
+        await storage.setBiometricEnabled(false);
+        if (_primaryLoginMethod == 'biometric') {
+          await storage.setPrimaryLoginMethod('pin');
+        }
+      } catch (_) {
+        // Keep the UI fallback even if secure preference storage is failing.
+      }
+      if (!mounted) return;
+      final shouldFallbackToPin = _primaryLoginMethod == 'biometric';
       setState(() {
         _biometricEnabled = false;
         _isConfirmingBiometric = false;
+        if (shouldFallbackToPin) _primaryLoginMethod = 'pin';
       });
       if (mounted) {
         showGlassSnackBar(context,
@@ -2891,11 +2936,13 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                   SettingsRow(
                     icon: Icons.login_rounded,
                     title: 'Primary sign-in method',
-                    subtitle: 'Your preferred option is highlighted. Biometrics unlock a remembered session; full sign-in still needs an account.',
+                    subtitle:
+                        'Your preferred option is highlighted. Biometrics unlock a remembered session; full sign-in still needs an account.',
                     trailing: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _primaryLoginMethod == 'biometric' &&
-                                !(_biometricEnabled && widget.biometricAvailable)
+                                !(_biometricEnabled &&
+                                    widget.biometricAvailable)
                             ? 'pin'
                             : _primaryLoginMethod,
                         isDense: true,
@@ -2919,11 +2966,13 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                               child: Text('Biometric'),
                             ),
                         ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _primaryLoginMethod = value);
-                          }
-                        },
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                if (value != null) {
+                                  setState(() => _primaryLoginMethod = value);
+                                }
+                              },
                       ),
                     ),
                     showChevron: false,
@@ -2938,8 +2987,9 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     subtitle: widget.biometricAvailable
                         ? "Use an enrolled fingerprint or face; PIN and pattern are not biometric sign-in."
                         : 'Set up fingerprint or face recognition in Android settings first.',
-                    enabled:
-                        widget.biometricAvailable && !_isConfirmingBiometric,
+                    enabled: widget.biometricAvailable &&
+                        !_isConfirmingBiometric &&
+                        !_isSaving,
                     trailing: _isConfirmingBiometric
                         ? const SizedBox(
                             width: 20,
@@ -2950,7 +3000,7 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                                 _biometricEnabled && widget.biometricAvailable,
                             activeThumbColor: DesignColors.accent,
                             onChanged: widget.biometricAvailable
-                                ? _onBiometricToggled
+                                ? (_isSaving ? null : _onBiometricToggled)
                                 : null,
                           ),
                   ),
@@ -2962,8 +3012,9 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                     trailing: Switch(
                       value: _requireUnlockOnResume,
                       activeThumbColor: DesignColors.accent,
-                      onChanged: (v) =>
-                          setState(() => _requireUnlockOnResume = v),
+                      onChanged: _isSaving
+                          ? null
+                          : (v) => setState(() => _requireUnlockOnResume = v),
                     ),
                   ),
                 ],
@@ -2973,13 +3024,26 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                 children: [
                   SettingsRow(
                     icon: Icons.timer_outlined,
-                    title: 'Lock the app after',
-                    enabled: _requireUnlockOnResume,
+                    title: 'Otherwise, lock after',
+                    subtitle: _requireUnlockOnResume
+                        ? 'Immediate unlock is on. Turn it off to use a timer.'
+                        : 'Ask for your PIN or biometrics after this time away.',
+                    enabled: !_requireUnlockOnResume,
                     trailing: DropdownButton<int>(
-                      value: _autoLockMinutes,
+                      value: _requireUnlockOnResume ? -1 : _autoLockMinutes,
                       underline: const SizedBox(),
-                      onChanged: _requireUnlockOnResume
-                          ? (v) => setState(() => _autoLockMinutes = v ?? -1)
+                      onChanged: !_requireUnlockOnResume && !_isSaving
+                          ? (v) {
+                              if (v == null) return;
+                              setState(() {
+                                if (v == -1) {
+                                  _requireUnlockOnResume = true;
+                                } else {
+                                  _requireUnlockOnResume = false;
+                                  _autoLockMinutes = v;
+                                }
+                              });
+                            }
                           : null,
                       items: const [
                         DropdownMenuItem(value: -1, child: Text('Immediately')),
@@ -2998,25 +3062,51 @@ class _SecuritySettingsSheetState extends State<_SecuritySettingsSheet> {
                 width: double.infinity,
                 child: SettingsPrimaryButton(
                   label: 'Save',
+                  isLoading: _isSaving,
                   onPressed: () async {
+                    if (_isSaving) return;
+                    setState(() => _isSaving = true);
                     // Biometric is committed immediately by the toggle itself
                     // (it needs a real, just-in-time authenticate() check) —
                     // only the remaining two settings are deferred to Save.
                     final storage = getIt<StorageService>();
-                    await storage
-                        .setRequireUnlockOnResume(_requireUnlockOnResume);
-                    await storage.setAutoLockMinutes(_autoLockMinutes);
-                    await storage.setPrimaryLoginMethod(
-                      _primaryLoginMethod == 'biometric' &&
-                              !(_biometricEnabled && widget.biometricAvailable)
-                          ? 'pin'
-                          : _primaryLoginMethod,
-                    );
-                    if (context.mounted) {
+                    try {
+                      await storage
+                          .setRequireUnlockOnResume(_requireUnlockOnResume);
+                      await storage.setAutoLockMinutes(_autoLockMinutes);
+                      await storage.setPrimaryLoginMethod(
+                        _primaryLoginMethod == 'biometric' &&
+                                !(_biometricEnabled &&
+                                    widget.biometricAvailable)
+                            ? 'pin'
+                            : _primaryLoginMethod,
+                      );
+                      if (!context.mounted) return;
+                      final messenger = ScaffoldMessenger.of(context);
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(
-                            content: Text('Security settings saved')),
+                          content: Text('Security settings saved'),
+                        ),
+                      );
+                    } catch (error) {
+                      if (!mounted) return;
+                      setState(() {
+                        // A preference write may have failed after an earlier
+                        // one succeeded. Reflect what is actually stored so
+                        // the visible controls never claim unsaved values.
+                        _requireUnlockOnResume =
+                            storage.requireUnlockOnResume();
+                        _autoLockMinutes = storage.getAutoLockMinutes();
+                        _primaryLoginMethod = storage.getPrimaryLoginMethod();
+                        _biometricEnabled = storage.isBiometricEnabled();
+                        _isSaving = false;
+                      });
+                      showGlassSnackBar(
+                        context,
+                        'Could not save security settings. ${apiErrorMessage(error)}',
+                        icon: Icons.error_outline_rounded,
+                        color: DesignColors.error,
                       );
                     }
                   },

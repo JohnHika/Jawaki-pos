@@ -518,6 +518,24 @@ class ProductsScreen extends ConsumerWidget {
                         : Colors.white,
                     child: Column(
                       children: [
+                        if (syncAsync.hasError && products.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              DesignSpacing.lg,
+                              DesignSpacing.sm,
+                              DesignSpacing.lg,
+                              DesignSpacing.sm,
+                            ),
+                            child: InlineRetryNotice(
+                              message: isPermissionDenied(syncAsync.error)
+                                  ? 'Saved products are shown, but your role cannot refresh the catalog. Ask an administrator to check product access.'
+                                  : 'Catalog refresh failed. Saved products are still available, but prices and stock may be out of date.',
+                              onRetry: isPermissionDenied(syncAsync.error)
+                                  ? null
+                                  : () => ref.invalidate(
+                                      _catalogSyncProvider(currentUserId)),
+                            ),
+                          ),
                         if (categoriesAsync.hasError)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(

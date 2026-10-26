@@ -881,6 +881,23 @@ class _SubscriptionBillingScreenState
     final status = _entitlement?.status.toUpperCase();
     final isTrial = status == 'TRIAL';
     final isActive = status == 'ACTIVE';
+    final String planSummary;
+    if (plan == null) {
+      planSummary = 'Reconnect to load your current plan';
+    } else if (_entitlement == null || status == null || status == 'UNKNOWN') {
+      planSummary = 'Reconnect to confirm your subscription status';
+    } else if (_entitlement!.source != EntitlementSource.live) {
+      planSummary =
+          'Saved status: ${_statusLabel(status)} · reconnect to confirm';
+    } else if (isTrial) {
+      planSummary = _pendingPlan == null
+          ? '${plan.name} · choose the plan for after your trial'
+          : '${plan.name} · ${_pendingPlan!.name} selected for after your trial';
+    } else if (isActive) {
+      planSummary = '${plan.name} · active subscription';
+    } else {
+      planSummary = '${plan.name} · ${_statusLabel(status)}';
+    }
     return Container(
       padding: const EdgeInsets.all(DesignSpacing.md),
       decoration: BoxDecoration(
@@ -914,15 +931,7 @@ class _SubscriptionBillingScreenState
                 ),
                 const SizedBox(height: DesignSpacing.xs),
                 Text(
-                  plan == null
-                      ? 'Reconnect to load your current plan'
-                      : isTrial
-                          ? _pendingPlan == null
-                              ? '${plan.name} · choose the plan for after your trial'
-                              : '${plan.name} · ${_pendingPlan!.name} selected for after your trial'
-                          : isActive
-                              ? '${plan.name} · active subscription'
-                              : '${plan.name} · payment required',
+                  planSummary,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: context.themed(DesignColors.darkTextSecondary),
                       ),
@@ -995,7 +1004,13 @@ class _SubscriptionBillingScreenState
     }
 
     final entitlement = _entitlement;
-    if (entitlement == null) return _buildPayWithMpesaButton();
+    if (entitlement == null ||
+        entitlement.source != EntitlementSource.live ||
+        entitlement.status.toUpperCase() == 'UNKNOWN') {
+      return _buildInvoicePreparationNotice(
+        'Reconnect to verify your subscription before starting a payment.',
+      );
+    }
     final openInvoice = _openInvoiceForPayment();
     final provider = openInvoice?['provider']?.toString().toUpperCase();
     if (provider == 'JENGA_STK_INITIALIZING') {

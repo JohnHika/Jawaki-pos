@@ -36,7 +36,6 @@ class AuthService implements LifecycleLockAuth {
   AuthStatus _currentStatus = AuthStatus.unknown;
   Map<String, dynamic>? _currentUser;
   String? _accessToken;
-  DateTime? _backgroundedAt;
   DateTime? _lastTenantSettingsRefreshAt;
 
   // ── Quick-unlock PIN throttle ──
@@ -92,6 +91,10 @@ class AuthService implements LifecycleLockAuth {
   /// cleared from memory (e.g. after a lock/unlock cycle) but still exists
   /// in storage.
   Future<String?> getAccessTokenWithFallback() async {
+    // Locking clears only the in-memory token so PIN/biometric unlock can
+    // restore the session. Never let the interceptor reload that token while
+    // the authentication challenge is still active.
+    if (!isAuthenticated) return null;
     if (_accessToken != null) return _accessToken;
     final stored = await _storage.getAccessToken();
     if (stored != null && stored.isNotEmpty) {
@@ -159,11 +162,8 @@ class AuthService implements LifecycleLockAuth {
 
     if (_accessToken?.isNotEmpty == true && _currentUser != null) {
       // "Remember me" was off at the last login: a stored session surviving
-      // to a fresh cold start means the app was fully closed and reopened
-      // (not just backgrounded — resume-locking is handled separately by
-      // lockIfRequiredAfterResume while the process stays alive), so this
-      // is exactly the point where an opted-out user should be required to
-      // log in again rather than quick-unlock.
+      // to a fresh cold start must not restore the account's authenticated
+      // state.
       if (!_storage.isRememberLoginEnabled()) {
         await _storage.clearSession();
         _accessToken = null;
@@ -172,13 +172,32 @@ class AuthService implements LifecycleLockAuth {
         return;
       }
 
-      if (_storage.requireUnlockOnResume() && _storage.isAuthLocked()) {
+      // A lock already placed before a process death must remain enforced,
+      // even if the owner later changes the lock preference. Otherwise a
+      // saved session could bypass an outstanding authentication challenge.
+      if (_storage.isAuthLocked()) {
         _accessToken = null;
         _updateStatus(AuthStatus.locked);
         return;
       }
 
+      final backgroundedAt = _storage.getAppBackgroundedAt();
+      final autoLockMinutes = _storage.getAutoLockMinutes();
+      final shouldLockOnColdStart =
+          _storage.requireUnlockOnResume() ||
+              (autoLockMinutes > 0 &&
+                  backgroundedAt != null &&
+                  DateTime.now().difference(backgroundedAt) >=
+                      Duration(minutes: autoLockMinutes));
+      // This process has resumed from a prior background period. Consume the
+      // timestamp before any navigation; a successful unlock clears it too.
+      await _storage.clearAppBackgroundedAt();
+
       _updateStatus(AuthStatus.authenticated);
+      if (shouldLockOnColdStart) {
+        await lockSession();
+        if (isLocked) return;
+      }
       // Fire-and-forget: a session restored from local storage on a cold
       // start carries whatever `permissions` (if any) was saved at the
       // last login/refresh — stale if the backend was redeployed with a
@@ -679,37 +698,6 @@ class AuthService implements LifecycleLockAuth {
 
   bool hasAnyRole(List<String> roles) {
     return roles.contains(userRole);
-  }
-
-  void markAppBackgrounded() {
-    _backgroundedAt = DateTime.now();
-  }
-
-  Future<void> lockIfRequiredAfterResume() async {
-    if (!isAuthenticated) return;
-
-    final requireUnlock = _storage.requireUnlockOnResume();
-    final autoLockMinutes = _storage.getAutoLockMinutes();
-    final backgroundedAt = _backgroundedAt;
-    _backgroundedAt = null;
-
-    // Determine whether a lock is needed.
-    final bool shouldLock;
-
-    if (requireUnlock) {
-      // Immediate lock on resume — always lock regardless of timer.
-      shouldLock = true;
-    } else if (autoLockMinutes > 0 && backgroundedAt != null) {
-      // Timer-based lock: lock only if the elapsed time exceeds the window.
-      final elapsed = DateTime.now().difference(backgroundedAt);
-      shouldLock = elapsed.inMinutes >= autoLockMinutes;
-    } else {
-      shouldLock = false;
-    }
-
-    if (shouldLock) {
-      await lockSession();
-    }
   }
 
   /// Locks the session into the PIN/biometric unlock screen — but only if

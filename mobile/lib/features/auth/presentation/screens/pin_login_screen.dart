@@ -51,6 +51,31 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _pin = '';
   static const int _minPinLength = 4;
   static const int _maxPinLength = 6;
+  int? _configuredPinLength;
+  bool? _hasLocalPin;
+  late bool _isLockedSession;
+
+  int get _visiblePinLength {
+    final configuredLength = _configuredPinLength;
+    if (_hasLocalPin == true && configuredLength != null) {
+      return configuredLength;
+    }
+    // Online PINs can be changed from another device, so a remembered server
+    // length can be stale. Start with the four-digit minimum and grow the
+    // indicators only as digits five and six are entered. A four-digit PIN
+    // therefore never sits in a six-slot row.
+    return _pin.length > _minPinLength
+        ? _pin.length.clamp(_minPinLength, _maxPinLength).toInt()
+        : _minPinLength;
+  }
+
+  int get _inputLimit => _hasLocalPin == true && _configuredPinLength != null
+      ? _configuredPinLength!
+      : _maxPinLength;
+
+  bool get _isPinReady => _hasLocalPin == true && _configuredPinLength != null
+      ? _pin.length == _configuredPinLength
+      : _pin.length >= _minPinLength;
 
   late AnimationController _pulseController;
   late AnimationController _shakeController;
@@ -64,7 +89,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   String _appVersion = '';
 
   void _onNumberPressed(String number) {
-    if (_pin.length >= _maxPinLength) return;
+    if (_pin.length >= _inputLimit) return;
 
     setState(() {
       _pin += number;
@@ -73,10 +98,15 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   void _submitPin() {
-    if (_pin.length < _minPinLength) {
+    if (_pin.length < _minPinLength ||
+        (_hasLocalPin == true &&
+            _configuredPinLength != null &&
+            _pin.length != _configuredPinLength)) {
       setState(() {
         _showError = true;
-        _errorMessage = 'Enter at least 4 digits to continue.';
+        _errorMessage = _hasLocalPin != true || _configuredPinLength == null
+            ? 'Enter at least 4 digits to continue.'
+            : 'Enter all $_configuredPinLength digits to continue.';
       });
       _shakeController.forward(from: 0);
       return;
@@ -103,10 +133,11 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   Future<void> _handlePinLogin() async {
     final controller = ref.read(authControllerProvider.notifier);
 
-    // A device with a local PIN configured can unlock entirely offline,
-    // matching biometric unlock. Only fall back to the server-authenticated
-    // PIN login for a device that has never set one up locally.
-    final hasLocalPin = await controller.hasLocalPinSet();
+    // A local quick-unlock PIN belongs to an existing locked session. It
+    // must not intercept signed-out PIN login after logout, because logout
+    // intentionally preserves this hash for future quick unlocks.
+    final isLockedSession = ref.read(authControllerProvider).isLocked;
+    final hasLocalPin = isLockedSession && await controller.hasLocalPinSet();
     final updates = getIt<UpdateCheckService>();
     if (!hasLocalPin) updates.beginPostLoginCheck();
     final result = hasLocalPin
@@ -175,6 +206,8 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   @override
   void initState() {
     super.initState();
+    _isLockedSession = ref.read(authControllerProvider).isLocked;
+    unawaited(_loadConfiguredPinLength());
     _workspaceIdentity = _loadWorkspaceIdentity();
     _checkBiometric();
     _loadAppVersion();
@@ -194,6 +227,33 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     );
 
     _pulseController.repeat(reverse: true);
+  }
+
+  Future<void> _loadConfiguredPinLength() async {
+    try {
+      final storage = getIt<StorageService>();
+      final isLockedSession = ref.read(authControllerProvider).isLocked;
+      final hasLocalPin = isLockedSession && await storage.hasLocalPinSet();
+      final length = hasLocalPin
+          ? await storage.getConfiguredPinLength()
+          : null;
+      if (mounted) {
+        setState(() {
+          _isLockedSession = isLockedSession;
+          _configuredPinLength = length;
+          _hasLocalPin = hasLocalPin;
+          if (hasLocalPin && length != null && _pin.length > length) {
+            _pin = '';
+            _showError = true;
+            _errorMessage =
+                'Your PIN has $length digits. Please enter it again.';
+          }
+        });
+      }
+    } catch (_) {
+      // Unknown-length entry remains usable and expands as the user types.
+      // Storage must never prevent PIN login.
+    }
   }
 
   // The logo pulse is an infinite loop: only run it when the OS
@@ -285,9 +345,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final branchMaps = branches.whereType<Map>().toList();
     if (branchMaps.isEmpty) return null;
     final primary = branchMaps.firstWhere(
-          (branch) => branch['isPrimary'] == true,
-          orElse: () => branchMaps.first,
-        );
+      (branch) => branch['isPrimary'] == true,
+      orElse: () => branchMaps.first,
+    );
     return primary['name']?.toString();
   }
 
@@ -333,107 +393,121 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
 
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final pageColor = context.themed(DesignColors.darkBg);
-    return AnnotatedRegion<SystemUiOverlayStyle>(value: (isDarkTheme ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.transparent, systemNavigationBarContrastEnforced: false), child: Scaffold(
-      backgroundColor: pageColor,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: pageColor,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: isSmallScreen ? 4 : 12,
-              bottom: bottomPad + 8,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header bar (compact)
-                Row(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: (isDarkTheme
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark)
+            .copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarContrastEnforced: false),
+        child: Scaffold(
+          backgroundColor: pageColor,
+          body: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: pageColor,
+            child: SafeArea(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: isSmallScreen ? 4 : 12,
+                  bottom: bottomPad + 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Semantics(
-                      label: 'Use email instead',
-                      button: true,
-                      child: AppBackButton(
-                        background: context.themed(DesignColors.darkBg),
-                        color: _fg,
-                        isDark: Theme.of(context).brightness == Brightness.dark,
-                        onPressed: _useEmailInstead,
+                    // Header bar (compact)
+                    Row(
+                      children: [
+                        Semantics(
+                          label: 'Use email instead',
+                          button: true,
+                          child: AppBackButton(
+                            background: context.themed(DesignColors.darkBg),
+                            color: _fg,
+                            isDark:
+                                Theme.of(context).brightness == Brightness.dark,
+                            onPressed: _useEmailInstead,
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
+                    ),
+
+                    SizedBox(
+                        height: isSmallScreen
+                            ? DesignSpacing.sm
+                            : DesignSpacing.xl),
+
+                    // Logo — first-mount stagger (see StaggeredItem)
+                    StaggeredItem(
+                      itemKey: 'pin-logo',
+                      child: AuthEntrance(
+                        child: _buildLogoSection(isSmallScreen),
                       ),
                     ),
-                    const Spacer(),
+
+                    SizedBox(
+                        height: isSmallScreen
+                            ? DesignSpacing.md
+                            : DesignSpacing.xxl + 4),
+
+                    // PIN dots
+                    StaggeredItem(
+                      itemKey: 'pin-dots',
+                      index: 1,
+                      child: _buildPinDotsSection(isSmallScreen),
+                    ),
+
+                    SizedBox(height: isSmallScreen ? 8 : 16),
+
+                    // Error
+                    if (_showError)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _buildErrorBanner(),
+                      ),
+
+                    // Loading
+                    if (authState.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+
+                    SizedBox(height: isSmallScreen ? 8 : 20),
+
+                    // Number pad
+                    StaggeredItem(
+                      itemKey: 'pin-numpad',
+                      index: 2,
+                      child: _buildNumberPad(isSmallScreen),
+                    ),
+
+                    SizedBox(
+                        height: isSmallScreen
+                            ? DesignSpacing.sm
+                            : DesignSpacing.lg),
+
+                    // Bottom links
+                    StaggeredItem(
+                      itemKey: 'pin-options',
+                      index: 3,
+                      child: _buildBottomOptions(authState),
+                    ),
                   ],
                 ),
-
-                SizedBox(height: isSmallScreen ? DesignSpacing.sm : DesignSpacing.xl),
-
-                // Logo — first-mount stagger (see StaggeredItem)
-                StaggeredItem(
-                  itemKey: 'pin-logo',
-                  child: AuthEntrance(
-                    child: _buildLogoSection(isSmallScreen),
-                  ),
-                ),
-
-                SizedBox(
-                    height: isSmallScreen
-                        ? DesignSpacing.md
-                        : DesignSpacing.xxl + 4),
-
-                // PIN dots
-                StaggeredItem(
-                  itemKey: 'pin-dots',
-                  index: 1,
-                  child: _buildPinDotsSection(isSmallScreen),
-                ),
-
-                SizedBox(height: isSmallScreen ? 8 : 16),
-
-                // Error
-                if (_showError)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _buildErrorBanner(),
-                  ),
-
-                // Loading
-                if (authState.isLoading)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-
-                SizedBox(height: isSmallScreen ? 8 : 20),
-
-                // Number pad
-                StaggeredItem(
-                  itemKey: 'pin-numpad',
-                  index: 2,
-                  child: _buildNumberPad(isSmallScreen),
-                ),
-
-                SizedBox(
-                    height: isSmallScreen ? DesignSpacing.sm : DesignSpacing.lg),
-
-                // Bottom links
-                StaggeredItem(
-                  itemKey: 'pin-options',
-                  index: 3,
-                  child: _buildBottomOptions(authState),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
-    ));
+        ));
   }
 
   Widget _buildLogoSection(bool isSmallScreen) {
@@ -499,7 +573,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
           alignment: Alignment.center,
           delay: const Duration(milliseconds: 320),
           child: Text(
-            'Enter your 4–6 digit PIN for this workspace',
+            _hasLocalPin == true && _configuredPinLength != null
+                ? 'Enter your $_configuredPinLength-digit device PIN'
+                : 'Enter your 4–6 digit PIN',
             style: TextStyle(
               fontSize: 13,
               color: _fg.withValues(alpha: 0.68),
@@ -574,22 +650,38 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
     final outerMargin = isSmallScreen ? DesignSpacing.sm : DesignSpacing.lg;
     final horizontalPadding =
         isSmallScreen ? DesignSpacing.md : DesignSpacing.lg;
-    final slotGap = isSmallScreen ? 5.0 : 8.0;
+    final slotGap = isSmallScreen ? (screenWidth < 360 ? 3.0 : 5.0) : 8.0;
+    final slotCount = _visiblePinLength;
     final availableWidth =
         // -2 for the card's 1dp border on each side (it used to overflow by 2px)
         screenWidth - 40 - (outerMargin * 2) - (horizontalPadding * 2) - 4;
     final slotWidth =
-        ((availableWidth - (slotGap * (_maxPinLength - 1))) / _maxPinLength)
-            .clamp(38.0, isSmallScreen ? 48.0 : 54.0)
+        ((availableWidth - (slotGap * (slotCount - 1))) / slotCount)
+            .clamp(30.0, isSmallScreen ? 48.0 : 54.0)
             .toDouble();
-    final isReady = _pin.length >= _minPinLength;
+    final isReady = _isPinReady;
+    final String statusText;
+    if (_hasLocalPin == true && _configuredPinLength != null) {
+      statusText = isReady
+          ? 'Ready to unlock'
+          : '${_pin.length} of $_configuredPinLength digits';
+    } else if (_pin.length < _minPinLength) {
+      statusText = '${_pin.length} of $_minPinLength digits';
+    } else if (_pin.length == _minPinLength) {
+      statusText = _isLockedSession
+          ? 'Ready to unlock · add digits if your PIN is longer'
+          : 'Ready to continue · add digits if your PIN is longer';
+    } else if (_pin.length < _maxPinLength) {
+      statusText = '${_pin.length} digits entered · add one more if needed';
+    } else {
+      statusText = _isLockedSession ? 'Ready to unlock' : 'Ready to continue';
+    }
 
     return AnimatedBuilder(
       animation: _shakeAnimation,
       builder: (context, child) => Transform.translate(
         offset: Offset(
-          _shakeAnimation.value * 14 *
-              (_shakeAnimation.value < 0.5 ? 1 : -1),
+          _shakeAnimation.value * 14 * (_shakeAnimation.value < 0.5 ? 1 : -1),
           0,
         ),
         child: child,
@@ -616,90 +708,97 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ),
         child: Column(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_maxPinLength, (index) {
-                final isFilled = index < _pin.length;
-                final isActive = index == _pin.length && _pin.length < _maxPinLength;
-                return Padding(
-                  padding: EdgeInsets.only(
-                    right: index == _maxPinLength - 1 ? 0 : slotGap,
-                  ),
-                  child: AnimatedScale(
-                    duration: DesignAnimation.fast,
-                    curve: Curves.easeOutBack,
-                    scale: isFilled ? 1 : (isActive ? 1.03 : 0.96),
-                    child: AnimatedContainer(
+            AnimatedSize(
+              duration: DesignAnimation.fast,
+              curve: Curves.easeOutCubic,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(slotCount, (index) {
+                  final isFilled = index < _pin.length;
+                  final isActive =
+                      index == _pin.length && _pin.length < slotCount;
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      right: index == slotCount - 1 ? 0 : slotGap,
+                    ),
+                    child: AnimatedScale(
                       duration: DesignAnimation.fast,
-                      curve: Curves.easeOutCubic,
-                      width: slotWidth,
-                      height: isSmallScreen ? 46 : 52,
-                      decoration: BoxDecoration(
-                        gradient: isFilled
-                            ? const LinearGradient(
-                                colors: [DesignColors.brand, DesignColors.accent],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              )
-                            : null,
-                        color: isFilled
-                            ? null
-                            : isActive
-                                ? _fg.withValues(alpha: 0.12)
-                                : _fg.withValues(alpha: 0.045),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isFilled
-                              ? DesignColors.accent.withValues(alpha: 0.9)
-                              : isActive
-                                  ? DesignColors.accent.withValues(alpha: 0.7)
-                                  : _fg.withValues(alpha: 0.1),
-                          width: isActive ? 1.6 : 1,
-                        ),
-                        boxShadow: isFilled
-                            ? [
-                                BoxShadow(
-                                  color: DesignColors.accent.withValues(alpha: 0.24),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: AnimatedSwitcher(
+                      curve: Curves.easeOutBack,
+                      scale: isFilled ? 1 : (isActive ? 1.03 : 0.96),
+                      child: AnimatedContainer(
                         duration: DesignAnimation.fast,
-                        switchInCurve: Curves.easeOutBack,
-                        child: isFilled
-                            ? Icon(
-                                Icons.circle_rounded,
-                                key: const ValueKey('filled'),
-                                color: _fg,
-                                size: 13,
-                              )
-                            : Text(
-                                '${index + 1}',
-                                key: ValueKey('empty-$index'),
-                                style: TextStyle(
-                                  color: _fg.withValues(alpha: 0.28),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
+                        curve: Curves.easeOutCubic,
+                        width: slotWidth,
+                        height: isSmallScreen ? 46 : 52,
+                        decoration: BoxDecoration(
+                          gradient: isFilled
+                              ? const LinearGradient(
+                                  colors: [
+                                    DesignColors.brand,
+                                    DesignColors.accent,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
+                          color: isFilled
+                              ? null
+                              : isActive
+                                  ? _fg.withValues(alpha: 0.12)
+                                  : _fg.withValues(alpha: 0.045),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isFilled
+                                ? DesignColors.accent.withValues(alpha: 0.9)
+                                : isActive
+                                    ? DesignColors.accent.withValues(alpha: 0.7)
+                                    : _fg.withValues(alpha: 0.1),
+                            width: isActive ? 1.6 : 1,
+                          ),
+                          boxShadow: isFilled
+                              ? [
+                                  BoxShadow(
+                                    color: DesignColors.accent
+                                        .withValues(alpha: 0.24),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: AnimatedSwitcher(
+                          duration: DesignAnimation.fast,
+                          switchInCurve: Curves.easeOutBack,
+                          child: isFilled
+                              ? Icon(
+                                  Icons.circle_rounded,
+                                  key: const ValueKey('filled'),
+                                  color: _fg,
+                                  size: 13,
+                                )
+                              : Text(
+                                  '${index + 1}',
+                                  key: ValueKey('empty-$index'),
+                                  style: TextStyle(
+                                    color: _fg.withValues(alpha: 0.28),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              ),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                }),
+              ),
             ),
             const SizedBox(height: DesignSpacing.md),
             AnimatedSwitcher(
               duration: DesignAnimation.fast,
               child: Text(
-                isReady
-                    ? 'Ready to unlock'
-                    : '${_pin.length} of 4–6 digits',
-                key: ValueKey(isReady),
+                statusText,
+                key: ValueKey(statusText),
                 style: TextStyle(
                   color: isReady
                       ? DesignColors.accent
@@ -756,8 +855,9 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
   }
 
   Widget _buildNumberPad(bool isSmallScreen) {
-    final isReady = _pin.length >= _minPinLength;
+    final isReady = _isPinReady;
     final isLoading = ref.watch(authControllerProvider).isLoading;
+    final actionLabel = _isLockedSession ? 'Unlock workspace' : 'Sign in';
     final keyWidth = isSmallScreen ? 76.0 : 86.0;
     final keyHeight = isSmallScreen ? 52.0 : 60.0;
 
@@ -794,7 +894,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
         ),
         const SizedBox(height: DesignSpacing.lg),
         Semantics(
-          label: 'Unlock workspace',
+          label: actionLabel,
           button: true,
           child: AnimatedContainer(
             duration: DesignAnimation.fast,
@@ -853,7 +953,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                             ),
                             const SizedBox(width: DesignSpacing.sm),
                             Text(
-                              'Unlock workspace',
+                              actionLabel,
                               style: TextStyle(
                                 color: isReady
                                     ? Colors.white
@@ -882,7 +982,8 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: digits
           .map((digit) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: DesignSpacing.xs),
                 child: _buildNumberButton(digit, keyWidth, keyHeight),
               ))
           .toList(),
@@ -971,8 +1072,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen>
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: authState.isLoading ? null : _handleBiometricLogin,
-                  borderRadius:
-                      BorderRadius.circular(DesignSpacing.radiusFull),
+                  borderRadius: BorderRadius.circular(DesignSpacing.radiusFull),
                   child: Container(
                     constraints: const BoxConstraints(minHeight: 48),
                     padding: const EdgeInsets.symmetric(

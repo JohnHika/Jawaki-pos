@@ -211,7 +211,7 @@ describe('MerchantPaymentsService', () => {
       bankName: 'Test Bank', accountName: 'SHOP ONE', accountLast4: '7890',
     });
     await service.configureAccount({
-      sub: 'owner-1', tenantId: 'shop-1', permissions: ['roles.update'],
+      sub: 'owner-1', tenantId: 'shop-1', permissions: ['payments.manage_payout'],
     }, {
       bankCode: '001', accountNumber: '1234567890', confirmAccountOwnership: true,
     });
@@ -232,12 +232,22 @@ describe('MerchantPaymentsService', () => {
     });
 
     await expect(service.configureAccount({
-      sub: 'owner-1', tenantId: 'shop-1', permissions: ['roles.update'],
+      sub: 'owner-1', tenantId: 'shop-1', permissions: ['payments.manage_payout'],
     }, {
       bankCode: '001', accountNumber: '1234567890', confirmAccountOwnership: true,
     })).rejects.toThrow('could not confirm the account holder name');
 
     expect(prisma.merchantPaymentAccount.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not let role editors change a shop payout account without the payout permission', async () => {
+    const { service } = fixtures();
+
+    await expect(service.configureAccount({
+      sub: 'owner-1', tenantId: 'shop-1', permissions: ['roles.update'],
+    }, {
+      bankCode: '001', accountNumber: '1234567890', confirmAccountOwnership: true,
+    })).rejects.toThrow('You do not have permission to change payout details');
   });
 
   it('routes a requested debt payment through the merchant subaccount', async () => {

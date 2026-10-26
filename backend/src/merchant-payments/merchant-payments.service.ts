@@ -76,7 +76,7 @@ export class MerchantPaymentsService {
   }
 
   async configureAccount(actor: Actor, dto: ConfigureMerchantPayoutDto) {
-    if (!actor.permissions?.includes("roles.update")) {
+    if (!actor.permissions?.includes("payments.manage_payout")) {
       throw new ForbiddenException(
         "You do not have permission to change payout details",
       );

@@ -168,7 +168,7 @@ void main() {
       },
     );
 
-    test('turning it on does not touch the icon while the app is open', () async {
+    test('the automatic icon changes only when the app backgrounds', () async {
       signals = _s(streak: 4);
       final svc = service();
       await svc.setEnabled(true);
@@ -185,15 +185,13 @@ void main() {
       expect(active, 'streak');
     });
 
-    test('turning it off restores the everyday icon on the next background', () async {
+    test('the icon cannot be disabled by a workspace preference', () async {
       signals = _s(streak: 4);
       final svc = service();
-      await svc.setEnabled(true);
-      await svc.refresh();
       await svc.setEnabled(false);
-      expect(active, 'streak', reason: 'still deferred');
-      expect(await svc.refresh(), AppIconVariant.standard);
-      expect(active, 'standard');
+      expect(await svc.isEnabled(), isTrue);
+      expect(await svc.refresh(), AppIconVariant.streak);
+      expect(active, 'streak');
     });
 
     test('does nothing when the icon is already right', () async {

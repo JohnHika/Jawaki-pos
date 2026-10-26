@@ -17,6 +17,7 @@ squircle, rounded square) keeps the whole mark.
 import math
 import os
 import sys
+import colorsys
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -32,13 +33,43 @@ WHITE = (255, 255, 255, 255)
 ORANGE = (255, 122, 51, 255)   # DesignColors.brand
 DEEP = (232, 70, 24, 255)
 
+def hsl(hue, saturation=0.82, lightness=0.58):
+    rgb = colorsys.hls_to_rgb((hue % 360) / 360, lightness, saturation)
+    return tuple(round(channel * 255) for channel in rgb)
+
+
+def tiered_variant(kind, level, hue, saturation=0.68):
+    """Make a distinct, cohesive gradient for a numbered shop-state look."""
+    top_lightness = 0.63 - (level % 3) * 0.025
+    bottom_lightness = 0.37 + (level % 3) * 0.025
+    return (
+        hsl(hue, saturation, top_lightness),
+        hsl(hue + 8, saturation, bottom_lightness),
+        kind,
+        level,
+    )
+
+
+# Each entry is (background start, background end, state, threshold). There
+# are 24 real, state-selected looks: 8 streak, 8 stock-alert, 7 record-day,
+# and the everyday icon. The Axon cube remains unchanged in every look.
 VARIANTS = {
-    # suffix: (bg top-left, bg bottom-right)
-    '':        ((255, 160, 90), (255, 90, 30)),     # open for business
-    '_streak': ((255, 128, 64), (214, 40, 28)),     # trading-day streak
-    '_alert':  ((255, 160, 90), (255, 90, 30)),     # needs attention
-    '_gold':   ((255, 218, 96), (255, 150, 28)),    # record day
+    # suffix: (bg top-left, bg bottom-right, kind, level)
+    '':        ((255, 160, 90), (255, 90, 30), 'standard', 0),
+    '_streak': ((255, 128, 64), (214, 40, 28), 'streak', 3),
+    '_alert':  ((255, 160, 90), (255, 90, 30), 'alert', 1),
+    '_gold':   ((255, 218, 96), (255, 150, 28), 'record', 0),
 }
+
+for level, hue in zip(range(6, 13), (4, 12, 20, 28, 346, 354, 0)):
+    VARIANTS[f'_streak_{level}'] = tiered_variant('streak', level, hue)
+
+for level, hue in zip(range(3, 10), (350, 358, 6, 14, 342, 348, 2)):
+    VARIANTS[f'_alert_{level}'] = tiered_variant('alert', level, hue)
+
+for level, hue in zip((5, 10, 20, 50, 100, 200), (42, 36, 48, 30, 24, 44)):
+    VARIANTS[f'_gold_{level}'] = tiered_variant(
+        'record', level, hue, saturation=0.72)
 
 
 def lerp(a, b, t):
@@ -50,10 +81,15 @@ def gradient(size, c1, c2):
     data = bytearray()
     denom = 2.0 * (size - 1)
     for y in range(size):
+        row = bytearray(size * 4)
         for x in range(size):
             t = (x + y) / denom
-            data += bytes((int(lerp(c1[0], c2[0], t)), int(lerp(c1[1], c2[1], t)),
-                           int(lerp(c1[2], c2[2], t)), 255))
+            i = x * 4
+            row[i] = int(lerp(c1[0], c2[0], t))
+            row[i + 1] = int(lerp(c1[1], c2[1], t))
+            row[i + 2] = int(lerp(c1[2], c2[2], t))
+            row[i + 3] = 255
+        data.extend(row)
     return Image.frombytes('RGBA', (size, size), bytes(data))
 
 
@@ -167,7 +203,8 @@ def foreground(suffix, mono=False):
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    shift = 0 if suffix in ('', '_gold') else -12
+    kind = VARIANTS[suffix][2]
+    shift = 0 if kind in ('standard', 'record') else -12
     cx = size / 2 + shift * S
     cy = size / 2 + shift * S
     R = 98 * S
@@ -185,11 +222,13 @@ def foreground(suffix, mono=False):
 
     faces = (WHITE, (255, 233, 218, 255), (255, 208, 176, 255))
     mark = ORANGE
-    if suffix == '_gold':
+    if kind == 'record':
         faces = (WHITE, (255, 243, 214, 255), (255, 226, 160, 255))
         mark = (232, 120, 10, 255)
-    elif suffix == '_streak':
+    elif kind == 'streak':
         mark = DEEP
+    elif kind == 'alert':
+        mark = (190, 42, 48, 255)
 
     # soft drop shadow so the cube lifts off the tile
     shadow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
@@ -201,14 +240,14 @@ def foreground(suffix, mono=False):
     draw_cube(d, cx, cy, R, faces, mark, S)
 
     bx, by, br = size / 2 + 82 * S, size / 2 + 82 * S, 40 * S
-    if suffix == '_streak':
+    if kind == 'streak':
         badge(d, bx, by, br, S)
         flame(d, bx, by - 2 * S, 56 * S, S)
-    elif suffix == '_alert':
+    elif kind == 'alert':
         badge(d, bx, by, br, S, fill=(229, 57, 53, 255))
         d.rounded_rectangle([bx - 5 * S, by - 24 * S, bx + 5 * S, by + 6 * S], radius=5 * S, fill=WHITE)
         d.ellipse([bx - 6 * S, by + 12 * S, bx + 6 * S, by + 24 * S], fill=WHITE)
-    elif suffix == '_gold':
+    elif kind == 'record':
         for (sx, sy, sr) in ((-120, -96, 22), (118, -108, 15), (128, 70, 19), (-132, 82, 12)):
             sparkle(d, size / 2 + sx * S, size / 2 + sy * S, sr * S, WHITE)
         for (sx, sy, c) in ((-96, -128, (255, 255, 255, 255)), (96, 120, (255, 255, 255, 230))):
@@ -219,7 +258,7 @@ def foreground(suffix, mono=False):
 
 
 def background(suffix):
-    c1, c2 = VARIANTS[suffix]
+    c1, c2 = VARIANTS[suffix][:2]
     return gradient(LAYER, c1, c2)
 
 

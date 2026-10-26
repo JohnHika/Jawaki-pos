@@ -9,8 +9,8 @@ import '../../../../core/theme/design_system.dart';
 /// Settings control for the living app icon: it lets the launcher icon reflect
 /// how the shop is doing (a streak, products out of stock, a record day).
 ///
-/// It is on by default and can be turned off here. Everything it reads stays on
-/// this phone. Android can only swap between icons bundled in the app, and some
+/// It follows shop activity automatically. Everything it reads stays on this
+/// phone. Android can only swap between icons bundled in the app, and some
 /// launchers drop the home-screen shortcut when the icon is swapped; "Add to
 /// home screen" puts it back with one tap. The swap itself waits until the app
 /// is in the background, because doing it while the app is open closes the app.
@@ -24,9 +24,8 @@ class LivingIconCard extends StatefulWidget {
   State<LivingIconCard> createState() => _LivingIconCardState();
 }
 
-class _LivingIconCardState extends State<LivingIconCard> {
-  bool _enabled = false;
-  bool _busy = false;
+class _LivingIconCardState extends State<LivingIconCard>
+    with WidgetsBindingObserver {
   bool _loaded = false;
   String? _notice;
   AppIconVariant _current = AppIconVariant.standard;
@@ -36,38 +35,31 @@ class _LivingIconCardState extends State<LivingIconCard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _load() async {
     try {
-      final enabled = await _service.isEnabled();
       final current = await _service.current();
       if (!mounted) return;
       setState(() {
-        _enabled = enabled;
         _current = current;
         _loaded = true;
       });
     } catch (_) {
       if (mounted) setState(() => _loaded = true);
-    }
-  }
-
-  Future<void> _toggle(bool on) async {
-    setState(() => _busy = true);
-    try {
-      await _service.setEnabled(on);
-      if (!mounted) return;
-      setState(() {
-        _enabled = on;
-        _busy = false;
-        _notice = on
-            ? 'Done. Your icon updates the next time you leave the app.'
-            : 'Done. The everyday icon comes back the next time you leave the app.';
-      });
-    } catch (_) {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -107,7 +99,8 @@ class _LivingIconCardState extends State<LivingIconCard> {
                   _current.previewAsset,
                   width: 44,
                   height: 44,
-                  errorBuilder: (_, __, ___) => const SizedBox(width: 44, height: 44),
+                  errorBuilder: (_, __, ___) =>
+                      const SizedBox(width: 44, height: 44),
                 ),
               ),
               const SizedBox(width: DesignSpacing.md),
@@ -116,35 +109,88 @@ class _LivingIconCardState extends State<LivingIconCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Living app icon',
+                      'Counterbase adapts its icon',
                       style: theme.textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     Text(
-                      _enabled
+                      _loaded
                           ? 'Now showing: ${_current.title}'
-                          : 'Let the icon follow how your shop is doing',
+                          : 'Checking your shop activity…',
                       style: theme.textTheme.bodySmall?.copyWith(color: muted),
                     ),
                   ],
                 ),
               ),
-              Switch(
-                key: const ValueKey('living-icon-switch'),
-                value: _enabled,
-                onChanged: (!_loaded || _busy) ? null : _toggle,
-              ),
             ],
           ),
           const SizedBox(height: DesignSpacing.sm),
           Text(
-            _enabled
-                ? _current.blurb
-                : 'Automatic icon changes are paused. Your current icon stays in place.',
+            _current.blurb,
             key: const ValueKey('living-icon-reason'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: muted,
               height: 1.35,
+            ),
+          ),
+          const SizedBox(height: DesignSpacing.md),
+          Row(
+            children: [
+              Text(
+                'Adaptive icon library',
+                style: theme.textTheme.labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Text(
+                '${AppIconVariant.values.length} looks',
+                style: theme.textTheme.labelSmall?.copyWith(color: muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: DesignSpacing.sm),
+          SizedBox(
+            height: 50,
+            child: ListView.separated(
+              key: const ValueKey('living-icon-gallery'),
+              scrollDirection: Axis.horizontal,
+              itemCount: AppIconVariant.values.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(width: DesignSpacing.xs),
+              itemBuilder: (context, index) {
+                final variant = AppIconVariant.values[index];
+                final isCurrent = variant == _current;
+                return Tooltip(
+                  message: variant.title,
+                  child: Semantics(
+                    label: isCurrent
+                        ? '${variant.title}, current automatic icon'
+                        : '${variant.title}, automatic icon preview',
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isCurrent
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outlineVariant,
+                          width: isCurrent ? 2 : 1,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset(
+                          variant.previewAsset,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           if (_notice != null) ...[
@@ -160,16 +206,19 @@ class _LivingIconCardState extends State<LivingIconCard> {
           ],
           const SizedBox(height: DesignSpacing.sm),
           Text(
-            'Counterbase chooses the icon from your shop activity. It changes '
+            '${AppIconVariant.values.length} built-in looks keep the Axon cube '
+            'consistent while Counterbase chooses a matching icon from your '
+            'shop activity. It changes '
             'automatically and explains each change in a notification when '
             'app notifications are allowed. '
             'The decision stays on this phone, and the icon changes at most '
             'once every 20 hours. '
             'On some phones the home-screen shortcut disappears when it '
             'changes, so use Add to home screen to put it back.',
-            style: theme.textTheme.bodySmall?.copyWith(color: muted, height: 1.35),
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: muted, height: 1.35),
           ),
-          if (_enabled)
+          if (_loaded)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(

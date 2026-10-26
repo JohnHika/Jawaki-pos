@@ -44,7 +44,7 @@ export class MerchantPaymentsController {
 
   @Post('account')
   @UseGuards(PermissionsGuard)
-  @RequirePermissions('roles.update')
+  @RequirePermissions('payments.manage_payout')
   configureAccount(
     @CurrentUser() actor: { sub: string; tenantId: string; permissions: string[] },
     @Body() body: ConfigureMerchantPayoutDto,

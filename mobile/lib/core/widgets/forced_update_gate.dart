@@ -133,6 +133,14 @@ class ForcedUpdateGate extends StatelessWidget {
                           : 'Retry download',
                       onPressed: updateService.downloadAndInstallRequiredUpdate,
                     ),
+                  if (updateService.isDownloading) ...[
+                    const SizedBox(height: DesignSpacing.xs),
+                    TextButton.icon(
+                      onPressed: updateService.cancelUpdateDownload,
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('Cancel download'),
+                    ),
+                  ],
                   const SizedBox(height: DesignSpacing.md),
                 ],
               ),

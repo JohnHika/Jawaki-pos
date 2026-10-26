@@ -42,6 +42,13 @@ class AuthInterceptor extends Interceptor {
       return handler.next(options);
     }
 
+    // A locked session retains its credentials for a later PIN/biometric
+    // unlock, but protected foreground calls must not reuse them.
+    if (_authService.isLocked) {
+      options.headers.remove('Authorization');
+      return handler.next(options);
+    }
+
     // Add access token if available — use the async fallback to reload from
     // storage if the in-memory token was cleared (e.g. after lock/unlock).
     try {
@@ -72,6 +79,12 @@ class AuthInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     if (!_matchesExpectedTenant(err.requestOptions)) {
+      return handler.next(err);
+    }
+
+    // Do not rotate or restore credentials for a request that failed after
+    // the app was locked while it was in flight.
+    if (!_authService.isAuthenticated) {
       return handler.next(err);
     }
 

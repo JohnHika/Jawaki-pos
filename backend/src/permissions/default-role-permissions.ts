@@ -69,7 +69,8 @@ const ADMIN_EXTRA_KEYS = [
   'expenses.delete', 'data.export', 'data.audit_trail_view',
   'settings.system_security_configure', 'app_updates.publish',
   'ai_billing.admin_view', 'ai_billing.admin_manage', 'ai_billing.admin_revenue',
-  'payments.manual_approve', 'accountability.manage', 'news.manage', 'referrals.view',
+  'payments.manual_approve', 'payments.manage_payout',
+  'accountability.manage', 'news.manage', 'referrals.view',
 ];
 
 const SUPERVISOR_KEYS = [...CASHIER_KEYS, ...SUPERVISOR_EXTRA_KEYS];

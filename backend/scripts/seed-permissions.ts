@@ -235,6 +235,7 @@ const PERMISSIONS: PermissionDef[] = [
   { key: 'payments.touristtap_initiate', feature: 'payments', action: 'touristtap_initiate', label: 'Initiate a TouristTap payment' },
   { key: 'payments.view_status', feature: 'payments', action: 'view_status', label: 'View a payment transaction status' },
   { key: 'payments.manual_approve', feature: 'payments', action: 'manual_approve', label: 'Approve a manual payment request' },
+  { key: 'payments.manage_payout', feature: 'payments', action: 'manage_payout', label: 'Manage the business payout account' },
 
   // ---- sync ----
   { key: 'sync.push', feature: 'sync', action: 'push', label: 'Push offline events to the server' },

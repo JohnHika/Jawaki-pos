@@ -2,9 +2,9 @@ name: Build and Publish Android Update
 
 on:
   push:
-    branches: [ main, update-feature ]
+    branches: [ main, update-feature, counterbase/prod-vercel ]
   pull_request:
-    branches: [ main, update-feature ]
+    branches: [ main, update-feature, counterbase/prod-vercel ]
   workflow_dispatch:
     inputs:
       release_notes:

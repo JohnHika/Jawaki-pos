@@ -253,8 +253,8 @@ class _POSAppState extends ConsumerState<POSApp> with WidgetsBindingObserver {
   }
 
   /// The living app icon only changes as the app goes to the background, so the
-  /// launcher never redraws it under the user's thumb. It is enabled by
-  /// default and can be turned off in Settings.
+  /// launcher never redraws it under the user's thumb. It follows shop activity
+  /// automatically and explains each change with a local notification.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {

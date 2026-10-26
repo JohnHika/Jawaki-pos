@@ -128,7 +128,7 @@ class RolePermissions {
   bool get canDeleteBranches          => has('branches.delete');
   bool get canViewFinance              => has('finance.view');
   bool get canManageReceivables        => has('finance.manage_receivables');
-  bool get canManageMerchantPayout     => has('roles.update');
+  bool get canManageMerchantPayout     => has('payments.manage_payout');
   bool get canRecordSupplierPayment    => has('suppliers.payments_record');
   bool get canSeeFinancialReports     => has('reporting.financial');
   bool get canSeeAuditTrail           => has('audit.read');
