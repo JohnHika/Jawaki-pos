@@ -11,6 +11,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/business_layout_provider.dart';
+import '../../../../core/services/storage_service.dart';
 import '../../../../core/utils/api_message.dart';
 import '../../../sales/presentation/providers/catalog_provider.dart'
     as catalog_cache;
@@ -790,6 +791,10 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     final apiClient = getIt<ApiClient>();
+    final storageService = getIt<StorageService>();
+    final requestTenantId = storageService.getTenantId();
+    final requestBranchId = storageService.getBranchId();
+    final requestApiBaseUrl = apiClient.baseUrl;
     final description = _descriptionController.text.trim().isEmpty
         ? null
         : _descriptionController.text.trim();
@@ -890,7 +895,12 @@ class _AddEditProductSheetState extends ConsumerState<AddEditProductSheet> {
         );
       }
 
-      await catalog_cache.upsertProductCacheFromApi(savedProduct);
+      await catalog_cache.upsertProductCacheFromApi(
+        savedProduct,
+        expectedTenantId: requestTenantId,
+        expectedBranchId: requestBranchId,
+        expectedApiBaseUrl: requestApiBaseUrl,
+      );
       // POS reads its grid from FutureProviders backed by the local database.
       // Refresh those snapshots after the cache write so a POS tab kept alive
       // by navigation immediately reflects edits made from Products.

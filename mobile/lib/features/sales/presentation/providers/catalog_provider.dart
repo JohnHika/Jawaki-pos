@@ -508,9 +508,28 @@ Future<void> syncCatalogSources({
 
 /// Stores a single product returned by a successful create/update response in
 /// the local catalog cache without making an immediate follow-up catalog GET.
-Future<void> upsertProductCacheFromApi(Map<String, dynamic> product) async {
+Future<void> upsertProductCacheFromApi(
+  Map<String, dynamic> product, {
+  required String? expectedTenantId,
+  required String? expectedBranchId,
+  required String expectedApiBaseUrl,
+}) async {
   final database = getIt<AppDatabase>();
   final storageService = getIt<StorageService>();
+  final apiClient = getIt<ApiClient>();
+  bool requestScopeIsCurrent() =>
+      expectedTenantId != null &&
+      storageService.getTenantId() == expectedTenantId &&
+      storageService.getBranchId() == expectedBranchId &&
+      apiClient.baseUrl == expectedApiBaseUrl;
+
+  if (!requestScopeIsCurrent()) {
+    debugPrint(
+      '[CatalogSync] Skipped single-product cache upsert: workspace changed',
+    );
+    return;
+  }
+
   final item = _productToCompanion(product);
   if (item == null) {
     debugPrint(
@@ -520,18 +539,21 @@ Future<void> upsertProductCacheFromApi(Map<String, dynamic> product) async {
   }
 
   await database.insertProduct(item);
+  if (!requestScopeIsCurrent()) return;
+
   final productId = product['id']?.toString();
   if (productId != null) {
     await database.replacePricingTiersForProduct(
       productId,
       _pricingTiersToCompanions(product),
     );
+    if (!requestScopeIsCurrent()) return;
   }
 
-  final branchId = storageService.getBranchId();
+  final branchId = expectedBranchId;
   if (branchId != null) {
     final stockItem = _stockToCompanion(product, branchId);
-    if (stockItem != null) {
+    if (stockItem != null && requestScopeIsCurrent()) {
       await database.updateLocalStock([stockItem]);
     }
   }
