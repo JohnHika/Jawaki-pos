@@ -2174,9 +2174,11 @@ class SettingsScreen extends ConsumerWidget {
       updateService.showCachedOptionalUpdateDialog(context);
     } else if (!wasUpdateShown) {
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('You\'re on the latest version! ✅'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(
+            updateService.errorMessage ?? 'You\'re on the latest version! ✅',
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
     }

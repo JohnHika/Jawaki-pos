@@ -124,8 +124,14 @@ class AppUpdateInfo {
   }
 }
 
+typedef LatestAndroidReleaseLoader = Future<AppUpdateInfo?> Function();
+
 class UpdateCheckService extends ChangeNotifier {
-  UpdateCheckService({required ApiClient apiClient}) : _apiClient = apiClient;
+  UpdateCheckService({
+    required ApiClient apiClient,
+    LatestAndroidReleaseLoader? githubReleaseLoader,
+  })  : _apiClient = apiClient,
+        _githubReleaseLoader = githubReleaseLoader;
 
   static const MethodChannel _installerChannel =
       MethodChannel('pos_mobile/installer');
@@ -133,9 +139,11 @@ class UpdateCheckService extends ChangeNotifier {
   static const Duration _retryInterval = Duration(minutes: 5);
 
   final ApiClient _apiClient;
+  final LatestAndroidReleaseLoader? _githubReleaseLoader;
 
   DateTime? _lastCheckTime;
   bool _isChecking = false;
+  Completer<void>? _checkCompleter;
   bool _isDownloading = false;
   bool _isInstalling = false;
   bool _updateOperationInProgress = false;
@@ -184,7 +192,11 @@ class UpdateCheckService extends ChangeNotifier {
   Future<bool> checkForUpdates({
     bool force = false,
   }) async {
-    if (_isChecking) return isForceUpdateRequired || hasOptionalUpdateAvailable;
+    if (_isChecking) {
+      final inFlight = _checkCompleter;
+      if (inFlight != null) await inFlight.future;
+      return isForceUpdateRequired || hasOptionalUpdateAvailable;
+    }
 
     final now = DateTime.now();
     if (!force && _lastCheckTime != null) {
@@ -199,6 +211,8 @@ class UpdateCheckService extends ChangeNotifier {
     }
 
     _isChecking = true;
+    final checkCompleter = Completer<void>();
+    _checkCompleter = checkCompleter;
     try {
       final currentVersion = await _resolveCurrentVersion();
       AppUpdateInfo? primaryUpdate;
@@ -206,8 +220,13 @@ class UpdateCheckService extends ChangeNotifier {
 
       // Step 1: Try Cloudflare R2 (primary source)
       try {
-        final manifest =
-            AppUpdateInfo.fromJson(await _apiClient.getLatestAndroidUpdate());
+        final manifest = AppUpdateInfo.fromJson(
+          await _apiClient.getLatestAndroidUpdate(),
+        );
+        if (manifest.latestVersion.trim().isEmpty ||
+            manifest.apkUrl.trim().isEmpty) {
+          throw const FormatException('Invalid Android update manifest');
+        }
         primaryUpdate = manifest;
         if (!kReleaseMode) {
           debugPrint(
@@ -228,7 +247,9 @@ class UpdateCheckService extends ChangeNotifier {
             currentVersion: currentVersion,
           )) {
         try {
-          final githubUpdate = await _getLatestGitHubPackagesUpdate();
+          final githubUpdate = _githubReleaseLoader != null
+              ? await _githubReleaseLoader()
+              : await _getLatestGitHubPackagesUpdate();
           if (githubUpdate != null) {
             secondaryUpdate = githubUpdate;
             if (!kReleaseMode) {
@@ -248,7 +269,12 @@ class UpdateCheckService extends ChangeNotifier {
       final manifest = primaryUpdate ?? secondaryUpdate;
       if (manifest != null) {
         _cachedUpdate = manifest;
+        _errorMessage = null;
         _applyManifest(manifest, currentVersion);
+      } else {
+        _errorMessage =
+            'Couldn’t check for updates. Check your connection and try again.';
+        notifyListeners();
       }
 
       // Fall back to a locally-persisted "just installed this build" notice
@@ -278,6 +304,8 @@ class UpdateCheckService extends ChangeNotifier {
     } finally {
       _isChecking = false;
       _lastCheckTime = now;
+      if (!checkCompleter.isCompleted) checkCompleter.complete();
+      if (identical(_checkCompleter, checkCompleter)) _checkCompleter = null;
     }
 
     return false;

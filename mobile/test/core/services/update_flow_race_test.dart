@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:axon_pos/core/network/api_client.dart';
 import 'package:axon_pos/core/services/update_check_service.dart';
 import 'package:dio/dio.dart';
@@ -11,6 +13,28 @@ class _ManifestApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> getLatestAndroidUpdate() async => manifest;
+}
+
+class _UnavailableManifestApi extends ApiClient {
+  _UnavailableManifestApi() : super(Dio());
+
+  @override
+  Future<Map<String, dynamic>> getLatestAndroidUpdate() async {
+    throw DioException(
+      requestOptions: RequestOptions(path: '/app-updates/android/latest'),
+      type: DioExceptionType.connectionError,
+    );
+  }
+}
+
+class _DeferredManifestApi extends ApiClient {
+  _DeferredManifestApi() : super(Dio());
+
+  final Completer<Map<String, dynamic>> manifest =
+      Completer<Map<String, dynamic>>();
+
+  @override
+  Future<Map<String, dynamic>> getLatestAndroidUpdate() => manifest.future;
 }
 
 Map<String, dynamic> _manifest({required int build, String version = '1.0.56'}) => {
@@ -79,6 +103,43 @@ void main() {
       updates.cancelPostLoginCheck();
       expect(updates.isSettlingAfterLogin, isFalse);
     });
+  });
+
+  test('a failed update check is not reported as up to date', () async {
+    _runningBuild(2098);
+    final updates = UpdateCheckService(
+      apiClient: _UnavailableManifestApi(),
+      githubReleaseLoader: () async => null,
+    );
+
+    final hasUpdate = await updates.checkForUpdates(force: true);
+
+    expect(hasUpdate, isFalse);
+    expect(
+      updates.errorMessage,
+      'Couldn’t check for updates. Check your connection and try again.',
+    );
+  });
+
+  test('a second update check waits for the active check to finish', () async {
+    _runningBuild(2098);
+    final api = _DeferredManifestApi();
+    final updates = UpdateCheckService(apiClient: api);
+    var secondCheckReturned = false;
+
+    final firstCheck = updates.checkForUpdates(force: true);
+    final secondCheck = updates.checkForUpdates(force: true).then((result) {
+      secondCheckReturned = true;
+      return result;
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    expect(secondCheckReturned, isFalse);
+    api.manifest.complete(_manifest(build: 2099));
+
+    expect(await firstCheck, isTrue);
+    expect(await secondCheck, isTrue);
+    expect(updates.optionalUpdate?.buildNumber, 2099);
   });
 
   group('first launch after an installed update', () {
