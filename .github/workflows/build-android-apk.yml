@@ -461,6 +461,49 @@ jobs:
               fh.write(f'release_notes<<NOTES_EOF\n{release_notes}\nNOTES_EOF\n')
           PY
 
+      - name: Validate update manifest
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
+        shell: bash
+        env:
+          LATEST_MANIFEST_PATH: ${{ steps.manifest.outputs.latest_manifest_path }}
+          EXPECTED_BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+          EXPECTED_LATEST_VERSION: ${{ steps.version.outputs.compatibility_version }}
+          EXPECTED_RELEASE_TAG: v${{ steps.version.outputs.git_tag_version }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(Path(os.environ['LATEST_MANIFEST_PATH']).read_text(encoding='utf-8'))
+          expected_build = int(os.environ['EXPECTED_BUILD_NUMBER'])
+          expected_version = os.environ['EXPECTED_LATEST_VERSION']
+          expected_tag = os.environ['EXPECTED_RELEASE_TAG']
+          expected_apk = (
+              f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/"
+              f"{expected_tag}/app-release.apk"
+          )
+
+          if manifest.get('platform') != 'android':
+              raise SystemExit('Manifest platform must be android')
+          if manifest.get('buildNumber') != expected_build:
+              raise SystemExit('Manifest buildNumber does not match the APK build')
+          if manifest.get('latestVersion') != expected_version:
+              raise SystemExit('Manifest latestVersion does not match the compatibility version')
+          if manifest.get('apkUrl') != expected_apk:
+              raise SystemExit('Manifest apkUrl does not match the versioned GitHub APK URL')
+          sources = manifest.get('updateSources')
+          if not isinstance(sources, list) or not any(
+              isinstance(source, dict) and source.get('url') == expected_apk
+              for source in sources
+          ):
+              raise SystemExit('Manifest updateSources must include the versioned GitHub APK URL')
+          if not isinstance(manifest.get('releaseNotes'), str) or not manifest['releaseNotes'].strip():
+              raise SystemExit('Manifest releaseNotes must not be empty')
+          print(f"Validated Android update manifest for build {expected_build}")
+          PY
+
       - name: Publish APK to Cloudflare R2
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
         shell: bash
@@ -487,6 +530,32 @@ jobs:
             --body mobile/build/app/outputs/flutter-apk/app-release.apk \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/vnd.android.package-archive"
+
+      - name: Publish versioned manifest to Cloudflare R2
+        if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: true
+          R2_ENDPOINT: https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          CF_R2_BUCKET: ${{ env.CF_R2_BUCKET }}
+          RELEASE_PATH: ${{ steps.version.outputs.release_path }}
+          LATEST_MANIFEST_PATH: ${{ steps.manifest.outputs.latest_manifest_path }}
+        run: |
+          export AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
+          export AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
+          export R2_ENDPOINT="$(printf '%s' "$R2_ENDPOINT" | tr -d '\r\n')"
+          export CF_R2_BUCKET="$(printf '%s' "$CF_R2_BUCKET" | tr -d '\r\n')"
+          export RELEASE_PATH="$(printf '%s' "$RELEASE_PATH" | tr -d '\r\n')"
+          export LATEST_MANIFEST_PATH="$(printf '%s' "$LATEST_MANIFEST_PATH" | tr -d '\r\n')"
+
+          aws s3 cp \
+            "$LATEST_MANIFEST_PATH" \
+            "s3://$CF_R2_BUCKET/$RELEASE_PATH/latest.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json"
 
       - name: Create GitHub Release
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
@@ -548,12 +617,6 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type "application/json" \
             --cache-control "no-store, max-age=0"
-
-          aws s3 cp \
-            "$LATEST_MANIFEST_PATH" \
-            "s3://$CF_R2_BUCKET/$RELEASE_PATH/latest.json" \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type "application/json"
 
       - name: Write publish summary
         if: github.event_name != 'pull_request' && steps.release_floor.outputs.publish_release == 'true'
